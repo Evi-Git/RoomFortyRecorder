@@ -1,0 +1,135 @@
+import EventEmitter from 'events';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import path from 'path';
+import { app } from 'electron';
+import ConfigService from 'config/ConfigService';
+import { WowProcessEvent } from 'main/types';
+
+/**
+ * The Poller singleton periodically checks the list of WoW active
+ * processes. If the state changes, it emits a WowProcessEvent.
+ */
+export default class Poller extends EventEmitter {
+  /**
+   * Singleton instance.
+   */
+  private static instance: Poller;
+
+  /**
+   * Config service handle.
+   */
+  private cfg: ConfigService = ConfigService.getInstance();
+
+  /**
+   * If a retail WoW process is running and recording is enabled.
+   */
+  private wowRunning = false;
+
+  /**
+   * Spawned child process.
+   */
+  private child: ChildProcessWithoutNullStreams | undefined;
+
+  /**
+   * Singleton instance.
+   */
+  private binary = app.isPackaged
+    ? path.join(process.resourcesPath, 'binaries', 'rust-ps.exe')
+    : path.join(__dirname, '../../binaries', 'rust-ps.exe');
+
+  /**
+   * Create or get the singleton.
+   */
+  static getInstance() {
+    if (!Poller.instance) Poller.instance = new Poller();
+    return Poller.instance;
+  }
+
+  /**
+   * Private constructor as part of the singleton pattern.
+   */
+  private constructor() {
+    super();
+  }
+
+  /**
+   * Convienence method to check if WoW is running. Only returns true if WoW
+   * is running, and the configuration is setup to record that flavour of WoW.
+   */
+  public isWowRunning() {
+    return this.wowRunning;
+  }
+
+  /**
+   * Stop the poller and reset the state.
+   */
+  public stop() {
+    console.info('[Poller] Stop process poller');
+    this.wowRunning = false;
+
+    if (this.child) {
+      this.child.kill();
+      this.child = undefined;
+    }
+  }
+
+  /**
+   * Start the poller.
+   */
+  public start() {
+    this.stop();
+    console.info('[Poller] Start process poller');
+
+    this.child = spawn(this.binary);
+    this.child.stdout.on('data', this.handleStdout);
+    this.child.stderr.on('data', this.handleStderr);
+  }
+
+  /**
+   * Handle stdout data from the child process, a tiny blob of JSON such as
+   * {"Retail":true}.
+   *
+   * Only the retail process is relevant to this build.
+   */
+  private handleStdout = (data: string) => {
+    let parsed;
+
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      // We can hit this on sleeping/resuming from sleep. Or anything
+      // else that blocks the event loop long enough to cause us to end up
+      // with more than one JSON entry. This used to log but it was just
+      // messy and experience has demonstrated it's never interesting.
+      return;
+    }
+
+    const { Retail } = parsed;
+    const running =
+      (this.cfg.get<boolean>('recordRetail') ||
+        this.cfg.get<boolean>('recordRetailPtr')) &&
+      Retail;
+
+    if (this.wowRunning === running) {
+      // Nothing to emit.
+      return;
+    }
+
+    if (running) {
+      this.emit(WowProcessEvent.STARTED);
+    } else {
+      this.emit(WowProcessEvent.STOPPED);
+    }
+
+    this.wowRunning = running;
+  };
+
+  /**
+   * Handle stderr, we don't expect to ever see this but log it incase
+   * anything weird happens.
+   */
+  private handleStderr = (data: string) => {
+    console.warn('[Poller] stderr returned from child process');
+    console.error(data);
+  };
+}
