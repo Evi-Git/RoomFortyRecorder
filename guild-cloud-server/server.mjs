@@ -358,15 +358,31 @@ const publicBaseUrl = (req) => {
   return `${protocol}://${req.headers.host}`;
 };
 
-const signedUrl = (req, action, guild, key, bytes) => {
+const signedUrl = (req, action, guild, key, bytes, expires) => {
   const token = encodeToken({
     action,
     guild,
     key,
     bytes,
-    exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
+    exp: expires || Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
   });
   return `${publicBaseUrl(req)}/${action}/${token}`;
+};
+
+const downloadUrlCache = new Map();
+const signedDownloadUrl = (req, guild, key) => {
+  const cacheKey = `${publicBaseUrl(req)}\0${guild}\0${key}`;
+  const now = Math.floor(Date.now() / 1000);
+  const cached = downloadUrlCache.get(cacheKey);
+
+  // HTTP polling refreshes metadata every 30 seconds. Keep the URL stable so
+  // the renderer does not remount the video and cancel its active HTTP range.
+  if (cached && cached.expires > now + 5 * 60) return cached.url;
+
+  const expires = now + TOKEN_TTL_SECONDS;
+  const url = signedUrl(req, 'download', guild, key, undefined, expires);
+  downloadUrlCache.set(cacheKey, { expires, url });
+  return url;
 };
 
 const isSafeKey = (key) =>
@@ -603,7 +619,13 @@ const handleDownload = async (req, res, token) => {
     }
 
     res.writeHead(status, headers);
-    return fs.createReadStream(file, { start, end }).pipe(res);
+    const stream = fs.createReadStream(file, { start, end });
+    const closeStream = () => {
+      if (!res.writableFinished) stream.destroy();
+    };
+    res.once('close', closeStream);
+    stream.once('close', () => res.off('close', closeStream));
+    return stream.pipe(res);
   } catch {
     return fail(res, 404, 'Video not found');
   }
@@ -611,7 +633,7 @@ const handleDownload = async (req, res, token) => {
 
 const metadataFor = (req, video) => ({
   ...video,
-  signedVideoKey: signedUrl(req, 'download', GUILD, video.videoKey),
+  signedVideoKey: signedDownloadUrl(req, GUILD, video.videoKey),
 });
 
 const handleApi = async (req, res, url, parts) => {
