@@ -284,8 +284,9 @@ installation or invitation is required.
 
 The player’s link button is enabled for cloud videos and clips. It copies a
 public URL such as `https://roomfortyrecorder.com/link/<id>` to the clipboard.
-The link page streams the recording and lets viewers leave one like per
-browser. Likes are stored in `state.json`.
+Both link types stream the shared recording. Full-video pages let viewers leave
+one like per browser, while clip pages do not offer likes. Full-video likes are
+stored in `state.json`.
 
 The production client defaults to `https://roomfortyrecorder.com`; a custom
 host must set both `WCR_CLOUD_API_URL` and `WCR_CLOUD_WEBSITE_URL` when building
