@@ -751,11 +751,13 @@ const handleApi = async (req, res, url, parts) => {
 
   if (parts[3] === 'video' && parts[4] && parts[5] === 'link') {
     if (req.method !== 'POST') return fail(res, 405, 'Method not allowed');
-    if (!state.videos.some((video) => video.videoKey === parts[4])) {
-      return fail(res, 404, 'Video not found');
-    }
+    const video = state.videos.find(
+      (entry) => entry.videoName === parts[4] || entry.videoKey === parts[4],
+    );
+    if (!video) return fail(res, 404, 'Video not found');
+
     const id = crypto.randomBytes(9).toString('base64url');
-    state.links.push({ id, guild, key: parts[4] });
+    state.links.push({ id, guild, key: video.videoKey, likes: 0 });
     await persist();
     return json(res, 200, { id });
   }
@@ -887,21 +889,91 @@ const htmlEscape = (value) =>
       ],
   );
 
-const handleLink = async (req, res, id) => {
-  const link = state.links.find((entry) => entry.id === id);
+const findLink = (id) => state.links.find((entry) => entry.id === id);
+
+const linkLikes = (link) =>
+  Number.isSafeInteger(link.likes) && link.likes >= 0 ? link.likes : 0;
+
+const handleLink = async (res, id) => {
+  const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
   if (!(await exists(fileForKey(link.key)))) return text(res, 404, 'Video not found');
 
-  const source = signedUrl(req, 'download', link.guild, link.key);
+  const video = state.videos.find((entry) => entry.videoKey === link.key);
+  const title = video?.videoName || 'RoomFortyRecorder video';
+  const source = `/link/${encodeURIComponent(id)}/video`;
+  const likes = linkLikes(link);
   const page = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Guild Cloud</title>
-<style>body{margin:2rem;background:#111;color:#eee;font:16px sans-serif}video{max-width:100%;max-height:85vh}</style>
-</head><body><video controls src="${htmlEscape(source)}"></video></body></html>`;
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
+<style>
+:root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
+</style></head><body><main>
+<h1>${htmlEscape(title)}</h1>
+<video controls playsinline src="${htmlEscape(source)}"></video>
+<button id="like" type="button" aria-pressed="false"><span id="like-label">Like</span> ♥ <span id="likes">${likes}</span></button>
+<p id="status" aria-live="polite"></p>
+</main><script>
+const id = ${JSON.stringify(id).replace(/</g, '\\u003c')};
+const button = document.getElementById('like');
+const label = document.getElementById('like-label');
+const count = document.getElementById('likes');
+const status = document.getElementById('status');
+const storageKey = 'roomforty-liked-' + id;
+const markLiked = () => {
+  label.textContent = 'Liked';
+  button.classList.add('liked');
+  button.setAttribute('aria-pressed', 'true');
+  button.disabled = true;
+};
+// ponytail: browser-local like dedupe; add account/rate limiting if abuse matters.
+try { if (localStorage.getItem(storageKey) === '1') markLiked(); } catch {}
+button.addEventListener('click', async () => {
+  button.disabled = true;
+  try {
+    const response = await fetch('/link/' + encodeURIComponent(id) + '/like', { method: 'POST' });
+    if (!response.ok) throw new Error('Like failed');
+    const body = await response.json();
+    count.textContent = String(body.likes);
+    try { localStorage.setItem(storageKey, '1'); } catch {}
+    markLiked();
+    status.textContent = 'Thanks for the like!';
+  } catch {
+    button.disabled = false;
+    status.textContent = 'Could not save your like. Please try again.';
+  }
+});
+</script></body></html>`;
   res.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': Buffer.byteLength(page),
   });
   return res.end(page);
+};
+
+const handleLinkVideo = async (req, res, id) => {
+  const link = findLink(id);
+  if (!link) return fail(res, 404, 'Link not found');
+  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+
+  // Keep the public link stable while still reusing the range-requested stream.
+  const token = encodeToken({
+    action: 'download',
+    guild: link.guild,
+    key: link.key,
+    exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
+  });
+  return handleDownload(req, res, token);
+};
+
+const handleLike = async (res, id) => {
+  const link = findLink(id);
+  if (!link) return fail(res, 404, 'Link not found');
+  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+
+  if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
+  await persist();
+  return json(res, 200, { likes: link.likes });
 };
 
 const requestHandler = async (req, res) => {
@@ -925,8 +997,14 @@ const requestHandler = async (req, res) => {
   if (parts[0] === 'download' && req.method === 'GET') {
     return handleDownload(req, res, parts[1]);
   }
-  if (parts[0] === 'link' && req.method === 'GET') {
-    return handleLink(req, res, parts[1]);
+  if (parts[0] === 'link' && parts[2] === 'video' && req.method === 'GET') {
+    return handleLinkVideo(req, res, parts[1]);
+  }
+  if (parts[0] === 'link' && parts[2] === 'like' && req.method === 'POST') {
+    return handleLike(res, parts[1]);
+  }
+  if (parts[0] === 'link' && parts.length === 2 && req.method === 'GET') {
+    return handleLink(res, parts[1]);
   }
   if (parts[0] === 'api') return handleApi(req, res, url, parts);
 

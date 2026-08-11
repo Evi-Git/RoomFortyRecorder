@@ -113,7 +113,7 @@ GUILD_CLOUD_DISCORD_CLIENT_SECRET=REPLACE_WITH_DISCORD_CLIENT_SECRET
 GUILD_CLOUD_DISCORD_GUILD_ID=REPLACE_WITH_ROOM_FORTY_SERVER_ID
 GUILD_CLOUD_DISCORD_BOT_TOKEN=REPLACE_WITH_DISCORD_BOT_TOKEN
 GUILD_CLOUD_DISCORD_ALLOWED_ROLES=raider,trial,officer
-GUILD_CLOUD_DISCORD_REDIRECT_URI=https://cloud.example.com/auth/discord/callback
+GUILD_CLOUD_DISCORD_REDIRECT_URI=https://roomfortyrecorder.com/auth/discord/callback
 
 # Caddy is the public front door; Node stays local.
 GUILD_CLOUD_HOST=127.0.0.1
@@ -122,7 +122,7 @@ GUILD_CLOUD_LIMIT_GB=1800
 GUILD_CLOUD_PORT=8787
 
 # Public HTTPS URL served by Caddy. Do not add /api.
-GUILD_CLOUD_PUBLIC_URL=https://cloud.example.com
+GUILD_CLOUD_PUBLIC_URL=https://roomfortyrecorder.com
 
 # Generate a long random signing secret.
 GUILD_CLOUD_SECRET=REPLACE_WITH_LONG_RANDOM_SIGNING_SECRET
@@ -167,12 +167,12 @@ C:\RoomFortyRecorder\caddy\Caddyfile
 Its contents should be:
 
 ```caddyfile
-cloud.example.com {
+roomfortyrecorder.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
 
-Replace `cloud.example.com` with the real hostname. Caddy automatically obtains
+Replace `roomfortyrecorder.com` with the real hostname if using a custom domain. Caddy automatically obtains
 and renews the HTTPS certificate once DNS points to the home's public IP and
 ports 80/443 reach the machine.
 
@@ -252,9 +252,9 @@ building RoomFortyRecorder; raiders do not do it.
 From the repository's WSL/Linux build shell:
 
 ```bash
-WCR_CLOUD_API_URL='https://cloud.example.com/api' \
+WCR_CLOUD_API_URL='https://roomfortyrecorder.com/api' \
 WCR_CLOUD_POLL_URL='' \
-WCR_CLOUD_WEBSITE_URL='https://cloud.example.com' \
+WCR_CLOUD_WEBSITE_URL='https://roomfortyrecorder.com' \
 WCR_CLOUD_MULTIPART_SIZE_MB='5120' \
 npm run package
 ```
@@ -279,6 +279,17 @@ In **Settings → Cloud**:
 
 A successful Discord sign-in confirms that the server login works. No Tailscale
 installation or invitation is required.
+
+## Share links and likes
+
+The player’s link button is enabled for cloud videos and clips. It copies a
+public URL such as `https://roomfortyrecorder.com/link/<id>` to the clipboard.
+The link page streams the recording and lets viewers leave one like per
+browser. Likes are stored in `state.json`.
+
+The production client defaults to `https://roomfortyrecorder.com`; a custom
+host must set both `WCR_CLOUD_API_URL` and `WCR_CLOUD_WEBSITE_URL` when building
+(the website URL should not include `/api`).
 
 ## Backups and maintenance
 
