@@ -72,6 +72,7 @@ let state = {
   nextMessageId: 1,
 };
 let saveQueue = Promise.resolve();
+let likeQueue = Promise.resolve();
 
 const json = (res, status, body, headers = {}) => {
   const data = JSON.stringify(body);
@@ -428,15 +429,14 @@ const readBody = async (req, maxBytes = 2 * 1024 * 1024) => {
 const persist = () => {
   const snapshot = JSON.stringify(state, null, 2);
   const temp = `${STATE_FILE}.${process.pid}.tmp`;
-  saveQueue = saveQueue
-    .then(async () => {
-      await fsp.writeFile(temp, snapshot, 'utf8');
-      await fsp.rename(temp, STATE_FILE);
-    })
-    .catch((error) => {
-      console.error('[guild-cloud] Failed to save state', error);
-    });
-  return saveQueue;
+  const save = saveQueue.then(async () => {
+    await fsp.writeFile(temp, snapshot, 'utf8');
+    await fsp.rename(temp, STATE_FILE);
+  });
+  saveQueue = save.catch((error) => {
+    console.error('[guild-cloud] Failed to save state', error);
+  });
+  return save;
 };
 
 const loadState = async () => {
@@ -891,29 +891,48 @@ const htmlEscape = (value) =>
 
 const findLink = (id) => state.links.find((entry) => entry.id === id);
 
+const videoForLink = (link) =>
+  state.videos.find((entry) => entry.videoKey === link.key);
+
 const linkLikes = (link) =>
   Number.isSafeInteger(link.likes) && link.likes >= 0 ? link.likes : 0;
+
+const incrementLinkLikes = (link) => {
+  const update = likeQueue.then(async () => {
+    const previousLikes = link.likes;
+    const likes = linkLikes(link);
+    const nextLikes =
+      likes < Number.MAX_SAFE_INTEGER ? likes + 1 : Number.MAX_SAFE_INTEGER;
+    link.likes = nextLikes;
+
+    try {
+      await persist();
+      return nextLikes;
+    } catch (error) {
+      if (previousLikes === undefined) delete link.likes;
+      else link.likes = previousLikes;
+      throw error;
+    }
+  });
+  likeQueue = update.catch(() => {});
+  return update;
+};
 
 const handleLink = async (res, id) => {
   const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
   if (!(await exists(fileForKey(link.key)))) return text(res, 404, 'Video not found');
 
-  const video = state.videos.find((entry) => entry.videoKey === link.key);
+  const video = videoForLink(link);
   const title = video?.videoName || 'RoomFortyRecorder video';
   const source = `/link/${encodeURIComponent(id)}/video`;
-  const likes = linkLikes(link);
-  const page = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
-<style>
-:root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
-</style></head><body><main>
-<h1>${htmlEscape(title)}</h1>
-<video controls playsinline src="${htmlEscape(source)}"></video>
-<button id="like" type="button" aria-pressed="false"><span id="like-label">Like</span> ♥ <span id="likes">${likes}</span></button>
-<p id="status" aria-live="polite"></p>
-</main><script>
+  const likesEnabled = video?.category !== 'Clips';
+  const likeControls = likesEnabled
+    ? `<button id="like" type="button" aria-pressed="false"><span id="like-label">Like</span> ♥ <span id="likes">${linkLikes(link)}</span></button>
+<p id="status" aria-live="polite"></p>`
+    : '';
+  const likeScript = likesEnabled
+    ? `<script>
 const id = ${JSON.stringify(id).replace(/</g, '\\u003c')};
 const button = document.getElementById('like');
 const label = document.getElementById('like-label');
@@ -926,24 +945,46 @@ const markLiked = () => {
   button.setAttribute('aria-pressed', 'true');
   button.disabled = true;
 };
-// ponytail: browser-local like dedupe; add account/rate limiting if abuse matters.
 try { if (localStorage.getItem(storageKey) === '1') markLiked(); } catch {}
 button.addEventListener('click', async () => {
+  try {
+    if (localStorage.getItem(storageKey) === '1') {
+      markLiked();
+      return;
+    }
+    localStorage.setItem(storageKey, '1');
+  } catch {
+    button.disabled = true;
+    status.textContent = 'Could not access local storage to save your like.';
+    return;
+  }
+
   button.disabled = true;
   try {
     const response = await fetch('/link/' + encodeURIComponent(id) + '/like', { method: 'POST' });
     if (!response.ok) throw new Error('Like failed');
     const body = await response.json();
     count.textContent = String(body.likes);
-    try { localStorage.setItem(storageKey, '1'); } catch {}
     markLiked();
     status.textContent = 'Thanks for the like!';
   } catch {
+    try { localStorage.removeItem(storageKey); } catch {}
     button.disabled = false;
     status.textContent = 'Could not save your like. Please try again.';
   }
 });
-</script></body></html>`;
+</script>`
+    : '';
+  const page = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
+<style>
+:root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
+</style></head><body><main>
+<h1>${htmlEscape(title)}</h1>
+<video controls playsinline src="${htmlEscape(source)}"></video>
+${likeControls}
+</main>${likeScript}</body></html>`;
   res.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': Buffer.byteLength(page),
@@ -970,10 +1011,12 @@ const handleLike = async (res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
   if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+  if (videoForLink(link)?.category === 'Clips') {
+    return fail(res, 403, 'Likes are disabled for clips');
+  }
 
-  if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
-  await persist();
-  return json(res, 200, { likes: link.likes });
+  const likes = await incrementLinkLikes(link);
+  return json(res, 200, { likes });
 };
 
 const requestHandler = async (req, res) => {
