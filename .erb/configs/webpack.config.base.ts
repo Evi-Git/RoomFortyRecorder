@@ -7,6 +7,11 @@ import TsconfigPathsPlugins from 'tsconfig-paths-webpack-plugin';
 import webpackPaths from './webpack.paths';
 import { dependencies as externals } from '../../release/app/package.json';
 
+const cloudHost =
+  process.env.NODE_ENV === 'production'
+    ? 'https://roomfortyrecorder.com'
+    : 'http://127.0.0.1:8787';
+
 const configuration: webpack.Configuration = {
   externals: [...Object.keys(externals || {})],
 
@@ -49,16 +54,16 @@ const configuration: webpack.Configuration = {
     fallback: {
       'roughjs/bin/rough': require.resolve('roughjs/bin/rough'),
       'roughjs/bin/generator': require.resolve('roughjs/bin/generator'),
-      'roughjs/bin/math': require.resolve('roughjs/bin/math')
-    }
+      'roughjs/bin/math': require.resolve('roughjs/bin/math'),
+    },
   },
 
   plugins: [
     new webpack.EnvironmentPlugin({
       NODE_ENV: 'production',
-      WCR_CLOUD_API_URL: 'http://127.0.0.1:8787/api',
+      WCR_CLOUD_API_URL: `${cloudHost}/api`,
       WCR_CLOUD_POLL_URL: '',
-      WCR_CLOUD_WEBSITE_URL: 'http://127.0.0.1:8787',
+      WCR_CLOUD_WEBSITE_URL: cloudHost,
       WCR_CLOUD_MULTIPART_SIZE_MB: '5120',
     }),
     new webpack.DefinePlugin({

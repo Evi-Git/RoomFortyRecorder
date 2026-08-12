@@ -10,7 +10,7 @@ server. Once it is done, a normal raider only needs to:
 No raider needs Tailscale, Node.js, Caddy, the repository, or router access.
 
 ```text
-RoomFortyRecorder PC -- HTTPS --> cloud.example.com -- Caddy --> Node server --> D:\GuildCloud
+RoomFortyRecorder PC -- HTTPS --> roomfortyrecorder.com -- Caddy --> Node server --> D:\GuildCloud
 ```
 
 The local Windows machine still stores the videos. Caddy is only the secure
@@ -45,15 +45,16 @@ fill.
 
 ## Before starting: hostname and public IP
 
-The app needs a stable HTTPS hostname, for example:
+Production builds use this stable HTTPS hostname:
 
 ```text
-cloud.example.com
+roomfortyrecorder.com
 ```
 
-Use a domain or dynamic-DNS hostname that the friend controls. Point its DNS
-`A` record at the home's public IPv4 address. If the address changes, enable
-the router's dynamic-DNS updater or use the DNS provider's updater.
+Point its DNS `A` record at the home's public IPv4 address. If the address
+changes, enable the router's dynamic-DNS updater or use the DNS provider's
+updater. A custom hostname also works, but it must be configured in both the
+server and client build as described below.
 
 If the router's WAN address is private or does not match the address shown by a
 public “what is my IP” site, the connection is behind CGNAT and port forwarding
@@ -102,31 +103,10 @@ rename it to exactly:
 .env
 ```
 
-Open `.env` in Notepad and use this as the starting point:
-
-```dotenv
-GUILD_CLOUD_GUILD=Room Forty
-
-# Discord Developer Portal application values.
-GUILD_CLOUD_DISCORD_CLIENT_ID=REPLACE_WITH_DISCORD_CLIENT_ID
-GUILD_CLOUD_DISCORD_CLIENT_SECRET=REPLACE_WITH_DISCORD_CLIENT_SECRET
-GUILD_CLOUD_DISCORD_GUILD_ID=REPLACE_WITH_ROOM_FORTY_SERVER_ID
-GUILD_CLOUD_DISCORD_BOT_TOKEN=REPLACE_WITH_DISCORD_BOT_TOKEN
-GUILD_CLOUD_DISCORD_ALLOWED_ROLES=raider,trial,officer
-GUILD_CLOUD_DISCORD_REDIRECT_URI=https://cloud.example.com/auth/discord/callback
-
-# Caddy is the public front door; Node stays local.
-GUILD_CLOUD_HOST=127.0.0.1
-GUILD_CLOUD_STORAGE_PATH=D:\GuildCloud
-GUILD_CLOUD_LIMIT_GB=1800
-GUILD_CLOUD_PORT=8787
-
-# Public HTTPS URL served by Caddy. Do not add /api.
-GUILD_CLOUD_PUBLIC_URL=https://cloud.example.com
-
-# Generate a long random signing secret.
-GUILD_CLOUD_SECRET=REPLACE_WITH_LONG_RANDOM_SIGNING_SECRET
-```
+Open `.env` in Notepad. The copied `.env.example` is the authoritative list of
+variables and defaults. Replace each `replace-with-...` placeholder, and keep
+the other defaults unless this deployment uses a custom hostname, storage
+path, or quota.
 
 Keep the Discord client secret and signing secret out of Git and private chats.
 
@@ -147,10 +127,10 @@ read members and roles.
 Give the Windows machine a reserved local IP in the router's DHCP settings.
 Then create only these port forwards:
 
-| Protocol | Public port | Destination | Purpose |
-| --- | ---: | --- | --- |
-| TCP | 80 | Windows host | Caddy certificate validation and HTTP redirect |
-| TCP | 443 | Windows host | HTTPS video/API traffic |
+| Protocol | Public port | Destination  | Purpose                                        |
+| -------- | ----------: | ------------ | ---------------------------------------------- |
+| TCP      |          80 | Windows host | Caddy certificate validation and HTTP redirect |
+| TCP      |         443 | Windows host | HTTPS video/API traffic                        |
 
 Do **not** forward port `8787`. The Node server is configured to listen only on
 `127.0.0.1`, so it is reachable by Caddy on the same machine but not directly
@@ -167,14 +147,14 @@ C:\RoomFortyRecorder\caddy\Caddyfile
 Its contents should be:
 
 ```caddyfile
-cloud.example.com {
+roomfortyrecorder.com {
     reverse_proxy 127.0.0.1:8787
 }
 ```
 
-Replace `cloud.example.com` with the real hostname. Caddy automatically obtains
-and renews the HTTPS certificate once DNS points to the home's public IP and
-ports 80/443 reach the machine.
+Replace `roomfortyrecorder.com` with the real hostname if using a custom domain.
+Caddy automatically obtains and renews the HTTPS certificate once DNS points
+to the home's public IP and ports 80/443 reach the machine.
 
 ## 5. Start and test the server
 
@@ -193,7 +173,7 @@ http://127.0.0.1:8787/health
 
 It should display:
 
-```json
+```text
 {"ok":true}
 ```
 
@@ -206,7 +186,7 @@ caddy.exe run --config Caddyfile
 From a phone using mobile data, or another network outside the house, visit:
 
 ```text
-https://cloud.example.com/health
+https://roomfortyrecorder.com/health
 ```
 
 It should display the same `{"ok":true}` response with a valid HTTPS
@@ -242,25 +222,31 @@ Caddy. For each task:
 
 Run the Node task first, then the Caddy task. Revisit
 `http://127.0.0.1:8787/health` locally and
-`https://cloud.example.com/health` from outside the house after a reboot.
+`https://roomfortyrecorder.com/health` from outside the house after a reboot.
 
 ## 7. Build the client
 
-The endpoint is compiled into the installer. This is done once by the person
-building RoomFortyRecorder; raiders do not do it.
+The endpoints are compiled into the installer. Production builds default to
+`https://roomfortyrecorder.com`, while local development defaults to
+`http://127.0.0.1:8787`. This is done once by the person building
+RoomFortyRecorder; raiders do not do it.
 
 From the repository's WSL/Linux build shell:
 
 ```bash
-WCR_CLOUD_API_URL='https://cloud.example.com/api' \
-WCR_CLOUD_POLL_URL='' \
-WCR_CLOUD_WEBSITE_URL='https://cloud.example.com' \
-WCR_CLOUD_MULTIPART_SIZE_MB='5120' \
 npm run package
 ```
 
-Replace the hostname with the real one. Do not use `localhost`, a private LAN
-address, or a Tailscale address in the distributed build.
+For a custom hostname, override both compiled endpoints:
+
+```bash
+WCR_CLOUD_API_URL='https://cloud.example.com/api' \
+WCR_CLOUD_WEBSITE_URL='https://cloud.example.com' \
+npm run package
+```
+
+Do not use `localhost`, a private LAN address, or a Tailscale address in a
+distributed build.
 
 ## 8. Normal raider setup
 
@@ -280,6 +266,15 @@ In **Settings → Cloud**:
 A successful Discord sign-in confirms that the server login works. No Tailscale
 installation or invitation is required.
 
+## Share links and likes
+
+The player’s link button is enabled for cloud videos and clips. It copies a
+stable public URL such as `https://roomfortyrecorder.com/link/<id>` to the
+clipboard; the link remains valid while the recording remains in cloud storage.
+Both link types stream the shared recording. Full-video pages accept anonymous
+likes, limited to one per browser profile by browser-local storage. Clip pages
+do not offer likes. Full-video like counts are stored in `state.json`.
+
 ## Backups and maintenance
 
 - `D:\GuildCloud\videos` contains the MP4 recordings.
@@ -292,16 +287,16 @@ installation or invitation is required.
 
 ## Troubleshooting
 
-| Symptom | Check |
-| --- | --- |
-| Local `/health` fails | Node is not running, `.env` is misnamed, or the Node task uses the wrong **Start in** directory. |
-| Public `/health` fails | Check DNS, the router's 80/443 forwards, the public IP, Caddy, and possible CGNAT. |
-| Browser shows a certificate error | DNS does not point to the host, or Caddy cannot reach ports 80/443 to obtain the certificate. |
-| App reports `401` | Sign in again with a Discord account that belongs to the configured Room Forty server. |
-| Discord sign-in fails | Check the Discord client ID, client secret, server ID, bot token, allowed roles, and exact OAuth redirect URI in `.env`. |
-| Upload or playback has a signed-URL error | `GUILD_CLOUD_PUBLIC_URL` must be the same reachable HTTPS hostname used by the installer. |
-| Large uploads fail | Make sure Cloudflare DNS is grey-cloud/DNS-only; do not put the free Cloudflare HTTP proxy in front of whole-file uploads. |
-| Works until reboot | Check both Task Scheduler tasks, their program paths, arguments, working directories, and last-run results. |
+| Symptom                                   | Check                                                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Local `/health` fails                     | Node is not running, `.env` is misnamed, or the Node task uses the wrong **Start in** directory.                           |
+| Public `/health` fails                    | Check DNS, the router's 80/443 forwards, the public IP, Caddy, and possible CGNAT.                                         |
+| Browser shows a certificate error         | DNS does not point to the host, or Caddy cannot reach ports 80/443 to obtain the certificate.                              |
+| App reports `401`                         | Sign in again with a Discord account that belongs to the configured Room Forty server.                                     |
+| Discord sign-in fails                     | Check the Discord client ID, client secret, server ID, bot token, allowed roles, and exact OAuth redirect URI in `.env`.   |
+| Upload or playback has a signed-URL error | `GUILD_CLOUD_PUBLIC_URL` must be the same reachable HTTPS hostname used by the installer.                                  |
+| Large uploads fail                        | Make sure Cloudflare DNS is grey-cloud/DNS-only; do not put the free Cloudflare HTTP proxy in front of whole-file uploads. |
+| Works until reboot                        | Check both Task Scheduler tasks, their program paths, arguments, working directories, and last-run results.                |
 
 This is a private guild service restricted to Room Forty Discord members. It
 is not intended to be an internet-facing multi-tenant service or a replacement

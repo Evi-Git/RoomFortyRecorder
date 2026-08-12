@@ -1301,9 +1301,9 @@ export default class CloudClient implements StorageClient {
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
-    const { id } = response.data;
+    const { id } = z.object({ id: z.string().min(1) }).parse(response.data);
     console.info('[CloudClient] Got shareable link', videoName, id);
-    return `${CloudClient.website}/link/${id}`;
+    return `${CloudClient.website}/link/${encodeURIComponent(id)}`;
   }
 
   /**
