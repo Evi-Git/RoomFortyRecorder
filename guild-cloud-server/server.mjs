@@ -31,14 +31,14 @@ const DISCORD_CLIENT_ID = process.env.GUILD_CLOUD_DISCORD_CLIENT_ID || '';
 const DISCORD_CLIENT_SECRET =
   process.env.GUILD_CLOUD_DISCORD_CLIENT_SECRET || '';
 const DISCORD_GUILD_ID = process.env.GUILD_CLOUD_DISCORD_GUILD_ID || '';
-const DISCORD_BOT_TOKEN =
-  process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
-const DISCORD_ALLOWED_ROLES = (process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || '')
+const DISCORD_BOT_TOKEN = process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
+const DISCORD_ALLOWED_ROLES = (
+  process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || ''
+)
   .split(',')
   .map((role) => role.trim().toLowerCase())
   .filter(Boolean);
-const DISCORD_REDIRECT_URI =
-  process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
+const DISCORD_REDIRECT_URI = process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
 const DISCORD_API = 'https://discord.com/api/v10';
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
@@ -48,7 +48,8 @@ const STORAGE = path.resolve(
 const VIDEO_DIR = path.join(STORAGE, 'videos');
 const STATE_FILE = path.join(STORAGE, 'state.json');
 const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1800');
-const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
+const SECRET =
+  process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
 const PUBLIC_URL = process.env.GUILD_CLOUD_PUBLIC_URL?.replace(/\/+$/, '');
 const TOKEN_TTL_SECONDS = 60 * 60;
 
@@ -155,7 +156,10 @@ const decodeToken = (token, action) => {
   if (!constantTimeEqual(signature, expected)) throw new Error('Invalid token');
 
   const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-  if (payload.action !== action || payload.exp < Math.floor(Date.now() / 1000)) {
+  if (
+    payload.action !== action ||
+    payload.exp < Math.floor(Date.now() / 1000)
+  ) {
     throw new Error('Expired token');
   }
 
@@ -212,7 +216,8 @@ const callbackResult = (callback, values) => {
 const discordJson = async (url, options) => {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Discord request failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Discord request failed: ${response.status}`);
   return data;
 };
 
@@ -279,7 +284,8 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         }),
       });
       const accessToken = token.access_token;
-      if (typeof accessToken !== 'string') throw new Error('Missing Discord token');
+      if (typeof accessToken !== 'string')
+        throw new Error('Missing Discord token');
 
       const headers = { Authorization: `Bearer ${accessToken}` };
       const user = await discordJson(`${DISCORD_API}/users/@me`, { headers });
@@ -302,7 +308,9 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         );
       }
       if (!memberResponse.ok) {
-        throw new Error(`Discord member request failed: ${memberResponse.status}`);
+        throw new Error(
+          `Discord member request failed: ${memberResponse.status}`,
+        );
       }
 
       const member = await memberResponse.json();
@@ -314,7 +322,9 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         Array.isArray(roles)
           ? roles.map((role) => [
               role.id,
-              String(role.name || '').trim().toLowerCase(),
+              String(role.name || '')
+                .trim()
+                .toLowerCase(),
             ])
           : [],
       );
@@ -326,7 +336,9 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       if (!hasAllowedRole) {
         return redirect(
           res,
-          callbackResult(pending.callback, { error: 'missing_room_forty_role' }),
+          callbackResult(pending.callback, {
+            error: 'missing_room_forty_role',
+          }),
         );
       }
 
@@ -651,7 +663,8 @@ const handleApi = async (req, res, url, parts) => {
 
     pruneOAuth();
     const body = await readBody(req, 64 * 1024);
-    const login = typeof body.code === 'string' ? loginCodes.get(body.code) : null;
+    const login =
+      typeof body.code === 'string' ? loginCodes.get(body.code) : null;
     if (!login) return fail(res, 401, 'Invalid or expired Discord login');
     loginCodes.delete(body.code);
 
@@ -764,7 +777,11 @@ const handleApi = async (req, res, url, parts) => {
 
   if (parts[3] === 'upload' && req.method === 'POST') {
     const body = await readBody(req, 64 * 1024);
-    if (!isSafeKey(body.key) || !Number.isSafeInteger(body.bytes) || body.bytes < 1) {
+    if (
+      !isSafeKey(body.key) ||
+      !Number.isSafeInteger(body.bytes) ||
+      body.bytes < 1
+    ) {
       return fail(res, 400, 'Invalid upload request');
     }
 
@@ -824,7 +841,8 @@ const handleApi = async (req, res, url, parts) => {
       return fail(res, 400, 'Invalid tag request');
     }
     state.videos.forEach((video) => {
-      if (body.videos.includes(video.videoName)) video.tag = body.tag || undefined;
+      if (body.videos.includes(video.videoName))
+        video.tag = body.tag || undefined;
     });
     await persist();
     return json(res, 200, {});
@@ -870,7 +888,11 @@ const handleApi = async (req, res, url, parts) => {
     }
   }
 
-  if (parts[3] === 'named-chat' && parts.length === 5 && req.method === 'POST') {
+  if (
+    parts[3] === 'named-chat' &&
+    parts.length === 5 &&
+    req.method === 'POST'
+  ) {
     const correlator = createCorrelator(`named:${parts[4]}`);
     chatFor(correlator);
     await persist();
@@ -921,7 +943,8 @@ const incrementLinkLikes = (link) => {
 const handleLink = async (res, id) => {
   const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return text(res, 404, 'Video not found');
+  if (!(await exists(fileForKey(link.key))))
+    return text(res, 404, 'Video not found');
 
   const video = videoForLink(link);
   const title = video?.videoName || 'RoomFortyRecorder video';
@@ -995,7 +1018,8 @@ ${likeControls}
 const handleLinkVideo = async (req, res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+  if (!(await exists(fileForKey(link.key))))
+    return fail(res, 404, 'Video not found');
 
   // Keep the public link stable while still reusing the range-requested stream.
   const token = encodeToken({
@@ -1010,7 +1034,8 @@ const handleLinkVideo = async (req, res, id) => {
 const handleLike = async (res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+  if (!(await exists(fileForKey(link.key))))
+    return fail(res, 404, 'Video not found');
   if (videoForLink(link)?.category === 'Clips') {
     return fail(res, 403, 'Likes are disabled for clips');
   }
