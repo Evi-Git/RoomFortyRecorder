@@ -20,7 +20,7 @@ HTTPS front door. There is no hosted video-storage subscription.
 
 The app uses Discord OAuth. The server sends the user to Discord, verifies that
 they belong to the configured Room Forty Discord server and have an allowed
-role, then returns a short-lived cloud session to the app. Discord client secrets stay only in the server's
+role, then returns a 30-day cloud session to the app. Discord client secrets stay only in the server's
 private `.env` file; they are never included in the installer.
 
 The guild is fixed by `GUILD_CLOUD_GUILD` and is not selected in the app.

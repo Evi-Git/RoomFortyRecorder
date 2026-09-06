@@ -1,6 +1,6 @@
 import React, { Dispatch, SetStateAction } from 'react';
 import {
-  AdvancedLoggingStatus,
+  CombatLoggingStatus,
   AppState,
   RecStatus,
   RendererVideo,
@@ -30,7 +30,7 @@ interface IProps {
   setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-  advancedLoggingStatus: AdvancedLoggingStatus;
+  combatLoggingStatus: CombatLoggingStatus;
   videoState: RendererVideo[];
 }
 
@@ -45,7 +45,7 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
     setConfig,
     appState,
     setAppState,
-    advancedLoggingStatus,
+    combatLoggingStatus,
     videoState,
   } = props;
 
@@ -129,7 +129,7 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
                   config={config}
                   setConfig={setConfig}
                   appState={appState}
-                  advancedLoggingStatus={advancedLoggingStatus}
+                  combatLoggingStatus={combatLoggingStatus}
                 />
               </div>
               <div>

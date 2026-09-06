@@ -100,6 +100,7 @@ declare global {
         createDiagsBundle(): Promise<string>;
         openSystemExplorer(path: string): void;
         setOpenInstantReplayFile(path: string | null): void;
+        refreshCombatLogStatus(): void;
       };
     };
   }

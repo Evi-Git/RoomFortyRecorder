@@ -45,6 +45,7 @@ import {
 import { ZipArchive } from 'archiver';
 import ChallengeModeDungeon from 'activitys/ChallengeModeDungeon';
 import Activity from 'activitys/Activity';
+
 import semver from 'semver';
 
 /**
@@ -428,15 +429,19 @@ const checkAdvancedCombatLogging = async (
     return false;
   }
 
-  const content = (await fs.promises.readFile(configWtfFile)).toString();
-  const match = content.match(/^SET advancedCombatLogging\s+"(\d+)"/m);
+  try {
+    const content = (await fs.promises.readFile(configWtfFile)).toString();
+    const match = content.match(/^SET advancedCombatLogging\s+"(\d+)"/m);
 
-  if (match && match[1] === '1') {
+    if (match && match[1] === '1') {
+      return true;
+    }
+
+    return false;
+  } catch {
+    console.warn('[Util] Failed to read Config.wtf at', configWtfFile);
     return true;
   }
-
-  console.warn('[Util] Advanced combat logging is disabled', configWtfFile);
-  return false;
 };
 
 /**
@@ -1270,6 +1275,31 @@ const getAudioTrackCount = (video: RendererVideo): number => {
   return video.appVersion && semver.gt(video.appVersion, '7.11.1') ? 6 : 1;
 };
 
+const getMostRecentCombatLogModifiedTime = async (
+  logPath: string,
+): Promise<number> => {
+  const logFiles = await getSortedFiles(
+    logPath,
+    'WoWCombatLog.*.txt',
+    FileSortDirection.NewestFirst,
+  );
+
+  return logFiles.length > 0 ? logFiles[0].mtime : -1;
+};
+
+const startWatchingConfigWtf = (logPath: string, callback: () => void) => {
+  const configPath = getConfigWtfPath(logPath);
+
+  try {
+    const watcher = fs.watch(configPath, callback);
+    return watcher;
+  } catch (err) {
+    console.error('[Util] Failed to watch Config.wtf:', configPath, err);
+  }
+
+  return null;
+};
+
 export {
   setupApplicationLogging,
   writeMetadataFile,
@@ -1321,4 +1351,6 @@ export {
   resetInstantReplayState,
   refreshInstantReplayState,
   getAudioTrackCount,
+  getMostRecentCombatLogModifiedTime,
+  startWatchingConfigWtf,
 };

@@ -31,16 +31,16 @@ const DISCORD_CLIENT_ID = process.env.GUILD_CLOUD_DISCORD_CLIENT_ID || '';
 const DISCORD_CLIENT_SECRET =
   process.env.GUILD_CLOUD_DISCORD_CLIENT_SECRET || '';
 const DISCORD_GUILD_ID = process.env.GUILD_CLOUD_DISCORD_GUILD_ID || '';
-const DISCORD_BOT_TOKEN = process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
-const DISCORD_ALLOWED_ROLES = (
-  process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || ''
-)
+const DISCORD_BOT_TOKEN =
+  process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
+const DISCORD_ALLOWED_ROLES = (process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || '')
   .split(',')
   .map((role) => role.trim().toLowerCase())
   .filter(Boolean);
-const DISCORD_REDIRECT_URI = process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
+const DISCORD_REDIRECT_URI =
+  process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
 const DISCORD_API = 'https://discord.com/api/v10';
-const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
 const STORAGE = path.resolve(
   process.env.GUILD_CLOUD_STORAGE_PATH || path.join(SERVER_DIR, 'data'),
@@ -48,10 +48,12 @@ const STORAGE = path.resolve(
 const VIDEO_DIR = path.join(STORAGE, 'videos');
 const STATE_FILE = path.join(STORAGE, 'state.json');
 const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1800');
-const SECRET =
-  process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
+const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
 const PUBLIC_URL = process.env.GUILD_CLOUD_PUBLIC_URL?.replace(/\/+$/, '');
+const CDN_URL = process.env.GUILD_CLOUD_CDN_URL?.replace(/\/+$/, '') || '';
+const BUNNY_API_KEY = process.env.GUILD_CLOUD_BUNNY_API_KEY || '';
 const TOKEN_TTL_SECONDS = 60 * 60;
+
 
 if (
   !DISCORD_CLIENT_ID ||
@@ -73,7 +75,6 @@ let state = {
   nextMessageId: 1,
 };
 let saveQueue = Promise.resolve();
-let likeQueue = Promise.resolve();
 
 const json = (res, status, body, headers = {}) => {
   const data = JSON.stringify(body);
@@ -156,10 +157,7 @@ const decodeToken = (token, action) => {
   if (!constantTimeEqual(signature, expected)) throw new Error('Invalid token');
 
   const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-  if (
-    payload.action !== action ||
-    payload.exp < Math.floor(Date.now() / 1000)
-  ) {
+  if (payload.action !== action || payload.exp < Math.floor(Date.now() / 1000)) {
     throw new Error('Expired token');
   }
 
@@ -216,8 +214,7 @@ const callbackResult = (callback, values) => {
 const discordJson = async (url, options) => {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(`Discord request failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Discord request failed: ${response.status}`);
   return data;
 };
 
@@ -284,8 +281,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         }),
       });
       const accessToken = token.access_token;
-      if (typeof accessToken !== 'string')
-        throw new Error('Missing Discord token');
+      if (typeof accessToken !== 'string') throw new Error('Missing Discord token');
 
       const headers = { Authorization: `Bearer ${accessToken}` };
       const user = await discordJson(`${DISCORD_API}/users/@me`, { headers });
@@ -308,9 +304,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         );
       }
       if (!memberResponse.ok) {
-        throw new Error(
-          `Discord member request failed: ${memberResponse.status}`,
-        );
+        throw new Error(`Discord member request failed: ${memberResponse.status}`);
       }
 
       const member = await memberResponse.json();
@@ -322,9 +316,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         Array.isArray(roles)
           ? roles.map((role) => [
               role.id,
-              String(role.name || '')
-                .trim()
-                .toLowerCase(),
+              String(role.name || '').trim().toLowerCase(),
             ])
           : [],
       );
@@ -336,9 +328,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       if (!hasAllowedRole) {
         return redirect(
           res,
-          callbackResult(pending.callback, {
-            error: 'missing_room_forty_role',
-          }),
+          callbackResult(pending.callback, { error: 'missing_room_forty_role' }),
         );
       }
 
@@ -371,7 +361,7 @@ const publicBaseUrl = (req) => {
   return `${protocol}://${req.headers.host}`;
 };
 
-const signedUrl = (req, action, guild, key, bytes, expires) => {
+const signedUrl = (req, action, guild, key, bytes, expires, baseOverride) => {
   const token = encodeToken({
     action,
     guild,
@@ -379,23 +369,67 @@ const signedUrl = (req, action, guild, key, bytes, expires) => {
     bytes,
     exp: expires || Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
   });
-  return `${publicBaseUrl(req)}/${action}/${token}`;
+  const base = baseOverride || publicBaseUrl(req);
+  return `${base}/${action}/${token}`;
 };
 
 const downloadUrlCache = new Map();
+const downloadBase = (req) => CDN_URL || publicBaseUrl(req);
 const signedDownloadUrl = (req, guild, key) => {
-  const cacheKey = `${publicBaseUrl(req)}\0${guild}\0${key}`;
+  const base = downloadBase(req);
+  const cacheKey = `${base}\0${guild}\0${key}`;
   const now = Math.floor(Date.now() / 1000);
   const cached = downloadUrlCache.get(cacheKey);
 
   // HTTP polling refreshes metadata every 30 seconds. Keep the URL stable so
-  // the renderer does not remount the video and cancel its active HTTP range.
+  // the renderer does not remount the video and cancel its active HTTP range,
+  // and so the CDN sees repeated requests to the same URL (required to cache).
   if (cached && cached.expires > now + 5 * 60) return cached.url;
 
   const expires = now + TOKEN_TTL_SECONDS;
-  const url = signedUrl(req, 'download', guild, key, undefined, expires);
+  const url = signedUrl(req, 'download', guild, key, undefined, expires, base);
   downloadUrlCache.set(cacheKey, { expires, url });
   return url;
+};
+
+// Fire a request for a freshly uploaded video through the CDN hostname so it's
+// already cached at the edge before anyone clicks play (post-pull review is
+// the worst case for a cold cache, since every file is brand new).
+const warmCdnCache = async (guild, key) => {
+  if (!CDN_URL) return;
+  try {
+    const expires = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
+    const url = signedUrl({}, 'download', guild, key, undefined, expires, CDN_URL);
+    downloadUrlCache.set(`${CDN_URL}\0${guild}\0${key}`, { expires, url });
+
+    const response = await fetch(url);
+    if (response.body) {
+      for await (const _chunk of response.body) {
+        // Drain the body so the CDN pulls and caches the full file, not just headers.
+      }
+    }
+    console.log(`[guild-cloud] Warmed CDN cache for ${key}`);
+  } catch (error) {
+    console.error(`[guild-cloud] CDN warm failed for ${key}`, error.message);
+  }
+};
+
+// Ask Bunny to drop its cached copy so a deleted/evicted video doesn't keep
+// serving from the edge after it's gone from origin.
+const purgeCdnUrl = async (guild, key) => {
+  if (!CDN_URL || !BUNNY_API_KEY) return;
+  const cacheKey = `${CDN_URL}\0${guild}\0${key}`;
+  const cached = downloadUrlCache.get(cacheKey);
+  if (!cached) return;
+  try {
+    await fetch(`https://api.bunny.net/purge?url=${encodeURIComponent(cached.url)}`, {
+      method: 'POST',
+      headers: { AccessKey: BUNNY_API_KEY },
+    });
+    downloadUrlCache.delete(cacheKey);
+  } catch (error) {
+    console.error(`[guild-cloud] CDN purge failed for ${key}`, error.message);
+  }
 };
 
 const isSafeKey = (key) =>
@@ -441,14 +475,15 @@ const readBody = async (req, maxBytes = 2 * 1024 * 1024) => {
 const persist = () => {
   const snapshot = JSON.stringify(state, null, 2);
   const temp = `${STATE_FILE}.${process.pid}.tmp`;
-  const save = saveQueue.then(async () => {
-    await fsp.writeFile(temp, snapshot, 'utf8');
-    await fsp.rename(temp, STATE_FILE);
-  });
-  saveQueue = save.catch((error) => {
-    console.error('[guild-cloud] Failed to save state', error);
-  });
-  return save;
+  saveQueue = saveQueue
+    .then(async () => {
+      await fsp.writeFile(temp, snapshot, 'utf8');
+      await fsp.rename(temp, STATE_FILE);
+    })
+    .catch((error) => {
+      console.error('[guild-cloud] Failed to save state', error);
+    });
+  return saveQueue;
 };
 
 const loadState = async () => {
@@ -515,6 +550,7 @@ const housekeep = async () => {
     state.videos = state.videos.filter(
       (video) => video.videoKey !== entry.video.videoKey,
     );
+    purgeCdnUrl(GUILD, entry.video.videoKey).catch(() => {});
     usage -= entry.stat.size;
     changed = true;
   }
@@ -663,8 +699,7 @@ const handleApi = async (req, res, url, parts) => {
 
     pruneOAuth();
     const body = await readBody(req, 64 * 1024);
-    const login =
-      typeof body.code === 'string' ? loginCodes.get(body.code) : null;
+    const login = typeof body.code === 'string' ? loginCodes.get(body.code) : null;
     if (!login) return fail(res, 401, 'Invalid or expired Discord login');
     loginCodes.delete(body.code);
 
@@ -748,6 +783,7 @@ const handleApi = async (req, res, url, parts) => {
       state.videos.push({ ...body, videoKey: key });
       await persist();
       await housekeep();
+      warmCdnCache(guild, key).catch(() => {});
       return json(res, 200, {});
     }
   }
@@ -777,11 +813,7 @@ const handleApi = async (req, res, url, parts) => {
 
   if (parts[3] === 'upload' && req.method === 'POST') {
     const body = await readBody(req, 64 * 1024);
-    if (
-      !isSafeKey(body.key) ||
-      !Number.isSafeInteger(body.bytes) ||
-      body.bytes < 1
-    ) {
+    if (!isSafeKey(body.key) || !Number.isSafeInteger(body.bytes) || body.bytes < 1) {
       return fail(res, 400, 'Invalid upload request');
     }
 
@@ -818,6 +850,7 @@ const handleApi = async (req, res, url, parts) => {
       state.videos = state.videos.filter(
         (entry) => entry.videoKey !== video.videoKey,
       );
+      purgeCdnUrl(guild, video.videoKey).catch(() => {});
     }
     await persist();
     return json(res, 200, {});
@@ -841,8 +874,7 @@ const handleApi = async (req, res, url, parts) => {
       return fail(res, 400, 'Invalid tag request');
     }
     state.videos.forEach((video) => {
-      if (body.videos.includes(video.videoName))
-        video.tag = body.tag || undefined;
+      if (body.videos.includes(video.videoName)) video.tag = body.tag || undefined;
     });
     await persist();
     return json(res, 200, {});
@@ -888,11 +920,7 @@ const handleApi = async (req, res, url, parts) => {
     }
   }
 
-  if (
-    parts[3] === 'named-chat' &&
-    parts.length === 5 &&
-    req.method === 'POST'
-  ) {
+  if (parts[3] === 'named-chat' && parts.length === 5 && req.method === 'POST') {
     const correlator = createCorrelator(`named:${parts[4]}`);
     chatFor(correlator);
     await persist();
@@ -913,49 +941,29 @@ const htmlEscape = (value) =>
 
 const findLink = (id) => state.links.find((entry) => entry.id === id);
 
-const videoForLink = (link) =>
-  state.videos.find((entry) => entry.videoKey === link.key);
-
 const linkLikes = (link) =>
   Number.isSafeInteger(link.likes) && link.likes >= 0 ? link.likes : 0;
-
-const incrementLinkLikes = (link) => {
-  const update = likeQueue.then(async () => {
-    const previousLikes = link.likes;
-    const likes = linkLikes(link);
-    const nextLikes =
-      likes < Number.MAX_SAFE_INTEGER ? likes + 1 : Number.MAX_SAFE_INTEGER;
-    link.likes = nextLikes;
-
-    try {
-      await persist();
-      return nextLikes;
-    } catch (error) {
-      if (previousLikes === undefined) delete link.likes;
-      else link.likes = previousLikes;
-      throw error;
-    }
-  });
-  likeQueue = update.catch(() => {});
-  return update;
-};
 
 const handleLink = async (res, id) => {
   const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key))))
-    return text(res, 404, 'Video not found');
+  if (!(await exists(fileForKey(link.key)))) return text(res, 404, 'Video not found');
 
-  const video = videoForLink(link);
+  const video = state.videos.find((entry) => entry.videoKey === link.key);
   const title = video?.videoName || 'RoomFortyRecorder video';
   const source = `/link/${encodeURIComponent(id)}/video`;
-  const likesEnabled = video?.category !== 'Clips';
-  const likeControls = likesEnabled
-    ? `<button id="like" type="button" aria-pressed="false"><span id="like-label">Like</span> ♥ <span id="likes">${linkLikes(link)}</span></button>
-<p id="status" aria-live="polite"></p>`
-    : '';
-  const likeScript = likesEnabled
-    ? `<script>
+  const likes = linkLikes(link);
+  const page = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
+<style>
+:root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
+</style></head><body><main>
+<h1>${htmlEscape(title)}</h1>
+<video controls playsinline src="${htmlEscape(source)}"></video>
+<button id="like" type="button" aria-pressed="false"><span id="like-label">Like</span> ♥ <span id="likes">${likes}</span></button>
+<p id="status" aria-live="polite"></p>
+</main><script>
 const id = ${JSON.stringify(id).replace(/</g, '\\u003c')};
 const button = document.getElementById('like');
 const label = document.getElementById('like-label');
@@ -968,46 +976,24 @@ const markLiked = () => {
   button.setAttribute('aria-pressed', 'true');
   button.disabled = true;
 };
+// ponytail: browser-local like dedupe; add account/rate limiting if abuse matters.
 try { if (localStorage.getItem(storageKey) === '1') markLiked(); } catch {}
 button.addEventListener('click', async () => {
-  try {
-    if (localStorage.getItem(storageKey) === '1') {
-      markLiked();
-      return;
-    }
-    localStorage.setItem(storageKey, '1');
-  } catch {
-    button.disabled = true;
-    status.textContent = 'Could not access local storage to save your like.';
-    return;
-  }
-
   button.disabled = true;
   try {
     const response = await fetch('/link/' + encodeURIComponent(id) + '/like', { method: 'POST' });
     if (!response.ok) throw new Error('Like failed');
     const body = await response.json();
     count.textContent = String(body.likes);
+    try { localStorage.setItem(storageKey, '1'); } catch {}
     markLiked();
     status.textContent = 'Thanks for the like!';
   } catch {
-    try { localStorage.removeItem(storageKey); } catch {}
     button.disabled = false;
     status.textContent = 'Could not save your like. Please try again.';
   }
 });
-</script>`
-    : '';
-  const page = `<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
-<style>
-:root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
-</style></head><body><main>
-<h1>${htmlEscape(title)}</h1>
-<video controls playsinline src="${htmlEscape(source)}"></video>
-${likeControls}
-</main>${likeScript}</body></html>`;
+</script></body></html>`;
   res.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': Buffer.byteLength(page),
@@ -1018,8 +1004,7 @@ ${likeControls}
 const handleLinkVideo = async (req, res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key))))
-    return fail(res, 404, 'Video not found');
+  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
 
   // Keep the public link stable while still reusing the range-requested stream.
   const token = encodeToken({
@@ -1034,14 +1019,11 @@ const handleLinkVideo = async (req, res, id) => {
 const handleLike = async (res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key))))
-    return fail(res, 404, 'Video not found');
-  if (videoForLink(link)?.category === 'Clips') {
-    return fail(res, 403, 'Likes are disabled for clips');
-  }
+  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
 
-  const likes = await incrementLinkLikes(link);
-  return json(res, 200, { likes });
+  if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
+  await persist();
+  return json(res, 200, { likes: link.likes });
 };
 
 const requestHandler = async (req, res) => {

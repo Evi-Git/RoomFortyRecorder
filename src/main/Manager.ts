@@ -1,10 +1,9 @@
-import fs, { FSWatcher } from 'fs';
+import { FSWatcher } from 'fs';
 import { app, ipcMain, powerMonitor } from 'electron';
 import { uIOhook, UiohookKeyboardEvent } from 'uiohook-napi';
 import {
   buildClipMetadata,
   checkAdvancedCombatLogging,
-  getConfigWtfPath,
   getOBSFormattedDate,
   isManualRecordHotKey,
   nextKeyPressPromise,
@@ -14,6 +13,8 @@ import {
   refreshInstantReplayState,
   rendererVideoToMetadata,
   resetActivityStatus,
+  getMostRecentCombatLogModifiedTime,
+  startWatchingConfigWtf,
 } from './util';
 import { VideoCategory } from '../types/VideoCategory';
 import Poller from '../utils/Poller';
@@ -26,7 +27,8 @@ import {
   MicStatus,
   WowProcessEvent,
   BaseConfig,
-  AdvancedLoggingStatus,
+  CombatLoggingStatus,
+  CombatLogPathStatus,
   KillVideoQueueItem,
   RendererVideo,
   KillVideoSegment,
@@ -102,9 +104,9 @@ export default class Manager {
   /**
    * Cached advanced logging status per flavour, pushed to the frontend.
    */
-  private advancedLoggingStatus: AdvancedLoggingStatus = {
-    retail: true,
-    retailPtr: true,
+  private combatLoggingStatus: CombatLoggingStatus = {
+    retail: { advanced: true, latestLogAgeMs: -1 },
+    retailPtr: { advanced: true, latestLogAgeMs: -1 },
   };
 
   /**
@@ -150,7 +152,7 @@ export default class Manager {
       this.setConfigValid();
       this.poller.start();
       await this.watchConfigWtfFiles();
-      await this.checkAdvancedLogging();
+      await this.refreshCombatLoggingStatus();
     }
 
     this.reconfiguring = false;
@@ -195,7 +197,7 @@ export default class Manager {
     await DiskClient.getInstance().refreshVideos();
 
     await this.watchConfigWtfFiles();
-    await this.checkAdvancedLogging();
+    await this.refreshCombatLoggingStatus();
   }
 
   /**
@@ -289,31 +291,65 @@ export default class Manager {
   }
 
   /**
-   * Check Config.wtf for each configured WoW flavour and warn the user
-   * if advanced combat logging is not enabled.
+   * Check the configured WoW logs and publish their advanced logging status.
    */
-  public async checkAdvancedLogging() {
-    this.advancedLoggingStatus = {
-      retail:
-        !this.cfg.get<boolean>('recordRetail') ||
-        (await checkAdvancedCombatLogging(
-          this.cfg.get<string>('retailLogPath'),
-        )),
-      retailPtr:
-        !this.cfg.get<boolean>('recordRetailPtr') ||
-        (await checkAdvancedCombatLogging(
-          this.cfg.get<string>('retailPtrLogPath'),
-        )),
+  public async refreshCombatLoggingStatus() {
+    const getStatus = async (
+      enabled: boolean,
+      logPath: string,
+    ): Promise<CombatLogPathStatus> => ({
+      latestLogAgeMs: enabled
+        ? await getMostRecentCombatLogModifiedTime(logPath)
+        : -1,
+      advanced: !enabled || (await checkAdvancedCombatLogging(logPath)),
+    });
+
+    this.combatLoggingStatus = {
+      retail: await getStatus(
+        this.cfg.get<boolean>('recordRetail'),
+        this.cfg.get<string>('retailLogPath'),
+      ),
+      retailPtr: await getStatus(
+        this.cfg.get<boolean>('recordRetailPtr'),
+        this.cfg.get<string>('retailPtrLogPath'),
+      ),
     };
 
-    this.pushAdvancedLoggingStatus();
+    console.info(
+      '[Manager] Combat logging status is',
+      this.combatLoggingStatus,
+    );
+    this.pushCombatLoggingStatus();
+  }
+
+  private async checkAdvancedCombatLoggingForGameType(
+    key: keyof CombatLoggingStatus,
+  ) {
+    const enabled =
+      key === 'retail'
+        ? this.cfg.get<boolean>('recordRetail')
+        : this.cfg.get<boolean>('recordRetailPtr');
+    const logPath =
+      key === 'retail'
+        ? this.cfg.get<string>('retailLogPath')
+        : this.cfg.get<string>('retailPtrLogPath');
+    const advanced = enabled && (await checkAdvancedCombatLogging(logPath));
+
+    if (this.combatLoggingStatus[key].advanced !== advanced) {
+      console.info('[Manager] Advanced logging status changed', key, advanced);
+      this.combatLoggingStatus[key] = {
+        ...this.combatLoggingStatus[key],
+        advanced,
+      };
+      this.pushCombatLoggingStatus();
+    }
   }
 
   /**
-   * Push the cached advanced logging status to the frontend.
+   * Push the cached combat logging status to the frontend.
    */
-  public pushAdvancedLoggingStatus() {
-    send('updateAdvancedLoggingStatus', this.advancedLoggingStatus);
+  public pushCombatLoggingStatus() {
+    send('updateCombatLoggingStatus', this.combatLoggingStatus);
   }
 
   /**
@@ -321,30 +357,31 @@ export default class Manager {
    * updates reactively when the user toggles the setting in WoW.
    */
   private watchConfigWtfFiles() {
-    console.info('Close any existing Config.wtf file watchers');
+    console.info('[Manager] Close any existing Config.wtf file watchers');
     this.configWtfWatchers.forEach((w) => w.close());
     this.configWtfWatchers = [];
 
-    const logPaths = new Set<string>();
+    const configs: ReadonlyArray<
+      readonly [
+        keyof CombatLoggingStatus,
+        'recordRetail' | 'recordRetailPtr',
+        'retailLogPath' | 'retailPtrLogPath',
+      ]
+    > = [
+      ['retail', 'recordRetail', 'retailLogPath'],
+      ['retailPtr', 'recordRetailPtr', 'retailPtrLogPath'],
+    ];
 
-    if (this.cfg.get<boolean>('recordRetail'))
-      logPaths.add(this.cfg.get<string>('retailLogPath'));
-    if (this.cfg.get<boolean>('recordRetailPtr'))
-      logPaths.add(this.cfg.get<string>('retailPtrLogPath'));
+    for (const [key, enabledKey, pathKey] of configs) {
+      if (!this.cfg.get<boolean>(enabledKey)) continue;
+      const logPath = this.cfg.get<string>(pathKey);
+      const watcher = startWatchingConfigWtf(logPath, () => {
+        this.checkAdvancedCombatLoggingForGameType(key);
+      });
 
-    console.info('Start watching Config.wtf files for', [...logPaths]);
-
-    for (const logPath of logPaths) {
-      const configPath = getConfigWtfPath(logPath);
-
-      try {
-        const watcher = fs.watch(configPath, () => {
-          this.checkAdvancedLogging();
-        });
-
+      if (watcher) {
+        console.info('[Manager] Watching Config.wtf for', key, logPath);
         this.configWtfWatchers.push(watcher);
-      } catch (err) {
-        console.warn('[Manager] Failed to watch Config.wtf:', configPath, err);
       }
     }
   }
@@ -649,6 +686,10 @@ export default class Manager {
 
       this.manualHotKeyDisabled = false;
       return event;
+    });
+
+    ipcMain.on('refreshCombatLogStatus', () => {
+      this.refreshCombatLoggingStatus();
     });
 
     /**

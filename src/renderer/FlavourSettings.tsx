@@ -1,6 +1,6 @@
 import { ConfigurationSchema, configSchema } from 'config/configSchema';
 import React, { Dispatch, SetStateAction } from 'react';
-import { AdvancedLoggingStatus, AppState, RecStatus } from 'main/types';
+import { AppState, CombatLoggingStatus, RecStatus } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues } from './useSettings';
 import { pathSelect } from './rendererutils';
@@ -9,23 +9,26 @@ import Label from './components/Label/Label';
 import { Input } from './components/Input/Input';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import TextBanner from './components/TextBanner/TextBanner';
-import { Info } from 'lucide-react';
+import { FolderOpen, Info } from 'lucide-react';
 import { Phrase } from 'localisation/phrases';
+import { Button } from './components/Button/Button';
 
 interface IProps {
   recorderStatus: RecStatus;
   config: ConfigurationSchema;
   setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
   appState: AppState;
-  advancedLoggingStatus: AdvancedLoggingStatus;
+  combatLoggingStatus: CombatLoggingStatus;
 }
+
+const ipc = window.electron.ipcRenderer;
 
 const FlavourSettings: React.FC<IProps> = ({
   recorderStatus,
   config,
   setConfig,
   appState,
-  advancedLoggingStatus,
+  combatLoggingStatus,
 }) => {
   const initialRender = React.useRef(true);
   const disabled =
@@ -35,6 +38,7 @@ const FlavourSettings: React.FC<IProps> = ({
   React.useEffect(() => {
     if (initialRender.current) {
       initialRender.current = false;
+      ipc.refreshCombatLogStatus();
       return;
     }
 
@@ -46,7 +50,7 @@ const FlavourSettings: React.FC<IProps> = ({
       validateLogPaths: config.validateLogPaths,
     });
 
-    window.electron.ipcRenderer.reconfigureBase();
+    ipc.reconfigureBase();
   }, [
     config.recordRetail,
     config.retailLogPath,
@@ -68,14 +72,60 @@ const FlavourSettings: React.FC<IProps> = ({
     if (value) setConfig((previous) => ({ ...previous, [key]: value }));
   };
 
+  const getLastLogAgeDisplay = (
+    path: string,
+    key: keyof CombatLoggingStatus,
+  ) => {
+    if (!path) return null;
+
+    const mtime = combatLoggingStatus[key].latestLogAgeMs;
+    if (mtime === -1) {
+      return (
+        <span className="inline-flex ml-2 text-xs font-normal text-warning">
+          {getLocalePhrase(
+            appState.language,
+            Phrase.LatestCombatLogFileNotFound,
+          )}
+        </span>
+      );
+    }
+
+    const ageDays = Math.floor((Date.now() - mtime) / (1000 * 60 * 60 * 24));
+    const age =
+      ageDays > 31
+        ? getLocalePhrase(
+            appState.language,
+            Phrase.LatestCombatLogFileOverAMonthOld,
+          )
+        : ageDays > 1
+          ? `${ageDays} ${getLocalePhrase(
+              appState.language,
+              Phrase.LatestCombatLogFileDaysOld,
+            )}`
+          : ageDays === 1
+            ? getLocalePhrase(appState.language, Phrase.LatestCombatLogFileDayOld)
+            : getLocalePhrase(
+                appState.language,
+                Phrase.LatestCombatLogFileLessThanADayOld,
+              );
+
+    return (
+      <span className="inline-flex ml-2 text-xs font-normal text-success">
+        {getLocalePhrase(appState.language, Phrase.LatestCombatLogFileText)}{' '}
+        {age}
+      </span>
+    );
+  };
+
   const getPathSetting = (
     enabled: boolean,
     enabledKey: 'recordRetail' | 'recordRetailPtr',
     pathKey: 'retailLogPath' | 'retailPtrLogPath',
+    statusKey: keyof CombatLoggingStatus,
     label: Phrase,
+    pathLabel: Phrase,
     description: Phrase,
     invalid: Phrase,
-    warning: boolean,
   ) => (
     <div className="flex flex-row gap-x-6">
       <div className="flex flex-col w-[160px]">
@@ -100,21 +150,48 @@ const FlavourSettings: React.FC<IProps> = ({
       {enabled && (
         <div className="flex flex-col w-1/2">
           <Label htmlFor={pathKey} className="flex items-center">
-            {getLocalePhrase(appState.language, label)}
+            {getLocalePhrase(appState.language, pathLabel)}
+            <Tooltip
+              content={getLocalePhrase(
+                appState.language,
+                configSchema[pathKey].description,
+              )}
+              side="top"
+            >
+              <Info size={20} className="inline-flex ml-2" />
+            </Tooltip>
+            {getLastLogAgeDisplay(config[pathKey], statusKey)}
           </Label>
-          <Input
-            value={config[pathKey]}
-            onClick={() => choosePath(pathKey)}
-            readOnly
-            required
-            disabled={disabled}
-          />
+          <div className="flex">
+            <Input
+              value={config[pathKey]}
+              onClick={() => choosePath(pathKey)}
+              readOnly
+              required
+              disabled={disabled}
+            />
+            <Tooltip
+              content={getLocalePhrase(
+                appState.language,
+                Phrase.OpenFolderButtonTooltip,
+              )}
+              side="top"
+            >
+              <Button
+                variant="ghost"
+                disabled={disabled || !config[pathKey]}
+                onClick={() => ipc.openSystemExplorer(config[pathKey])}
+              >
+                <FolderOpen size={20} />
+              </Button>
+            </Tooltip>
+          </div>
           {!config[pathKey] && (
             <span className="text-error text-sm">
               {getLocalePhrase(appState.language, invalid)}
             </span>
           )}
-          {!warning && (
+          {!combatLoggingStatus[statusKey].advanced && (
             <span className="text-error text-sm">
               {getLocalePhrase(
                 appState.language,
@@ -138,19 +215,21 @@ const FlavourSettings: React.FC<IProps> = ({
         config.recordRetail,
         'recordRetail',
         'retailLogPath',
+        'retail',
         Phrase.RecordRetailLabel,
+        Phrase.RetailLogPathLabel,
         configSchema.recordRetail.description,
         Phrase.InvalidRetailLogPathText,
-        advancedLoggingStatus.retail,
       )}
       {getPathSetting(
         config.recordRetailPtr,
         'recordRetailPtr',
         'retailPtrLogPath',
+        'retailPtr',
         Phrase.RecordRetailPtrLabel,
+        Phrase.RetailPtrLogPathLabel,
         configSchema.recordRetailPtr.description,
         Phrase.InvalidRetailPtrLogPathText,
-        advancedLoggingStatus.retailPtr,
       )}
     </div>
   );

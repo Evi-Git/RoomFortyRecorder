@@ -12,7 +12,7 @@ import {
   DiskStatus,
   StorageFilter,
   ActivityStatus,
-  AdvancedLoggingStatus,
+  CombatLoggingStatus,
   InstantReplayState,
   InstantReplayData,
 } from 'main/types';
@@ -33,7 +33,7 @@ import SideMenu from './SideMenu';
 import { useToast } from './components/Toast/useToast';
 import { Button } from './components/Button/Button';
 import { ErrorBoundary } from 'react-error-boundary';
-import { RefreshCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { VideoCategory } from 'types/VideoCategory';
 import { Phrase } from 'localisation/phrases';
 import _ from 'lodash';
@@ -51,10 +51,10 @@ const WarcraftRecorder = () => {
   const [errorReports, setErrorReports] = useState<ErrorReport[]>([]);
   const updateNotified = useRef(false);
   const { toast } = useToast();
-  const [advancedLoggingStatus, setAdvancedLoggingStatus] =
-    useState<AdvancedLoggingStatus>({
-      retail: true,
-      retailPtr: true,
+  const [combatLoggingStatus, setCombatLoggingStatus] =
+    useState<CombatLoggingStatus>({
+      retail: { advanced: true, latestLogAgeMs: -1 },
+      retailPtr: { advanced: true, latestLogAgeMs: -1 },
     });
   const [previewEnabled, setPreviewEnabled] = useState(true);
 
@@ -263,8 +263,8 @@ const WarcraftRecorder = () => {
     updateNotified.current = true;
   };
 
-  const updateAdvancedLogging = (status: unknown) => {
-    setAdvancedLoggingStatus(status as AdvancedLoggingStatus);
+  const updateCombatLoggingStatus = (status: unknown) => {
+    setCombatLoggingStatus(status as CombatLoggingStatus);
   };
 
   const setCloudVideos = (videos: unknown) => {
@@ -347,19 +347,16 @@ const WarcraftRecorder = () => {
   const displayProtectCloudVideos = (videoNames: unknown) => {
     const names = videoNames as string[];
 
-    setVideoState((prev) => {
-      const matches = prev.filter(
-        (rv) => rv.cloud && names.includes(rv.videoName),
-      );
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !names.includes(rv.videoName)) {
+          return rv;
+        }
 
-      matches.forEach((match) => {
         // Pretty sure only one of these matters.
-        match.protected = true;
-        match.isProtected = true;
-      });
-
-      return prev;
-    });
+        return { ...rv, protected: true, isProtected: true };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -374,19 +371,16 @@ const WarcraftRecorder = () => {
   const displayUnprotectCloudVideos = (videoNames: unknown) => {
     const names = videoNames as string[];
 
-    setVideoState((prev) => {
-      const matches = prev.filter(
-        (rv) => rv.cloud && names.includes(rv.videoName),
-      );
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !names.includes(rv.videoName)) {
+          return rv;
+        }
 
-      matches.forEach((match) => {
         // Pretty sure only one of these matters.
-        match.protected = false;
-        match.isProtected = false;
-      });
-
-      return prev;
-    });
+        return { ...rv, protected: false, isProtected: false };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -401,15 +395,15 @@ const WarcraftRecorder = () => {
   const displayTagCloudVideo = (videoName: unknown, tag: unknown) => {
     const name = videoName as string;
 
-    setVideoState((prev) => {
-      const match = prev.find((rv) => rv.cloud && videoMatchName(rv, name));
+    setVideoState((prev) =>
+      prev.map((rv) => {
+        if (!rv.cloud || !videoMatchName(rv, name)) {
+          return rv;
+        }
 
-      if (match) {
-        match.tag = tag as string;
-      }
-
-      return prev;
-    });
+        return { ...rv, tag: tag as string };
+      }),
+    );
 
     setAppState((prevState) => {
       return {
@@ -454,7 +448,7 @@ const WarcraftRecorder = () => {
     ipc.on('displayProtectCloudVideos', displayProtectCloudVideos);
     ipc.on('displayUnprotectCloudVideos', displayUnprotectCloudVideos);
     ipc.on('displayTagCloudVideo', displayTagCloudVideo);
-    ipc.on('updateAdvancedLoggingStatus', updateAdvancedLogging);
+    ipc.on('updateCombatLoggingStatus', updateCombatLoggingStatus);
     ipc.on('updateInstantReplayState', updateInstantReplayState);
 
     return () => {
@@ -474,7 +468,7 @@ const WarcraftRecorder = () => {
       ipc.removeAllListeners('displayProtectCloudVideos');
       ipc.removeAllListeners('displayUnprotectCloudVideos');
       ipc.removeAllListeners('displayTagCloudVideo');
-      ipc.removeAllListeners('updateAdvancedLoggingStatus');
+      ipc.removeAllListeners('updateCombatLoggingStatus');
       ipc.removeAllListeners('updateInstantReplayState');
     };
   }, []);
@@ -510,7 +504,7 @@ const WarcraftRecorder = () => {
                 updateAvailable={updateAvailable}
                 recorderCategory={activityStatus?.category}
                 activityStatus={activityStatus}
-                advancedLoggingStatus={advancedLoggingStatus}
+                combatLoggingStatus={combatLoggingStatus}
                 setPreviewEnabled={setPreviewEnabled}
                 instantReplayState={instantReplayState}
                 setInstantReplayState={setInstantReplayState}
@@ -525,7 +519,7 @@ const WarcraftRecorder = () => {
                 playerHeight={playerHeight}
                 config={config}
                 setConfig={setConfig}
-                advancedLoggingStatus={advancedLoggingStatus}
+                combatLoggingStatus={combatLoggingStatus}
                 previewEnabled={previewEnabled}
                 setPreviewEnabled={setPreviewEnabled}
                 instantReplayState={instantReplayState}
@@ -549,7 +543,7 @@ const renderErrorPage = () => {
         You hit a bug in the code. Please try refreshing.
       </h2>
       <Button className="m-2" onClick={() => window.location.reload()}>
-        <RefreshCcw />
+        <RotateCcw />
       </Button>
     </div>
   );

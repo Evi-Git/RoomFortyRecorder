@@ -4,12 +4,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [1.3.0] - 2026-09-06
 ### Changed
 ### Added
 - [Issue 730](https://github.com/aza547/wow-recorder/issues/730) - Add per-source audio track routing.
 
 ### Fixed
+- Add Nymrissa "World LFR" difficulty.
+
+## [7.13.2] - 2026-08-30
+### Fixed
+- Fix log path config not being applied correctly.
+
+## [7.13.1] - 2026-08-30
+### Changed
+- Always show instant replay button, but disable it when not available.
+### Added
+- Add the `2560x720` resolution option.
+- [Issue 894](https://github.com/aza547/wow-recorder/issues/894) - Displays the age of the latest combat log in settings to make it easier to spot misconfigurations.
+- There is now a "open location" button for configured log paths for ease of access.
+- Azra'tec recording support (delve boss, it will record as if it were a Mythic raid encounter).
+### Fixed
+- [Issue 879](https://github.com/aza547/wow-recorder/issues/879) - Restore clip source navigation after the React Table v9 migration.
+- Better tracking of Coiled Altar fight progress.
+- Fix localisation of the Instant Replay button.
+- [Issue 880](https://github.com/aza547/wow-recorder/issues/880), [Issue 900](https://github.com/aza547/wow-recorder/issues/900) - Take noobs `0.0.205` which has a bunch of added mutex protection around the replay buffer. 
+
+## [7.13.0] - 2026-08-27
+### Changed
+- [Issue 843](https://github.com/aza547/wow-recorder/issues/843) - Revamp the Lock, Tag and Delete dialogs to enable per-video control.
+- Migrate to React Table v9.
+- Tidy the shortcut indicators.
+
+### Fixed
+- [Issue 879](https://github.com/aza547/wow-recorder/issues/879) - Fix clip source navigation not scrolling to recordings on later table pages.
+
+## [7.12.0] - 2026-08-18
+### Added
+- [Issue 730](https://github.com/aza547/wow-recorder/issues/730) - Add per-source audio track routing.
+- Update M+ timers for Midnight season 2.
+
+### Fixed
+- [Issue 886](https://github.com/aza547/wow-recorder/issues/886) - Fix the delete dialog which had misaligned indexing.
+- [Issue 891](https://github.com/aza547/wow-recorder/issues/891) - Fix a bug where opening the drawer while filtering could crash the UI.
+- Disable the upload, download and source controls when storage filters are applied.
+- Ctrl + clicking a selected row will no longer unselect it.
+- Fixed a handful of phrases that were not getting translated.
+
 
 ## [7.11.1] - 2026-07-25
 ### Fixed
