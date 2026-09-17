@@ -51,6 +51,30 @@ console.info('[Main] In timezone:', tz, tzOffsetStr);
 
 let window: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let rendererRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const recoverRenderer = (reason: string, details?: unknown) => {
+  if (rendererRecoveryTimer || !window || window.isDestroyed()) return;
+
+  console.error(
+    '[Main] Renderer unavailable; scheduling reload',
+    reason,
+    details,
+  );
+  rendererRecoveryTimer = setTimeout(() => {
+    rendererRecoveryTimer = null;
+    const contents = window?.webContents;
+
+    if (!contents || contents.isDestroyed()) return;
+
+    try {
+      contents.reload();
+    } catch (error) {
+      console.error('[Main] Failed to reload renderer', error);
+    }
+  }, 100);
+};
+
 const manager = new Manager();
 
 /**
@@ -199,6 +223,13 @@ const createWindow = async () => {
     },
   });
 
+  window.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Main] Renderer process gone', details);
+    if (details.reason !== 'clean-exit') {
+      recoverRenderer('render-process-gone', details);
+    }
+  });
+
   // Prevent Windows from opening the native window menu on draggable regions.
   window.on('system-context-menu', (event) => event.preventDefault());
 
@@ -229,10 +260,7 @@ const createWindow = async () => {
     }
 
     // This shows the correct version on a release build, not during development.
-    window.webContents.send(
-      'updateVersionDisplay',
-      `RoomFortyRecorder v${appVersion}`,
-    );
+    send('updateVersionDisplay', `RoomFortyRecorder v${appVersion}`);
 
     const startMinimized = cfg.get<boolean>('startMinimized');
     if (!startMinimized) window.show();
@@ -255,11 +283,11 @@ const createWindow = async () => {
   });
 
   window.on('focus', () => {
-    window?.webContents.send('window-focus-status', true);
+    send('window-focus-status', true);
   });
 
   window.on('blur', () => {
-    window?.webContents.send('window-focus-status', false);
+    send('window-focus-status', false);
   });
 
   window.on('closed', () => {
@@ -293,7 +321,7 @@ ipcMain.on('window', (_event, args) => {
 
     if (cfg.get<boolean>('minimizeToTray')) {
       console.info('[Main] Minimize main window to tray');
-      window.webContents.send('pausePlayer');
+      send('pausePlayer');
       window.hide();
     } else {
       console.info('[Main] Minimize main window to taskbar');
@@ -316,7 +344,7 @@ ipcMain.on('window', (_event, args) => {
 
     if (cfg.get<boolean>('minimizeOnQuit')) {
       console.info('[Main] Hiding main window');
-      window.webContents.send('pausePlayer');
+      send('pausePlayer');
       window.hide();
     } else {
       console.info('[Main] Closing main window');
@@ -548,8 +576,20 @@ app
   .catch(console.error);
 
 const send = (channel: string, ...args: unknown[]) => {
-  if (!window || window.isDestroyed()) return; // Can happen on shutdown.
-  window.webContents.send(channel, ...args);
+  const contents = window?.webContents;
+  if (!contents || contents.isDestroyed()) return; // Can happen on shutdown.
+
+  if (contents.isCrashed()) {
+    recoverRenderer(`renderer crashed before ${channel}`);
+    return;
+  }
+
+  try {
+    contents.send(channel, ...args);
+  } catch (error) {
+    console.error(`[Main] Failed to send ${channel} to renderer`, error);
+    recoverRenderer(`IPC send failed: ${channel}`, error);
+  }
 };
 
 const playSoundAlert = (alert: SoundAlerts) => {
