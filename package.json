@@ -10,11 +10,11 @@
   ],
   "homepage": "https://roomfortyrecorder.com",
   "bugs": {
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/RoomFortyRecorder/issues"
+    "url": "https://github.com/Evi-Git/RoomFortyRecorder/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/RoomFortyRecorder.git"
+    "url": "git+https://github.com/Evi-Git/RoomFortyRecorder.git"
   },
   "license": "GPL-2.0-only",
   "author": {
@@ -101,7 +101,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME",
+      "owner": "Evi-Git",
       "repo": "RoomFortyRecorder",
       "releaseType": "draft"
     }

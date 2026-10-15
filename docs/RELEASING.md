@@ -37,7 +37,7 @@ downloads it.
 ## Building on your own PC (optional, for debugging)
 
 ```
-git clone https://github.com/<you>/RoomFortyRecorder
+git clone https://github.com/Evi-Git/RoomFortyRecorder
 cd RoomFortyRecorder
 npm install
 npm run package
