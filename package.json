@@ -8,20 +8,25 @@
     "screen",
     "recorder"
   ],
-  "homepage": "https://www.warcraftrecorder.com/",
+  "homepage": "https://roomfortyrecorder.com",
   "bugs": {
-    "url": "https://github.com/silverbrit/RoomFortyRecorder/issues"
+    "url": "https://github.com/YOUR_GITHUB_USERNAME/RoomFortyRecorder/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/silverbrit/RoomFortyRecorder.git"
+    "url": "git+https://github.com/YOUR_GITHUB_USERNAME/RoomFortyRecorder.git"
   },
-  "license": "Creative Commons Attribution-NonCommercial",
+  "license": "GPL-2.0-only",
   "author": {
-    "name": "Alex K",
-    "email": "warcraftrecorder@gmail.com",
-    "url": "https://www.warcraftrecorder.com/"
+    "name": "Room Forty",
+    "url": "https://roomfortyrecorder.com"
   },
+  "contributors": [
+    {
+      "name": "Alex K (original Warcraft Recorder author)",
+      "url": "https://github.com/aza547/wow-recorder"
+    }
+  ],
   "main": "./.erb/dll/main.bundle.dev.js",
   "scripts": {
     "build": "concurrently \"npm run build:main\" \"npm run build:renderer\"",
@@ -96,8 +101,9 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "silverbrit",
-      "repo": "RoomFortyRecorder"
+      "owner": "YOUR_GITHUB_USERNAME",
+      "repo": "RoomFortyRecorder",
+      "releaseType": "draft"
     }
   },
   "jest": {

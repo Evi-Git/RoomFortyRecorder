@@ -1,7 +1,7 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
 
-name: Warcraft Recorder CI
+name: RoomFortyRecorder CI
 
 on:
   push:
@@ -32,7 +32,4 @@ jobs:
     # - name: Run unit tests 
     #   run: npm test
 
-    # This is just here for reference. Real builds are done on my PC with my 
-    # EV cert signing hardware token.
-    # - name: Package for distribution
-    #   run: npm run package
+    # Releases are built by .github/workflows/release.yml (Actions -> Release).

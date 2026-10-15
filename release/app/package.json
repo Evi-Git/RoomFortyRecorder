@@ -1,10 +1,10 @@
 {
   "name": "RoomFortyRecorder",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "RoomFortyRecorder",
   "main": "./dist/main/main.js",
   "author": {
-    "name": "Alex K"
+    "name": "Room Forty"
   },
   "scripts": {
     "electron-rebuild": "node -r ts-node/register ../../.erb/scripts/electron-rebuild.js",
@@ -16,5 +16,5 @@
     "noobs": "^0.0.205",
     "uiohook-napi": "^1.5.2"
   },
-  "license": "MIT"
+  "license": "GPL-2.0-only"
 }

@@ -1,5 +1,13 @@
 # RoomFortyRecorder private guild cloud
 
+> **Out of date (October 2026).** Videos no longer live on the Windows
+> server. They are stored in Cloudflare R2 and played back through the
+> Cloudflare Worker in `guild-cloud-server/r2-worker/`. The home server only
+> handles Discord sign-in, metadata, chat, admin and share links. See
+> `guild-cloud-server/r2-worker/TESTING.md` for the Worker, and
+> `docs/RELEASING.md` for shipping new app versions. The Caddy, Task
+> Scheduler and Discord sections below are still accurate.
+
 This is the **one-time host setup** for the guild member who owns the Windows
 server. Once it is done, a normal raider only needs to:
 

@@ -3,8 +3,16 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import {
+  S3Client,
+  PutObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,18 +50,44 @@ const DISCORD_REDIRECT_URI =
 const DISCORD_API = 'https://discord.com/api/v10';
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
+
+// Only chat/links/metadata live on local disk now -- videos live entirely in
+// R2. This directory holds just state.json.
 const STORAGE = path.resolve(
   process.env.GUILD_CLOUD_STORAGE_PATH || path.join(SERVER_DIR, 'data'),
 );
-const VIDEO_DIR = path.join(STORAGE, 'videos');
 const STATE_FILE = path.join(STORAGE, 'state.json');
-const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1800');
-const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
-const PUBLIC_URL = process.env.GUILD_CLOUD_PUBLIC_URL?.replace(/\/+$/, '');
-const CDN_URL = process.env.GUILD_CLOUD_CDN_URL?.replace(/\/+$/, '') || '';
-const BUNNY_API_KEY = process.env.GUILD_CLOUD_BUNNY_API_KEY || '';
-const TOKEN_TTL_SECONDS = 60 * 60;
 
+const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1000');
+const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
+const ADMIN_SECRET = process.env.GUILD_CLOUD_ADMIN_SECRET || '';
+
+// Public HTTPS hostname for THIS server's own API (auth, chat, admin,
+// metadata). No video bytes are served from here anymore.
+const PUBLIC_URL = process.env.GUILD_CLOUD_PUBLIC_URL?.replace(/\/+$/, '');
+
+// The deployed Cloudflare Worker that verifies download tokens and streams
+// from R2 -- e.g. https://roomforty-r2-download.<subdomain>.workers.dev, or
+// a custom domain routed to it. This is where every signed download URL
+// points; this server no longer serves video bytes itself.
+const WORKER_URL = process.env.GUILD_CLOUD_WORKER_URL?.replace(/\/+$/, '') || '';
+
+// R2 (S3-compatible) config -- used for presigning uploads and for
+// housekeeping/deletion. Playback never goes through this SDK; it's Worker
+// + the R2 binding for that.
+const R2_ACCOUNT_ID = process.env.GUILD_CLOUD_R2_ACCOUNT_ID || '';
+const R2_ACCESS_KEY_ID = process.env.GUILD_CLOUD_R2_ACCESS_KEY_ID || '';
+const R2_SECRET_ACCESS_KEY = process.env.GUILD_CLOUD_R2_SECRET_ACCESS_KEY || '';
+const R2_BUCKET = process.env.GUILD_CLOUD_R2_BUCKET || '';
+
+const TOKEN_TTL_SECONDS = 60 * 60;
+// Download tokens live much longer than a typical API token. The URL is
+// handed to a <video> element and the app polls metadata every 30 seconds;
+// keeping the URL stable across that polling avoids remounting the player
+// and cancelling an in-flight HTTP range mid-scrub. The real access gate is
+// the Discord-authenticated session needed to obtain the key in the first
+// place, so a long-lived download token here doesn't weaken that.
+const DOWNLOAD_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 if (
   !DISCORD_CLIENT_ID ||
@@ -68,11 +102,49 @@ if (
   );
 }
 
+if (!WORKER_URL) {
+  console.warn(
+    '[guild-cloud] GUILD_CLOUD_WORKER_URL is not set; signed download URLs will be broken',
+  );
+}
+
+if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) {
+  console.warn(
+    '[guild-cloud] R2 is not fully configured; uploads and housekeeping will fail',
+  );
+}
+
+const s3 = new S3Client({
+  region: 'auto',
+  endpoint: R2_ACCOUNT_ID
+    ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+    : undefined,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+  },
+  // Recent @aws-sdk/client-s3 versions default to attaching checksum
+  // headers/trailers to more requests than before ("WHEN_SUPPORTED").
+  // R2's S3-compatible layer doesn't reliably support this on every
+  // operation, which can cause specific calls (notably DeleteObjects) to
+  // fail against R2 even though the same code works fine against real S3.
+  // Reverting to the older, narrower default avoids that.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
+});
+
 let state = {
   videos: [],
   chats: [],
   links: [],
   nextMessageId: 1,
+  // Discord users seen at least once, so the host can identify who to revoke.
+  knownUsers: {},
+  // discordId -> epoch seconds; any session issued before this is rejected,
+  // forcing a fresh Discord sign-in (and therefore a fresh role check).
+  revokedUsers: {},
+  // Epoch seconds; any session issued before this, for anyone, is rejected.
+  revokedAllBefore: 0,
 };
 let saveQueue = Promise.resolve();
 
@@ -126,6 +198,13 @@ const authorized = (req, res) => {
     const session = decodeToken(match[1], 'session');
     if (session.guild !== GUILD || !session.userName) {
       throw new Error('Invalid session');
+    }
+    const revokedAt = state.revokedUsers[session.discordId];
+    if (
+      session.iat < state.revokedAllBefore ||
+      (revokedAt && session.iat < revokedAt)
+    ) {
+      throw new Error('Session revoked');
     }
     req.cloudUserName = session.userName;
     req.cloudUserId = session.discordId;
@@ -237,8 +316,8 @@ const handleDiscordAuth = async (req, res, url, parts) => {
     }
 
     pruneOAuth();
-    const state = crypto.randomBytes(24).toString('base64url');
-    oauthStates.set(state, {
+    const state_ = crypto.randomBytes(24).toString('base64url');
+    oauthStates.set(state_, {
       callback: callback.toString(),
       expires: Math.floor(Date.now() / 1000) + OAUTH_STATE_TTL_SECONDS,
     });
@@ -249,17 +328,17 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       response_type: 'code',
       redirect_uri: DISCORD_REDIRECT_URI,
       scope: 'identify',
-      state,
+      state: state_,
     }).toString();
     return redirect(res, authorize.toString());
   }
 
   if (parts[2] === 'callback') {
     if (req.method !== 'GET') return fail(res, 405, 'Method not allowed');
-    const state = url.searchParams.get('state');
-    const pending = state && oauthStates.get(state);
+    const stateParam = url.searchParams.get('state');
+    const pending = stateParam && oauthStates.get(stateParam);
     if (!pending) return fail(res, 400, 'Invalid or expired OAuth state');
-    oauthStates.delete(state);
+    oauthStates.delete(stateParam);
 
     if (url.searchParams.get('error') || !url.searchParams.get('code')) {
       return redirect(
@@ -355,83 +434,6 @@ const handleDiscordAuth = async (req, res, url, parts) => {
   return fail(res, 404, 'Unknown Discord route');
 };
 
-const publicBaseUrl = (req) => {
-  if (PUBLIC_URL) return PUBLIC_URL;
-  const protocol = req.headers['x-forwarded-proto'] || 'http';
-  return `${protocol}://${req.headers.host}`;
-};
-
-const signedUrl = (req, action, guild, key, bytes, expires, baseOverride) => {
-  const token = encodeToken({
-    action,
-    guild,
-    key,
-    bytes,
-    exp: expires || Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
-  });
-  const base = baseOverride || publicBaseUrl(req);
-  return `${base}/${action}/${token}`;
-};
-
-const downloadUrlCache = new Map();
-const downloadBase = (req) => CDN_URL || publicBaseUrl(req);
-const signedDownloadUrl = (req, guild, key) => {
-  const base = downloadBase(req);
-  const cacheKey = `${base}\0${guild}\0${key}`;
-  const now = Math.floor(Date.now() / 1000);
-  const cached = downloadUrlCache.get(cacheKey);
-
-  // HTTP polling refreshes metadata every 30 seconds. Keep the URL stable so
-  // the renderer does not remount the video and cancel its active HTTP range,
-  // and so the CDN sees repeated requests to the same URL (required to cache).
-  if (cached && cached.expires > now + 5 * 60) return cached.url;
-
-  const expires = now + TOKEN_TTL_SECONDS;
-  const url = signedUrl(req, 'download', guild, key, undefined, expires, base);
-  downloadUrlCache.set(cacheKey, { expires, url });
-  return url;
-};
-
-// Fire a request for a freshly uploaded video through the CDN hostname so it's
-// already cached at the edge before anyone clicks play (post-pull review is
-// the worst case for a cold cache, since every file is brand new).
-const warmCdnCache = async (guild, key) => {
-  if (!CDN_URL) return;
-  try {
-    const expires = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
-    const url = signedUrl({}, 'download', guild, key, undefined, expires, CDN_URL);
-    downloadUrlCache.set(`${CDN_URL}\0${guild}\0${key}`, { expires, url });
-
-    const response = await fetch(url);
-    if (response.body) {
-      for await (const _chunk of response.body) {
-        // Drain the body so the CDN pulls and caches the full file, not just headers.
-      }
-    }
-    console.log(`[guild-cloud] Warmed CDN cache for ${key}`);
-  } catch (error) {
-    console.error(`[guild-cloud] CDN warm failed for ${key}`, error.message);
-  }
-};
-
-// Ask Bunny to drop its cached copy so a deleted/evicted video doesn't keep
-// serving from the edge after it's gone from origin.
-const purgeCdnUrl = async (guild, key) => {
-  if (!CDN_URL || !BUNNY_API_KEY) return;
-  const cacheKey = `${CDN_URL}\0${guild}\0${key}`;
-  const cached = downloadUrlCache.get(cacheKey);
-  if (!cached) return;
-  try {
-    await fetch(`https://api.bunny.net/purge?url=${encodeURIComponent(cached.url)}`, {
-      method: 'POST',
-      headers: { AccessKey: BUNNY_API_KEY },
-    });
-    downloadUrlCache.delete(cacheKey);
-  } catch (error) {
-    console.error(`[guild-cloud] CDN purge failed for ${key}`, error.message);
-  }
-};
-
 const isSafeKey = (key) =>
   typeof key === 'string' &&
   key.length > 0 &&
@@ -444,18 +446,157 @@ const requireGuild = (value) => {
   if (value !== GUILD) throw new Error('Unknown guild');
 };
 
-const fileForKey = (key) => {
-  if (!isSafeKey(key)) throw new Error('Invalid video key');
-  return path.join(VIDEO_DIR, key);
+// ---- R2 helpers -----------------------------------------------------------
+// These are the only places server.mjs touches R2 directly. Playback never
+// comes through here -- that's the Worker, reading R2 straight from
+// Cloudflare's own network. This server only presigns uploads and manages
+// housekeeping/deletion.
+
+const r2HeadObject = async (key) => {
+  try {
+    return await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  } catch (error) {
+    if (error.$metadata?.httpStatusCode === 404 || error.name === 'NotFound') {
+      return null;
+    }
+    throw error;
+  }
 };
 
-const exists = async (target) => {
+const r2Exists = async (key) => Boolean(await r2HeadObject(key));
+
+const r2PresignedPutUrl = async (key, expiresInSeconds = 60 * 60) =>
+  getSignedUrl(
+    s3,
+    new PutObjectCommand({ Bucket: R2_BUCKET, Key: key }),
+    { expiresIn: expiresInSeconds },
+  );
+
+const r2DeleteObject = async (key) => {
   try {
-    await fsp.access(target);
-    return true;
-  } catch {
-    return false;
+    await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  } catch (error) {
+    console.error(`[guild-cloud] R2 delete failed for ${key}`, error.message);
   }
+};
+
+const r2DeleteObjects = async (keys) => {
+  if (keys.length === 0) return [];
+  const failed = [];
+  // DeleteObjects accepts at most 1000 keys per call.
+  for (let i = 0; i < keys.length; i += 1000) {
+    const batch = keys.slice(i, i + 1000);
+    try {
+      const result = await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: R2_BUCKET,
+          Delete: { Objects: batch.map((Key) => ({ Key })) },
+        }),
+      );
+      // A 200 response can still contain per-object failures here -- this
+      // was previously never checked, so a partial failure looked
+      // identical to full success.
+      for (const error of result.Errors || []) {
+        console.error(
+          `[guild-cloud] R2 delete failed for ${error.Key}: ${error.Code} ${error.Message}`,
+        );
+        failed.push(error.Key);
+      }
+    } catch (error) {
+      console.error('[guild-cloud] R2 bulk delete request failed', error.message);
+      failed.push(...batch);
+    }
+  }
+  return failed;
+};
+
+// Lists every object actually sitting in the bucket, with real sizes --
+// this is the source of truth for usage/quota, never the client-declared
+// size at upload time.
+const r2ListAllObjects = async () => {
+  const objects = [];
+  let continuationToken;
+  do {
+    const response = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const item of response.Contents || []) {
+      objects.push({ key: item.Key, size: item.Size, lastModified: item.LastModified });
+    }
+    continuationToken = response.IsTruncated
+      ? response.NextContinuationToken
+      : undefined;
+  } while (continuationToken);
+  return objects;
+};
+
+// ---- Bucket listing cache -------------------------------------------------
+// Every video-list / usage poll from every open app used to list the whole
+// bucket (a billable Class A operation each time). Read-only polling paths
+// now share one listing for up to LISTING_CACHE_MS. Paths that DECIDE things
+// from the listing (housekeeping/eviction, the upload quota check, the orphan
+// scanner) always pass { fresh: true } and never trust a cached snapshot.
+// Anything this server does that changes the bucket calls
+// invalidateListingCache() so polls never show stale results afterward.
+// Set GUILD_CLOUD_LISTING_CACHE_SECONDS=0 to disable caching entirely.
+const LISTING_CACHE_MS =
+  Math.max(0, Number.parseFloat(process.env.GUILD_CLOUD_LISTING_CACHE_SECONDS || '60')) * 1000;
+let listingCache = { objects: null, fetchedAt: 0 };
+let listingInFlight = null;
+let listingGeneration = 0;
+
+const invalidateListingCache = () => {
+  listingGeneration += 1;
+  listingCache = { objects: null, fetchedAt: 0 };
+  listingInFlight = null;
+};
+
+const r2ListAllObjectsCached = async ({ fresh = false } = {}) => {
+  const useCache = !fresh && LISTING_CACHE_MS > 0;
+  if (useCache) {
+    if (listingCache.objects && Date.now() - listingCache.fetchedAt < LISTING_CACHE_MS) {
+      return listingCache.objects;
+    }
+    // Concurrent cache misses share one request instead of each listing.
+    if (listingInFlight) return listingInFlight;
+  }
+
+  const generation = listingGeneration;
+  const promise = r2ListAllObjects()
+    .then((objects) => {
+      // If something invalidated the cache while this listing was in flight,
+      // its snapshot may already be stale -- return it to the caller but
+      // don't let it become the shared cached copy.
+      if (generation === listingGeneration && LISTING_CACHE_MS > 0) {
+        listingCache = { objects, fetchedAt: Date.now() };
+      }
+      return objects;
+    })
+    .finally(() => {
+      if (listingInFlight === promise) listingInFlight = null;
+    });
+  if (LISTING_CACHE_MS > 0) listingInFlight = promise;
+  return promise;
+};
+
+// An upload lands in R2 (via the presigned PUT) BEFORE the app registers it
+// with POST /video -- so a video mid-upload is briefly a legitimate "orphan"
+// with no state.videos entry yet. Excluding anything younger than this
+// avoids ever deleting something still in that narrow in-between window.
+const ORPHAN_MIN_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+const findOrphanedR2Objects = async () => {
+  const objects = await r2ListAllObjectsCached({ fresh: true });
+  const knownKeys = new Set(state.videos.map((video) => video.videoKey));
+  const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
+  return objects.filter(
+    (object) =>
+      !knownKeys.has(object.key) &&
+      (!object.lastModified || object.lastModified.getTime() < cutoff),
+  );
 };
 
 const readBody = async (req, maxBytes = 2 * 1024 * 1024) => {
@@ -487,7 +628,7 @@ const persist = () => {
 };
 
 const loadState = async () => {
-  await fsp.mkdir(VIDEO_DIR, { recursive: true });
+  await fsp.mkdir(STORAGE, { recursive: true });
 
   try {
     state = JSON.parse(await fsp.readFile(STATE_FILE, 'utf8'));
@@ -502,57 +643,79 @@ const loadState = async () => {
   state.nextMessageId = Number.isInteger(state.nextMessageId)
     ? state.nextMessageId
     : 1;
+  state.knownUsers =
+    state.knownUsers && typeof state.knownUsers === 'object'
+      ? state.knownUsers
+      : {};
+  state.revokedUsers =
+    state.revokedUsers && typeof state.revokedUsers === 'object'
+      ? state.revokedUsers
+      : {};
+  state.revokedAllBefore = Number.isFinite(state.revokedAllBefore)
+    ? state.revokedAllBefore
+    : 0;
 };
 
 const limitBytes = () =>
   LIMIT_GB > 0 ? LIMIT_GB * 1024 ** 3 : Number.MAX_SAFE_INTEGER;
 
-const videoFiles = async () => {
+// Cross-references state.videos against what's REALLY in R2 right now.
+// Sizes always come from R2 itself, never from a client-declared value.
+const videoEntries = async ({ fresh = false } = {}) => {
+  const objects = await r2ListAllObjectsCached({ fresh });
+  const bySize = new Map(objects.map((object) => [object.key, object]));
   const entries = [];
   for (const video of state.videos) {
-    try {
-      const key = video.videoKey;
-      const file = fileForKey(key);
-      const stat = await fsp.stat(file);
-      entries.push({ video, file, stat });
-    } catch {
-      // A missing file is cleaned from metadata by the housekeeper.
-    }
+    const object = bySize.get(video.videoKey);
+    if (object) entries.push({ video, size: object.size, lastModified: object.lastModified });
   }
   return entries;
 };
 
-const usageBytes = async () => {
-  const entries = await videoFiles();
-  return entries.reduce((total, entry) => total + entry.stat.size, 0);
+const usageBytes = async (options) => {
+  const entries = await videoEntries(options);
+  return entries.reduce((total, entry) => total + entry.size, 0);
 };
 
 const housekeep = async () => {
-  let entries = await videoFiles();
-  let usage = entries.reduce((total, entry) => total + entry.stat.size, 0);
+  // Only videos already tracked BEFORE the bucket listing starts may be
+  // dropped for "missing from R2". The listing is a snapshot from the moment
+  // it was requested; a video uploaded and registered while it was in flight
+  // is not in that snapshot, and dropping it would leave its file orphaned in
+  // R2 with no library entry (this happened on busy raid nights).
+  const trackedBeforeListing = new Set(state.videos.map((video) => video.videoKey));
+  let entries = await videoEntries({ fresh: true });
+  let usage = entries.reduce((total, entry) => total + entry.size, 0);
   let changed = false;
 
-  state.videos = state.videos.filter((video) =>
-    entries.some((entry) => entry.video.videoKey === video.videoKey),
+  // Drop metadata for anything that no longer actually exists in R2.
+  state.videos = state.videos.filter(
+    (video) =>
+      !trackedBeforeListing.has(video.videoKey) ||
+      entries.some((entry) => entry.video.videoKey === video.videoKey),
   );
 
   entries = entries
     .filter((entry) => !entry.video.protected)
     .sort(
       (left, right) =>
-        Number(left.video.start || left.stat.mtimeMs) -
-        Number(right.video.start || right.stat.mtimeMs),
+        Number(left.video.start || left.lastModified?.getTime() || 0) -
+        Number(right.video.start || right.lastModified?.getTime() || 0),
     );
 
+  const toDelete = [];
   for (const entry of entries) {
     if (usage <= limitBytes()) break;
-    await fsp.rm(entry.file, { force: true });
+    toDelete.push(entry.video.videoKey);
     state.videos = state.videos.filter(
       (video) => video.videoKey !== entry.video.videoKey,
     );
-    purgeCdnUrl(GUILD, entry.video.videoKey).catch(() => {});
-    usage -= entry.stat.size;
+    usage -= entry.size;
     changed = true;
+  }
+  if (toDelete.length > 0) {
+    await r2DeleteObjects(toDelete);
+    invalidateListingCache();
   }
 
   if (changed) await persist();
@@ -577,111 +740,28 @@ const parseParts = (pathname) =>
     .filter(Boolean)
     .map((part) => decodeURIComponent(part));
 
-const handleUpload = async (req, res, token) => {
-  let payload;
-  try {
-    payload = decodeToken(token, 'upload');
-  } catch {
-    return fail(res, 403, 'Invalid or expired upload URL');
-  }
+// ---- Download URLs (served entirely by the Worker + R2) -------------------
 
-  try {
-    requireGuild(payload.guild);
-    const file = fileForKey(payload.key);
-    const temp = path.join(VIDEO_DIR, `.upload-${crypto.randomUUID()}.tmp`);
-    let received = 0;
+const downloadUrlCache = new Map();
+const signedDownloadUrl = (guild, key) => {
+  const cacheKey = `${guild}\0${key}`;
+  const now = Math.floor(Date.now() / 1000);
+  const cached = downloadUrlCache.get(cacheKey);
 
-    req.on('data', (chunk) => {
-      received += chunk.length;
-    });
+  // See DOWNLOAD_TOKEN_TTL_SECONDS above for why this stays stable for a
+  // long time rather than being reissued on every metadata poll.
+  if (cached && cached.expires > now + 5 * 60) return cached.url;
 
-    try {
-      await pipeline(req, fs.createWriteStream(temp, { flags: 'wx' }));
-    } catch (error) {
-      await fsp.rm(temp, { force: true });
-      throw error;
-    }
-
-    if (received !== payload.bytes) {
-      await fsp.rm(temp, { force: true });
-      return fail(res, 400, 'Upload size did not match the signed size');
-    }
-
-    await fsp.rm(file, { force: true });
-    await fsp.rename(temp, file);
-    return res.writeHead(204).end();
-  } catch (error) {
-    console.error('[guild-cloud] Upload failed', error.message);
-    return fail(res, 500, 'Upload failed');
-  }
+  const expires = now + DOWNLOAD_TOKEN_TTL_SECONDS;
+  const token = encodeToken({ action: 'download', guild, key, exp: expires });
+  const url = `${WORKER_URL}/download/${token}`;
+  downloadUrlCache.set(cacheKey, { expires, url });
+  return url;
 };
 
-const handleDownload = async (req, res, token) => {
-  let payload;
-  try {
-    payload = decodeToken(token, 'download');
-  } catch {
-    return fail(res, 403, 'Invalid or expired download URL');
-  }
-
-  try {
-    requireGuild(payload.guild);
-    const file = fileForKey(payload.key);
-    const stat = await fsp.stat(file);
-    let start = 0;
-    let end = stat.size - 1;
-    let status = 200;
-
-    const range = req.headers.range;
-    if (range) {
-      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-      if (!match) return fail(res, 416, 'Invalid range');
-
-      if (match[1] === '') {
-        const suffix = Number.parseInt(match[2], 10);
-        start = Math.max(0, stat.size - suffix);
-      } else {
-        start = Number.parseInt(match[1], 10);
-        if (match[2]) end = Number.parseInt(match[2], 10);
-      }
-
-      end = Math.min(end, stat.size - 1);
-      if (start > end || start >= stat.size) {
-        res.writeHead(416, {
-          'Content-Range': `bytes */${stat.size}`,
-          ...withCors(),
-        });
-        return res.end();
-      }
-      status = 206;
-    }
-
-    const headers = withCors({
-      'Accept-Ranges': 'bytes',
-      'Content-Type': 'video/mp4',
-      'Content-Length': end - start + 1,
-    });
-
-    if (status === 206) {
-      headers['Content-Range'] = `bytes ${start}-${end}/${stat.size}`;
-    }
-
-    res.writeHead(status, headers);
-    const stream = fs.createReadStream(file, { start, end });
-    const closeStream = () => {
-      if (!res.writableFinished) stream.destroy();
-    };
-    res.once('close', closeStream);
-    stream.once('close', () => res.off('close', closeStream));
-    return stream.pipe(res);
-  } catch {
-    return fail(res, 404, 'Video not found');
-  }
-};
-
-const metadataFor = (req, video) => ({
+const metadataFor = (video) => ({
   ...video,
-  signedVideoKey: signedDownloadUrl(req, GUILD, video.videoKey),
+  signedVideoKey: signedDownloadUrl(GUILD, video.videoKey),
 });
 
 const handleApi = async (req, res, url, parts) => {
@@ -703,18 +783,102 @@ const handleApi = async (req, res, url, parts) => {
     if (!login) return fail(res, 401, 'Invalid or expired Discord login');
     loginCodes.delete(body.code);
 
+    const now = Math.floor(Date.now() / 1000);
+    state.knownUsers[login.discordId] = {
+      userName: login.userName,
+      lastLogin: now,
+    };
+    await persist();
+
     const token = encodeToken({
       action: 'session',
       guild: GUILD,
       discordId: login.discordId,
       userName: login.userName,
-      exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+      iat: now,
+      exp: now + SESSION_TTL_SECONDS,
     });
     return json(res, 200, {
       token,
       userName: login.userName,
       guildName: GUILD,
     });
+  }
+
+  if (parts[1] === 'admin') {
+    if (!ADMIN_SECRET) return fail(res, 404, 'Admin API is not configured');
+
+    const provided = req.headers['x-admin-secret'] || '';
+    if (!constantTimeEqual(String(provided), ADMIN_SECRET)) {
+      return fail(res, 401, 'Invalid admin secret');
+    }
+
+    if (parts[2] === 'users' && req.method === 'GET') {
+      const now = Math.floor(Date.now() / 1000);
+      const users = Object.entries(state.knownUsers).map(([discordId, info]) => ({
+        discordId,
+        userName: info.userName,
+        lastLogin: info.lastLogin,
+        revoked: Boolean(
+          (state.revokedUsers[discordId] &&
+            state.revokedUsers[discordId] > (info.lastLogin || 0)) ||
+            state.revokedAllBefore > (info.lastLogin || 0),
+        ),
+      }));
+      return json(res, 200, { now, users });
+    }
+
+    if (parts[2] === 'revoke' && req.method === 'POST') {
+      const body = await readBody(req, 4 * 1024);
+      if (typeof body.discordId !== 'string' || !body.discordId) {
+        return fail(res, 400, 'discordId is required');
+      }
+      state.revokedUsers[body.discordId] = Math.floor(Date.now() / 1000);
+      await persist();
+      return json(res, 200, {});
+    }
+
+    if (parts[2] === 'revoke-all' && req.method === 'POST') {
+      state.revokedAllBefore = Math.floor(Date.now() / 1000);
+      await persist();
+      return json(res, 200, {});
+    }
+
+    // Preview only -- lists what a delete pass would remove, without
+    // touching anything. Run this first and actually look at it.
+    if (parts[2] === 'orphans' && parts.length === 3 && req.method === 'GET') {
+      const orphans = await findOrphanedR2Objects();
+      return json(res, 200, {
+        count: orphans.length,
+        totalBytes: orphans.reduce((total, o) => total + o.size, 0),
+        orphans: orphans.map((o) => ({
+          key: o.key,
+          size: o.size,
+          lastModified: o.lastModified,
+        })),
+      });
+    }
+
+    // Re-scans (rather than trusting a client-supplied list) and actually
+    // deletes whatever is still orphaned and still older than
+    // ORPHAN_MIN_AGE_MS at the moment this runs.
+    if (parts[2] === 'orphans' && parts[3] === 'delete' && req.method === 'POST') {
+      const orphans = await findOrphanedR2Objects();
+      const keys = orphans.map((o) => o.key);
+      const failedKeys = new Set(await r2DeleteObjects(keys));
+      invalidateListingCache();
+      const deletedBytes = orphans
+        .filter((o) => !failedKeys.has(o.key))
+        .reduce((total, o) => total + o.size, 0);
+      return json(res, 200, {
+        deletedCount: keys.length - failedKeys.size,
+        deletedBytes,
+        failedCount: failedKeys.size,
+        failedKeys: [...failedKeys],
+      });
+    }
+
+    return fail(res, 404, 'Unknown admin route');
   }
 
   if (!authorized(req, res)) return;
@@ -761,11 +925,11 @@ const handleApi = async (req, res, url, parts) => {
 
   if (parts[3] === 'video' && parts.length === 4) {
     if (req.method === 'GET') {
-      const entries = await videoFiles();
+      const entries = await videoEntries();
       return json(
         res,
         200,
-        entries.map((entry) => metadataFor(req, entry.video)),
+        entries.map((entry) => metadataFor(entry.video)),
       );
     }
 
@@ -776,26 +940,24 @@ const handleApi = async (req, res, url, parts) => {
         return fail(res, 400, 'Invalid video metadata');
       }
 
-      const file = fileForKey(key);
-      if (!(await exists(file))) return fail(res, 409, 'Video upload missing');
+      // Confirm the upload actually landed in R2 before trusting the client.
+      if (!(await r2Exists(key))) return fail(res, 409, 'Video upload missing');
 
       state.videos = state.videos.filter((video) => video.videoKey !== key);
       state.videos.push({ ...body, videoKey: key });
+      // New object in the bucket: any cached listing is now out of date.
+      invalidateListingCache();
       await persist();
       await housekeep();
-      warmCdnCache(guild, key).catch(() => {});
       return json(res, 200, {});
     }
   }
 
   if (parts[3] === 'video' && parts[4] && parts[5] === 'size') {
     if (req.method !== 'GET') return fail(res, 405, 'Method not allowed');
-    try {
-      const stat = await fsp.stat(fileForKey(parts[4]));
-      return json(res, 200, { bytes: stat.size });
-    } catch {
-      return fail(res, 404, 'Video not found');
-    }
+    const head = await r2HeadObject(parts[4]);
+    if (!head) return fail(res, 404, 'Video not found');
+    return json(res, 200, { bytes: head.ContentLength });
   }
 
   if (parts[3] === 'video' && parts[4] && parts[5] === 'link') {
@@ -818,13 +980,15 @@ const handleApi = async (req, res, url, parts) => {
     }
 
     await housekeep();
-    if ((await usageBytes()) + body.bytes > limitBytes()) {
+    if ((await usageBytes({ fresh: true })) + body.bytes > limitBytes()) {
       return fail(res, 413, 'Guild storage limit reached');
     }
 
-    return json(res, 200, {
-      signed: signedUrl(req, 'upload', guild, body.key, body.bytes),
-    });
+    // The client PUTs the file straight to R2 with this URL -- never
+    // touching this server. Same interface the client already used for the
+    // old home-server upload URL, so no app changes needed on this side.
+    const signed = await r2PresignedPutUrl(body.key, TOKEN_TTL_SECONDS);
+    return json(res, 200, { signed });
   }
 
   if (parts[3] === 'usage' && req.method === 'GET') {
@@ -843,16 +1007,31 @@ const handleApi = async (req, res, url, parts) => {
     const names = await readBody(req, 2 * 1024 * 1024);
     if (!Array.isArray(names)) return fail(res, 400, 'Expected video names');
 
-    for (const name of names) {
-      const video = state.videos.find((entry) => entry.videoName === name);
-      if (!video) continue;
-      await fsp.rm(fileForKey(video.videoKey), { force: true });
-      state.videos = state.videos.filter(
-        (entry) => entry.videoKey !== video.videoKey,
-      );
-      purgeCdnUrl(guild, video.videoKey).catch(() => {});
-    }
+    const matched = names
+      .map((name) => state.videos.find((entry) => entry.videoName === name))
+      .filter(Boolean);
+
+    const failedKeys = new Set(await r2DeleteObjects(matched.map((video) => video.videoKey)));
+    invalidateListingCache();
+
+    // Only drop metadata for videos actually confirmed deleted from R2 --
+    // a video that failed to delete stays visible in the app (and keeps
+    // counting against quota) rather than silently disappearing from the
+    // library while the bytes are still sitting in the bucket, unreachable
+    // and unaccounted for.
+    const failedVideos = matched.filter((video) => failedKeys.has(video.videoKey));
+    state.videos = state.videos.filter(
+      (video) => !matched.some((m) => m.videoKey === video.videoKey) || failedKeys.has(video.videoKey),
+    );
     await persist();
+
+    if (failedVideos.length > 0) {
+      return fail(
+        res,
+        502,
+        `Failed to delete ${failedVideos.length} of ${matched.length} video(s) from storage -- please retry`,
+      );
+    }
     return json(res, 200, {});
   }
 
@@ -947,15 +1126,38 @@ const linkLikes = (link) =>
 const handleLink = async (res, id) => {
   const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return text(res, 404, 'Video not found');
+  if (!(await r2Exists(link.key))) return text(res, 404, 'Video not found');
 
   const video = state.videos.find((entry) => entry.videoKey === link.key);
   const title = video?.videoName || 'RoomFortyRecorder video';
   const source = `/link/${encodeURIComponent(id)}/video`;
   const likes = linkLikes(link);
+  // Discord's link unfurler (and most other chat apps) reads these tags
+  // from the raw HTML -- no JS execution -- to decide whether to render an
+  // inline playable video instead of a plain link card. It needs the
+  // og:video* trio pointed at a direct, unauthenticated, range-request-
+  // capable video URL, which the Worker already provides.
+  //
+  // Width/height are a hint for the embed's aspect ratio, not something
+  // Discord validates against the actual file -- if your guild mostly
+  // records at a different resolution than 1920x1080, update these two
+  // values to match, but a mismatch won't break playback.
+  const embedVideoUrl = signedDownloadUrl(link.guild, link.key);
+  const embedWidth = 1920;
+  const embedHeight = 1080;
+  const canonicalUrl = `${PUBLIC_URL || ''}/link/${encodeURIComponent(id)}`;
   const page = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta property="og:title" content="${htmlEscape(title)}"><title>${htmlEscape(title)}</title>
+<meta property="og:type" content="video.other">
+<meta property="og:title" content="${htmlEscape(title)}">
+<meta property="og:url" content="${htmlEscape(canonicalUrl)}">
+<meta property="og:video" content="${htmlEscape(embedVideoUrl)}">
+<meta property="og:video:secure_url" content="${htmlEscape(embedVideoUrl)}">
+<meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="${embedWidth}">
+<meta property="og:video:height" content="${embedHeight}">
+<meta name="twitter:card" content="player">
+<title>${htmlEscape(title)}</title>
 <style>
 :root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
 </style></head><body><main>
@@ -1001,25 +1203,20 @@ button.addEventListener('click', async () => {
   return res.end(page);
 };
 
+// Public share links now redirect straight to the Worker instead of this
+// server streaming the bytes itself -- same as every other download.
 const handleLinkVideo = async (req, res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+  if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
-  // Keep the public link stable while still reusing the range-requested stream.
-  const token = encodeToken({
-    action: 'download',
-    guild: link.guild,
-    key: link.key,
-    exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS,
-  });
-  return handleDownload(req, res, token);
+  return redirect(res, signedDownloadUrl(link.guild, link.key));
 };
 
 const handleLike = async (res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await exists(fileForKey(link.key)))) return fail(res, 404, 'Video not found');
+  if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
   if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
   await persist();
@@ -1041,12 +1238,9 @@ const requestHandler = async (req, res) => {
   }
 
   if (parts[0] === 'health') return json(res, 200, { ok: true });
-  if (parts[0] === 'upload' && req.method === 'PUT') {
-    return handleUpload(req, res, parts[1]);
-  }
-  if (parts[0] === 'download' && req.method === 'GET') {
-    return handleDownload(req, res, parts[1]);
-  }
+  // Note: no /upload or /download routes anymore -- uploads go straight to
+  // R2 via a presigned URL, and downloads go straight to the Worker. This
+  // server never touches video bytes.
   if (parts[0] === 'link' && parts[2] === 'video' && req.method === 'GET') {
     return handleLinkVideo(req, res, parts[1]);
   }
@@ -1073,7 +1267,9 @@ const main = async () => {
 
   server.listen(PORT, HOST, () => {
     console.log(`[guild-cloud] Listening on http://${HOST}:${PORT}`);
-    console.log(`[guild-cloud] Storage: ${STORAGE}`);
+    console.log(`[guild-cloud] Metadata storage: ${STORAGE}`);
+    console.log(`[guild-cloud] Video storage: R2 bucket "${R2_BUCKET}"`);
+    console.log(`[guild-cloud] Playback via Worker: ${WORKER_URL || '(not set!)'}`);
     console.log(`[guild-cloud] Guild: ${GUILD}`);
   });
 };

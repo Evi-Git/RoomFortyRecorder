@@ -1,0 +1,21 @@
+name = "roomforty-r2-download"
+main = "src/index.mjs"
+compatibility_date = "2026-09-01"
+
+# Binds env.VIDEOS to your R2 bucket. Create the bucket first with:
+#   wrangler r2 bucket create roomforty-videos
+# then update bucket_name below if you named it something else.
+[[r2_buckets]]
+binding = "VIDEOS"
+bucket_name = "roomforty-videos"
+
+# Not secret, safe to keep in this file -- must match GUILD_CLOUD_GUILD
+# in your server's .env exactly (e.g. "Room Forty").
+[vars]
+GUILD_CLOUD_GUILD = "Room Forty"
+
+# GUILD_CLOUD_SECRET is NOT set here -- it's a real secret and must match
+# your server's GUILD_CLOUD_SECRET exactly. Set it with:
+#   wrangler secret put GUILD_CLOUD_SECRET
+# (it will prompt you to paste the value; it is not stored in this file
+# or in git)

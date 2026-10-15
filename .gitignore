@@ -41,3 +41,9 @@ guild-cloud-server/.env
 
 # Some stuff OBS window capture creates at runtime?
 win-capture/
+
+# Guild cloud server secrets and runtime data (never commit these)
+.env
+guild-cloud-server/.env
+guild-cloud-server/data
+guild-cloud-server/r2-worker/.wrangler

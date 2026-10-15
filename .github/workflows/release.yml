@@ -1,0 +1,59 @@
+# Builds the Windows installer and uploads it to a DRAFT GitHub release.
+#
+# How to use: GitHub -> Actions -> "Release" -> "Run workflow".
+# Then test the installer from the draft, and click "Publish release".
+# Installed apps only see the update once the release is published.
+#
+# The cloud URLs (https://roomfortyrecorder.com) are baked in by the defaults in
+# .erb/configs/webpack.config.base.ts. Do NOT add empty WCR_CLOUD_* env vars
+# here: an empty value overrides the default and breaks sign-in.
+
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the release and upload the installer
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node JS
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Pre-flight checks
+        run: node .github/scripts/check-release.mjs
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package and upload to a draft release
+        run: npx electron-builder build --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keeps a copy on the workflow run too, in case the upload step misbehaves.
+      - name: Save installer as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            release/build/*.exe
+            release/build/*.blockmap
+            release/build/latest.yml
+          retention-days: 14
