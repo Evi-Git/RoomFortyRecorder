@@ -57,7 +57,7 @@ interface IProps {
   videoCounters: Record<VideoCategory, number>;
   appState: AppState;
   setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-  persistentProgress: RefObject<number>;
+  persistentProgressRef: RefObject<number>;
   error: string;
   micStatus: MicStatus;
   errorReports: ErrorReport[];
@@ -79,7 +79,7 @@ const SideMenu = (props: IProps) => {
     videoCounters,
     appState,
     setAppState,
-    persistentProgress,
+    persistentProgressRef,
     error,
     micStatus,
     errorReports,
@@ -265,7 +265,7 @@ const SideMenu = (props: IProps) => {
   const handleChangeCategory = (value: VideoCategory) => {
     const index = getCategoryIndex(value);
     setConfigValue('selectedCategory', index);
-    persistentProgress.current = 0;
+    persistentProgressRef.current = 0;
 
     setAppState((prevState) => {
       return {
@@ -281,7 +281,7 @@ const SideMenu = (props: IProps) => {
   };
 
   const handleChangePage = (newPage: Pages) => {
-    persistentProgress.current = 0;
+    persistentProgressRef.current = 0;
 
     if (
       newPage === Pages.InstantReplay &&

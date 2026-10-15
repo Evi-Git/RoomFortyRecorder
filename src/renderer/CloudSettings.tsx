@@ -109,7 +109,12 @@ const CloudSettings = (props: IProps) => {
         ipc.reconfigureOverlay();
       }
     }, 2000); // Want to be long enough that it doesn't trigger mid-typing.
-  }, [config.cloudStorage, config.cloudDiscordName, config.cloudUpload]);
+  }, [
+    config.cloudStorage,
+    config.cloudDiscordName,
+    config.cloudUpload,
+    setConfig,
+  ]);
 
   useEffect(() => {
     if (initialRender2.current) {

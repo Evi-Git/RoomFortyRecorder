@@ -163,10 +163,10 @@ const WarcraftRecorder = () => {
   }, [videoState]);
 
   // Used to allow for hot switching of video players when moving between POVs.
-  const persistentProgress = useRef(0);
+  const persistentProgressRef = useRef(0);
 
   // Used to remember the player height when switching categories.
-  const playerHeight = useRef(500);
+  const playerHeightRef = useRef(500);
 
   const updateRecStatus = (status: unknown, err: unknown) => {
     setRecorderStatus(status as RecStatus);
@@ -495,7 +495,7 @@ const WarcraftRecorder = () => {
                 videoCounters={videoCounters}
                 appState={appState}
                 setAppState={setAppState}
-                persistentProgress={persistentProgress}
+                persistentProgressRef={persistentProgressRef}
                 error={error}
                 micStatus={micStatus}
                 errorReports={errorReports}
@@ -515,8 +515,8 @@ const WarcraftRecorder = () => {
                 setVideoState={setVideoState}
                 appState={appState}
                 setAppState={setAppState}
-                persistentProgress={persistentProgress}
-                playerHeight={playerHeight}
+                persistentProgressRef={persistentProgressRef}
+                playerHeightRef={playerHeightRef}
                 config={config}
                 setConfig={setConfig}
                 combatLoggingStatus={combatLoggingStatus}

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updates are now published from the new maintainer's GitHub repository. Raiders on 1.3.1 or earlier need to install 1.4.0 manually once; after that it auto-updates as before.
 - Guild cloud server and Cloudflare Worker sources (R2 storage) now live in `guild-cloud-server/`.
 
+### Merged from Warcraft Recorder 7.13.3
+- Include Kith'ix in the current raid tier for recording and automatic uploads.
+- [Issue 910](https://github.com/aza547/wow-recorder/issues/910) - Prevent rapid playback controls from causing a repeating play/pause cycle.
+- [Issue 863](https://github.com/aza547/wow-recorder/issues/863) - Preserve the last valid overrun setting when its input is cleared.
+- [PR 907](https://github.com/aza547/wow-recorder/pull/907) - Better rotation of application logs (keeps up to 500).
+- Electron 42 -> 44.
+
 ## [1.3.1] - 2026-09-16
 ### Fixed
 - Recover the renderer automatically after a crash or failed IPC send.
