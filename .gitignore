@@ -47,3 +47,8 @@ win-capture/
 guild-cloud-server/.env
 guild-cloud-server/data
 guild-cloud-server/r2-worker/.wrangler
+
+# Upstream-sync workflow scratch files
+conflicts.txt
+notes.md
+body.md

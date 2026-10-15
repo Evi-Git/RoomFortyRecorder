@@ -51,9 +51,25 @@ that default and breaks sign-in.
 
 ## Pulling in fixes from the original Warcraft Recorder
 
-This app is a fork of [aza547/wow-recorder](https://github.com/aza547/wow-recorder).
+This app is based on [aza547/wow-recorder](https://github.com/aza547/wow-recorder).
 When WoW or OBS changes break recording, or a new raid tier needs new boss
-data, the fix usually lands upstream first.
+data, the fix usually lands there first.
+
+The **Upstream sync** workflow checks for new upstream changes every Thursday
+(or run it any time from **Actions -> Upstream sync -> Run workflow**):
+
+- **It opens a pull request** called "Merge upstream Warcraft Recorder" when
+  the changes merge cleanly. The version number and changelog are sorted out
+  automatically. Skim the list of changes, click **Merge pull request**, then
+  do a normal release (above), noting "Merged Warcraft Recorder x.y.z" in the
+  changelog.
+- **It opens an issue** when upstream changed the same lines this fork
+  changed (usually cloud sign-in or upload code). Nothing is changed. Attach
+  this repo to a Claude session and ask it to merge upstream; it's the same
+  job as the first merge in October 2026.
+- It does nothing if upstream hasn't changed.
+
+To merge by hand instead:
 
 ```
 git remote add upstream https://github.com/aza547/wow-recorder
@@ -61,8 +77,13 @@ git fetch upstream
 git merge upstream/main
 ```
 
-Expect conflicts in files this fork changed (cloud sign-in, branding,
-`package.json`). Resolve them, build, test, release as above.
+### Why this works
+
+RoomFortyRecorder was originally a plain copy of Warcraft Recorder, with no
+shared git history, so git couldn't merge between them. The commit "Link
+history to upstream Warcraft Recorder" records the upstream commit it was
+copied from (`0566da1`, 3 Sep 2026), so merges only bring in newer changes.
+Don't squash or rebase that commit away.
 
 ## Licence
 
