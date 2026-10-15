@@ -12,14 +12,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        # Temporary: comparing GitHub's current Windows image with the older
-        # one while diagnosing the native-module install failure.
-        os: [ windows-latest, windows-2022 ]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v6
@@ -33,15 +26,15 @@ jobs:
     - name: Environment
       shell: bash
       run: |
-        echo "::notice title=Runner ${{ matrix.os }}::node $(node -v), npm $(npm -v), $(cmd //c ver | tr -d '\r' | xargs)"
+        echo "::notice title=Runner::node $(node -v), npm $(npm -v), $(cmd //c ver | tr -d '\r' | xargs)"
 
     - name: Install deps
       shell: bash
-      run: bash .github/scripts/run-logged.sh "npm ci on ${{ matrix.os }}" npm ci
+      run: bash .github/scripts/run-logged.sh "npm ci" npm ci
 
     - name: Build
       shell: bash
-      run: bash .github/scripts/run-logged.sh "Build on ${{ matrix.os }}" npm run build
+      run: bash .github/scripts/run-logged.sh "Build" npm run build
 
     # https://github.com/aza547/wow-recorder/issues/737
     # - name: Run unit tests
