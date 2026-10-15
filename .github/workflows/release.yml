@@ -37,13 +37,16 @@ jobs:
         run: node .github/scripts/check-release.mjs
 
       - name: Install deps
-        run: npm ci
+        shell: bash
+        run: bash .github/scripts/run-logged.sh "npm ci" npm ci
 
       - name: Build
-        run: npm run build
+        shell: bash
+        run: bash .github/scripts/run-logged.sh "Build" npm run build
 
       - name: Package and upload to a draft release
-        run: npx electron-builder build --win --publish always
+        shell: bash
+        run: bash .github/scripts/run-logged.sh "Package" npx electron-builder build --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
