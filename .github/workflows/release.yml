@@ -44,6 +44,29 @@ jobs:
         shell: bash
         run: bash .github/scripts/run-logged.sh "Build" npm run build
 
+      # electron-builder uploads several files in parallel, and if no release
+      # exists yet each upload can create its own draft. Creating the draft
+      # up front means every file lands in the same one.
+      - name: Create the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./release/app/package.json').version")
+          tag="v$version"
+          ids=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$tag\") | .id")
+          count=$(echo -n "$ids" | grep -c . || true)
+          if [ "$count" -gt 1 ]; then
+            echo "::error::There are $count draft releases for $tag. Delete the extras on the Releases page and run this again."
+            exit 1
+          elif [ "$count" -eq 0 ]; then
+            gh api -X POST "repos/${{ github.repository }}/releases" \
+              -f tag_name="$tag" -f name="$version" -f target_commitish="${{ github.sha }}" \
+              -F draft=true --jq '"Created draft \(.name)"'
+          else
+            echo "Reusing existing draft for $tag"
+          fi
+
       - name: Package and upload to a draft release
         shell: bash
         run: bash .github/scripts/run-logged.sh "Package" npx electron-builder build --win --publish always
@@ -52,7 +75,7 @@ jobs:
 
       # Keeps a copy on the workflow run too, in case the upload step misbehaves.
       - name: Save installer as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: installer
           path: |
