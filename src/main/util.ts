@@ -27,6 +27,7 @@ import {
   KillVideoSegment,
   ActivityStatus,
   InstantReplayData,
+  SpellTimeline,
 } from './types';
 import { VideoCategory } from '../types/VideoCategory';
 import ConfigService from 'config/ConfigService';
@@ -142,6 +143,40 @@ const getMetadataFileNameForVideo = (video: string) => {
 };
 
 /**
+ * [RoomFortyRecorder] Spell timeline sidecar: <video>.timeline.json
+ */
+const getTimelineFileNameForVideo = (video: string) => {
+  const videoFileName = path.basename(video, '.mp4');
+  const videoDirName = path.dirname(video);
+  return path.join(videoDirName, `${videoFileName}.timeline.json`);
+};
+
+const writeTimelineFile = async (
+  videoPath: string,
+  timeline: SpellTimeline,
+) => {
+  const file = getTimelineFileNameForVideo(videoPath);
+  await fspromise.writeFile(file, JSON.stringify(timeline), {
+    encoding: 'utf-8',
+  });
+};
+
+/** Returns the timeline for a local video, or null if it has none. */
+const readTimelineFile = async (
+  videoPath: string,
+): Promise<SpellTimeline | null> => {
+  try {
+    const raw = await fspromise.readFile(
+      getTimelineFileNameForVideo(videoPath),
+      'utf-8',
+    );
+    return JSON.parse(raw) as SpellTimeline;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * The Korean build of WCR had translated video categories. Now that
  * they are going to use the main build with the localisation feature,
  * this translates them back to english so we can process them. This is
@@ -211,6 +246,11 @@ const deleteVideoDisk = async (videoPath: string) => {
 
   const metadataPath = getMetadataFileNameForVideo(videoPath);
   const deletedJson = await tryUnlink(metadataPath);
+
+  // [RoomFortyRecorder] Spell timeline sidecar, if any. Missing is fine.
+  await fspromise
+    .unlink(getTimelineFileNameForVideo(videoPath))
+    .catch(() => {});
 
   return deletedJson;
 };
@@ -1284,6 +1324,9 @@ const startWatchingConfigWtf = (logPath: string, callback: () => void) => {
 
 export {
   writeMetadataFile,
+  writeTimelineFile,
+  readTimelineFile,
+  getTimelineFileNameForVideo,
   deleteVideoDisk,
   openSystemExplorer,
   fixPathWhenPackaged,

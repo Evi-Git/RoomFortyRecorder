@@ -7,6 +7,7 @@ import {
   CompleteMultiPartUploadRequestBody,
   CreateMultiPartUploadResponseBody,
   RendererVideo,
+  SpellTimeline,
   UploadQueueItem,
 } from 'main/types';
 import path from 'path';
@@ -700,6 +701,41 @@ export default class CloudClient implements StorageClient {
     // will be space for the next upload. Don't need to wait for
     // it to finish as the result doesn't impact the client.
     this.runHousekeeping();
+  }
+
+  /**
+   * [RoomFortyRecorder] Upload the spell timeline for a video.
+   */
+  public async putTimeline(videoKey: string, timeline: SpellTimeline) {
+    const guild = encodeURIComponent(this.guild);
+    const key = encodeURIComponent(videoKey);
+    const url = `${CloudClient.api}/guild/${guild}/video/${key}/timeline`;
+    const headers = { Authorization: this.authHeader };
+
+    await axios.put(url, timeline, {
+      headers,
+      validateStatus: (s) => this.validateResponseStatus(s),
+    });
+
+    console.info('[CloudClient] Uploaded timeline for', videoKey);
+  }
+
+  /**
+   * [RoomFortyRecorder] Fetch the spell timeline for a video, or null if it
+   * has none (older videos, non-raid videos).
+   */
+  public async getTimeline(videoKey: string): Promise<SpellTimeline | null> {
+    const guild = encodeURIComponent(this.guild);
+    const key = encodeURIComponent(videoKey);
+    const url = `${CloudClient.api}/guild/${guild}/video/${key}/timeline`;
+    const headers = { Authorization: this.authHeader };
+
+    const res = await axios.get(url, {
+      headers,
+      validateStatus: (s) => s === 404 || this.validateResponseStatus(s),
+    });
+
+    return res.status === 404 ? null : (res.data as SpellTimeline);
   }
 
   /**

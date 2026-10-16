@@ -402,6 +402,7 @@ export default class RetailLogHandler extends LogHandler {
   private handleSpellCastStart(line: LogLine) {
     if (this.isRaid()) {
       const raid = LogHandler.activity as RaidEncounter;
+      raid.recordTimelineCast?.(line, 0); // [RoomFortyRecorder] spell timeline
       raid.onSpellCastStart(line);
     }
   }
@@ -411,6 +412,7 @@ export default class RetailLogHandler extends LogHandler {
 
     if (this.isRaid()) {
       const raid = LogHandler.activity as RaidEncounter;
+      raid.recordTimelineCast?.(line, 1); // [RoomFortyRecorder] spell timeline
       raid.onSpellCastSuccess(line);
     }
   }

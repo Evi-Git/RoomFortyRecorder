@@ -1,4 +1,4 @@
-import { Flavour, Metadata, RaidInstanceType } from 'main/types';
+import { Flavour, Metadata, RaidInstanceType, SpellTimeline } from 'main/types';
 import Combatant from '../main/Combatant';
 import { getLocalePhrase, Language } from '../localisation/translations';
 import { instanceDifficulty, raidInstances } from '../main/constants';
@@ -46,6 +46,26 @@ export default class RaidEncounter extends Activity {
    * as there are no damage SPELL_DAMAGE events for a while due to the absorb.
    */
   private static minRetailBossHp = 100 * 10 ** 6;
+
+  /**
+   * [RoomFortyRecorder] Spell timeline: boss/enemy casts and the recording
+   * player's casts, for the timeline under the video player.
+   */
+  private static readonly maxTimelineCasts = 8000;
+
+  private timeline: SpellTimeline = {
+    v: 1,
+    sources: [],
+    spells: {},
+    casts: [],
+  };
+
+  private timelineSourceIndex = new Map<string, number>();
+
+  // NPC with the highest max HP seen this pull: almost always the boss.
+  private timelineBossNpcId = -1;
+
+  private timelineBossMaxHp = -1;
 
   public constructor(
     startDate: Date,
@@ -168,6 +188,7 @@ export default class RaidEncounter extends Activity {
       uniqueHash: this.getUniqueHash(),
       bossPercent: this.encounterProgressPercent,
       appVersion: app.getVersion(),
+      timeline: this.buildTimeline(),
     };
   }
 
@@ -199,6 +220,8 @@ export default class RaidEncounter extends Activity {
   }
 
   public onSpellDamage(spellDamageEvent: LogLine): void {
+    this.trackTimelineBoss(spellDamageEvent);
+
     if (!this.simpleEncounterProgress) {
       return;
     }
@@ -255,6 +278,100 @@ export default class RaidEncounter extends Activity {
       // Some encounters like Coiled Altar heal, don't backtrack the progress.
       this.encounterProgressPercent = updated;
     }
+  }
+
+  /**
+   * [RoomFortyRecorder] Record a cast for the spell timeline. Called by the
+   * log handler for SPELL_CAST_START (0) and SPELL_CAST_SUCCESS (1), before
+   * any encounter-specific handling.
+   */
+  public recordTimelineCast(line: LogLine, kind: 0 | 1) {
+    if (this.timeline.casts.length >= RaidEncounter.maxTimelineCasts) return;
+
+    const srcGUID = String(line.arg(1) || '');
+    const srcFlags = parseInt(line.arg(3), 16);
+    const isPlayer = Boolean(this.playerGUID) && srcGUID === this.playerGUID;
+    const isNpc =
+      srcGUID.startsWith('Creature-') || srcGUID.startsWith('Vehicle-');
+    // COMBATLOG_OBJECT_REACTION_HOSTILE
+    const isHostile = Number.isFinite(srcFlags) && (srcFlags & 0x40) !== 0;
+
+    if (!isPlayer && !(isNpc && isHostile)) return;
+
+    // Player cast starts are noise next to the successes; keep successes only.
+    if (isPlayer && kind === 0) return;
+
+    const spellId = parseInt(line.arg(9), 10);
+    if (!Number.isFinite(spellId) || spellId <= 0) return;
+
+    const seconds =
+      (RaidEncounter.preciseTime(line) - this.startDate.getTime()) / 1000;
+    if (seconds < 0) return;
+
+    let sourceKey = 'player';
+    let npcId: number | undefined;
+
+    if (!isPlayer) {
+      npcId = this.getNpcIdFromGuid(srcGUID);
+      sourceKey = `npc-${npcId}`;
+    }
+
+    let sourceIndex = this.timelineSourceIndex.get(sourceKey);
+
+    if (sourceIndex === undefined) {
+      sourceIndex = this.timeline.sources.length;
+      this.timelineSourceIndex.set(sourceKey, sourceIndex);
+      this.timeline.sources.push({
+        name: String(line.arg(2) || 'Unknown').split('-')[0],
+        kind: isPlayer ? 'player' : 'enemy',
+        npcId,
+      });
+    }
+
+    this.timeline.spells[String(spellId)] ??= String(line.arg(10) || spellId);
+    this.timeline.casts.push([
+      Math.round(seconds * 10),
+      spellId,
+      sourceIndex,
+      kind,
+    ]);
+  }
+
+  private trackTimelineBoss(line: LogLine) {
+    const guid = String(line.arg(5) || '');
+    if (!guid.startsWith('Creature-') && !guid.startsWith('Vehicle-')) return;
+    const maxHp = parseInt(line.arg(15), 10);
+
+    if (Number.isFinite(maxHp) && maxHp > this.timelineBossMaxHp) {
+      this.timelineBossMaxHp = maxHp;
+      this.timelineBossNpcId = this.getNpcIdFromGuid(guid);
+    }
+  }
+
+  private buildTimeline(): SpellTimeline | undefined {
+    if (this.timeline.casts.length === 0) return undefined;
+    const bossNpcId =
+      this.bossUnitId > 0 ? this.bossUnitId : this.timelineBossNpcId;
+
+    return {
+      ...this.timeline,
+      sources: this.timeline.sources.map((source) =>
+        source.kind === 'enemy' && source.npcId === bossNpcId
+          ? { ...source, kind: 'boss' }
+          : source,
+      ),
+    };
+  }
+
+  /**
+   * LogLine.date() drops milliseconds; the timeline wants them. Timestamps
+   * look like "7/27/2024 21:39:13.0951", newer ones may end in a timezone
+   * offset like "13.095-4".
+   */
+  private static preciseTime(line: LogLine) {
+    const base = line.date().getTime();
+    const fraction = /:\d{2}\.(\d+)/.exec(line.timestamp);
+    return fraction ? base + parseFloat(`0.${fraction[1]}`) * 1000 : base;
   }
 
   /* eslint-disable @typescript-eslint/no-unused-vars */

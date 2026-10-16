@@ -14,6 +14,8 @@ import {
 } from './types';
 import {
   writeMetadataFile,
+  writeTimelineFile,
+  readTimelineFile,
   getMetadataForVideo,
   rendererVideoToMetadata,
   getFileInfo,
@@ -271,6 +273,20 @@ export default class VideoProcessQueue {
       const stat = await fspromise.stat(videoPath);
       data.metadata.size = stat.size;
 
+      // [RoomFortyRecorder] The spell timeline gets its own file so it never
+      // bloats the metadata that every client polls.
+      const { timeline } = data.metadata;
+      delete data.metadata.timeline;
+
+      if (timeline) {
+        await writeTimelineFile(videoPath, timeline).catch((error) =>
+          console.warn(
+            '[VideoProcessQueue] Failed to write timeline',
+            String(error),
+          ),
+        );
+      }
+
       await writeMetadataFile(videoPath, data.metadata);
 
       const readyToUpload = await CloudClient.getInstance().ready();
@@ -349,6 +365,21 @@ export default class VideoProcessQueue {
       }
 
       await client.postVideo(cloudMetadata);
+
+      // [RoomFortyRecorder] Spell timeline, if this pull has one. A failure
+      // here only loses the timeline, never the video.
+      const timeline = await readTimelineFile(item.path);
+
+      if (timeline) {
+        await client
+          .putTimeline(cloudMetadata.videoKey, timeline)
+          .catch((error) =>
+            console.warn(
+              '[VideoProcessQueue] Timeline upload failed',
+              String(error),
+            ),
+          );
+      }
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const msg = '[CloudClient] Axios error processing video';

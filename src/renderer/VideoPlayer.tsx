@@ -62,6 +62,8 @@ import Separator from './components/Separator/Separator';
 import { toast } from './components/Toast/useToast';
 import { Phrase } from 'localisation/phrases';
 import { VideoCategory } from 'types/VideoCategory';
+import { SpellTimeline as SpellTimelineData } from 'main/types';
+import SpellTimeline from './components/SpellTimeline/SpellTimeline';
 
 interface IProps {
   videos: RendererVideo[];
@@ -168,6 +170,35 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
 
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [duration, setDuration] = useState<number>(0);
+
+  // [RoomFortyRecorder] Spell timeline for raid pulls (null if none).
+  const [spellTimeline, setSpellTimeline] = useState<SpellTimelineData | null>(
+    null,
+  );
+  const timelineVideo = instantReplay ? undefined : videos[0];
+
+  useEffect(() => {
+    setSpellTimeline(null);
+
+    if (!timelineVideo || timelineVideo.category !== VideoCategory.Raids) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    ipc
+      .invoke('getTimeline', [timelineVideo])
+      .then((t) => {
+        if (!cancelled && t) setSpellTimeline(t as SpellTimelineData);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+    // Refetch only when a different video is selected.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timelineVideo?.uniqueId]);
 
   // In clipping mode, the user controls three thumbs. The regular thumb
   // that controls the video position, and a start and stop thumb to
@@ -1538,8 +1569,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   return (
-    <div id="player-and-controls" className="w-full h-full">
-      <div style={{ height: 'calc(100% - 40px)' }}>
+    <div id="player-and-controls" className="w-full h-full flex flex-col">
+      <div className="flex-1 min-h-0">
         <div className="w-full h-full relative">
           <div className={playerDivClass}>{srcs.map(renderPlayer)}</div>
           {isDrawingEnabled && renderDrawingOverlay()}
@@ -1547,7 +1578,21 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
         </div>
       </div>
 
-      {renderControls()}
+      {spellTimeline && (
+        <SpellTimeline
+          timeline={spellTimeline}
+          duration={duration}
+          progress={progress}
+          onSeek={(seconds) => {
+            seekAllPlayers(seconds);
+            setProgress(seconds);
+          }}
+        />
+      )}
+
+      <div className="shrink-0" style={{ height: 40 }}>
+        {renderControls()}
+      </div>
     </div>
   );
 });

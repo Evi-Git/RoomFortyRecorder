@@ -102,6 +102,25 @@ enum UnitFlags {
  * Type that describes the player deaths that are detected and stored
  * with the metadata for a video.
  */
+/**
+ * [RoomFortyRecorder] Spell timeline for a raid pull, from the combat log.
+ * Stored next to the video (<video>.timeline.json) and on the guild server,
+ * never inside the video metadata (which every client polls).
+ */
+type TimelineSource = {
+  name: string;
+  kind: 'player' | 'boss' | 'enemy';
+  npcId?: number;
+};
+
+type SpellTimeline = {
+  v: 1;
+  sources: TimelineSource[];
+  spells: Record<string, string>; // spellId -> spell name
+  // [tenths of a second since the pull started, spellId, source index, 0 = cast start | 1 = cast success]
+  casts: [number, number, number, 0 | 1][];
+};
+
 type PlayerDeathType = {
   name: string;
   specId: number;
@@ -205,6 +224,7 @@ type Metadata = {
   difficulty?: string;
   player?: RawCombatant;
   deaths?: PlayerDeathType[];
+  timeline?: SpellTimeline; // Only in transit; written to its own file.
   upgradeLevel?: number;
   mapID?: number;
   challengeModeTimeline?: RawChallengeModeTimelineSegment[];
@@ -722,6 +742,8 @@ export {
   CloudConfig,
   DeathMarkers,
   VideoMarker,
+  SpellTimeline,
+  TimelineSource,
   MarkerColors,
   MicStatus,
   ErrorReport,

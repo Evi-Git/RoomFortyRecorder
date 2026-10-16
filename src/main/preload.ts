@@ -56,7 +56,8 @@ export type Channels =
   | 'getSensibleEncoderDefault'
   | 'liveStreamToggle'
   | 'liveStreamGetState'
-  | 'liveStreamState';
+  | 'liveStreamState'
+  | 'getTimeline';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {

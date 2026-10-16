@@ -57,6 +57,11 @@ const STORAGE = path.resolve(
   process.env.GUILD_CLOUD_STORAGE_PATH || path.join(SERVER_DIR, 'data'),
 );
 const STATE_FILE = path.join(STORAGE, 'state.json');
+// Spell timelines (one small JSON file per video). Kept here rather than in
+// state.json because every client polls the full video list every 30s.
+const TIMELINE_DIR = path.join(STORAGE, 'timelines');
+const timelineFile = (key) => path.join(TIMELINE_DIR, `${key}.json`);
+const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 
 const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1000');
 const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
@@ -807,7 +812,25 @@ const housekeep = async () => {
   }
 
   if (changed) await persist();
+  await pruneTimelines();
   return usage;
+};
+
+// Remove timeline files whose video is gone (deleted, evicted or missing).
+const pruneTimelines = async () => {
+  let files;
+  try {
+    files = await fsp.readdir(TIMELINE_DIR);
+  } catch {
+    return; // No timelines yet.
+  }
+
+  const keys = new Set(state.videos.map((video) => video.videoKey));
+  await Promise.all(
+    files
+      .filter((file) => file.endsWith('.json') && !keys.has(file.slice(0, -5)))
+      .map((file) => fsp.unlink(path.join(TIMELINE_DIR, file)).catch(() => {})),
+  );
 };
 
 const chatFor = (correlator) => {
@@ -1049,6 +1072,40 @@ const handleApi = async (req, res, url, parts) => {
       await housekeep();
       return json(res, 200, {});
     }
+  }
+
+  // Spell timeline for a video: PUT by the uploader, GET by viewers.
+  if (parts[3] === 'video' && parts[4] && parts[5] === 'timeline') {
+    const key = parts[4];
+    if (!isSafeKey(key)) return fail(res, 400, 'Invalid video key');
+
+    if (req.method === 'GET') {
+      try {
+        const body = await fsp.readFile(timelineFile(key));
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': body.length,
+        });
+        return res.end(body);
+      } catch {
+        return fail(res, 404, 'No timeline for this video');
+      }
+    }
+
+    if (req.method === 'PUT') {
+      if (!state.videos.some((video) => video.videoKey === key)) {
+        return fail(res, 404, 'Video not found');
+      }
+      const body = await readBody(req, MAX_TIMELINE_BYTES);
+      if (!body || body.v !== 1 || !Array.isArray(body.casts)) {
+        return fail(res, 400, 'Invalid timeline');
+      }
+      await fsp.mkdir(TIMELINE_DIR, { recursive: true });
+      await fsp.writeFile(timelineFile(key), JSON.stringify(body));
+      return json(res, 200, {});
+    }
+
+    return fail(res, 405, 'Method not allowed');
   }
 
   if (parts[3] === 'video' && parts[4] && parts[5] === 'size') {

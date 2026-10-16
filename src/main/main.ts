@@ -23,8 +23,14 @@ import {
   runFirstTimeSetupActionsObs,
   runFirstTimeSetupActionsNoObs,
   createDiagsBundle,
+  readTimelineFile,
 } from './util';
-import { OurDisplayType, SoundAlerts, VideoPlayerSettings } from './types';
+import {
+  OurDisplayType,
+  RendererVideo,
+  SoundAlerts,
+  VideoPlayerSettings,
+} from './types';
 import ConfigService from '../config/ConfigService';
 import Manager from './Manager';
 import AppUpdater from './AppUpdater';
@@ -481,6 +487,24 @@ ipcMain.handle('signInWithDiscord', async () => {
 
 ipcMain.handle('signOutDiscord', async () => {
   await CloudClient.getInstance().signOutDiscord();
+});
+
+// [RoomFortyRecorder] Spell timeline for a video (raid pulls only). Returns
+// null when the video has none, e.g. older recordings.
+ipcMain.handle('getTimeline', async (_event, args) => {
+  const video = args[0] as RendererVideo & { videoKey?: string };
+
+  try {
+    if (video.cloud) {
+      const key = video.videoKey || `${video.videoName}.mp4`;
+      return await CloudClient.getInstance().getTimeline(key);
+    }
+
+    return await readTimelineFile(video.videoSource);
+  } catch (error) {
+    console.warn('[Main] Failed to get timeline', String(error));
+    return null;
+  }
 });
 
 // [RoomFortyRecorder] Live streaming to the guild.
