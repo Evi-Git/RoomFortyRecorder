@@ -34,6 +34,7 @@ import CloudClient from 'storage/CloudClient';
 import DiskClient from 'storage/DiskClient';
 import Poller from 'utils/Poller';
 import Recorder from './Recorder';
+import LiveStreamer from './LiveStreamer';
 import AsyncQueue from 'utils/AsyncQueue';
 import { getApplicationLogDir, setupApplicationLogging } from './logging';
 
@@ -481,6 +482,20 @@ ipcMain.handle('signInWithDiscord', async () => {
 ipcMain.handle('signOutDiscord', async () => {
   await CloudClient.getInstance().signOutDiscord();
 });
+
+// [RoomFortyRecorder] Live streaming to the guild.
+ipcMain.handle('liveStreamToggle', async () => {
+  await LiveStreamer.getInstance().toggle();
+  return LiveStreamer.getInstance().getState();
+});
+
+ipcMain.handle('liveStreamGetState', () =>
+  LiveStreamer.getInstance().getState(),
+);
+
+LiveStreamer.getInstance().on('state', (state) =>
+  send('liveStreamState', state),
+);
 
 ipcMain.handle('getOrCreateChatCorrelator', async (event, video) => {
   const client = CloudClient.getInstance();

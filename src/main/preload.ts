@@ -53,7 +53,10 @@ export type Channels =
   | 'reconfigureCloud'
   | 'signInWithDiscord'
   | 'signOutDiscord'
-  | 'getSensibleEncoderDefault';
+  | 'getSensibleEncoderDefault'
+  | 'liveStreamToggle'
+  | 'liveStreamGetState'
+  | 'liveStreamState';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {

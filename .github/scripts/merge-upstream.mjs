@@ -5,7 +5,8 @@
 //   CHANGELOG.md                 keep ours (upstream notes go in the PR text)
 //   .github/workflows/*          keep ours
 //   release/app/package.json     take upstream's dependencies, keep our
-//                                name / version / description / author / licence
+//                                name / version / description / author / licence /
+//                                scripts (our install scripts apply the engine patch)
 //   release/app/package-lock.json  same idea for the lockfile header
 //
 // Exit codes: 0 = merged cleanly (not committed), 3 = nothing new upstream,
@@ -29,7 +30,7 @@ console.log(`Upstream has ${ahead} new commit(s). Merging ${ref}...`);
 
 // Snapshot our identity fields before merging.
 const ourApp = JSON.parse(fs.readFileSync('release/app/package.json', 'utf8'));
-const identity = ['name', 'version', 'description', 'author', 'license'];
+const identity = ['name', 'version', 'description', 'author', 'license', 'scripts'];
 
 try {
   git('merge', '--no-commit', '--no-ff', ref);

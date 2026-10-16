@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - Unreleased
+## [1.5.0] - Unreleased
+### Added
+- **Go live**: stream your POV to the guild in 1080p with about half a second of delay. Turn it on with the new button in the sidebar; it stops by itself when WoW closes. Uses your Discord sign-in, no extra passwords.
+
+## [1.4.0] - 2026-10-15
 ### Changed
 - Updates are now published from the new maintainer's GitHub repository. Raiders on 1.3.1 or earlier need to install 1.4.0 manually once; after that it auto-updates as before.
 - Guild cloud server and Cloudflare Worker sources (R2 storage) now live in `guild-cloud-server/`.

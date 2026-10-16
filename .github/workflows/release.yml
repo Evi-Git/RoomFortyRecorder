@@ -40,6 +40,10 @@ jobs:
         shell: bash
         run: bash .github/scripts/run-logged.sh "npm ci" npm ci
 
+      - name: Check the streaming engine patch was applied
+        shell: bash
+        run: bash .github/scripts/run-logged.sh "Engine patch check" node .erb/scripts/patch-noobs.js --verify
+
       - name: Build
         shell: bash
         run: bash .github/scripts/run-logged.sh "Build" npm run build

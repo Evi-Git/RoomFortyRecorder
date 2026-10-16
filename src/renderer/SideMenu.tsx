@@ -41,6 +41,7 @@ import Menu from './components/Menu';
 import Separator from './components/Separator/Separator';
 import TestButton from './TestButton';
 import DiscordButton from './DiscordButton';
+import LiveButton from './LiveButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
@@ -324,9 +325,10 @@ const SideMenu = (props: IProps) => {
         appState={appState}
         setPreviewEnabled={setPreviewEnabled}
       />
+      <LiveButton />
 
       <ScrollArea
-        className="w-full h-[calc(100%-80px)]"
+        className="w-full h-[calc(100%-124px)]"
         withScrollIndicators={false}
       >
         <>

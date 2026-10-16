@@ -1,6 +1,6 @@
 {
   "name": "RoomFortyRecorder",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "RoomFortyRecorder",
   "main": "./dist/main/main.js",
   "author": {
@@ -9,11 +9,11 @@
   "scripts": {
     "electron-rebuild": "node -r ts-node/register ../../.erb/scripts/electron-rebuild.js",
     "link-modules": "node -r ts-node/register ../../.erb/scripts/link-modules.ts",
-    "postinstall": "npm run electron-rebuild && npm run link-modules"
+    "postinstall": "npm run electron-rebuild && node ../../.erb/scripts/patch-noobs.js && npm run link-modules"
   },
   "dependencies": {
     "atomic-queue": "^5.0.4",
-    "noobs": "^0.0.205",
+    "noobs": "0.0.205",
     "uiohook-napi": "^1.5.2"
   },
   "license": "GPL-2.0-only"

@@ -66,6 +66,18 @@ const ADMIN_SECRET = process.env.GUILD_CLOUD_ADMIN_SECRET || '';
 // metadata). No video bytes are served from here anymore.
 const PUBLIC_URL = process.env.GUILD_CLOUD_PUBLIC_URL?.replace(/\/+$/, '');
 
+// Live streaming (MediaMTX). Raiders publish to <LIVE_URL>/rf/<name>/whip
+// using their normal Discord session; MediaMTX asks this server to check it
+// (POST /internal/mediamtx-auth). Defaults to live.<public host>.
+const LIVE_URL = (
+  process.env.GUILD_CLOUD_LIVE_URL ||
+  (PUBLIC_URL ? PUBLIC_URL.replace('://', '://live.') : '')
+).replace(/\/+$/, '');
+// Optional: lets someone stream from plain OBS (Bearer token raider:<password>).
+const LIVE_RAIDER_PASSWORD = process.env.GUILD_CLOUD_LIVE_RAIDER_PASSWORD || '';
+// Optional: lets someone outside the house watch (browser login viewer/<password>).
+const LIVE_VIEWER_PASSWORD = process.env.GUILD_CLOUD_LIVE_VIEWER_PASSWORD || '';
+
 // The deployed Cloudflare Worker that verifies download tokens and streams
 // from R2 -- e.g. https://roomforty-r2-download.<subdomain>.workers.dev, or
 // a custom domain routed to it. This is where every signed download URL
@@ -185,6 +197,24 @@ const constantTimeEqual = (left, right) => {
 const oauthStates = new Map();
 const loginCodes = new Map();
 
+// Returns the session for a valid, unrevoked Discord session token, else null.
+const sessionFromToken = (token) => {
+  try {
+    const session = decodeToken(token, 'session');
+    if (session.guild !== GUILD || !session.userName) return null;
+    const revokedAt = state.revokedUsers[session.discordId];
+    if (
+      session.iat < state.revokedAllBefore ||
+      (revokedAt && session.iat < revokedAt)
+    ) {
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+};
+
 const authorized = (req, res) => {
   const match = /^Bearer\s+(.+)$/.exec(req.headers.authorization || '');
 
@@ -194,26 +224,84 @@ const authorized = (req, res) => {
     return false;
   }
 
-  try {
-    const session = decodeToken(match[1], 'session');
-    if (session.guild !== GUILD || !session.userName) {
-      throw new Error('Invalid session');
-    }
-    const revokedAt = state.revokedUsers[session.discordId];
-    if (
-      session.iat < state.revokedAllBefore ||
-      (revokedAt && session.iat < revokedAt)
-    ) {
-      throw new Error('Session revoked');
-    }
-    req.cloudUserName = session.userName;
-    req.cloudUserId = session.discordId;
-    return true;
-  } catch {
+  const session = sessionFromToken(match[1]);
+  if (!session) {
     res.setHeader('WWW-Authenticate', 'Bearer realm="Guild Cloud"');
     fail(res, 401, 'Invalid or expired Discord session');
     return false;
   }
+
+  req.cloudUserName = session.userName;
+  req.cloudUserId = session.discordId;
+  return true;
+};
+
+// Stream path name for a raider: their Discord name, made URL-safe. Falls
+// back to part of their Discord ID if the name has no usable characters.
+const liveStreamName = (userName, discordId) => {
+  const slug = String(userName || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+  return slug || `raider-${String(discordId || '').slice(-6) || 'unknown'}`;
+};
+
+const isHomeNetworkIp = (ip = '') => {
+  const v4 = String(ip).replace(/^::ffff:/, '');
+  return (
+    v4 === '127.0.0.1' ||
+    v4 === '::1' ||
+    /^10\./.test(v4) ||
+    /^192\.168\./.test(v4) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(v4)
+  );
+};
+
+const passwordMatches = (given, expected) =>
+  Boolean(expected) && constantTimeEqual(String(given || ''), expected);
+
+// MediaMTX calls this for every publish/read. 2xx = allowed.
+const handleMediamtxAuth = async (req, res) => {
+  // Only MediaMTX on this PC may ask. Requests that came through Caddy carry
+  // X-Forwarded-For and are refused.
+  const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+  if (!local || req.headers['x-forwarded-for']) return text(res, 404, 'Not found');
+
+  const body = await readBody(req, 16 * 1024);
+  const { action, path: streamPath = '', ip, user, password, token } = body || {};
+  const deny = (why) => {
+    console.info(`[live] Denied ${action} ${streamPath} from ${ip}: ${why}`);
+    return text(res, 401, 'Unauthorized');
+  };
+
+  if (!/^rf\/[A-Za-z0-9_-]+$/.test(streamPath)) return deny('bad path');
+
+  const session = token ? sessionFromToken(token) : null;
+
+  if (action === 'publish') {
+    if (session) {
+      const expected = `rf/${liveStreamName(session.userName, session.discordId)}`;
+      if (streamPath === expected) return text(res, 200, 'OK');
+      return deny(`${session.userName} may only publish to ${expected}`);
+    }
+    if (user === 'raider' && passwordMatches(password, LIVE_RAIDER_PASSWORD)) {
+      return text(res, 200, 'OK');
+    }
+    return deny('no valid session or raider password');
+  }
+
+  if (action === 'read' || action === 'playback') {
+    if (isHomeNetworkIp(ip)) return text(res, 200, 'OK');
+    if (session) return text(res, 200, 'OK');
+    if (user === 'viewer' && passwordMatches(password, LIVE_VIEWER_PASSWORD)) {
+      return text(res, 200, 'OK');
+    }
+    return deny('remote viewer without login');
+  }
+
+  return deny(`action ${action} not allowed`);
 };
 
 const encodeToken = (payload) => {
@@ -883,6 +971,16 @@ const handleApi = async (req, res, url, parts) => {
 
   if (!authorized(req, res)) return;
 
+  // Where this raider's app should send its live stream.
+  if (parts[1] === 'live' && parts[2] === 'publish' && req.method === 'GET') {
+    if (!LIVE_URL) return fail(res, 404, 'Live streaming is not configured');
+    const streamName = liveStreamName(req.cloudUserName, req.cloudUserId);
+    return json(res, 200, {
+      streamName,
+      whipUrl: `${LIVE_URL}/rf/${streamName}/whip`,
+    });
+  }
+
   if (parts[1] === 'user' && parts[2] === 'affiliations') {
     return json(res, 200, [
       {
@@ -1238,6 +1336,9 @@ const requestHandler = async (req, res) => {
   }
 
   if (parts[0] === 'health') return json(res, 200, { ok: true });
+  if (parts[0] === 'internal' && parts[1] === 'mediamtx-auth' && req.method === 'POST') {
+    return handleMediamtxAuth(req, res);
+  }
   // Note: no /upload or /download routes anymore -- uploads go straight to
   // R2 via a presigned URL, and downloads go straight to the Worker. This
   // server never touches video bytes.

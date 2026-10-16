@@ -56,6 +56,7 @@ import noobs, {
 import { getNativeWindowHandle, send } from './main';
 import { ipcMain } from 'electron';
 import Poller from 'utils/Poller';
+import LiveStreamer from './LiveStreamer';
 import AsyncQueue from 'utils/AsyncQueue';
 import assert from 'assert';
 import { isHighRes } from 'renderer/rendererutils';
@@ -601,6 +602,9 @@ export default class Recorder extends EventEmitter {
       console.error('[Recorder] OBS must be offline to reconfigure base');
       throw new Error('[Recorder] OBS must be offline to reconfigure base');
     }
+
+    // [RoomFortyRecorder] libobs can't reset video while a live stream runs.
+    await LiveStreamer.getInstance().stopAndWait('Recording settings changed');
 
     this.resolution = obsOutputResolution as keyof typeof obsResolutions;
     const { height, width } = obsResolutions[this.resolution];
@@ -1240,6 +1244,12 @@ export default class Recorder extends EventEmitter {
     // The rest of the signals here are not as frequent as volmeter signals
     // so just log them all.
     console.info('[Recorder] Got signal', signal);
+
+    if (signal.type === 'stream') {
+      // [RoomFortyRecorder] Live stream signals: never recording events.
+      LiveStreamer.getInstance().handleSignal(signal);
+      return;
+    }
 
     if (signal.type === 'source') {
       // A source has sporadically changed dimensions. This typically happens

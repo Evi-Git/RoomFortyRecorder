@@ -18,6 +18,7 @@ import {
 } from './util';
 import { VideoCategory } from '../types/VideoCategory';
 import Poller from '../utils/Poller';
+import LiveStreamer from './LiveStreamer';
 import RetailLogHandler from '../parsing/RetailLogHandler';
 import Recorder from './Recorder';
 import ConfigService from '../config/ConfigService';
@@ -443,6 +444,9 @@ export default class Manager {
    */
   private async onWowStopped() {
     console.info('[Manager] Detected WoW not running');
+
+    // [RoomFortyRecorder] Kill switch: never keep streaming once WoW closes.
+    LiveStreamer.getInstance().stop('WoW closed');
     const inActivity = Boolean(LogHandler.activity);
 
     if (inActivity) {
