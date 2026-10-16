@@ -69,33 +69,50 @@ export const getSettings = (): ConfigurationSchema => {
     cloudUpload: getConfigValue<boolean>('cloudUpload'),
     cloudUploadRetail: getConfigValue<boolean>('cloudUploadRetail'),
     cloudUploadRateLimit: getConfigValue<boolean>('cloudUploadRateLimit'),
-    cloudUploadRateLimitMbps: getConfigValue<number>('cloudUploadRateLimitMbps'),
+    cloudUploadRateLimitMbps: getConfigValue<number>(
+      'cloudUploadRateLimitMbps',
+    ),
     cloudSessionToken: getConfigValue<string>('cloudSessionToken'),
+    liveResolution: getConfigValue<string>('liveResolution'),
+    liveFps: getConfigValue<string>('liveFps'),
+    liveBitrate: getConfigValue<number>('liveBitrate'),
     cloudDiscordName: getConfigValue<string>('cloudDiscordName'),
     cloudUploadDungeons: getConfigValue<boolean>('cloudUploadDungeons'),
     cloudUploadRaids: getConfigValue<boolean>('cloudUploadRaids'),
-    cloudUploadRaidMinDifficulty: getConfigValue<string>('cloudUploadRaidMinDifficulty'),
-    cloudUploadDungeonMinLevel: getConfigValue<number>('cloudUploadDungeonMinLevel'),
+    cloudUploadRaidMinDifficulty: getConfigValue<string>(
+      'cloudUploadRaidMinDifficulty',
+    ),
+    cloudUploadDungeonMinLevel: getConfigValue<number>(
+      'cloudUploadDungeonMinLevel',
+    ),
     cloudUploadClips: getConfigValue<boolean>('cloudUploadClips'),
     language: getConfigValue<string>('language'),
     hideEmptyCategories: getConfigValue<boolean>('hideEmptyCategories'),
     hardwareAcceleration: getConfigValue<boolean>('hardwareAcceleration'),
-    recordCurrentRaidEncountersOnly: getConfigValue<boolean>('recordCurrentRaidEncountersOnly'),
-    uploadCurrentRaidEncountersOnly: getConfigValue<boolean>('uploadCurrentRaidEncountersOnly'),
+    recordCurrentRaidEncountersOnly: getConfigValue<boolean>(
+      'recordCurrentRaidEncountersOnly',
+    ),
+    uploadCurrentRaidEncountersOnly: getConfigValue<boolean>(
+      'uploadCurrentRaidEncountersOnly',
+    ),
     forceSdr: getConfigValue<boolean>('forceSdr'),
     videoSourceScale: getConfigValue<number>('videoSourceScale'),
     videoSourceXPosition: getConfigValue<number>('videoSourceXPosition'),
     videoSourceYPosition: getConfigValue<number>('videoSourceYPosition'),
     manualRecord: getConfigValue<boolean>('manualRecord'),
     manualRecordHotKey: getConfigValue<number>('manualRecordHotKey'),
-    manualRecordHotKeyModifiers: getConfigValue<string>('manualRecordHotKeyModifiers'),
+    manualRecordHotKeyModifiers: getConfigValue<string>(
+      'manualRecordHotKeyModifiers',
+    ),
     manualRecordSoundAlert: getConfigValue<boolean>('manualRecordSoundAlert'),
     manualRecordUpload: getConfigValue<boolean>('manualRecordUpload'),
     firstTimeSetup: getConfigValue<boolean>('firstTimeSetup'),
     chatUserNameAgreed: getConfigValue<string>('chatUserNameAgreed'),
     validateLogPaths: getConfigValue<boolean>('validateLogPaths'),
     validateNtfs: getConfigValue<boolean>('validateNtfs'),
-    characterUploadFilters: getConfigValue<CharacterFilter[]>('characterUploadFilters'),
+    characterUploadFilters: getConfigValue<CharacterFilter[]>(
+      'characterUploadFilters',
+    ),
     /* eslint-enable prettier/prettier */
   };
 

@@ -742,7 +742,7 @@ Napi::Value ObsStartStream(const Napi::CallbackInfo& info) {
     return info.Env().Undefined();
   }
 
-  bool valid = info.Length() == 6 &&
+  bool valid = (info.Length() == 6 || (info.Length() == 7 && info[6].IsNumber())) &&
     info[0].IsString() && // WHIP server URL
     info[1].IsString() && // Bearer token
     info[2].IsString() && // Video encoder ID
@@ -761,9 +761,11 @@ Napi::Value ObsStartStream(const Napi::CallbackInfo& info) {
   obs_data_t* settings = napi_to_data(info[3].As<Napi::Object>());
   uint32_t width = info[4].As<Napi::Number>().Uint32Value();
   uint32_t height = info[5].As<Napi::Number>().Uint32Value();
+  uint32_t fpsDivisor = info.Length() == 7 ? info[6].As<Napi::Number>().Uint32Value() : 1;
+  if (fpsDivisor < 1) fpsDivisor = 1;
 
   try {
-    obs->startStreaming(server, token, encoder, settings, width, height);
+    obs->startStreaming(server, token, encoder, settings, width, height, fpsDivisor);
   } catch (const std::exception& e) {
     Napi::Error::New(info.Env(), e.what()).ThrowAsJavaScriptException();
   }

@@ -195,6 +195,7 @@ interface Noobs {
     encoderSettings: ObsData,
     width: number, // 0 = canvas width (only ever downscales)
     height: number, // 0 = canvas height
+    fpsDivisor?: number, // 2 = half the recording frame rate
   ): void;
   StopStream(): void;
   GetStreamStatus(): { active: boolean; bytes: number };

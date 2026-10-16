@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - Unreleased
+### Added
+- **Go live quality** (gear next to Go live): resolution (720p to 1440p, or same as recording), frame rate (same as recording or half) and bitrate (3-20 Mbps). Applies the next time you go live; recordings are unaffected.
+- Watch live: **Lowest delay** mode (default) shows the picture as soon as it arrives instead of holding it back to match the game audio. Click it to switch to **Audio sync**.
+
+### Fixed
+- Watch live: the controls were hidden under the title bar.
+- Watch live: the buffer figure now shows the current value instead of the average since the stream started.
+
 ## [1.7.0] - Unreleased
 ### Added
 - **Watch live** in the app: a new sidebar page lists who is live and plays their POV in the app (click a name or press 1-9; F for fullscreen, Esc to stop). Only Discord roles set on the guild server can watch (Raider+ and Officer by default); everyone can still go live.

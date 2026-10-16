@@ -26,8 +26,8 @@ export type LiveState = {
   error?: string;
 };
 
-const STREAM_HEIGHT = 1080;
-const BITRATE_KBPS = 7000;
+const DEFAULT_HEIGHT = 1080;
+const DEFAULT_BITRATE_KBPS = 7000;
 
 export default class LiveStreamer extends EventEmitter {
   private static instance: LiveStreamer;
@@ -100,17 +100,32 @@ export default class LiveStreamer extends EventEmitter {
         this.cfg.get<string>('obsRecEncoder'),
         noobs.ListVideoEncoders(),
       );
-      const settings = LiveStreamer.encoderSettings(encoder);
-      const { width, height } = LiveStreamer.outputSize();
+      const bitrate =
+        this.cfg.get<number>('liveBitrate') || DEFAULT_BITRATE_KBPS;
+      const settings = LiveStreamer.encoderSettings(encoder, bitrate);
+      const { width, height } = LiveStreamer.outputSize(
+        this.cfg.get<string>('liveResolution'),
+      );
+      const fpsDivisor = this.cfg.get<string>('liveFps') === 'half' ? 2 : 1;
 
       console.info('[LiveStreamer] Starting stream', {
         streamName,
         encoder,
         width,
         height,
+        bitrate,
+        fpsDivisor,
       });
       this.state.streamName = streamName;
-      noobs.StartStream(whipUrl, token, encoder, settings, width, height);
+      noobs.StartStream(
+        whipUrl,
+        token,
+        encoder,
+        settings,
+        width,
+        height,
+        fpsDivisor,
+      );
       // The result arrives as a "stream-start" or "stream-stop" signal.
     } catch (error) {
       const message = LiveStreamer.describeError(error);
@@ -237,10 +252,13 @@ export default class LiveStreamer extends EventEmitter {
   }
 
   /** Constant bitrate, 1s keyframes (fast joins), no B-frames (WebRTC). */
-  public static encoderSettings(encoder: string): ObsData {
+  public static encoderSettings(
+    encoder: string,
+    bitrate = DEFAULT_BITRATE_KBPS,
+  ): ObsData {
     const base: ObsData = {
       rate_control: 'CBR',
-      bitrate: BITRATE_KBPS,
+      bitrate,
       keyint_sec: 1,
       bf: 0,
     };
@@ -272,17 +290,21 @@ export default class LiveStreamer extends EventEmitter {
     };
   }
 
-  /** Downscale to 1080p if the canvas is bigger; 0x0 means "canvas size". */
-  public static outputSize() {
+  /**
+   * Downscale to the chosen height (720/900/1080/1440) if the canvas is
+   * bigger; "source" or a smaller canvas streams at canvas size (0x0).
+   */
+  public static outputSize(resolution?: string) {
     const { canvasWidth, canvasHeight } = noobs.GetPreviewInfo();
+    const target =
+      resolution === 'source' ? 0 : Number(resolution) || DEFAULT_HEIGHT;
 
-    if (!canvasHeight || canvasHeight <= STREAM_HEIGHT) {
+    if (!target || !canvasHeight || canvasHeight <= target) {
       return { width: 0, height: 0 };
     }
 
-    const width =
-      Math.round((canvasWidth * STREAM_HEIGHT) / canvasHeight / 2) * 2;
-    return { width, height: STREAM_HEIGHT };
+    const width = Math.round((canvasWidth * target) / canvasHeight / 2) * 2;
+    return { width, height: target };
   }
 
   private static describeError(error: unknown): string {

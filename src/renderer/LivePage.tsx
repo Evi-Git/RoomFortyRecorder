@@ -77,6 +77,24 @@ const liveFor = (since: string | null) => {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
+/**
+ * MediaMTX puts audio and video in one stream, so the player holds video
+ * back to line up with the game audio (OBS's audio usually runs a little
+ * behind). Giving the audio its own stream id turns that off: the picture
+ * shows as soon as it arrives, and the game audio may trail slightly.
+ */
+const decoupleAudio = (sdp: string) =>
+  sdp
+    .split(/(?=^m=)/m)
+    .map((section) =>
+      section.startsWith('m=audio')
+        ? section
+            .replace(/^a=msid:\S+/gm, 'a=msid:rf-audio')
+            .replace(/(^a=ssrc:\d+ (?:msid|mslabel|cname):)\S+/gm, '$1rf-audio')
+        : section,
+    )
+    .join('');
+
 const waitForIce = (pc: RTCPeerConnection) =>
   new Promise<void>((resolve) => {
     if (pc.iceGatheringState === 'complete') {
@@ -112,6 +130,13 @@ const LivePage: React.FC = () => {
   const listRef = React.useRef<LiveList | null>(null);
   const lastBytesRef = React.useRef<{ bytes: number; at: number } | null>(null);
   const lastProgressRef = React.useRef(0);
+  const lastBufferRef = React.useRef<{ delay: number; count: number } | null>(
+    null,
+  );
+  const [lipSync, setLipSync] = React.useState(
+    store.get('rf-live-lipsync') === 'true',
+  );
+  const lipSyncRef = React.useRef(lipSync);
 
   React.useEffect(() => {
     watchingRef.current = watching;
@@ -128,6 +153,7 @@ const LivePage: React.FC = () => {
     }
     if (videoRef.current) videoRef.current.srcObject = null;
     lastBytesRef.current = null;
+    lastBufferRef.current = null;
     setStats(null);
   };
 
@@ -155,15 +181,21 @@ const LivePage: React.FC = () => {
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.addTransceiver('audio', { direction: 'recvonly' });
 
+    // Audio and video may arrive as separate streams; play both together.
+    const playback = new MediaStream();
     pc.ontrack = (event) => {
       const video = videoRef.current;
       if (!video) return;
-      const stream =
-        event.streams[0] ||
-        (video.srcObject as MediaStream | null) ||
-        new MediaStream();
-      if (!event.streams[0]) stream.addTrack(event.track);
-      video.srcObject = stream;
+      playback.addTrack(event.track);
+      // Ask for the smallest playout buffer the network allows.
+      try {
+        (
+          event.receiver as RTCRtpReceiver & { jitterBufferTarget: number }
+        ).jitterBufferTarget = 0;
+      } catch {
+        // Older engines: keep the default.
+      }
+      if (video.srcObject !== playback) video.srcObject = playback;
       video.play().catch(() => {});
     };
 
@@ -216,7 +248,10 @@ const LivePage: React.FC = () => {
 
       if (attempt !== attemptRef.current) return;
       if (!result.answer) throw new Error(result.error || 'No answer');
-      await pc.setRemoteDescription({ type: 'answer', sdp: result.answer });
+      const answer = lipSyncRef.current
+        ? result.answer
+        : decoupleAudio(result.answer);
+      await pc.setRemoteDescription({ type: 'answer', sdp: answer });
     } catch (error) {
       if (attempt !== attemptRef.current) return;
       closePeer();
@@ -259,6 +294,15 @@ const LivePage: React.FC = () => {
     }
   }, [list, watching, status]);
 
+  // Turning audio sync on or off reconnects the current stream.
+  const toggleLipSync = () => {
+    const next = !lipSyncRef.current;
+    lipSyncRef.current = next;
+    setLipSync(next);
+    store.set('rf-live-lipsync', String(next));
+    if (watchingRef.current && status !== 'error') watch(watchingRef.current);
+  };
+
   // Stop watching when leaving the page.
   React.useEffect(() => () => stopWatching(), [stopWatching]);
 
@@ -296,9 +340,14 @@ const LivePage: React.FC = () => {
           lastProgressRef.current = now;
         }
         lastBytesRef.current = { bytes: entry.bytesReceived, at: now };
-        const bufferMs = entry.jitterBufferEmittedCount
-          ? (entry.jitterBufferDelay / entry.jitterBufferEmittedCount) * 1000
-          : 0;
+        // Buffer over the last second (not the average since the start).
+        const prevBuffer = lastBufferRef.current;
+        const delay = entry.jitterBufferDelay || 0;
+        const count = entry.jitterBufferEmittedCount || 0;
+        const frames = prevBuffer ? count - prevBuffer.count : count;
+        const bufferMs =
+          frames > 0 ? ((delay - (prevBuffer?.delay ?? 0)) / frames) * 1000 : 0;
+        lastBufferRef.current = { delay, count };
         setStats({
           width: entry.frameWidth || 0,
           height: entry.frameHeight || 0,
@@ -379,7 +428,7 @@ const LivePage: React.FC = () => {
   const streams = list?.streams ?? [];
 
   return (
-    <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter">
+    <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
       <div className="flex items-center gap-x-2 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
         <span className="flex items-center gap-x-2 font-bold mr-2">
           <Radio size={18} className="text-[#bb4420]" /> Live
@@ -420,6 +469,19 @@ const LivePage: React.FC = () => {
         )}
 
         <div className="ml-auto flex items-center gap-x-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleLipSync}
+            title={
+              lipSync
+                ? 'Picture waits for the game audio to stay in sync. Click for the lowest delay.'
+                : 'Lowest delay: the picture shows as soon as it arrives; game audio may trail slightly. Click to sync them.'
+            }
+            className="text-xs"
+          >
+            {lipSync ? 'Audio sync: on' : 'Lowest delay'}
+          </Button>
           <Button
             variant="ghost"
             size="icon"

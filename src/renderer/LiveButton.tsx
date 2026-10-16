@@ -1,7 +1,8 @@
 import React from 'react';
-import { Radio } from 'lucide-react';
+import { Radio, Settings2 } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
+import LiveSettingsDialog from './LiveSettingsDialog';
 
 /**
  * [RoomFortyRecorder] Go live / stop button for streaming this raider's POV
@@ -57,21 +58,33 @@ const LiveButton: React.FC = () => {
 
   return (
     <div className="px-3 pb-2">
-      <Tooltip content={tooltip} side="right">
-        <Button
-          variant={live ? 'destructive' : 'outline'}
-          size="sm"
-          className={`w-full justify-start gap-x-2 ${connecting ? 'animate-pulse' : ''}`}
-          disabled={busy}
-          onClick={toggle}
-        >
-          <Radio size={16} className={live ? 'animate-pulse' : ''} />
-          <span className="font-semibold">{label}</span>
-          {(live || connecting) && (
-            <span className="ml-auto text-xs opacity-80">Stop</span>
-          )}
-        </Button>
-      </Tooltip>
+      <div className="flex items-center gap-x-1">
+        <Tooltip content={tooltip} side="right">
+          <Button
+            variant={live ? 'destructive' : 'outline'}
+            size="sm"
+            className={`flex-1 justify-start gap-x-2 ${connecting ? 'animate-pulse' : ''}`}
+            disabled={busy}
+            onClick={toggle}
+          >
+            <Radio size={16} className={live ? 'animate-pulse' : ''} />
+            <span className="font-semibold">{label}</span>
+            {(live || connecting) && (
+              <span className="ml-auto text-xs opacity-80">Stop</span>
+            )}
+          </Button>
+        </Tooltip>
+        <LiveSettingsDialog>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            title="Go live quality (resolution, frame rate, bitrate)"
+          >
+            <Settings2 size={16} />
+          </Button>
+        </LiveSettingsDialog>
+      </div>
       {state.status === 'error' && state.error && (
         <p className="mt-1 text-xs text-red-400 leading-snug">{state.error}</p>
       )}

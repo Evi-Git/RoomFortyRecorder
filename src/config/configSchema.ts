@@ -54,6 +54,9 @@ export type ConfigurationSchema = {
   cloudUploadRateLimit: boolean;
   cloudUploadRateLimitMbps: number;
   cloudSessionToken: string;
+  liveResolution: string;
+  liveFps: string;
+  liveBitrate: number;
   cloudDiscordName: string;
   cloudUploadDungeons: boolean;
   cloudUploadRaids: boolean;
@@ -370,6 +373,25 @@ export const configSchema = {
     description: Phrase.CloudStorageDescription,
     type: 'string',
     default: '',
+  },
+  // [RoomFortyRecorder] Go live stream quality. Descriptions reuse existing
+  // phrases; the settings UI has its own English labels.
+  liveResolution: {
+    description: Phrase.ObsFPSDescription,
+    type: 'string',
+    default: '1080',
+  },
+  liveFps: {
+    description: Phrase.ObsFPSDescription,
+    type: 'string',
+    default: 'full',
+  },
+  liveBitrate: {
+    description: Phrase.ObsFPSDescription,
+    type: 'integer',
+    default: 7000,
+    minimum: 1000,
+    maximum: 20000,
   },
   cloudDiscordName: {
     description: Phrase.CloudStorageDescription,

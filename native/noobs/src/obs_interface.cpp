@@ -1639,9 +1639,10 @@ void ObsInterface::startStreaming(
   const std::string& encoderId,
   obs_data_t* encoderSettings,
   uint32_t width,
-  uint32_t height
+  uint32_t height,
+  uint32_t fpsDivisor
 ) {
-  blog(LOG_INFO, "Start streaming to %s with encoder %s", server.c_str(), encoderId.c_str());
+  blog(LOG_INFO, "Start streaming to %s with encoder %s (fps divisor %u)", server.c_str(), encoderId.c_str(), fpsDivisor);
 
   if (stream_output && obs_output_active(stream_output)) {
     blog(LOG_WARNING, "Stream already active, ignoring start");
@@ -1689,6 +1690,11 @@ void ObsInterface::startStreaming(
   if (!stream_video_encoder) {
     release_stream();
     throw std::runtime_error("Failed to create the stream video encoder");
+  }
+
+  // E.g. 2 = half the recording frame rate (60 -> 30 fps).
+  if (fpsDivisor > 1) {
+    obs_encoder_set_frame_rate_divisor(stream_video_encoder, fpsDivisor);
   }
 
   obs_encoder_set_video(stream_video_encoder, obs_get_video());

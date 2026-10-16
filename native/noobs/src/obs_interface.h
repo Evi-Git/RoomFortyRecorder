@@ -95,7 +95,8 @@ class ObsInterface {
       const std::string& encoderId,   // Video encoder ID, e.g. "obs_nvenc_h264_tex"
       obs_data_t* encoderSettings,    // Video encoder settings (takes ownership)
       uint32_t width,                 // Output width, 0 = canvas width
-      uint32_t height                 // Output height, 0 = canvas height
+      uint32_t height,                // Output height, 0 = canvas height
+      uint32_t fpsDivisor = 1         // 2 = half the canvas frame rate
     );
     void stopStreaming();             // Graceful stop.
     bool isStreaming();
