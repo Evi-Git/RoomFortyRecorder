@@ -7,6 +7,7 @@ import {
   Play,
   Radio,
   Square,
+  Tv,
 } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faDungeon, faDragon } from '@fortawesome/free-solid-svg-icons';
@@ -263,6 +264,52 @@ const SideMenu = (props: IProps) => {
     );
   };
 
+  // [RoomFortyRecorder] Watch raiders live in the app. Shows how many are
+  // live; the page itself explains if your role can't watch.
+  const [liveCount, setLiveCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () =>
+      ipc
+        .invoke('liveListStreams', [])
+        .then((list) => {
+          const { allowed, streams } = list as {
+            allowed: boolean;
+            streams: unknown[];
+          };
+          if (!cancelled) setLiveCount(allowed ? streams.length : 0);
+        })
+        .catch(() => {});
+
+    refresh();
+    const timer = setInterval(refresh, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const renderLiveTab = () => {
+    const someoneLive = liveCount > 0;
+
+    return (
+      <Menu.Item value={Pages.Live} className="py-[4px] my-2">
+        <span className="inline-flex items-center w-full">
+          <Menu.Item.Icon>
+            <Tv className={someoneLive ? 'text-[#bb4420]' : ''} />
+          </Menu.Item.Icon>
+          <span className="font-semibold">Watch live</span>
+          {someoneLive && (
+            <span className="ml-auto mr-2 rounded-full bg-[#bb4420] px-2 text-[11px] font-bold text-white">
+              {liveCount}
+            </span>
+          )}
+        </span>
+      </Menu.Item>
+    );
+  };
+
   const handleChangeCategory = (value: VideoCategory) => {
     const index = getCategoryIndex(value);
     setConfigValue('selectedCategory', index);
@@ -335,11 +382,15 @@ const SideMenu = (props: IProps) => {
           <Separator />
           <Menu
             initialValue={
-              appState.page === Pages.InstantReplay ? appState.page : false
+              appState.page === Pages.InstantReplay ||
+              appState.page === Pages.Live
+                ? appState.page
+                : false
             }
             onChange={handleChangePage}
           >
             {renderInstantReplayTab()}
+            {renderLiveTab()}
           </Menu>
         </>
 

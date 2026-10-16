@@ -30,6 +30,8 @@ Nothing installs until you click it.
   interrupts), adds' casts and your own casts. Click one to jump there.
 - **Go live:** stream your POV to the team's analyst in 1080p. Turn it on
   from the sidebar; it stops by itself when WoW closes.
+- **Watch live:** Raider+ and Officer can watch anyone who is live, inside
+  the app, about half a second behind.
 - **Chat, clips, drawing and shareable links** for reviewing pulls together.
 
 ## How it fits together
@@ -40,7 +42,8 @@ RoomFortyRecorder (each raider's PC)
   |-- signs in, lists videos --------> Guild server (home PC, behind Caddy)
   |                                      Discord sign-in, metadata, chat,
   |                                      links, spell timelines
-  '-- Go live (WebRTC) --------------> MediaMTX (home PC)
+  |-- Go live (WebRTC) --------------> MediaMTX (home PC)
+  '-- Watch live (WebRTC) <----------- MediaMTX (role checked by the guild server)
 
 Watching a video: app -> Cloudflare Worker -> R2 (served from Cloudflare's edge)
 ```

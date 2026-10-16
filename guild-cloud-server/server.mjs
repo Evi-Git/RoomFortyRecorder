@@ -82,6 +82,19 @@ const LIVE_URL = (
 const LIVE_RAIDER_PASSWORD = process.env.GUILD_CLOUD_LIVE_RAIDER_PASSWORD || '';
 // Optional: lets someone outside the house watch (browser login viewer/<password>).
 const LIVE_VIEWER_PASSWORD = process.env.GUILD_CLOUD_LIVE_VIEWER_PASSWORD || '';
+// Discord roles allowed to watch live streams in the app (comma-separated
+// role names, any case). Everyone else can still go live, but not watch.
+const LIVE_VIEWER_ROLE_LABELS = (
+  process.env.GUILD_CLOUD_LIVE_VIEWER_ROLES ?? 'Raider+,Officer'
+)
+  .split(',')
+  .map((role) => role.trim())
+  .filter(Boolean);
+const LIVE_VIEWER_ROLES = LIVE_VIEWER_ROLE_LABELS.map((role) => role.toLowerCase());
+// MediaMTX's local API, used to list who is live.
+const MEDIAMTX_API = (
+  process.env.GUILD_CLOUD_MEDIAMTX_API || 'http://127.0.0.1:9997'
+).replace(/\/+$/, '');
 
 // The deployed Cloudflare Worker that verifies download tokens and streams
 // from R2 -- e.g. https://roomforty-r2-download.<subdomain>.workers.dev, or
@@ -264,6 +277,86 @@ const isHomeNetworkIp = (ip = '') => {
   );
 };
 
+// Discord role names for a member, cached for 5 minutes so watching doesn't
+// hit Discord on every request. Returns null if Discord can't be reached and
+// nothing is cached.
+const ROLE_CACHE_MS = 5 * 60 * 1000;
+const memberRoleCache = new Map();
+let guildRoleCache = { at: 0, names: new Map() };
+
+const guildRoleNames = async () => {
+  if (Date.now() - guildRoleCache.at < ROLE_CACHE_MS) return guildRoleCache.names;
+  const roles = await discordJson(
+    `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/roles`,
+    { headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` } },
+  );
+  const names = new Map(
+    Array.isArray(roles)
+      ? roles.map((role) => [role.id, String(role.name || '').trim().toLowerCase()])
+      : [],
+  );
+  guildRoleCache = { at: Date.now(), names };
+  return names;
+};
+
+const memberRoleNames = async (discordId) => {
+  const cached = memberRoleCache.get(discordId);
+  if (cached && Date.now() - cached.at < ROLE_CACHE_MS) return cached.names;
+
+  try {
+    const response = await fetch(
+      `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/members/${encodeURIComponent(discordId)}`,
+      {
+        headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    let names = [];
+    if (response.ok) {
+      const member = await response.json();
+      const roleNames = await guildRoleNames();
+      names = (Array.isArray(member.roles) ? member.roles : [])
+        .map((id) => roleNames.get(id))
+        .filter(Boolean);
+    } else if (response.status !== 404) {
+      throw new Error(`Discord member request failed: ${response.status}`);
+    }
+    memberRoleCache.set(discordId, { at: Date.now(), names });
+    return names;
+  } catch (error) {
+    console.warn('[live] Role lookup failed', error.message);
+    return cached ? cached.names : null;
+  }
+};
+
+const canWatchLive = async (session) => {
+  if (!session || !DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID) return false;
+  if (LIVE_VIEWER_ROLES.length === 0) return true;
+  const names = await memberRoleNames(session.discordId);
+  return Boolean(names?.some((name) => LIVE_VIEWER_ROLES.includes(name)));
+};
+
+// Online streams from MediaMTX, cached for 2 seconds.
+let liveListCache = { at: 0, streams: [] };
+const listLiveStreams = async () => {
+  if (Date.now() - liveListCache.at < 2000) return liveListCache.streams;
+  const response = await fetch(`${MEDIAMTX_API}/v3/paths/list?itemsPerPage=200`, {
+    signal: AbortSignal.timeout(3000),
+  });
+  if (!response.ok) throw new Error(`MediaMTX API ${response.status}`);
+  const body = await response.json();
+  const streams = (Array.isArray(body.items) ? body.items : [])
+    .filter((item) => item.ready && /^rf\/[A-Za-z0-9_-]+$/.test(item.name || ''))
+    .map((item) => ({
+      name: item.name.slice(3),
+      since: item.readyTime || null,
+      viewers: Array.isArray(item.readers) ? item.readers.length : 0,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  liveListCache = { at: Date.now(), streams };
+  return streams;
+};
+
 const passwordMatches = (given, expected) =>
   Boolean(expected) && constantTimeEqual(String(given || ''), expected);
 
@@ -299,7 +392,10 @@ const handleMediamtxAuth = async (req, res) => {
 
   if (action === 'read' || action === 'playback') {
     if (isHomeNetworkIp(ip)) return text(res, 200, 'OK');
-    if (session) return text(res, 200, 'OK');
+    if (session) {
+      if (await canWatchLive(session)) return text(res, 200, 'OK');
+      return deny(`${session.userName} doesn't have a live viewer role`);
+    }
     if (user === 'viewer' && passwordMatches(password, LIVE_VIEWER_PASSWORD)) {
       return text(res, 200, 'OK');
     }
@@ -1002,6 +1098,33 @@ const handleApi = async (req, res, url, parts) => {
       streamName,
       whipUrl: `${LIVE_URL}/rf/${streamName}/whip`,
     });
+  }
+
+  // Who is live right now, for the app's Live page (viewer roles only).
+  if (parts[1] === 'live' && parts[2] === 'streams' && req.method === 'GET') {
+    if (!LIVE_URL) return fail(res, 404, 'Live streaming is not configured');
+    const session = { discordId: req.cloudUserId, userName: req.cloudUserName };
+    const roles = LIVE_VIEWER_ROLE_LABELS.join(' or ');
+
+    if (!(await canWatchLive(session))) {
+      return json(res, 200, { allowed: false, roles, streams: [] });
+    }
+
+    try {
+      const streams = (await listLiveStreams()).map((stream) => ({
+        ...stream,
+        whepUrl: `${LIVE_URL}/rf/${stream.name}/whep`,
+      }));
+      return json(res, 200, { allowed: true, roles, streams });
+    } catch (error) {
+      console.warn('[live] Listing streams failed', error.message);
+      return json(res, 200, {
+        allowed: true,
+        roles,
+        streams: [],
+        error: 'The live server (MediaMTX) is not running.',
+      });
+    }
   }
 
   if (parts[1] === 'user' && parts[2] === 'affiliations') {

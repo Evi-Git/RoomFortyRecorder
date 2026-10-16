@@ -13,6 +13,7 @@ import SceneEditor from './SceneEditor';
 import SettingsPage from './SettingsPage';
 import CategoryPage from './CategoryPage';
 import InstantReplay from './InstantReplay';
+import LivePage from './LivePage';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -113,6 +114,7 @@ const Layout = (props: IProps) => {
       {page === Pages.Settings && renderSettingsPage()}
       {page === Pages.SceneEditor && renderSceneEditor()}
       {page === Pages.InstantReplay && renderInstantReplay()}
+      {page === Pages.Live && <LivePage />}
       {page === Pages.None && renderCategoryPage()}
     </>
   );

@@ -349,6 +349,7 @@ enum Pages {
   'SceneEditor',
   'Settings',
   'InstantReplay',
+  'Live',
 }
 
 /**

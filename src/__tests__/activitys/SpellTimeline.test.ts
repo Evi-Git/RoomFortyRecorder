@@ -2,7 +2,7 @@ import RaidEncounter from '../../activitys/RaidEncounter';
 import LogLine from '../../parsing/LogLine';
 import { Flavour } from '../../main/types';
 
-jest.mock('electron', () => ({ app: { getVersion: () => '1.6.0' } }));
+jest.mock('electron', () => ({ app: { getVersion: () => '1.7.0' } }));
 jest.mock('../../config/ConfigService', () => ({
   __esModule: true,
   default: { getInstance: () => ({ get: () => 'English' }) },

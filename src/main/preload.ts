@@ -57,7 +57,10 @@ export type Channels =
   | 'liveStreamToggle'
   | 'liveStreamGetState'
   | 'liveStreamState'
-  | 'getTimeline';
+  | 'getTimeline'
+  | 'liveListStreams'
+  | 'liveWatch'
+  | 'liveUnwatch';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {

@@ -41,6 +41,7 @@ import DiskClient from 'storage/DiskClient';
 import Poller from 'utils/Poller';
 import Recorder from './Recorder';
 import LiveStreamer from './LiveStreamer';
+import LiveViewer from './LiveViewer';
 import AsyncQueue from 'utils/AsyncQueue';
 import { getApplicationLogDir, setupApplicationLogging } from './logging';
 
@@ -516,6 +517,20 @@ ipcMain.handle('liveStreamToggle', async () => {
 ipcMain.handle('liveStreamGetState', () =>
   LiveStreamer.getInstance().getState(),
 );
+
+// [RoomFortyRecorder] Watching live streams in the app (Live page).
+ipcMain.handle('liveListStreams', () => LiveViewer.getInstance().list());
+
+ipcMain.handle('liveWatch', async (_event, args) => {
+  try {
+    const answer = await LiveViewer.getInstance().watch(args[0], args[1]);
+    return { answer };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('liveUnwatch', () => LiveViewer.getInstance().stop());
 
 LiveStreamer.getInstance().on('state', (state) =>
   send('liveStreamState', state),
