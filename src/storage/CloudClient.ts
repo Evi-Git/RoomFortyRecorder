@@ -739,6 +739,42 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
+   * [RoomFortyRecorder] Pull desk: true once the Discord session is valid
+   * and the guild is known, i.e. pull desk calls can be made.
+   */
+  public pullDeskReady() {
+    return Boolean(this.authHeader && this.guild && this.authenticated);
+  }
+
+  /**
+   * [RoomFortyRecorder] Pull desk: one call to /api/guild/<guild>/pulldesk.
+   * Throws on any non-2xx response (axios default).
+   */
+  public async pullDeskRequest<T>(
+    method: 'get' | 'post' | 'put',
+    path: string,
+    data?: unknown,
+    options: { contentType?: string; timeout?: number } = {},
+  ): Promise<T> {
+    const guild = encodeURIComponent(this.guild);
+    const url = `${CloudClient.api}/guild/${guild}/pulldesk${path}`;
+    const headers: Record<string, string> = {};
+    if (this.authHeader) headers.Authorization = this.authHeader;
+    if (options.contentType) headers['Content-Type'] = options.contentType;
+
+    const res = await axios.request({
+      method,
+      url,
+      data,
+      headers,
+      timeout: options.timeout ?? 30000,
+      maxBodyLength: 64 * 1024 * 1024,
+    });
+
+    return res.data as T;
+  }
+
+  /**
    * Get an object and write it to a file.
    */
   public async getAsFile(

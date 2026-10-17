@@ -52,6 +52,12 @@ export default class CombatLogWatcher extends EventEmitter {
   private current = '';
 
   /**
+   * [RoomFortyRecorder] Optional hook that sees every raw line before it is
+   * parsed, used by the pull desk to keep a copy of each raid pull.
+   */
+  public lineTap?: (line: string) => void;
+
+  /**
    * Constructor, unit of timeout is minutes. No events will be emitted until
    * watch() is called.
    */
@@ -194,6 +200,7 @@ export default class CombatLogWatcher extends EventEmitter {
    * button.
    */
   public handleLogLine(line: string) {
+    this.lineTap?.(line);
     const logLine = new LogLine(line);
     const logEventType = logLine.type();
     this.emit(logEventType, logLine);

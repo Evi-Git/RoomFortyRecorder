@@ -350,6 +350,7 @@ enum Pages {
   'Settings',
   'InstantReplay',
   'Live',
+  'PullDesk',
 }
 
 /**

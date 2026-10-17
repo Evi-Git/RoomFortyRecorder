@@ -14,6 +14,7 @@ import SettingsPage from './SettingsPage';
 import CategoryPage from './CategoryPage';
 import InstantReplay from './InstantReplay';
 import LivePage from './LivePage';
+import PullDeskPage from './PullDeskPage';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -115,6 +116,13 @@ const Layout = (props: IProps) => {
       {page === Pages.SceneEditor && renderSceneEditor()}
       {page === Pages.InstantReplay && renderInstantReplay()}
       {page === Pages.Live && <LivePage />}
+      {page === Pages.PullDesk && (
+        <PullDeskPage
+          videoState={videoState}
+          setAppState={setAppState}
+          persistentProgressRef={persistentProgressRef}
+        />
+      )}
       {page === Pages.None && renderCategoryPage()}
     </>
   );

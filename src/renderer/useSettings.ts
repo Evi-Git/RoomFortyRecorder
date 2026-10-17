@@ -18,7 +18,6 @@ export const setConfigValues = (dict: { [key: string]: any }): void => {
 };
 
 export const getSettings = (): ConfigurationSchema => {
-  /* eslint-disable prettier/prettier */
   const configValues = {
     storagePath: getConfigValue<string>('storagePath'),
     bufferStoragePath: getConfigValue<string>('bufferStoragePath'),
@@ -76,6 +75,7 @@ export const getSettings = (): ConfigurationSchema => {
     liveResolution: getConfigValue<string>('liveResolution'),
     liveFps: getConfigValue<string>('liveFps'),
     liveBitrate: getConfigValue<number>('liveBitrate'),
+    pullDeskUpload: getConfigValue<boolean>('pullDeskUpload'),
     cloudDiscordName: getConfigValue<string>('cloudDiscordName'),
     cloudUploadDungeons: getConfigValue<boolean>('cloudUploadDungeons'),
     cloudUploadRaids: getConfigValue<boolean>('cloudUploadRaids'),
@@ -113,7 +113,6 @@ export const getSettings = (): ConfigurationSchema => {
     characterUploadFilters: getConfigValue<CharacterFilter[]>(
       'characterUploadFilters',
     ),
-    /* eslint-enable prettier/prettier */
   };
 
   return configValues;

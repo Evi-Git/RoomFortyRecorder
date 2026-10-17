@@ -32,6 +32,7 @@ import AsyncQueue from 'utils/AsyncQueue';
 import path from 'path';
 import { ESupportedEncoders } from 'main/obsEnums';
 import CrownOfTheCosmos from 'activitys/encounters/CrownOfTheCosmos';
+import PullDesk from 'main/PullDesk';
 
 /**
  * Generic LogHandler class for retail combat logs.
@@ -195,6 +196,15 @@ export default abstract class LogHandler {
     }
 
     const result = Boolean(parseInt(line.arg(5), 10));
+
+    // [RoomFortyRecorder] Pull desk: the recorder knows encounter-specific
+    // progress (phases, rebirths) that the server's log analysis can't.
+    if (LogHandler.activity instanceof RaidEncounter) {
+      PullDesk.getInstance().reportBossPercent(
+        LogHandler.activity.encounterID,
+        LogHandler.activity.bossPercent,
+      );
+    }
 
     if (result) {
       const overrun = ConfigService.getInstance().get<number>('raidOverrun');
