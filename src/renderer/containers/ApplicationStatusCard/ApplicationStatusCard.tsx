@@ -51,7 +51,7 @@ const ApplicationStatusCard = ({
       >
         <div
           id="logo-layer"
-          className="w-full h-full rounded-md bg-background-dark-gradient-to bg-[url('../../assets/icon/large-icon.png')] bg-contain bg-no-repeat absolute bg-[calc(100%+20px)] opacity-65"
+          className="w-full h-full rounded-md bg-background-dark-gradient-to bg-[url('../../assets/icon/large-icon.png')] bg-[length:auto_78%] bg-no-repeat absolute bg-[right_10px_center] opacity-50"
         />
         <div
           id="gradient-layer"

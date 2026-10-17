@@ -247,7 +247,7 @@ const SideMenu = (props: IProps) => {
     return (
       <Menu.Item
         value={Pages.InstantReplay}
-        className="py-[4px] my-2"
+        className="py-[4px]"
         disabled={disabled}
       >
         <Tooltip content={tooltip}>
@@ -295,7 +295,7 @@ const SideMenu = (props: IProps) => {
     const someoneLive = liveCount > 0;
 
     return (
-      <Menu.Item value={Pages.Live} className="py-[4px] my-2">
+      <Menu.Item value={Pages.Live} className="py-[4px]">
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
             <Tv className={someoneLive ? 'text-brand' : ''} />
@@ -313,7 +313,7 @@ const SideMenu = (props: IProps) => {
 
   // [RoomFortyRecorder] Per-pull wipe reports from the guild server.
   const renderPullDeskTab = () => (
-    <Menu.Item value={Pages.PullDesk} className="py-[4px] my-2">
+    <Menu.Item value={Pages.PullDesk} className="py-[4px]">
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
           <ClipboardList />
@@ -392,7 +392,7 @@ const SideMenu = (props: IProps) => {
         withScrollIndicators={false}
       >
         <>
-          <Separator />
+          <Separator className="mb-4" />
           <Menu
             initialValue={
               appState.page === Pages.InstantReplay ||

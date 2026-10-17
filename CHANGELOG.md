@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - Unreleased
+### Fixed
+- Recorder status card: the keyhole logo was cut off at the right edge.
+- Cloud status light is brass instead of the old blue.
+- Raid night items in the sidebar are spaced like the Recordings items.
+
 ## [1.8.0] - Unreleased
 ### Changed
 - **New Room Forty look**: brass on walnut colors, a new keyhole "40" app icon, and "Room Forty Recorder" in the title bar. Headings on the Pull desk and Watch live pages use a serif face. Kills stay green. Watch live, Pull desk and Instant replay sit under a new "Raid night" heading in the sidebar.
