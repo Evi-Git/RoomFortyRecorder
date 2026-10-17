@@ -242,7 +242,6 @@ const Status = ({
               <code>{config.retailPtrLogPath}</code>
             </li>
           )}
-
         </ul>
         <Separator className="my-1" />
         <p className="text-xs text-popover-foreground/60">
@@ -281,7 +280,7 @@ const Status = ({
     [RecStatus.Reconfiguring]: undefined,
   };
 
-  const statusLightsClasses = 'w-1.5 h-full rounded-l-md rounded-r-none';
+  const statusLightsClasses = 'w-2 h-2 rounded-full';
 
   const { statusTitle, statusIndicatorVariant, statusDescription }: StatusInfo =
     {
@@ -300,23 +299,23 @@ const Status = ({
       }}
     >
       <HoverCardTrigger>
-        <div className="w-full h-full flex relative rounded-md border-t border-[rgba(255,255,255,10%)] hover:cursor-pointer">
+        {/* [RoomFortyRecorder] Compact row: dot + status, details on hover. */}
+        <div className="w-full flex items-center gap-x-2 hover:cursor-pointer">
           <StatusLight
-            wrapperClasses={`${statusLightsClasses}`}
+            wrapperClasses={`${statusLightsClasses} shrink-0`}
             foregroundClasses={`border-none ${statusLightsClasses}`}
             variant={statusIndicatorVariant}
           />
-          <div className="ml-4 py-2 font-sans flex flex-col justify-around">
-            <span className="text-foreground-lighter font-bold text-xs drop-shadow-sm opacity-60 hover:text-foreground-lighter">
-              {getLocalePhrase(language, Phrase.StatusTitleRec)}
-            </span>
-
+          <div className="min-w-0 font-sans flex flex-col">
             <div
               className={cn(
-                'flex items-center text-popover-foreground font-semibold text-sm transition-all hover:text-popover-foreground',
+                'flex items-center text-foreground-lighter font-semibold text-xs whitespace-nowrap',
                 { '': !!statusDescription },
               )}
             >
+              <span className="text-foreground font-normal mr-1">
+                {getLocalePhrase(language, Phrase.StatusTitleRec)}:
+              </span>
               {statusTitle}
               {recTimerSec > 0 && (
                 <div className="mx-2 text-foreground">

@@ -39,9 +39,10 @@ export default function RendererTitleBar() {
   return (
     <div
       id="title-bar"
-      className="w-full h-[32px] bg-background flex items-center justify-center px-2 pr-0 absolute top-0 left-0"
+      className="w-full h-[32px] bg-background flex items-center justify-start px-4 pr-0 absolute top-0 left-0"
     >
-      <KeyholeMark size={20} className="text-brand mr-2" />
+      {/* [RoomFortyRecorder] Lockup sits over the sidebar, left aligned. */}
+      <KeyholeMark size={18} className="text-brand mr-2" />
       <div className="text-sm">
         <span className="font-display font-semibold text-foreground-lighter">
           Room Forty
