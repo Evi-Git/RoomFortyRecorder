@@ -58,7 +58,35 @@ test('Mythic wipe: deaths, killing blows and wipe cause', () => {
   assert.equal(report.spellNames[1241932], 'Voidlight Convergence');
 });
 
-test('note names are matched against the roster', () => {
+test('wowutils NSRT export: only tag: names are assigned', () => {
+  const note = [
+    "EncounterID:3492;Difficulty:Mythic;Name:Ula'tek",
+    '',
+    'time:22;ph:1;tag:Alpha;spellid:642;',
+    // glowunit and text name other raiders; only Bravo is assigned.
+    'time:69;ph:1;tag:Bravo;spellid:29166;text:Innervate Charlie;glowunit:Charlie;TTS:Innervate Charlie;',
+    'time:213;ph:1;bossSpell:1311609;tag:Alpha;spellid:204018;',
+    // Text reminder for several raiders: nothing to check.
+    'time:30;ph:1;tag:Alpha Bravo;text:pick up egg;colors:0.16 1 0.16 1;DisplayType:Text;',
+    'time:40;ph:2;tag:Charlie;spellid:98008;',
+    'time:50;ph:1;tag:Benched;spellid:97462;',
+    '',
+    'Pick up Egg',
+    'Melee: Alpha Bravo',
+  ].join('\n');
+
+  const parsed = parseNote(note, ['Alpha', 'Bravo', 'Charlie']);
+  assert.equal(parsed.encounterId, 3492);
+  assert.deepEqual(
+    parsed.assignments.map((a) => `${a.t} ${a.name} ${a.spellId}`),
+    ['22 Alpha 642', '69 Bravo 29166', '213 Alpha 204018'],
+  );
+  assert.equal(parsed.phaseSkipped, 1);
+  assert.equal(parsed.unmatched, 1);
+  assert.deepEqual(parsed.missingNames, ['Benched']);
+});
+
+test('MRT note names are matched against the roster', () => {
   const parsed = parseNote(
     '{time:1:00}|cff00ff98Zinic|r and Livs {spell:740}\n{time:0:10}Benchguy {spell:1}',
     ['Zinic', 'Livs'],

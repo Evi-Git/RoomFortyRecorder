@@ -18,7 +18,7 @@ import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { analyzePull, formatTime } from './pulldesk-analyze.mjs';
+import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
@@ -493,7 +493,14 @@ export const createPullDesk = (options) => {
     settings.noteUpdatedBy = req.cloudUserName;
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
-    return json(res, 200, { reanalyzed });
+    // wowutils exports start with "EncounterID:<id>"; catch a note pasted
+    // under the wrong boss.
+    const noteBoss = parseNote(body.note, []).encounterId;
+    const warning =
+      noteBoss && noteBoss !== encounterId
+        ? `This note's header says encounter ${noteBoss}, but it was saved for encounter ${encounterId}. Check you picked the right boss.`
+        : null;
+    return json(res, 200, { reanalyzed, warning });
   };
 
   const setAvoidable = async (req, res, encounterId) => {

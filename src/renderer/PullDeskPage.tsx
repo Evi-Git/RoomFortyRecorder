@@ -77,6 +77,8 @@ type Report = {
     parsed: number;
     phaseSkipped: number;
     unmatched: number;
+    missingNames?: string[];
+    noteEncounterId?: number | null;
     items: {
       t: number;
       name: string;
@@ -603,8 +605,8 @@ const PullDeskPage = (props: IProps) => {
     if (!plan.parsed) {
       return (
         <p className="text-sm text-foreground/60">
-          No cooldown note for this boss yet. Paste the note you send in NSRT
-          into Boss settings to check every assignment.
+          No cooldown note for this boss yet. Paste wowutils&apos; Copy all
+          output into Boss settings to check every assignment.
         </p>
       );
     }
@@ -628,6 +630,17 @@ const PullDeskPage = (props: IProps) => {
             </span>
           )}
         </p>
+        {!!plan.missingNames?.length && (
+          <p className="text-xs text-foreground/50 mb-2">
+            Not in this pull, so not checked: {plan.missingNames.join(', ')}
+          </p>
+        )}
+        {!!plan.noteEncounterId && plan.noteEncounterId !== r.encounterId && (
+          <p className="text-xs text-yellow-400 mb-2">
+            This note was exported for a different boss (encounter{' '}
+            {plan.noteEncounterId}). Check Boss settings.
+          </p>
+        )}
         <table className="w-full text-sm">
           <tbody>
             {plan.items.map((item) => {
@@ -907,6 +920,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
     const response = await call<{
       reanalyzed?: number;
       avoidable?: BossSettings['avoidable'];
+      warning?: string | null;
     }>({
       ...request,
       encounterId,
@@ -917,10 +931,11 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       return;
     }
     const redone = response.data?.reanalyzed;
+    const summary = redone
+      ? `${done} ${redone} pull${redone === 1 ? '' : 's'} from the last 24 h updated.`
+      : done;
     setMessage(
-      redone
-        ? `${done} ${redone} pull${redone === 1 ? '' : 's'} from the last 24 h updated.`
-        : done,
+      response.data?.warning ? `${summary} ${response.data.warning}` : summary,
     );
     if (response.data?.avoidable && settings) {
       setSettings({ ...settings, avoidable: response.data.avoidable });
@@ -949,9 +964,10 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       <section className="flex flex-col gap-y-2">
         <h3 className="font-bold">Cooldown note</h3>
         <p className="text-xs text-foreground/60">
-          Paste the note you send in NSRT (wowutils export or MRT style). Lines
-          with a time, a spell and a raider&apos;s name are checked against what
-          they cast. Phase-timed lines are skipped for now.
+          Paste wowutils&apos; Copy all output (the same note you Send in NSRT),
+          or an MRT-style note. Every line with a time, a spell and a tagged
+          raider is checked against what they cast. Text reminders and lines
+          timed in later phases are skipped for now.
           {settings.noteUpdatedAt &&
             ` Last saved ${new Date(settings.noteUpdatedAt).toLocaleString()} by ${settings.noteUpdatedBy}.`}
         </p>

@@ -162,23 +162,38 @@ export const formatTime = (seconds) => {
 
 // ---- Note parsing -------------------------------------------------------------
 
-// Parses cooldown assignments out of a pasted raid note. Supports the common
-// shapes: MRT style "{time:1:30}Name {spell:31821}" and NSRT style
-// "time:90;tag:Name;spellid:31821;". A line can name several raiders.
-// Names are matched against the pull's roster, so realm suffixes and colour
-// codes don't matter. Phase-relative times ("{time:0:30,p2}") are counted but
-// not checked, since phases aren't detected yet.
+// Parses cooldown assignments out of a pasted raid note. Two shapes:
+//   NSRT (wowutils "Copy all"):  time:90;ph:1;tag:Name;spellid:31821;...
+//     Only the tag: field names who is assigned. Other fields such as
+//     glowunit: and text: often name other raiders and are ignored.
+//   MRT:  {time:1:30}Name {spell:31821}
+//     Roster names anywhere on the line are assigned.
+// Names are matched against the pull's roster ignoring case, so realm
+// suffixes and colour codes don't matter. Lines timed in a later phase
+// ("ph:2", "{time:0:30,p2}") are counted but not checked yet. Text-only
+// reminders (no spell) and the free-text sections are ignored.
 export const parseNote = (noteText, rosterNames) => {
-  const result = { assignments: [], phaseSkipped: 0, unmatched: 0 };
+  const result = {
+    assignments: [],
+    phaseSkipped: 0,
+    unmatched: 0,
+    missingNames: [],
+    encounterId: null,
+  };
   if (!noteText) return result;
 
+  const byLower = new Map(rosterNames.map((name) => [name.toLowerCase(), name]));
   const roster = rosterNames
     .map((name) => ({ name, lower: name.toLowerCase() }))
     .sort((a, b) => b.lower.length - a.lower.length);
+  const missing = new Set();
 
   const cleaned = String(noteText)
     .replace(/\|c[0-9a-fA-F]{8}/g, '')
     .replace(/\|r/g, '');
+
+  const header = /EncounterID:(\d+)/i.exec(cleaned);
+  if (header) result.encounterId = Number(header[1]);
 
   for (const rawLine of cleaned.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -191,21 +206,20 @@ export const parseNote = (noteText, rosterNames) => {
     const nsrt = /(?:^|;)\s*time:(\d+(?:\.\d+)?)\s*;/i.exec(line);
     const nsrtPhase = /(?:^|;)\s*ph(?:ase)?:(\d+)\s*;/i.exec(line);
 
-    if (mrt) {
+    if (nsrt) {
+      seconds = Number(nsrt[1]);
+      if (nsrtPhase) phase = Number(nsrtPhase[1]);
+    } else if (mrt) {
       seconds = mrt[2] !== undefined
         ? Number(mrt[1]) * 60 + Number(mrt[2])
         : Number(mrt[1]);
       if (mrt[3]) phase = Number(mrt[3]);
-    } else if (nsrt) {
-      seconds = Number(nsrt[1]);
-      if (nsrtPhase) phase = Number(nsrtPhase[1]);
     }
     if (seconds === null || !Number.isFinite(seconds)) continue;
 
-    const spellIds = [
-      ...line.matchAll(/\{spell:(\d+)\}/gi),
-      ...line.matchAll(/(?:^|;)\s*spellid:(\d+)/gi),
-    ].map((match) => Number(match[1]));
+    const spellIds = nsrt
+      ? [...line.matchAll(/(?:^|;)\s*spellid:(\d+)/gi)].map((m) => Number(m[1]))
+      : [...line.matchAll(/\{spell:(\d+)\}/gi)].map((m) => Number(m[1]));
     if (spellIds.length === 0) continue; // text reminder, nothing to check
 
     if (phase !== 1) {
@@ -213,15 +227,27 @@ export const parseNote = (noteText, rosterNames) => {
       continue;
     }
 
-    // Look for roster names as whole words anywhere on the line.
-    const lowerLine = line.toLowerCase();
     const names = [];
-    for (const { name, lower } of roster) {
-      const pattern = new RegExp(
-        `(^|[^\\p{L}])${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`,
-        'u',
-      );
-      if (pattern.test(lowerLine) && !names.includes(name)) names.push(name);
+    if (nsrt) {
+      const tag = /(?:^|;)\s*tag:([^;]*)/i.exec(line);
+      for (const word of (tag?.[1] || '').split(/\s+/).filter(Boolean)) {
+        const name = byLower.get(word.toLowerCase());
+        if (name) {
+          if (!names.includes(name)) names.push(name);
+        } else {
+          missing.add(word);
+        }
+      }
+    } else {
+      // MRT: roster names as whole words anywhere outside the {...} tokens.
+      const lowerLine = line.replace(/\{[^}]*\}/g, ' ').toLowerCase();
+      for (const { name, lower } of roster) {
+        const pattern = new RegExp(
+          `(^|[^\\p{L}])${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`,
+          'u',
+        );
+        if (pattern.test(lowerLine) && !names.includes(name)) names.push(name);
+      }
     }
 
     if (names.length === 0) {
@@ -229,7 +255,8 @@ export const parseNote = (noteText, rosterNames) => {
       continue;
     }
 
-    // One spell per line is the norm; if several, pair them up in order.
+    // NSRT has one spell per line for everyone tagged. MRT lines with
+    // several names and spells pair them up in order.
     names.forEach((name, index) => {
       result.assignments.push({
         t: seconds,
@@ -240,6 +267,7 @@ export const parseNote = (noteText, rosterNames) => {
   }
 
   result.assignments.sort((a, b) => a.t - b.t);
+  result.missingNames = [...missing].sort();
   return result;
 };
 
@@ -587,6 +615,9 @@ export const analyzePull = (logText, options = {}) => {
       parsed: note.assignments.length,
       phaseSkipped: note.phaseSkipped,
       unmatched: note.unmatched,
+      // Tagged names that weren't in this pull (benched, or a typo).
+      missingNames: note.missingNames,
+      noteEncounterId: note.encounterId,
       items: planItems,
       summary: planSummary,
     },
