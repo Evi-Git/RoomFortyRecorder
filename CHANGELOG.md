@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - Unreleased
+### Added
+- **Check for updates** link under the version number in the sidebar. It shows what the updater is doing (checking, up to date, downloading with a percentage), then changes to "Restart to update" once the new version has downloaded. The app still checks by itself at startup and once a day.
+
 ## [1.8.2] - Unreleased
 ### Changed
 - **Sidebar redesigned to match the Room Forty mockup**: narrower, one compact status card (recorder status with mic and crash icons, cloud status underneath, details on hover as before), a full-width Go live button, smaller rows with one icon style, and the selected page shown as a filled row with a brass icon. Group divider lines are gone; spacing separates Raid night, Recordings and Settings.

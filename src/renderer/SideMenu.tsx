@@ -47,6 +47,7 @@ import LiveButton from './LiveButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
+import UpdateCheck from './containers/UpdateNotifier/UpdateCheck';
 import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
@@ -451,11 +452,10 @@ const SideMenu = (props: IProps) => {
           <TestButton recorderStatus={recorderStatus} appState={appState} />
           <DiscordButton appState={appState} />
         </div>
-        {!!appVersion && (
-          <div className="w-full mt-1 text-foreground font-sans text-[11px] font-bold text-center opacity-75">
-            {getLocalePhrase(language, Phrase.Version)} {appVersion}
-          </div>
-        )}
+        <UpdateCheck
+          versionLabel={getLocalePhrase(language, Phrase.Version)}
+          version={appVersion}
+        />
       </div>
     </div>
   );

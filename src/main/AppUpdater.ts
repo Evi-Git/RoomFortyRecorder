@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
 
 const customConsoleLogger = {
@@ -10,39 +10,147 @@ const customConsoleLogger = {
   error: (...args: string[]) => console.error('[AutoUpdater]', ...args),
 };
 
+/**
+ * [RoomFortyRecorder] What the updater is doing, shown under the version
+ * text in the sidebar so a manual "Check for updates" gets an answer.
+ */
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'upToDate' }
+  | { state: 'downloading'; version?: string; percent: number }
+  | { state: 'ready'; version?: string }
+  | { state: 'error'; message: string };
+
 export default class AppUpdater {
+  private window: BrowserWindow;
+
+  private status: UpdateStatus = { state: 'idle' };
+
+  private pendingVersion?: string;
+
   constructor(window: BrowserWindow) {
+    this.window = window;
     autoUpdater.logger = customConsoleLogger;
 
     // Don't auto-install on quit. This would force users to update which
     // isn't friendly.
     autoUpdater.autoInstallOnAppQuit = false;
 
-    // If we find a new version on GitHub, inform the frontend.
-    autoUpdater.on('update-downloaded', () => {
+    autoUpdater.on('checking-for-update', () =>
+      this.setStatus({ state: 'checking' }),
+    );
+
+    autoUpdater.on('update-not-available', () =>
+      this.setStatus({ state: 'upToDate' }),
+    );
+
+    autoUpdater.on('update-available', (info) => {
+      this.pendingVersion = info?.version;
+      this.setStatus({
+        state: 'downloading',
+        version: this.pendingVersion,
+        percent: 0,
+      });
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      this.setStatus({
+        state: 'downloading',
+        version: this.pendingVersion,
+        percent: Math.round(progress?.percent ?? 0),
+      });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      this.setStatus({ state: 'ready', version: info?.version });
       window.webContents.send('updateAvailable');
     });
 
-    // If the user accepted the update on the frontend, actually
-    // do it.
+    autoUpdater.on('error', (err) => {
+      this.setStatus({
+        state: 'error',
+        message: AppUpdater.describeError(err),
+      });
+    });
+
     ipcMain.on('doAppUpdate', () => {
       console.info('[AutoUpdater] User triggered auto-update');
       autoUpdater.quitAndInstall();
     });
 
+    ipcMain.handle('getUpdateStatus', () => this.status);
+
+    ipcMain.handle('checkForUpdates', async () => {
+      console.info('[AutoUpdater] User triggered update check');
+      await this.check(true);
+      return this.status;
+    });
+
     this.periodicallyCheckUpdate();
   }
 
-  private periodicallyCheckUpdate() {
-    // Check GitHub to see if any new versions are available.
-    autoUpdater.checkForUpdates();
+  private setStatus(status: UpdateStatus) {
+    this.status = status;
 
-    // Schedule the next check.
+    if (!this.window.isDestroyed()) {
+      this.window.webContents.send('updateStatus', status);
+    }
+  }
+
+  private static describeError(err: unknown) {
+    const text = err instanceof Error ? err.message : String(err);
+
+    if (/ENOTFOUND|ETIMEDOUT|ECONNRESET|net::/i.test(text)) {
+      return "Couldn't reach GitHub. Check your connection.";
+    }
+
+    if (/404|latest\.yml|No published versions/i.test(text)) {
+      return 'No published release found yet.';
+    }
+
+    return 'Update check failed. See the log for details.';
+  }
+
+  private async check(manual = false) {
+    // Don't restart a download that's running or finished.
+    if (
+      this.status.state === 'downloading' ||
+      this.status.state === 'ready' ||
+      this.status.state === 'checking'
+    ) {
+      return;
+    }
+
+    if (!app.isPackaged) {
+      if (!manual) return;
+      this.setStatus({
+        state: 'error',
+        message: 'Updates only work in the installed app.',
+      });
+      return;
+    }
+
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      // The 'error' event usually fires too, but make sure we never leave
+      // the sidebar stuck on "Checking…".
+      this.setStatus({
+        state: 'error',
+        message: AppUpdater.describeError(err),
+      });
+    }
+  }
+
+  private periodicallyCheckUpdate() {
+    this.check();
+
     setTimeout(
       () => {
         this.periodicallyCheckUpdate();
       },
-      1000 * 60 * 60 * 24, // Check every 24 hours.
+      1000 * 60 * 60 * 24,
     );
   }
 }
