@@ -37,7 +37,7 @@ const ConfirmChatNamePrompt = (props: IProps) => {
               href="https://warcraftrecorder.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-foreground-lighter hover:text-[#bb4420]"
+              className="text-foreground-lighter hover:text-brand"
             >
               warcraftrecorder.com
             </a>

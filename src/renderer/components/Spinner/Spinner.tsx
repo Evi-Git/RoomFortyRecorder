@@ -1,8 +1,9 @@
 import { Box, CircularProgress } from '@mui/material';
+import { BRAND } from 'renderer/brand';
 
 export default function Spinner({
   size = '10vh',
-  color = '#bb4420',
+  color = BRAND,
   className = '',
 }) {
   return (

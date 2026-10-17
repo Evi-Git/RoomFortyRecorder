@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.8.0] - Unreleased
+### Changed
+- **New Room Forty look**: brass on walnut colors, a new keyhole "40" app icon, and "Room Forty Recorder" in the title bar. Headings on the Pull desk and Watch live pages use a serif face. Kills stay green. Watch live, Pull desk and Instant replay sit under a new "Raid night" heading in the sidebar.
+
 ### Added
 - **Pull desk**: a report for every Mythic raid pull, about 10 s after it ends. It shows the wipe cause, deaths with killing blows and a Watch button that opens that raider's recording 10 s before they died, a check of every assignment in the boss's cooldown note, and avoidable hits. Each report is also posted to the boss's Discord channel. Open it from the new sidebar page. One raider's app uploads a small filtered copy of the pull's combat log; turn **Send my pull logs** off on the page to opt out. Needs the updated guild server (see `docs/PullDesk.md`).
 

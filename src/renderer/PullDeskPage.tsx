@@ -9,6 +9,7 @@ import { Textarea } from './components/TextArea/textarea';
 import Switch from './components/Switch/Switch';
 import { getCategoryIndex } from './rendererutils';
 import { getConfigValue, setConfigValue } from './useSettings';
+import { BRAND } from 'renderer/brand';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -197,7 +198,7 @@ const HpCurve = ({ report }: { report: Report }) => {
       <polyline
         points={points.join(' ')}
         fill="none"
-        stroke="#bb4420"
+        stroke={BRAND}
         strokeWidth={2}
         vectorEffect="non-scaling-stroke"
       />
@@ -415,7 +416,7 @@ const PullDeskPage = (props: IProps) => {
                   setTab('report');
                 }}
                 className={`w-full text-left px-3 py-2 border-l-2 hover:bg-card/60 ${
-                  selected ? 'bg-card border-[#bb4420]' : 'border-transparent'
+                  selected ? 'bg-card border-brand' : 'border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-x-2 text-sm">
@@ -742,11 +743,11 @@ const PullDeskPage = (props: IProps) => {
       <div className="flex flex-col gap-y-5">
         <div>
           <div className="flex items-baseline gap-x-3 flex-wrap">
-            <h2 className="text-lg font-bold">
+            <h2 className="font-display text-xl font-bold">
               Pull {r.pullNumber} · {r.encounterName} ({r.difficulty})
             </h2>
             <span
-              className={`font-semibold ${kill ? 'text-green-400' : 'text-[#e8734f]'}`}
+              className={`font-semibold ${kill ? 'text-green-400' : 'text-brand-soft'}`}
             >
               {kill ? 'Kill' : `Wipe at ${r.bossPercent ?? '?'}%`} ·{' '}
               {mmss(r.duration)}
@@ -772,17 +773,21 @@ const PullDeskPage = (props: IProps) => {
         </div>
 
         <section>
-          <h3 className="font-bold mb-1">Deaths ({r.deaths.length})</h3>
+          <h3 className="font-display text-lg font-bold mb-1">
+            Deaths ({r.deaths.length})
+          </h3>
           {renderDeaths(r)}
         </section>
 
         <section>
-          <h3 className="font-bold mb-1">Cooldown plan</h3>
+          <h3 className="font-display text-lg font-bold mb-1">Cooldown plan</h3>
           {renderPlan(r)}
         </section>
 
         <section>
-          <h3 className="font-bold mb-1">Avoidable hits</h3>
+          <h3 className="font-display text-lg font-bold mb-1">
+            Avoidable hits
+          </h3>
           {renderAvoidable(r)}
         </section>
       </div>
@@ -799,7 +804,8 @@ const PullDeskPage = (props: IProps) => {
     <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
       <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
         <span className="flex items-center gap-x-2 font-bold mr-2">
-          <ClipboardList size={18} className="text-[#bb4420]" /> Pull desk
+          <ClipboardList size={18} className="text-brand" />
+          <span className="font-display text-lg">Pull desk</span>
         </span>
         <Button
           size="sm"
@@ -954,7 +960,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
 
   return (
     <div className="flex flex-col gap-y-6 max-w-3xl">
-      <h2 className="text-lg font-bold">{encounterName}</h2>
+      <h2 className="font-display text-xl font-bold">{encounterName}</h2>
       {!canEdit && (
         <p className="text-sm text-yellow-400">
           Your Discord role can view these settings but not change them.
@@ -962,7 +968,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       )}
 
       <section className="flex flex-col gap-y-2">
-        <h3 className="font-bold">Cooldown note</h3>
+        <h3 className="font-display text-lg font-bold">Cooldown note</h3>
         <p className="text-xs text-foreground/60">
           Paste wowutils&apos; Copy all output (the same note you Send in NSRT),
           or an MRT-style note. Every line with a time, a spell and a tagged
@@ -1001,7 +1007,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       </section>
 
       <section className="flex flex-col gap-y-2">
-        <h3 className="font-bold">Avoidable spells</h3>
+        <h3 className="font-display text-lg font-bold">Avoidable spells</h3>
         <p className="text-xs text-foreground/60">
           Spell IDs that should never hit anyone, separated by commas. Find them
           on Wowhead or in the death recaps.
@@ -1036,7 +1042,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       </section>
 
       <section className="flex flex-col gap-y-2">
-        <h3 className="font-bold">Discord channel</h3>
+        <h3 className="font-display text-lg font-bold">Discord channel</h3>
         <p className="text-xs text-foreground/60">
           Channel ID for this boss&apos;s pull reports (right-click the channel
           in Discord with Developer Mode on, then Copy Channel ID). Empty uses

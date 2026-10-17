@@ -1,0 +1,5 @@
+<!-- Room Forty app icon: brass keyhole 40 on a walnut tile. Rendered to assets/icon.png (1024), assets/icon/large-icon.png (750) and assets/icon/small-icon.png (48). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#221d19" stroke="#4a4038" stroke-width="0.8"/>
+  <g fill="#cca85c" transform="translate(32 32) scale(0.78) translate(-32 -32)"><g transform="translate(1.1 -1.5)"><path d="M21.28 47.65L5.85 47.65L5.85 41.72L19 20.99L28.56 20.99L28.56 41.66L32.41 41.66L32.41 47.65L28.56 47.65L28.56 53L21.28 53L21.28 47.65ZM13.39 41.66L21.45 41.66L21.45 29.07L21.19 29.07L13.39 41.40Z"/><circle cx="46" cy="24" r="10"/><polygon points="40,29 52,29 56,53 36,53"/></g></g>
+</svg>

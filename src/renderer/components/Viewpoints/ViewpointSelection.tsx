@@ -157,7 +157,7 @@ export default function ViewpointSelection(props: IProps) {
 
     const cursor = cloudVideo || diskVideo ? 'cursor-pointer' : '';
     const selected = currentlySelected
-      ? 'border-2 border-[#bb4420] rounded-sm'
+      ? 'border-2 border-brand rounded-sm'
       : '';
 
     const selectedPlayerNames = selectedVideos

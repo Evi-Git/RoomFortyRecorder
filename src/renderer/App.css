@@ -2,49 +2,54 @@
  * @NOTE: Prepend a `~` to css file paths that are in your node_modules
  *        See https://github.com/webpack-contrib/sass-loader#imports
  */
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* [RoomFortyRecorder] Brass theme: plaque gold on walnut. */
   :root {
-    --background: 0 0% 9%;
-    --background-higher: 0 0% 11%;
-    --background-dark-gradient-from: 0 0% 7%;
-    --background-dark-gradient-to: 0 0% 8%;
+    --background: 24 14% 8%;
+    --background-higher: 24 13% 10.5%;
+    --background-dark-gradient-from: 24 14% 6.5%;
+    --background-dark-gradient-to: 24 14% 7.5%;
 
-    --foreground: 0, 0%, 45%;
-    --foreground-lighter: 0, 0%, 66%;
+    --foreground: 30 8% 55%;
+    --foreground-lighter: 38 30% 86%;
 
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
+    --muted: 24 12% 12%;
+    --muted-foreground: 30 8% 58%;
 
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 26 12% 18%;
+    --accent-foreground: 38 30% 92%;
 
-    --popover: 0 0% 30%;
-    --popover-foreground: 0 0% 86%;
-    --popover-border: 0 0% 25%;
-    --popover-inset: 0 0% 35%;
+    --popover: 26 10% 28%;
+    --popover-foreground: 38 22% 82%;
+    --popover-border: 26 10% 24%;
+    --popover-inset: 26 10% 33%;
 
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
+    --border: 26 12% 18%;
+    --input: 26 12% 18%;
 
-    --card: 0 0% 23%;
-    --card-foreground: 0 0% 69%;
+    --card: 26 12% 20%;
+    --card-foreground: 34 14% 74%;
 
-    --primary: 14 71% 43%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 41 52% 56%;
+    --primary-foreground: 24 30% 9%;
 
-    --secondary: 0 0% 28%;
-    --secondary-foreground: 0 0% 69%;
+    --secondary: 26 10% 26%;
+    --secondary-foreground: 34 14% 74%;
 
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
 
-    --ring: 216 34% 17%;
+    --ring: 41 40% 40%;
+
+    /* The brand accent: brass. Wins stay green (--success). */
+    --brand: 41 52% 58%;
+    --brand-soft: 41 60% 68%;
 
     --radius: 0.5rem;
 
@@ -63,10 +68,10 @@
     --blue-accent: 200, 98%, 39%;
     --blue-accent-border: 200, 95%, 27%;
 
-    --video-item-background: 0 0% 18%;
-    --video-item-background-hover: 0 0% 24%;
-    --video-item-border: 0 0% 21.16%;
-    --video-item-foreground: 0 0% 77.17%;
+    --video-item-background: 24 10% 15%;
+    --video-item-background-hover: 24 10% 20%;
+    --video-item-border: 24 9% 18%;
+    --video-item-foreground: 34 16% 78%;
   }
 }
 
@@ -106,7 +111,7 @@ div#root {
 }
 
 #title {
-  color: #bb4220;
+  color: hsl(var(--brand));
   line-height: 32px;
   font-size: 14px;
   text-align: center;
@@ -355,8 +360,8 @@ div#root {
   top: 325px;
   left: 9px;
   border-style: solid;
-  border-color: #bb4220;
-  background-color: #bb4220;
+  border-color: hsl(var(--brand));
+  background-color: hsl(var(--brand));
   font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
   font-weight: 500;
   font-size: 0.875rem;
@@ -431,8 +436,8 @@ fieldset:disabled a.btn {
 
 .btn-primary {
   color: #fff;
-  background-color: #bb4220;
-  border-color: #bb4220;
+  background-color: hsl(var(--brand));
+  border-color: hsl(var(--brand));
 }
 
 .btn-primary:hover {
@@ -450,7 +455,7 @@ fieldset:disabled a.btn {
 .btn-primary.disabled,
 .btn-primary:disabled {
   color: #fff;
-  background-color: #bb4220;
+  background-color: hsl(var(--brand));
 }
 
 .btn-primary:not(:disabled):not(.disabled).active,
@@ -1203,11 +1208,11 @@ input[type='submit'].btn-block {
 
 .react-tags__listbox-option:hover {
   cursor: pointer;
-  background: #bb4420;
+  background: hsl(var(--brand));
 }
 
 .react-tags__listbox-option:not([aria-disabled='true']).is-active {
-  background: #bb4420;
+  background: hsl(var(--brand));
   color: #ffffff;
 }
 

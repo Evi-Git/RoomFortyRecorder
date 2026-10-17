@@ -44,6 +44,7 @@ import MultiLockButton from './MultiLockButton';
 import SaveIcon from '@mui/icons-material/Save';
 import CloudIcon from '@mui/icons-material/Cloud';
 import MultiTagButton from './MultiTagButton';
+import { BRAND } from 'renderer/brand';
 
 export const populateResultCell = (
   info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
@@ -313,7 +314,7 @@ export const populateViewpointCell = (
 
   if (playerName === 'WCR Multipov Name') {
     playerName = 'Multiview';
-    playerClassColor = '#bb4420';
+    playerClassColor = BRAND;
     specIcon = wcrIcon;
   }
 
