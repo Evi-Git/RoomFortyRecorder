@@ -18,9 +18,9 @@ const statusLightForegroundVariants = cva('rounded-full border-[3px]', {
       overrunning:
         'bg-orange-500 border-orange-500 shadow-[0px_0px_4px_2px_rgba(249,115,22,0.66)]',
       connected:
-        'bg-blue-accent border-blue-accent-border shadow-[0px_0px_4px_2px_rgba(2,132,199,0.66)]',
+        'bg-brand border-brand shadow-[0px_0px_4px_2px_rgba(204,168,92,0.5)]',
       active:
-        'bg-blue-accent border-blue-accent-border shadow-[0px_0px_4px_2px_rgba(2,132,199,0.66)] animate-pulse',
+        'bg-brand border-brand shadow-[0px_0px_4px_2px_rgba(204,168,92,0.5)] animate-pulse',
       disconnected: 'bg-zinc-400 border-zinc-500',
     },
   },
