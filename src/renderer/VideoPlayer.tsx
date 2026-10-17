@@ -64,6 +64,7 @@ import { Phrase } from 'localisation/phrases';
 import { VideoCategory } from 'types/VideoCategory';
 import { SpellTimeline as SpellTimelineData } from 'main/types';
 import SpellTimeline from './components/SpellTimeline/SpellTimeline';
+import { BRAND } from 'renderer/brand';
 
 interface IProps {
   videos: RendererVideo[];
@@ -86,20 +87,20 @@ const sliderBaseSx = {
     width: '10px',
     height: '10px',
     '&:hover': {
-      color: '#bb4220',
+      color: BRAND,
       boxShadow: 'none',
     },
   },
   '& .MuiSlider-track': {
-    color: '#bb4220',
+    color: BRAND,
     height: '4px',
   },
   '& .MuiSlider-rail': {
-    color: '#bb4220',
+    color: BRAND,
     height: '4px',
   },
   '& .MuiSlider-active': {
-    color: '#bb4220',
+    color: BRAND,
   },
 };
 
@@ -492,7 +493,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             },
           },
           '&:hover': {
-            backgroundColor: '#bb4220',
+            backgroundColor: BRAND,
             boxShadow: 'none',
           },
         },
@@ -510,7 +511,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             },
           },
           '&:hover': {
-            backgroundColor: '#bb4220',
+            backgroundColor: BRAND,
             boxShadow: 'none',
           },
         },
@@ -527,7 +528,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             },
           },
           '&:hover': {
-            backgroundColor: '#bb4220',
+            backgroundColor: BRAND,
             boxShadow: 'none',
           },
         },
@@ -1349,7 +1350,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
         size="xs"
         onClick={() => setIsDrawingEnabled(!isDrawingEnabled)}
       >
-        <Pencil size={20} color={isDrawingEnabled ? '#bb4420' : 'white'} />
+        <Pencil size={20} color={isDrawingEnabled ? BRAND : 'white'} />
       </Button>
     </Tooltip>
   );

@@ -431,7 +431,8 @@ const LivePage: React.FC = () => {
     <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
       <div className="flex items-center gap-x-2 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
         <span className="flex items-center gap-x-2 font-bold mr-2">
-          <Radio size={18} className="text-[#bb4420]" /> Live
+          <Radio size={18} className="text-brand" />
+          <span className="font-display text-lg">Live</span>
         </span>
 
         {!gate &&
@@ -500,7 +501,7 @@ const LivePage: React.FC = () => {
               setVolume(Number(e.target.value));
               setMuted(false);
             }}
-            className="w-24 accent-[#bb4420]"
+            className="w-24 accent-brand"
             aria-label="Volume"
           />
           <Button

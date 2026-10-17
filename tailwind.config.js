@@ -17,6 +17,10 @@ module.exports = {
     },
     extend: {
       colors: {
+        brand: {
+          DEFAULT: 'hsl(var(--brand))',
+          soft: 'hsl(var(--brand-soft))',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
@@ -89,6 +93,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', ...fontFamily.sans],
+        display: ['"Source Serif 4"', 'Georgia', ...fontFamily.serif],
       },
       textShadow: {
         instance:

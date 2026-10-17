@@ -235,9 +235,9 @@ const SideMenu = (props: IProps) => {
 
     if (!disabled) {
       spanClassName += ' animate-pulse';
-      radioClassName = 'text-[#bb4420]';
-      textClassName += ' text-[#bb4420]';
-      textClassName += ' drop-shadow-[0_0_6px_rgba(187,68,32,0.35)]';
+      radioClassName = 'text-brand';
+      textClassName += ' text-brand';
+      textClassName += ' drop-shadow-[0_0_6px_rgba(204,168,92,0.35)]';
     }
 
     const tooltip = disabled
@@ -298,11 +298,11 @@ const SideMenu = (props: IProps) => {
       <Menu.Item value={Pages.Live} className="py-[4px] my-2">
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
-            <Tv className={someoneLive ? 'text-[#bb4420]' : ''} />
+            <Tv className={someoneLive ? 'text-brand' : ''} />
           </Menu.Item.Icon>
           <span className="font-semibold">Watch live</span>
           {someoneLive && (
-            <span className="ml-auto mr-2 rounded-full bg-[#bb4420] px-2 text-[11px] font-bold text-white">
+            <span className="ml-auto mr-2 rounded-full bg-brand px-2 text-[11px] font-bold text-primary-foreground">
               {liveCount}
             </span>
           )}
@@ -403,6 +403,7 @@ const SideMenu = (props: IProps) => {
             }
             onChange={handleChangePage}
           >
+            <Menu.Label>Raid night</Menu.Label>
             {renderInstantReplayTab()}
             {renderLiveTab()}
             {renderPullDeskTab()}

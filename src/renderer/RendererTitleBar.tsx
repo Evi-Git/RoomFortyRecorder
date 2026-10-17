@@ -1,6 +1,6 @@
 import { ComponentProps } from 'react';
 import { cn } from './components/utils';
-import icon from '../../assets/icon.png';
+import KeyholeMark from './components/Brand/KeyholeMark';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -41,12 +41,12 @@ export default function RendererTitleBar() {
       id="title-bar"
       className="w-full h-[32px] bg-background flex items-center justify-center px-2 pr-0 absolute top-0 left-0"
     >
-      <img
-        src={icon}
-        style={{ width: '20px', height: '20px', marginRight: 8 }}
-      />
-      <div className="text-popover-foreground font-semibold text-sm font-sans">
-        RoomFortyRecorder
+      <KeyholeMark size={20} className="text-brand mr-2" />
+      <div className="text-sm">
+        <span className="font-display font-semibold text-foreground-lighter">
+          Room Forty
+        </span>{' '}
+        <span className="font-sans text-foreground">Recorder</span>
       </div>
       <div id="title-bar-btns" className="ml-auto absolute right-0 top-0">
         <TitleBarButton id="min-btn" onClick={clickedHide}>

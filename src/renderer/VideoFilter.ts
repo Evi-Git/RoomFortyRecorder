@@ -20,6 +20,7 @@ import VideoTag from './VideoTag';
 import { Language, Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
 import { DateValueType } from 'react-tailwindcss-datepicker';
+import { BRAND } from 'renderer/brand';
 
 /**
  * The VideoFilter class provides a mechanism to populate the search
@@ -156,22 +157,22 @@ export default class VideoFilter {
 
     if (video.isProtected) {
       const localised = getLocalePhrase(language, Phrase.Starred);
-      const tag = new VideoTag(101, localised, '<LockIcon>', '#bb4420');
+      const tag = new VideoTag(101, localised, '<LockIcon>', BRAND);
       suggestions.push(tag);
     } else {
       const localised = getLocalePhrase(language, Phrase.NotStarred);
-      const tag = new VideoTag(101, localised, '<LockOpenIcon>', '#bb4420');
+      const tag = new VideoTag(101, localised, '<LockOpenIcon>', BRAND);
       suggestions.push(tag);
     }
 
     if (video.tag) {
       const localised = getLocalePhrase(language, Phrase.Tagged);
-      const tag = new VideoTag(102, localised, '<TagIcon>', '#bb4420');
+      const tag = new VideoTag(102, localised, '<TagIcon>', BRAND);
       suggestions.push(tag);
     }
 
     const localised = getLocalePhrase(language, Phrase.Retail);
-    const tag = new VideoTag(103, localised, '<Swords>', '#bb4420');
+    const tag = new VideoTag(103, localised, '<Swords>', BRAND);
     suggestions.push(tag);
 
     if (playerName) {
@@ -193,7 +194,7 @@ export default class VideoFilter {
 
       if (isKnownZone) {
         const zone = instanceNamesByZoneId[video.zoneID];
-        const tag = new VideoTag(202, zone, '<MapPinned>', '#bb4420');
+        const tag = new VideoTag(202, zone, '<MapPinned>', BRAND);
         suggestions.push(tag);
       }
     }
@@ -247,7 +248,7 @@ export default class VideoFilter {
 
       if (isKnownDungeon) {
         const dungeon = dungeonsByZoneId[video.zoneID];
-        const tag = new VideoTag(203, dungeon, '<DungeonIcon>', '#bb4420');
+        const tag = new VideoTag(203, dungeon, '<DungeonIcon>', BRAND);
         suggestions.push(tag);
       }
     }
@@ -262,7 +263,7 @@ export default class VideoFilter {
         if (isKnownAffix) {
           const affixName = dungeonAffixesById[affix];
           const affixImage = affixImages[affix as keyof typeof affixImages];
-          const tag = new VideoTag(204, affixName, affixImage, '#bb4420');
+          const tag = new VideoTag(204, affixName, affixImage, BRAND);
           suggestions.push(tag);
         }
       });
@@ -270,19 +271,19 @@ export default class VideoFilter {
 
     if (!video.result) {
       const localised = getLocalePhrase(language, Phrase.Abandoned);
-      const tag = new VideoTag(50, localised, '<ThumbsDown>', '#bb4420');
+      const tag = new VideoTag(50, localised, '<ThumbsDown>', BRAND);
       suggestions.push(tag);
     } else if (video.upgradeLevel && video.upgradeLevel > 0) {
       const chests = `${video.upgradeLevel} ${getLocalePhrase(language, Phrase.Chests)}`;
-      const chestsTag = new VideoTag(50, chests, '<ChestIcon>', '#bb4420');
+      const chestsTag = new VideoTag(50, chests, '<ChestIcon>', BRAND);
       suggestions.push(chestsTag);
 
       const timed = getLocalePhrase(language, Phrase.Timed);
-      const timedTag = new VideoTag(50, timed, '<ThumbsUp>', '#bb4420');
+      const timedTag = new VideoTag(50, timed, '<ThumbsUp>', BRAND);
       suggestions.push(timedTag);
     } else {
       const localised = getLocalePhrase(language, Phrase.Depleted);
-      const tag = new VideoTag(50, localised, '<DepleteIcon>', '#bb4420');
+      const tag = new VideoTag(50, localised, '<DepleteIcon>', BRAND);
       suggestions.push(tag);
     }
 
@@ -297,39 +298,34 @@ export default class VideoFilter {
 
     if (video.result) {
       const localised = getLocalePhrase(language, Phrase.Kill);
-      const tag = new VideoTag(50, localised, '<ThumbsUp>', '#bb4420');
+      const tag = new VideoTag(50, localised, '<ThumbsUp>', BRAND);
       suggestions.push(tag);
     } else {
       const localised = getLocalePhrase(language, Phrase.Wipe);
-      const tag = new VideoTag(50, localised, '<ThumbsDown>', '#bb4420');
+      const tag = new VideoTag(50, localised, '<ThumbsDown>', BRAND);
       suggestions.push(tag);
     }
 
     if (video.difficultyID === 17) {
       const localised = getLocalePhrase(language, Phrase.LFR);
-      const tag = new VideoTag(51, localised, '<DragonIcon>', '#bb4420');
+      const tag = new VideoTag(51, localised, '<DragonIcon>', BRAND);
       suggestions.push(tag);
     } else if (video.difficultyID === 14) {
       const localised = getLocalePhrase(language, Phrase.Normal);
-      const tag = new VideoTag(52, localised, '<DragonIcon>', '#bb4420');
+      const tag = new VideoTag(52, localised, '<DragonIcon>', BRAND);
       suggestions.push(tag);
     } else if (video.difficultyID === 15) {
       const localised = getLocalePhrase(language, Phrase.Heroic);
-      const tag = new VideoTag(53, localised, '<DragonIcon>', '#bb4420');
+      const tag = new VideoTag(53, localised, '<DragonIcon>', BRAND);
       suggestions.push(tag);
     } else if (video.difficultyID === 16) {
       const localised = getLocalePhrase(language, Phrase.Mythic);
-      const tag = new VideoTag(54, localised, '<DragonIcon>', '#bb4420');
+      const tag = new VideoTag(54, localised, '<DragonIcon>', BRAND);
       suggestions.push(tag);
     }
 
     if (video.encounterName) {
-      const tag = new VideoTag(
-        205,
-        video.encounterName,
-        '<DragonIcon>',
-        '#bb4420',
-      );
+      const tag = new VideoTag(205, video.encounterName, '<DragonIcon>', BRAND);
 
       suggestions.push(tag);
     }

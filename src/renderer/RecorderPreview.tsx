@@ -10,6 +10,7 @@ import {
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
+import { BRAND } from 'renderer/brand';
 
 const ipc = window.electron.ipcRenderer;
 const showPreview = ipc.showPreview;
@@ -437,7 +438,7 @@ const RecorderPreview = (props: {
           ...position,
           height: (height - cropTop - cropBottom) / zoomFactor,
           width: (width - cropLeft - cropRight) / zoomFactor,
-          outline: '2px solid #bb4420',
+          outline: `2px solid ${BRAND}`,
           outlineOffset: '-4px', // Slight offset to save it showing up on the edges.
           zIndex: ++zIndex,
           cursor: 'move',
@@ -454,7 +455,7 @@ const RecorderPreview = (props: {
             bottom: 2, // Slight offset to save it showing up on the edges.
             width: cornerSize,
             height: cornerSize,
-            backgroundColor: '#bb4420',
+            backgroundColor: BRAND,
             zIndex,
             cursor: 'se-resize',
           }}

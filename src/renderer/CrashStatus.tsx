@@ -2,6 +2,7 @@ import { ErrorReport, Crashes } from 'main/types';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import { Tooltip, IconButton, Popover, Box, Typography } from '@mui/material';
 import { useState } from 'react';
+import { BRAND } from 'renderer/brand';
 
 interface IProps {
   crashes: Crashes;
@@ -45,7 +46,7 @@ export default function CrashStatus(props: IProps) {
           return (
             <Typography
               key={dateString}
-              sx={{ color: '#bb4420', fontSize: '0.75rem', m: 1 }}
+              sx={{ color: BRAND, fontSize: '0.75rem', m: 1 }}
             >
               {dateString}: {reason}
             </Typography>

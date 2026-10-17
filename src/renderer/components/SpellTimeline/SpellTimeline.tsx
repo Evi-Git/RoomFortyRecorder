@@ -343,7 +343,7 @@ const SpellTimeline: React.FC<IProps> = ({
                 </div>
               ))}
               <div
-                className="absolute top-0 bottom-0 w-[2px] bg-[#bb4420] pointer-events-none"
+                className="absolute top-0 bottom-0 w-[2px] bg-brand pointer-events-none"
                 style={{ left: `${(progress / total) * 100}%` }}
               />
             </div>
