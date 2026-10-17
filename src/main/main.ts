@@ -42,6 +42,7 @@ import Poller from 'utils/Poller';
 import Recorder from './Recorder';
 import LiveStreamer from './LiveStreamer';
 import LiveViewer from './LiveViewer';
+import PullDesk from './PullDesk';
 import AsyncQueue from 'utils/AsyncQueue';
 import { getApplicationLogDir, setupApplicationLogging } from './logging';
 
@@ -531,6 +532,11 @@ ipcMain.handle('liveWatch', async (_event, args) => {
 });
 
 ipcMain.handle('liveUnwatch', () => LiveViewer.getInstance().stop());
+
+// [RoomFortyRecorder] Pull desk page: reports and per-boss settings.
+ipcMain.handle('pullDesk', (_event, args) =>
+  PullDesk.getInstance().handle(args[0]),
+);
 
 LiveStreamer.getInstance().on('state', (state) =>
   send('liveStreamState', state),

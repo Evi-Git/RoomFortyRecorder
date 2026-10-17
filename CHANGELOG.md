@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - Unreleased
+### Added
+- **Pull desk**: a report for every Mythic raid pull, about 10 s after it ends. It shows the wipe cause, deaths with killing blows and a Watch button that opens that raider's recording 10 s before they died, a check of every assignment in the boss's cooldown note, and avoidable hits. Each report is also posted to the boss's Discord channel. Open it from the new sidebar page. One raider's app uploads a small filtered copy of the pull's combat log; turn **Send my pull logs** off on the page to opt out. Needs the updated guild server (see `docs/PullDesk.md`).
+
 ## [1.7.1] - Unreleased
 ### Added
 - **Go live quality** (gear next to Go live): resolution (720p to 1440p, or same as recording), frame rate (same as recording or half) and bitrate (3-20 Mbps). Applies the next time you go live; recordings are unaffected.

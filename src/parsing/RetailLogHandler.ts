@@ -23,6 +23,7 @@ import { isUnitFriendly, isUnitSelf } from './logutils';
 import ConfigService from 'config/ConfigService';
 import RaidEncounter from 'activitys/RaidEncounter';
 import { refreshInstantReplayState } from 'main/util';
+import PullDesk from 'main/PullDesk';
 
 /**
  * RetailLogHandler class.
@@ -32,6 +33,10 @@ export default class RetailLogHandler extends LogHandler {
 
   constructor(logPath: string) {
     super(logPath, 10);
+
+    // [RoomFortyRecorder] Pull desk: copy raid pulls for the guild report.
+    this.combatLogWatcher.lineTap = (line: string) =>
+      PullDesk.getInstance().onLogLine(line);
 
     /* eslint-disable prettier/prettier */
     this.combatLogWatcher

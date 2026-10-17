@@ -13,6 +13,7 @@ import {
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPullDesk } from './pulldesk.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -971,6 +972,17 @@ const metadataFor = (video) => ({
   signedVideoKey: signedDownloadUrl(GUILD, video.videoKey),
 });
 
+// Pull desk: per-pull wipe reports from raiders' combat logs. See pulldesk.mjs.
+const pullDesk = createPullDesk({
+  storage: STORAGE,
+  readBody,
+  json,
+  fail,
+  memberRoleNames,
+  botToken: DISCORD_BOT_TOKEN,
+  env: process.env,
+});
+
 const handleApi = async (req, res, url, parts) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, withCors());
@@ -1152,6 +1164,10 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   const guild = parts[2];
+
+  if (parts[3] === 'pulldesk') {
+    return pullDesk.handle(req, res, parts.slice(4), url);
+  }
 
   if (parts.length === 3 && req.method === 'GET') {
     const usage = await usageBytes();
@@ -1538,6 +1554,7 @@ const requestHandler = async (req, res) => {
 
 const main = async () => {
   await loadState();
+  await pullDesk.ready();
   const server = http.createServer((req, res) => {
     requestHandler(req, res).catch((error) => {
       console.error('[guild-cloud] Request failed', error);

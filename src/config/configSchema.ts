@@ -57,6 +57,7 @@ export type ConfigurationSchema = {
   liveResolution: string;
   liveFps: string;
   liveBitrate: number;
+  pullDeskUpload: boolean;
   cloudDiscordName: string;
   cloudUploadDungeons: boolean;
   cloudUploadRaids: boolean;
@@ -392,6 +393,13 @@ export const configSchema = {
     default: 7000,
     minimum: 1000,
     maximum: 20000,
+  },
+  // [RoomFortyRecorder] Pull desk: send each tracked raid pull's combat log
+  // slice to the guild server. Only one raider's upload is used per pull.
+  pullDeskUpload: {
+    description: Phrase.CloudUploadDescription,
+    type: 'boolean',
+    default: true,
   },
   cloudDiscordName: {
     description: Phrase.CloudStorageDescription,

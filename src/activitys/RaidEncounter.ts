@@ -93,6 +93,11 @@ export default class RaidEncounter extends Activity {
     return this._encounterName;
   }
 
+  /** [RoomFortyRecorder] Current progress, used by the pull desk. */
+  get bossPercent() {
+    return this.encounterProgressPercent;
+  }
+
   get zoneID(): number {
     if (!this.encounterID) {
       console.warn("[RaidEncounter] EncounterID not set, can't get zone ID");

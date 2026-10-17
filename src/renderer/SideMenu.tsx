@@ -1,5 +1,6 @@
 import {
   Clapperboard,
+  ClipboardList,
   Cog,
   FileText,
   HardHat,
@@ -310,6 +311,18 @@ const SideMenu = (props: IProps) => {
     );
   };
 
+  // [RoomFortyRecorder] Per-pull wipe reports from the guild server.
+  const renderPullDeskTab = () => (
+    <Menu.Item value={Pages.PullDesk} className="py-[4px] my-2">
+      <span className="inline-flex items-center w-full">
+        <Menu.Item.Icon>
+          <ClipboardList />
+        </Menu.Item.Icon>
+        <span className="font-semibold">Pull desk</span>
+      </span>
+    </Menu.Item>
+  );
+
   const handleChangeCategory = (value: VideoCategory) => {
     const index = getCategoryIndex(value);
     setConfigValue('selectedCategory', index);
@@ -383,7 +396,8 @@ const SideMenu = (props: IProps) => {
           <Menu
             initialValue={
               appState.page === Pages.InstantReplay ||
-              appState.page === Pages.Live
+              appState.page === Pages.Live ||
+              appState.page === Pages.PullDesk
                 ? appState.page
                 : false
             }
@@ -391,6 +405,7 @@ const SideMenu = (props: IProps) => {
           >
             {renderInstantReplayTab()}
             {renderLiveTab()}
+            {renderPullDeskTab()}
           </Menu>
         </>
 

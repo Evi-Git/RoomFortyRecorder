@@ -1,0 +1,598 @@
+// Pull desk analysis: turns one pull's combat log slice (already filtered by
+// the app, see src/parsing/PullLogFilter.ts) into a small JSON report.
+//
+// Pure functions only -- no file system, no network -- so it can be tested
+// against the real logs under tests/logs.
+
+// ---- Log line parsing -------------------------------------------------------
+
+// Splits the part after the timestamp the same way the app's LogLine does:
+// commas separate values, quotes protect commas, () and [] make nested lists.
+export const splitArgs = (body) => {
+  const args = [];
+  const stack = [];
+  let value = '';
+  let quoted = false;
+  let wasQuoted = false;
+
+  const push = (item) => {
+    if (stack.length > 0) stack[stack.length - 1].push(item);
+    else args.push(item);
+  };
+
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i];
+
+    if (quoted) {
+      if (char === '"') quoted = false;
+      else value += char;
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = true;
+      wasQuoted = true;
+    } else if (char === ',') {
+      if (value !== '' || wasQuoted) push(value);
+      value = '';
+      wasQuoted = false;
+    } else if (char === '[' || char === '(') {
+      stack.push([]);
+    } else if (char === ']' || char === ')') {
+      if (value !== '' || wasQuoted) stack[stack.length - 1]?.push(value);
+      value = stack.pop() ?? [];
+      wasQuoted = true; // a closed list is always a value
+    } else {
+      value += char;
+    }
+  }
+
+  if (value !== '' || wasQuoted) push(value);
+  return args;
+};
+
+// "4/30/2026 20:05:17.7771" or older "3/3 19:06:21.663", newer logs may add
+// a timezone suffix like "17.777-4". Returns milliseconds on an arbitrary
+// but consistent clock (only differences matter).
+export const parseTimestamp = (stamp) => {
+  const match =
+    /^(\d+)\/(\d+)(?:\/(\d+))?\s+(\d+):(\d+):(\d+)(?:\.(\d+))?/.exec(stamp);
+  if (!match) return NaN;
+  const [, month, day, year, hours, mins, secs, fraction] = match;
+  const base = Date.UTC(
+    Number(year || 2000),
+    Number(month) - 1,
+    Number(day),
+    Number(hours),
+    Number(mins),
+    Number(secs),
+  );
+  return base + (fraction ? Number(`0.${fraction}`) * 1000 : 0);
+};
+
+export const parseLine = (raw) => {
+  const line = raw.trim();
+  const gap = line.indexOf('  ');
+  if (gap < 0) return null;
+  const args = splitArgs(line.slice(gap + 2));
+  if (args.length === 0) return null;
+  return { ms: parseTimestamp(line.slice(0, gap)), event: args[0], args };
+};
+
+// ---- Helpers ------------------------------------------------------------------
+
+const TANK_SPECS = new Set([250, 581, 104, 268, 66, 73]);
+const HEALER_SPECS = new Set([105, 270, 65, 256, 257, 264, 1468]);
+
+export const roleForSpec = (specId) => {
+  if (TANK_SPECS.has(specId)) return 'tank';
+  if (HEALER_SPECS.has(specId)) return 'healer';
+  return 'dps';
+};
+
+const DIFFICULTIES = {
+  14: 'Normal',
+  15: 'Heroic',
+  16: 'Mythic',
+  17: 'LFR',
+};
+
+// "Psiethyr-TwistingNether-EU" -> "Psiethyr"
+export const shortName = (name) => String(name || '').split('-')[0];
+
+const isPlayerGuid = (guid) => String(guid).startsWith('Player-');
+const isNpcGuid = (guid) =>
+  String(guid).startsWith('Creature-') || String(guid).startsWith('Vehicle-');
+const npcIdFromGuid = (guid) => Number.parseInt(String(guid).split('-')[5], 10);
+
+// Damage events and where their spell / advanced / damage fields start.
+// SWING has no spell fields, so everything shifts left by 3.
+const DAMAGE_EVENTS = {
+  SPELL_DAMAGE: 9,
+  SPELL_PERIODIC_DAMAGE: 9,
+  RANGE_DAMAGE: 9,
+  SPELL_BUILDING_DAMAGE: 9,
+  SWING_DAMAGE: 6,
+  SWING_DAMAGE_LANDED: 6,
+};
+
+const DECIMAL = /^-?\d+\.\d+$/;
+
+// Returns a normalised damage hit, or null if the line isn't damage.
+// Advanced combat log fields follow the spell fields. Their count changes
+// between expansions (17 in Dragonflight, 19 in Midnight), so the damage
+// amount is found relative to the position fields: posX, posY, mapId,
+// facing, level, then the amount.
+const readDamage = (entry) => {
+  const spellOffset = DAMAGE_EVENTS[entry.event];
+  if (spellOffset === undefined) return null;
+  const { args } = entry;
+  const hasSpell = spellOffset === 9;
+  const advanced = hasSpell ? 12 : 9;
+  let posX = -1;
+  for (let i = advanced + 4; i < args.length - 2; i += 1) {
+    if (DECIMAL.test(args[i]) && DECIMAL.test(args[i + 1])) {
+      posX = i;
+      break;
+    }
+  }
+  const amountAt = posX > 0 ? posX + 5 : advanced + 17;
+
+  return {
+    sourceGuid: args[1],
+    sourceName: args[2],
+    destGuid: args[5],
+    destName: args[6],
+    spellId: hasSpell ? Number.parseInt(args[9], 10) : 1,
+    spellName: hasSpell ? args[10] : 'Melee',
+    infoGuid: args[advanced],
+    currentHp: Number.parseInt(args[advanced + 2], 10),
+    maxHp: Number.parseInt(args[advanced + 3], 10),
+    amount: Number.parseInt(args[amountAt], 10) || 0,
+    overkill: Number.parseInt(args[amountAt + 2], 10),
+  };
+};
+
+export const formatTime = (seconds) => {
+  const total = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = String(total % 60).padStart(2, '0');
+  return `${mins}:${secs}`;
+};
+
+// ---- Note parsing -------------------------------------------------------------
+
+// Parses cooldown assignments out of a pasted raid note. Supports the common
+// shapes: MRT style "{time:1:30}Name {spell:31821}" and NSRT style
+// "time:90;tag:Name;spellid:31821;". A line can name several raiders.
+// Names are matched against the pull's roster, so realm suffixes and colour
+// codes don't matter. Phase-relative times ("{time:0:30,p2}") are counted but
+// not checked, since phases aren't detected yet.
+export const parseNote = (noteText, rosterNames) => {
+  const result = { assignments: [], phaseSkipped: 0, unmatched: 0 };
+  if (!noteText) return result;
+
+  const roster = rosterNames
+    .map((name) => ({ name, lower: name.toLowerCase() }))
+    .sort((a, b) => b.lower.length - a.lower.length);
+
+  const cleaned = String(noteText)
+    .replace(/\|c[0-9a-fA-F]{8}/g, '')
+    .replace(/\|r/g, '');
+
+  for (const rawLine of cleaned.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    let seconds = null;
+    let phase = 1;
+
+    const mrt = /\{time:(\d+)(?::(\d+))?(?:,\s*p(\d+))?[^}]*\}/i.exec(line);
+    const nsrt = /(?:^|;)\s*time:(\d+(?:\.\d+)?)\s*;/i.exec(line);
+    const nsrtPhase = /(?:^|;)\s*ph(?:ase)?:(\d+)\s*;/i.exec(line);
+
+    if (mrt) {
+      seconds = mrt[2] !== undefined
+        ? Number(mrt[1]) * 60 + Number(mrt[2])
+        : Number(mrt[1]);
+      if (mrt[3]) phase = Number(mrt[3]);
+    } else if (nsrt) {
+      seconds = Number(nsrt[1]);
+      if (nsrtPhase) phase = Number(nsrtPhase[1]);
+    }
+    if (seconds === null || !Number.isFinite(seconds)) continue;
+
+    const spellIds = [
+      ...line.matchAll(/\{spell:(\d+)\}/gi),
+      ...line.matchAll(/(?:^|;)\s*spellid:(\d+)/gi),
+    ].map((match) => Number(match[1]));
+    if (spellIds.length === 0) continue; // text reminder, nothing to check
+
+    if (phase !== 1) {
+      result.phaseSkipped += 1;
+      continue;
+    }
+
+    // Look for roster names as whole words anywhere on the line.
+    const lowerLine = line.toLowerCase();
+    const names = [];
+    for (const { name, lower } of roster) {
+      const pattern = new RegExp(
+        `(^|[^\\p{L}])${lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}])`,
+        'u',
+      );
+      if (pattern.test(lowerLine) && !names.includes(name)) names.push(name);
+    }
+
+    if (names.length === 0) {
+      result.unmatched += 1;
+      continue;
+    }
+
+    // One spell per line is the norm; if several, pair them up in order.
+    names.forEach((name, index) => {
+      result.assignments.push({
+        t: seconds,
+        name,
+        spellId: spellIds[Math.min(index, spellIds.length - 1)],
+      });
+    });
+  }
+
+  result.assignments.sort((a, b) => a.t - b.t);
+  return result;
+};
+
+// ---- The analysis ---------------------------------------------------------------
+
+const HIT_HISTORY = 8;
+// Holy priest "death" auras: Spirit of Redemption and Restitution.
+const PRIEST_DEATH_AURAS = new Set([27827, 211319]);
+
+/**
+ * @param {string} logText  filtered log slice, ENCOUNTER_START..ENCOUNTER_END
+ * @param {{ note?: string, avoidable?: number[] }} options
+ */
+export const analyzePull = (logText, options = {}) => {
+  const avoidable = new Set((options.avoidable || []).map(Number));
+
+  let start = null;
+  let end = null;
+  const players = new Map(); // guid -> { name, specId }
+  const recentHits = new Map(); // guid -> last hits
+  const deaths = [];
+  const deadAt = new Map(); // name -> first death time
+  const casts = new Map(); // name -> [{ t, spellId, spellName }]
+  const spellNames = new Map();
+  const npcMaxHp = new Map(); // npcId -> max hp
+  const npcHp = new Map(); // npcId -> { t, current, max }
+  const hpSamples = []; // [t, npcId, pct]
+  const avoidableHits = new Map(); // name -> { hits, damage, bySpell }
+
+  const seconds = (entry) => (entry.ms - start.ms) / 1000;
+
+  const notePlayer = (guid, name) => {
+    if (!isPlayerGuid(guid) || !name || name === 'nil') return;
+    const existing = players.get(guid);
+    if (existing) existing.name ??= shortName(name);
+    else players.set(guid, { name: shortName(name), specId: 0 });
+  };
+
+  for (const raw of String(logText).split('\n')) {
+    if (!raw.trim()) continue;
+    let entry;
+    try {
+      entry = parseLine(raw);
+    } catch {
+      continue; // one malformed line shouldn't sink the report
+    }
+    if (!entry || !Number.isFinite(entry.ms)) continue;
+    const { event, args } = entry;
+
+    if (event === 'ENCOUNTER_START') {
+      if (start) continue; // only the first one
+      start = {
+        ms: entry.ms,
+        encounterId: Number(args[1]),
+        encounterName: args[2],
+        difficultyId: Number(args[3]),
+        groupSize: Number(args[4]),
+      };
+      continue;
+    }
+    if (!start) continue;
+
+    if (event === 'ENCOUNTER_END') {
+      end = {
+        ms: entry.ms,
+        success: args[5] === '1',
+        fightMs: Number(args[6]),
+      };
+      break;
+    }
+
+    const t = seconds(entry);
+
+    if (event === 'COMBATANT_INFO') {
+      const guid = args[1];
+      const specId = Number.parseInt(args[25], 10);
+      const existing = players.get(guid);
+      if (existing) existing.specId = specId;
+      else players.set(guid, { name: null, specId });
+      continue;
+    }
+
+    notePlayer(args[1], args[2]);
+    notePlayer(args[5], args[6]);
+
+    const hit = readDamage(entry);
+    if (hit) {
+      spellNames.set(hit.spellId, hit.spellName);
+
+      if (isPlayerGuid(hit.destGuid)) {
+        const list = recentHits.get(hit.destGuid) || [];
+        list.push({
+          t,
+          spellId: hit.spellId,
+          spellName: hit.spellName,
+          source: shortName(hit.sourceName),
+          amount: hit.amount,
+          overkill: Number.isFinite(hit.overkill) ? hit.overkill : -1,
+        });
+        if (list.length > HIT_HISTORY) list.shift();
+        recentHits.set(hit.destGuid, list);
+
+        if (avoidable.has(hit.spellId) && !isPlayerGuid(hit.sourceGuid)) {
+          const name = shortName(hit.destName);
+          const stats = avoidableHits.get(name) || { hits: 0, damage: 0, bySpell: {} };
+          stats.hits += 1;
+          stats.damage += hit.amount;
+          stats.bySpell[hit.spellId] = (stats.bySpell[hit.spellId] || 0) + 1;
+          avoidableHits.set(name, stats);
+        }
+      } else if (
+        isNpcGuid(hit.destGuid) &&
+        hit.infoGuid === hit.destGuid &&
+        Number.isFinite(hit.maxHp) &&
+        hit.maxHp > 0
+      ) {
+        const npcId = npcIdFromGuid(hit.destGuid);
+        npcMaxHp.set(npcId, Math.max(npcMaxHp.get(npcId) || 0, hit.maxHp));
+        npcHp.set(npcId, { t, current: hit.currentHp, max: hit.maxHp });
+        const last = hpSamples.findLast?.((sample) => sample[1] === npcId);
+        if (!last || t - last[0] >= 5) {
+          hpSamples.push([t, npcId, Math.round((100 * hit.currentHp) / hit.maxHp)]);
+        }
+      }
+      continue;
+    }
+
+    if (event === 'SPELL_INSTAKILL' && isPlayerGuid(args[5])) {
+      const list = recentHits.get(args[5]) || [];
+      list.push({
+        t,
+        spellId: Number(args[9]),
+        spellName: args[10],
+        source: shortName(args[2]),
+        amount: 0,
+        overkill: 0,
+        instakill: true,
+      });
+      recentHits.set(args[5], list.slice(-HIT_HISTORY));
+      continue;
+    }
+
+    if (event === 'SPELL_CAST_SUCCESS' && isPlayerGuid(args[1])) {
+      const name = shortName(args[2]);
+      const spellId = Number(args[9]);
+      spellNames.set(spellId, args[10]);
+      const list = casts.get(name) || [];
+      list.push({ t, spellId });
+      casts.set(name, list);
+      continue;
+    }
+
+    const priestDeath =
+      event === 'SPELL_AURA_APPLIED' &&
+      isPlayerGuid(args[5]) &&
+      PRIEST_DEATH_AURAS.has(Number(args[9]));
+
+    if ((event === 'UNIT_DIED' && isPlayerGuid(args[5])) || priestDeath) {
+      const guid = args[5];
+      const name = shortName(args[6]);
+      // Feign death and similar set the last field to 1.
+      if (event === 'UNIT_DIED' && args[9] === '1') continue;
+      if (deadAt.has(name) && t - deadAt.get(name) < 15) continue;
+
+      const hits = recentHits.get(guid) || [];
+      const killing =
+        [...hits].reverse().find((h) => h.instakill || h.overkill > 0) ||
+        hits[hits.length - 1] ||
+        null;
+
+      deaths.push({
+        t,
+        guid,
+        name,
+        killingBlow: killing
+          ? {
+              spellId: killing.spellId,
+              spellName: killing.spellName,
+              source: killing.source,
+              amount: killing.amount,
+              overkill: killing.overkill,
+            }
+          : null,
+        lastHits: hits.filter((h) => t - h.t <= 10).slice(-5),
+      });
+      if (!deadAt.has(name)) deadAt.set(name, t);
+      recentHits.delete(guid);
+    }
+  }
+
+  if (!start) throw new Error('No ENCOUNTER_START in log');
+
+  const duration = end
+    ? (end.fightMs > 0 ? end.fightMs / 1000 : (end.ms - start.ms) / 1000)
+    : hpSamples.at(-1)?.[0] || 0;
+
+  // The boss is the NPC with the highest max HP (same rule as the app).
+  let bossNpcId = null;
+  for (const [npcId, max] of npcMaxHp) {
+    if (bossNpcId === null || max > npcMaxHp.get(bossNpcId)) bossNpcId = npcId;
+  }
+  const bossHp = bossNpcId !== null ? npcHp.get(bossNpcId) : null;
+  let bossPercent = bossHp ? Math.round((100 * bossHp.current) / bossHp.max) : null;
+  if (end?.success) bossPercent = 0;
+  const bossHpCurve = hpSamples
+    .filter((sample) => sample[1] === bossNpcId)
+    .map(([time, , pct]) => [Math.round(time), pct]);
+
+  // Roster with roles.
+  const roster = [...players.entries()]
+    .filter(([, info]) => info.name)
+    .map(([guid, info]) => ({
+      guid,
+      name: info.name,
+      specId: info.specId || 0,
+      role: roleForSpec(info.specId),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const roleOf = new Map(roster.map((player) => [player.name, player.role]));
+  const inPull = new Set(
+    roster.filter((player) => player.specId > 0).map((player) => player.name),
+  );
+
+  deaths.forEach((death) => {
+    death.role = roleOf.get(death.name) || 'dps';
+    delete death.guid;
+  });
+
+  // Wipe cause.
+  let wipe = null;
+  if (end && !end.success) {
+    const firstDeath = deaths[0] || null;
+    const firstKey = deaths.find((d) => d.role === 'tank' || d.role === 'healer') || null;
+    let cascade = null;
+    for (let i = 0; i + 2 < deaths.length; i += 1) {
+      if (deaths[i + 2].t - deaths[i].t <= 10) {
+        cascade = { t: deaths[i].t, names: deaths.slice(i, i + 3).map((d) => d.name) };
+        break;
+      }
+    }
+
+    // A raid-wide mechanic: 5+ deaths within 2 s to the same ability.
+    let massDeath = null;
+    for (let i = 0; i < deaths.length && !massDeath; i += 1) {
+      const spell = deaths[i].killingBlow?.spellName;
+      const group = deaths.filter(
+        (d) => d.t >= deaths[i].t && d.t - deaths[i].t <= 2 && d.killingBlow?.spellName === spell,
+      );
+      if (spell && group.length >= 5) {
+        massDeath = { t: deaths[i].t, spellName: spell, count: group.length };
+      }
+    }
+
+    const parts = [];
+    if (deaths.length === 0) {
+      parts.push(duration < 20 ? 'Reset or early wipe, no deaths.' : 'Wipe with no player deaths.');
+    } else {
+      const describe = (death) =>
+        `${death.name}${death.role !== 'dps' ? ` (${death.role})` : ''} to ${
+          death.killingBlow?.spellName || 'unknown'
+        } at ${formatTime(death.t)}`;
+      if (massDeath) {
+        parts.push(
+          `${massDeath.spellName} killed ${massDeath.count} at ${formatTime(massDeath.t)}.`,
+        );
+      }
+      parts.push(`First death: ${describe(firstDeath)}.`);
+      if (firstKey && firstKey !== firstDeath && (!massDeath || firstKey.t < massDeath.t)) {
+        parts.push(`First tank or healer death: ${describe(firstKey)}.`);
+      }
+      if (cascade && !massDeath) parts.push(`3 deaths inside 10 s from ${formatTime(cascade.t)}.`);
+    }
+
+    wipe = {
+      text: parts.join(' '),
+      firstDeathAt: firstDeath?.t ?? null,
+      firstKeyDeathAt: firstKey?.t ?? null,
+      cascadeAt: cascade?.t ?? null,
+      massDeath,
+    };
+  }
+
+  // Plan check.
+  const note = parseNote(options.note || '', roster.map((player) => player.name));
+  const planItems = note.assignments
+    .filter((item) => item.t <= duration && (inPull.size === 0 || inPull.has(item.name)))
+    .map((item) => {
+      const spellName = spellNames.get(item.spellId) || null;
+      const diedAt = deadAt.get(item.name);
+      if (diedAt !== undefined && diedAt < item.t) {
+        return { ...item, spellName, status: 'dead', delta: null };
+      }
+      const playerCasts = (casts.get(item.name) || []).filter(
+        (cast) => cast.spellId === item.spellId,
+      );
+      let best = null;
+      for (const cast of playerCasts) {
+        const delta = cast.t - item.t;
+        if (delta < -25 || delta > 25) continue;
+        if (!best || Math.abs(delta) < Math.abs(best)) best = delta;
+      }
+      let status = 'missed';
+      if (best !== null) {
+        if (best < -5) status = 'early';
+        else if (best > 5) status = 'late';
+        else status = 'ontime';
+      }
+      return {
+        ...item,
+        spellName: spellName || spellNames.get(item.spellId) || null,
+        status,
+        delta: best === null ? null : Math.round(best * 10) / 10,
+      };
+    });
+
+  const planSummary = { ontime: 0, late: 0, early: 0, missed: 0, dead: 0 };
+  planItems.forEach((item) => {
+    planSummary[item.status] += 1;
+  });
+
+  const avoidableList = [...avoidableHits.entries()]
+    .map(([name, stats]) => ({ name, ...stats }))
+    .sort((a, b) => b.hits - a.hits);
+
+  return {
+    v: 1,
+    encounterId: start.encounterId,
+    encounterName: start.encounterName,
+    difficultyId: start.difficultyId,
+    difficulty: DIFFICULTIES[start.difficultyId] || String(start.difficultyId),
+    groupSize: start.groupSize,
+    result: end?.success ? 'kill' : 'wipe',
+    complete: Boolean(end),
+    duration: Math.round(duration * 10) / 10,
+    bossPercent,
+    bossHpCurve,
+    roster,
+    deaths: deaths.map((death) => ({
+      ...death,
+      t: Math.round(death.t * 10) / 10,
+      lastHits: death.lastHits.map((h) => ({ ...h, t: Math.round(h.t * 10) / 10 })),
+    })),
+    wipe,
+    plan: {
+      parsed: note.assignments.length,
+      phaseSkipped: note.phaseSkipped,
+      unmatched: note.unmatched,
+      items: planItems,
+      summary: planSummary,
+    },
+    avoidable: avoidableList,
+    spellNames: Object.fromEntries(
+      [...avoidable].map((id) => [id, spellNames.get(id) || null]),
+    ),
+  };
+};

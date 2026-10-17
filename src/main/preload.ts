@@ -60,7 +60,9 @@ export type Channels =
   | 'getTimeline'
   | 'liveListStreams'
   | 'liveWatch'
-  | 'liveUnwatch';
+  | 'liveUnwatch'
+  | 'pullDesk'
+  | 'pullDeskUpdated';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
