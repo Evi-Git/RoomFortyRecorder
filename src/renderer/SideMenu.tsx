@@ -366,7 +366,7 @@ const SideMenu = (props: IProps) => {
   const raidsIcon = <Swords size={ICON} />;
 
   return (
-    <div className="flex flex-col h-full bg-background w-60 shrink-0 px-3 items-center pt-4 pb-2 border-r border-card/60">
+    <div className="flex flex-col h-full bg-background w-60 shrink-0 px-3 items-center pt-[44px] pb-2 border-r border-card/60">
       <ApplicationStatusCard
         recorderStatus={recorderStatus}
         activityStatus={activityStatus}
