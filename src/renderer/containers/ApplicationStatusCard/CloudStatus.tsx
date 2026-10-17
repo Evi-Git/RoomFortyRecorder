@@ -9,18 +9,23 @@ import {
   HoverCardTrigger,
 } from 'renderer/components/HoverCard/HoverCard';
 import Separator from 'renderer/components/Separator/Separator';
-import StatusLight, {
-  StatusLightVariant,
-} from 'renderer/components/StatusLight/StatusLight';
+import { StatusLightVariant } from 'renderer/components/StatusLight/StatusLight';
+import { cn } from 'renderer/components/utils';
 
 type StatusProps = {
   appState: AppState;
   setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  // [RoomFortyRecorder] Shown as "signed in as <name>" when connected.
+  userName?: string;
 };
 
 const ipc = window.electron.ipcRenderer;
 
-const CloudStatus = ({ appState, setPreviewEnabled }: StatusProps) => {
+const CloudStatus = ({
+  appState,
+  setPreviewEnabled,
+  userName,
+}: StatusProps) => {
   const { cloudStatus, language } = appState;
 
   const [cloudState, setCloudState] = useState<CloudState>({
@@ -66,8 +71,6 @@ const CloudStatus = ({ appState, setPreviewEnabled }: StatusProps) => {
       ipc.removeAllListeners('updateUploadQueueLength');
     };
   }, []);
-
-  const statusLightsClasses = 'w-1.5 h-full rounded-l-md rounded-r-none';
 
   let status: string;
   let variant: StatusLightVariant;
@@ -151,7 +154,7 @@ const CloudStatus = ({ appState, setPreviewEnabled }: StatusProps) => {
     if (cloudState.queuedUploads < 1) return <></>;
     return (
       <div className="inline-flex gap-x-[2px] text-xs text-foreground-lighter">
-        <CloudUpload size={16} />
+        <CloudUpload size={14} />
         {cloudState.uploadProgress.toFixed(0)}%
         <span className="text-[0.60rem] text-foreground mx-[2px]">
           {cloudState.queuedUploads > 1 && `+${cloudState.queuedUploads - 1}`}
@@ -164,7 +167,7 @@ const CloudStatus = ({ appState, setPreviewEnabled }: StatusProps) => {
     if (cloudState.queuedDownloads < 1) return <></>;
     return (
       <div className="inline-flex gap-x-[2px] text-xs text-foreground-lighter">
-        <CloudDownload size={16} />
+        <CloudDownload size={14} />
         {cloudState.downloadProgress.toFixed(0)}%
         <span className="text-[0.60rem] text-foreground mx-[2px]">
           {cloudState.queuedDownloads > 1 &&
@@ -180,22 +183,23 @@ const CloudStatus = ({ appState, setPreviewEnabled }: StatusProps) => {
       onOpenChange={(open) => setPreviewEnabled(!open)}
     >
       <HoverCardTrigger>
-        <div className="w-full h-full flex relative rounded-md border-t border-[rgba(255,255,255,10%)] hover:cursor-pointer">
-          <StatusLight
-            wrapperClasses={`${statusLightsClasses}`}
-            foregroundClasses={`border-none ${statusLightsClasses}`}
-            variant={variant}
-          />
-          <div className="ml-4 mr-1 py-2 font-sans flex flex-col justify-around">
-            <span className="text-foreground-lighter font-bold text-xs drop-shadow-sm opacity-60 hover:text-foreground-lighter">
-              {getLocalePhrase(language, Phrase.Cloud)}
-            </span>
-
-            <span className="text-popover-foreground font-semibold text-sm transition-all hover:text-popover-foreground whitespace-nowrap overflow-hidden text-ellipsis">
-              {status}
-            </span>
-          </div>
-          <div className="flex flex-col w-full my-[8px] ml-2 mr-10 items-start justify-end text-popover-foreground font-semibold text-sm transition-all hover:text-popover-foreground gap-y-[2px]">
+        {/* [RoomFortyRecorder] Compact row under the recorder status. */}
+        <div className="w-full flex items-center gap-x-2 pl-4 text-xs font-sans hover:cursor-pointer min-w-0">
+          <span
+            className={cn('truncate', {
+              'text-foreground':
+                variant === 'connected' ||
+                variant === 'active' ||
+                variant === 'disconnected',
+              'text-error-foreground': variant === 'error',
+            })}
+          >
+            {getLocalePhrase(language, Phrase.Cloud)}:{' '}
+            {(variant === 'connected' || variant === 'active') && userName
+              ? `signed in as ${userName}`
+              : status}
+          </span>
+          <div className="ml-auto flex items-center gap-x-2 shrink-0">
             {renderDownloadIcon()}
             {renderUploadIcon()}
           </div>

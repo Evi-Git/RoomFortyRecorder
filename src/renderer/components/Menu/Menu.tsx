@@ -53,7 +53,9 @@ export const Menu = ({
   }, [initialValue]);
 
   return (
-    <div className={cn('flex flex-col items-center gap-y-2 w-full', className)}>
+    <div
+      className={cn('flex flex-col items-center gap-y-0.5 w-full', className)}
+    >
       <MenuContext.Provider value={{ currentValue, onValueChange }}>
         {children}
       </MenuContext.Provider>
@@ -63,7 +65,7 @@ export const Menu = ({
 
 export const MenuLabel = ({ children }: { children: ReactNode }) => {
   return (
-    <small className="text-xs font-extrabold leading-none text-foreground pl-4 self-start font-sans mb-2">
+    <small className="text-xs font-semibold leading-none text-foreground pl-3 self-start font-sans mb-1.5">
       {children}
     </small>
   );

@@ -57,20 +57,23 @@ const LiveButton: React.FC = () => {
       : 'Stream your POV to the guild. Stops by itself when WoW closes.';
 
   return (
-    <div className="px-3 pb-2">
+    <div className="w-full">
       <div className="flex items-center gap-x-1">
         <Tooltip content={tooltip} side="right">
           <Button
             variant={live ? 'destructive' : 'outline'}
             size="sm"
-            className={`flex-1 justify-start gap-x-2 ${connecting ? 'animate-pulse' : ''}`}
+            className={`flex-1 justify-center gap-x-2 text-sm text-foreground-lighter ${connecting ? 'animate-pulse' : ''}`}
             disabled={busy}
             onClick={toggle}
           >
-            <Radio size={16} className={live ? 'animate-pulse' : ''} />
-            <span className="font-semibold">{label}</span>
+            <Radio
+              size={15}
+              className={live ? 'animate-pulse' : 'text-brand'}
+            />
+            <span>{label}</span>
             {(live || connecting) && (
-              <span className="ml-auto text-xs opacity-80">Stop</span>
+              <span className="ml-1 text-xs opacity-80">· Stop</span>
             )}
           </Button>
         </Tooltip>
@@ -78,7 +81,7 @@ const LiveButton: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="shrink-0"
+            className="shrink-0 h-9 w-9 text-foreground"
             title="Go live quality (resolution, frame rate, bitrate)"
           >
             <Settings2 size={16} />

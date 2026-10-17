@@ -1,4 +1,5 @@
 import {
+  Castle,
   Clapperboard,
   ClipboardList,
   Cog,
@@ -8,10 +9,9 @@ import {
   Play,
   Radio,
   Square,
+  Swords,
   Tv,
 } from 'lucide-react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faDungeon, faDragon } from '@fortawesome/free-solid-svg-icons';
 import {
   ActivityStatus,
   CombatLoggingStatus,
@@ -47,7 +47,6 @@ import LiveButton from './LiveButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
-import CloudStatusCard from './containers/ApplicationStatusCard/CloudStatusCard';
 import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
@@ -181,7 +180,7 @@ const SideMenu = (props: IProps) => {
     }
 
     return (
-      <Menu.Item value={tabCategory} className="py-[4px]">
+      <Menu.Item value={tabCategory}>
         <Menu.Item.Icon>
           {typeof tabIcon === 'string' ? (
             <img
@@ -204,9 +203,9 @@ const SideMenu = (props: IProps) => {
 
   const renderSettingsTab = () => {
     return (
-      <Menu.Item value={Pages.Settings} className="py-[4px]">
+      <Menu.Item value={Pages.Settings}>
         <Menu.Item.Icon>
-          <Cog />
+          <Cog size={18} />
         </Menu.Item.Icon>
         {getLocalePhrase(language, Phrase.GeneralButtonText)}
       </Menu.Item>
@@ -215,9 +214,9 @@ const SideMenu = (props: IProps) => {
 
   const renderSceneTab = () => {
     return (
-      <Menu.Item value={Pages.SceneEditor} className="py-[4px]">
+      <Menu.Item value={Pages.SceneEditor}>
         <Menu.Item.Icon>
-          <MonitorCog />
+          <MonitorCog size={18} />
         </Menu.Item.Icon>
         {getLocalePhrase(language, Phrase.SceneButtonText)}
       </Menu.Item>
@@ -231,7 +230,7 @@ const SideMenu = (props: IProps) => {
 
     let spanClassName = 'inline-flex items-center w-full';
     let radioClassName = '';
-    let textClassName = 'font-semibold';
+    let textClassName = '';
 
     if (!disabled) {
       spanClassName += ' animate-pulse';
@@ -245,15 +244,11 @@ const SideMenu = (props: IProps) => {
       : getLocalePhrase(language, Phrase.InstantReplayLabel);
 
     return (
-      <Menu.Item
-        value={Pages.InstantReplay}
-        className="py-[4px]"
-        disabled={disabled}
-      >
+      <Menu.Item value={Pages.InstantReplay} disabled={disabled}>
         <Tooltip content={tooltip}>
           <span className={spanClassName}>
             <Menu.Item.Icon>
-              <Radio className={radioClassName} />
+              <Radio size={18} className={radioClassName} />
             </Menu.Item.Icon>
 
             <span className={textClassName}>
@@ -295,14 +290,14 @@ const SideMenu = (props: IProps) => {
     const someoneLive = liveCount > 0;
 
     return (
-      <Menu.Item value={Pages.Live} className="py-[4px]">
+      <Menu.Item value={Pages.Live}>
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
-            <Tv className={someoneLive ? 'text-brand' : ''} />
+            <Tv size={18} className={someoneLive ? 'text-brand' : ''} />
           </Menu.Item.Icon>
-          <span className="font-semibold">Watch live</span>
+          <span>Watch live</span>
           {someoneLive && (
-            <span className="ml-auto mr-2 rounded-full bg-brand px-2 text-[11px] font-bold text-primary-foreground">
+            <span className="ml-auto rounded-full bg-brand px-2 text-[11px] font-bold text-primary-foreground">
               {liveCount}
             </span>
           )}
@@ -313,12 +308,12 @@ const SideMenu = (props: IProps) => {
 
   // [RoomFortyRecorder] Per-pull wipe reports from the guild server.
   const renderPullDeskTab = () => (
-    <Menu.Item value={Pages.PullDesk} className="py-[4px]">
+    <Menu.Item value={Pages.PullDesk}>
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
-          <ClipboardList />
+          <ClipboardList size={18} />
         </Menu.Item.Icon>
-        <span className="font-semibold">Pull desk</span>
+        <span>Pull desk</span>
       </span>
     </Menu.Item>
   );
@@ -364,11 +359,13 @@ const SideMenu = (props: IProps) => {
     });
   };
 
-  const mythicPlusIcon = <FontAwesomeIcon icon={faDungeon} size="xl" />;
-  const raidsIcon = <FontAwesomeIcon icon={faDragon} size="lg" />;
+  // [RoomFortyRecorder] One line-icon style across the sidebar.
+  const ICON = 18;
+  const mythicPlusIcon = <Castle size={ICON} />;
+  const raidsIcon = <Swords size={ICON} />;
 
   return (
-    <div className="flex flex-col h-full bg-background w-80 px-4 items-center pt-4 pb-2">
+    <div className="flex flex-col h-full bg-background w-60 shrink-0 px-3 items-center pt-4 pb-2 border-r border-card/60">
       <ApplicationStatusCard
         recorderStatus={recorderStatus}
         activityStatus={activityStatus}
@@ -381,19 +378,15 @@ const SideMenu = (props: IProps) => {
         combatLoggingStatus={combatLoggingStatus}
         setPreviewEnabled={setPreviewEnabled}
       />
-      <CloudStatusCard
-        appState={appState}
-        setPreviewEnabled={setPreviewEnabled}
-      />
       <LiveButton />
 
       <ScrollArea
-        className="w-full h-[calc(100%-124px)]"
+        className="w-full flex-1 min-h-0"
         withScrollIndicators={false}
       >
         <>
-          <Separator className="mb-4" />
           <Menu
+            className="mt-5"
             initialValue={
               appState.page === Pages.InstantReplay ||
               appState.page === Pages.Live ||
@@ -413,18 +406,18 @@ const SideMenu = (props: IProps) => {
         <Menu
           initialValue={appState.page === Pages.None ? category : false}
           onChange={handleChangeCategory}
+          className="mt-5"
         >
-          <Separator className="mb-4" />
           <Menu.Label>
             {getLocalePhrase(language, Phrase.RecordingsHeading)}
           </Menu.Label>
           {renderCategoryTab(VideoCategory.MythicPlus, mythicPlusIcon)}
           {renderCategoryTab(VideoCategory.Raids, raidsIcon)}
-          {renderCategoryTab(VideoCategory.Manual, <HardHat />)}
-          {renderCategoryTab(VideoCategory.Clips, <Clapperboard />)}
+          {renderCategoryTab(VideoCategory.Manual, <HardHat size={ICON} />)}
+          {renderCategoryTab(VideoCategory.Clips, <Clapperboard size={ICON} />)}
         </Menu>
-        <Separator className="my-5" />
         <Menu
+          className="mt-5"
           initialValue={
             appState.page === Pages.Settings ||
             appState.page === Pages.SceneEditor

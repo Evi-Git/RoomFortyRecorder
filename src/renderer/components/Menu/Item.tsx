@@ -17,20 +17,23 @@ const Root = ({
   disabled = false,
 }: PropsWithChildren<MenuItemProps>) => {
   const { currentValue, onValueChange } = useMenuContext();
+  const active = currentValue === value && !disabled;
+  // [RoomFortyRecorder] Brass sidebar: compact rows, the selected one a
+  // filled pill with its icon in brass.
   return (
     <div
       className={cn(
-        'w-full flex flex-row bg-transparent rounded-md px-4 py-3 items-center transition-all',
-        'text-foreground font-semibold text-sm font-sans border-t border-t-transparent',
-        '[text-shadow:_0px_1px_1px_rgba(0,0,0,66)]',
+        'group w-full flex flex-row bg-transparent rounded-md px-3 py-2 items-center transition-colors',
+        'text-foreground-lighter/80 text-sm font-sans',
         {
-          'hover:bg-card/60': currentValue !== value && !disabled,
-          'bg-card text-card-foreground border-t border-t-[rgba(255,255,255,0.2)] shadow-[0_1px_2px_rgba(0,0,0,0.5)]':
-            currentValue === value && !disabled,
+          'hover:bg-card/50 hover:text-foreground-lighter':
+            !active && !disabled,
+          'bg-card text-foreground-lighter font-semibold': active,
           'opacity-50 cursor-not-allowed': disabled,
         },
         className,
       )}
+      data-active={active}
       onClick={disabled ? undefined : () => onValueChange(value)}
       role="button"
     >
@@ -40,7 +43,11 @@ const Root = ({
 };
 
 const Icon = ({ children }: { children: ReactNode }) => {
-  return <div className="mr-4 w-6 h-6">{children}</div>;
+  return (
+    <div className="mr-3 w-[18px] h-[18px] flex items-center justify-center opacity-70 group-data-[active=true]:opacity-100 group-data-[active=true]:text-brand">
+      {children}
+    </div>
+  );
 };
 
 type MenuBadgeProps = {
