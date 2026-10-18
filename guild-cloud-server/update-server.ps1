@@ -122,16 +122,62 @@ function Wait-Healthy([int]$Seconds) {
   return $false
 }
 
+# How the server is run here: a scheduled task (found by name, or by its
+# action pointing at server.mjs), or else a Node process started by hand.
+$script:ServerTask = $null
+
+function Find-ServerTask {
+  if ($NoRestart) { return }
+  try {
+    $byName = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($byName) { $script:ServerTask = $byName.TaskName; return }
+
+    $all = @(Get-ScheduledTask -ErrorAction SilentlyContinue)
+    foreach ($task in $all) {
+      foreach ($action in @($task.Actions)) {
+        $text = '{0} {1} {2}' -f $action.Execute, $action.Arguments, $action.WorkingDirectory
+        if ($text -like '*server.mjs*' -or ($action.Execute -like '*node*' -and $action.WorkingDirectory -and ($action.WorkingDirectory.TrimEnd('\') -eq $ServerDir.TrimEnd('\')))) {
+          if ($task.TaskName -ne $UpdateTaskName) {
+            $script:ServerTask = $task.TaskName
+            return
+          }
+        }
+      }
+    }
+  } catch { }
+}
+
+function Get-ServerProcesses {
+  try {
+    return @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -and $_.CommandLine -like '*server.mjs*' })
+  } catch {
+    return @()
+  }
+}
+
 function Stop-Server {
   if ($NoRestart) { return }
-  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if ($script:ServerTask) {
+    Stop-ScheduledTask -TaskName $script:ServerTask -ErrorAction SilentlyContinue
+  }
+  # Also stop any Node running server.mjs by hand (or left over by the task).
+  foreach ($process in (Get-ServerProcesses)) {
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+  }
   # Give Node a moment to exit and release the port.
   Start-Sleep -Seconds 3
 }
 
 function Start-Server {
   if ($NoRestart) { return }
-  Start-ScheduledTask -TaskName $TaskName
+  if ($script:ServerTask) {
+    Start-ScheduledTask -TaskName $script:ServerTask
+    return
+  }
+  # No task: start Node in its own window, like running it by hand.
+  $node = Get-NodePath
+  Start-Process -FilePath $node -ArgumentList 'server.mjs' -WorkingDirectory $ServerDir | Out-Null
 }
 
 # ---- Relaunch elevated if needed -------------------------------------------
@@ -240,6 +286,15 @@ try {
 }
 
 # ---- Back up, swap, restart -----------------------------------------------------
+Find-ServerTask
+if ($NoRestart) {
+  Write-Log '  (test mode: not restarting the server)'
+} elseif ($script:ServerTask) {
+  Write-Log "  server runs as scheduled task '$($script:ServerTask)'"
+} else {
+  Write-Log '  no scheduled task found; Node will be restarted in its own window'
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupName = $stamp
 if ($current) { $backupName = "$stamp-$current" }
