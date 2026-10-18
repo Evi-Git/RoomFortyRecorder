@@ -812,10 +812,12 @@ const PullDeskPage = (props: IProps) => {
     const style = STATUS_STYLE[item.status];
     let detail = '';
     if (item.status === 'missed') {
-      detail =
-        item.nearest === null || item.nearest === undefined
-          ? 'never cast'
-          : `nearest cast ${signed(item.nearest)}`;
+      // Reports analyzed before the server update have no `nearest` field;
+      // say nothing rather than claim the spell was never cast.
+      if (item.nearest === null) detail = 'never cast';
+      else if (item.nearest !== undefined) {
+        detail = `nearest cast ${signed(item.nearest)}`;
+      }
     } else if (item.delta !== null) {
       detail = signed(item.delta);
     }

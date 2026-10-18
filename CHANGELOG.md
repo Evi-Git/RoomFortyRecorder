@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.6] - Unreleased
+### Added
+- Spell timeline under raid recordings shows each spell's icon instead of a lettered tile. Icons are looked up from Wowhead the first time a spell is seen and cached, so the app doesn't get bigger; offline, the old tiles come back.
+- **Spells** filter on the timeline: every boss, add and own spell in the pull with its icon and cast count, a search box, and All/None per group. Hidden spells stay hidden on every recording until you show them again.
+
+### Fixed
+- Pull desk: reports built before the 1.8.5 server update no longer say "never cast" for a missed assignment. Re-run the report after updating the server to see the nearest cast.
+
 ## [1.8.5] - Unreleased
 ### Changed
 - Pull desk, **Cooldown plan**: one collapsible row per raider, raiders with misses first. Open a row to see each assignment and how far off it was (`+3.2s`, `-6s`). For a missed one it says when the nearest cast of that spell was, or "never cast".

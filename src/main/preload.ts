@@ -61,6 +61,7 @@ export type Channels =
   | 'liveStreamGetState'
   | 'liveStreamState'
   | 'getTimeline'
+  | 'spellIcons'
   | 'liveListStreams'
   | 'liveWatch'
   | 'liveUnwatch'

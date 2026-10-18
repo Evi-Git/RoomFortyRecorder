@@ -1,6 +1,14 @@
 import React from 'react';
-import { ChevronDown, ChevronUp, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  ListFilter,
+  Search,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { SpellTimeline as SpellTimelineData } from 'main/types';
+import { Popover, PopoverContent, PopoverTrigger } from '../Popover/Popover';
 
 /**
  * [RoomFortyRecorder] Spell timeline under the video player: boss casts,
@@ -9,6 +17,9 @@ import { SpellTimeline as SpellTimelineData } from 'main/types';
  * - Boss casts with a cast time show as a bar from cast start to finish.
  * - Click any marker to jump the video there (1 second before).
  * - Zoom in to separate dense rows; the view follows the playhead.
+ * - Spell icons come from Wowhead (looked up once per spell, then cached);
+ *   offline they fall back to coloured tiles with initials.
+ * - The Spells menu hides or shows any spell; the choice is remembered.
  */
 
 type Row = {
@@ -32,6 +43,16 @@ interface IProps {
   progress: number;
   onSeek: (seconds: number) => void;
 }
+
+const ipc = window.electron.ipcRenderer;
+
+const ICON_CDN = 'https://wow.zamimg.com/images/wow/icons/large';
+
+const KIND_LABEL: Record<Row['kind'], string> = {
+  boss: 'Boss',
+  enemy: 'Adds',
+  player: 'You',
+};
 
 const ZOOMS = [1, 2, 4, 8, 16];
 const ROW_HEIGHT = 22;
@@ -72,6 +93,51 @@ const fmt = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = (seconds % 60).toFixed(1).padStart(4, '0');
   return `${m}:${s}`;
+};
+
+/** A spell's icon, or a coloured tile with its initials if there's none. */
+const SpellIcon = ({
+  spellId,
+  name,
+  icon,
+  size,
+  className = '',
+}: {
+  spellId: number;
+  name: string;
+  icon?: string;
+  size: number;
+  className?: string;
+}) => {
+  const [failed, setFailed] = React.useState(false);
+
+  if (icon && !failed) {
+    return (
+      <img
+        src={`${ICON_CDN}/${icon}.jpg`}
+        alt=""
+        draggable={false}
+        onError={() => setFailed(true)}
+        className={`rounded-[3px] shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`rounded-[3px] shrink-0 inline-block text-center font-bold text-black/80 ${className}`}
+      style={{
+        width: size,
+        height: size,
+        lineHeight: `${size}px`,
+        fontSize: Math.max(7, Math.round(size * 0.45)),
+        background: spellColor(spellId),
+      }}
+    >
+      {size >= 12 ? initials(name) : ''}
+    </span>
+  );
 };
 
 /** Pair cast starts with their success into bars; leftovers are markers. */
@@ -179,6 +245,17 @@ const SpellTimeline: React.FC<IProps> = ({
     }
   });
 
+  const [hiddenSpells, setHiddenSpells] = React.useState<number[]>(() => {
+    try {
+      const parsed = JSON.parse(store.get('rf-timeline-hidden-spells') || '[]');
+      return Array.isArray(parsed) ? parsed.map(Number) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [icons, setIcons] = React.useState<Record<string, string>>({});
+  const [search, setSearch] = React.useState('');
+
   const scroller = React.useRef<HTMLDivElement>(null);
   const rows = React.useMemo(() => buildRows(timeline), [timeline]);
   const zoom = ZOOMS[zoomIndex];
@@ -189,6 +266,26 @@ const SpellTimeline: React.FC<IProps> = ({
     () => store.set('rf-timeline-hidden', JSON.stringify(hidden)),
     [hidden],
   );
+  React.useEffect(
+    () => store.set('rf-timeline-hidden-spells', JSON.stringify(hiddenSpells)),
+    [hiddenSpells],
+  );
+
+  // Look up icons for every spell in this pull. Cached ones come back at
+  // once; new ones take a moment the first time.
+  React.useEffect(() => {
+    let cancelled = false;
+    const ids = Object.keys(timeline.spells).map(Number);
+    ipc
+      .invoke('spellIcons', [ids])
+      .then((result) => {
+        if (!cancelled && result) setIcons(result as Record<string, string>);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [timeline]);
 
   // When zoomed in, keep the playhead in view.
   React.useEffect(() => {
@@ -200,7 +297,56 @@ const SpellTimeline: React.FC<IProps> = ({
     }
   }, [progress, total, zoom]);
 
-  const visibleRows = rows.filter((row) => !hidden[row.kind]);
+  const hiddenSet = React.useMemo(() => new Set(hiddenSpells), [hiddenSpells]);
+
+  const visibleRows = rows
+    .filter((row) => !hidden[row.kind])
+    .map((row) => ({
+      ...row,
+      items: row.items.filter((item) => !hiddenSet.has(item.spellId)),
+    }));
+
+  // Every spell per row, most cast first, for the Spells menu.
+  const spellLists = React.useMemo(
+    () =>
+      rows.map((row) => {
+        const counts = new Map<number, { name: string; count: number }>();
+        row.items.forEach((item) => {
+          const entry = counts.get(item.spellId) || {
+            name: item.name,
+            count: 0,
+          };
+          entry.count += 1;
+          counts.set(item.spellId, entry);
+        });
+        return {
+          row,
+          spells: [...counts.entries()]
+            .map(([spellId, entry]) => ({ spellId, ...entry }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+        };
+      }),
+    [rows],
+  );
+
+  const toggleSpell = (spellId: number) =>
+    setHiddenSpells((list) =>
+      list.includes(spellId)
+        ? list.filter((id) => id !== spellId)
+        : [...list, spellId],
+    );
+
+  const setGroup = (spellIds: number[], show: boolean) =>
+    setHiddenSpells((list) => {
+      const without = list.filter((id) => !spellIds.includes(id));
+      return show ? without : [...without, ...spellIds];
+    });
+
+  const hiddenHere = spellLists.reduce(
+    (n, { spells }) =>
+      n + spells.filter((x) => hiddenSet.has(x.spellId)).length,
+    0,
+  );
 
   const renderItem = (row: Row, item: Item, index: number) => {
     const left = (item.start / total) * 100;
@@ -208,7 +354,9 @@ const SpellTimeline: React.FC<IProps> = ({
       item.end !== undefined ? `–${fmt(item.end)}` : ''
     }${item.interrupted ? ' (interrupted)' : ''}`;
     const color = spellColor(item.spellId);
+    const icon = icons[item.spellId];
     const seek = () => onSeek(Math.max(0, item.start - 1));
+    const iconSize = zoom === 1 ? 14 : 18;
 
     if (item.end !== undefined) {
       const width = Math.max(((item.end - item.start) / total) * 100, 0.15);
@@ -218,15 +366,22 @@ const SpellTimeline: React.FC<IProps> = ({
           key={`${row.key}-${index}`}
           title={title}
           onClick={seek}
-          className="absolute top-[3px] h-[16px] rounded-sm text-[9px] leading-[16px] text-black/80 font-bold overflow-hidden whitespace-nowrap px-[2px] hover:brightness-125"
+          className="absolute top-[2px] h-[18px] rounded-[3px] flex items-center gap-x-1 overflow-hidden whitespace-nowrap text-[10px] font-semibold text-foreground-lighter hover:brightness-125 hover:z-10"
           style={{
             left: `${left}%`,
             width: `${width}%`,
-            minWidth: 6,
-            background: color,
+            minWidth: 18,
+            background: `color-mix(in srgb, ${color} 35%, transparent)`,
+            boxShadow: `inset 0 0 0 1px ${color}`,
           }}
         >
-          {zoom >= 4 ? item.name : initials(item.name)}
+          <SpellIcon
+            spellId={item.spellId}
+            name={item.name}
+            icon={icon}
+            size={18}
+          />
+          {zoom >= 4 && <span className="pr-1 truncate">{item.name}</span>}
         </button>
       );
     }
@@ -237,16 +392,141 @@ const SpellTimeline: React.FC<IProps> = ({
         key={`${row.key}-${index}`}
         title={title}
         onClick={seek}
-        className="absolute top-[3px] h-[16px] -translate-x-1/2 rounded-sm text-[8px] leading-[16px] text-black/80 font-bold text-center hover:brightness-125 hover:z-10"
-        style={{
-          left: `${left}%`,
-          width: zoom >= 2 ? 16 : 4,
-          background: item.interrupted ? 'transparent' : color,
-          border: item.interrupted ? `1px dashed ${color}` : undefined,
-        }}
+        className="absolute -translate-x-1/2 -translate-y-1/2 top-1/2 hover:z-10 hover:scale-125 transition-transform"
+        style={{ left: `${left}%` }}
       >
-        {zoom >= 2 ? initials(item.name) : ''}
+        <SpellIcon
+          spellId={item.spellId}
+          name={item.name}
+          icon={icon}
+          size={iconSize}
+          className={
+            item.interrupted
+              ? 'opacity-50 grayscale outline outline-1 outline-dashed outline-foreground/60'
+              : 'ring-1 ring-black/60'
+          }
+        />
       </button>
+    );
+  };
+
+  const renderSpellMenu = () => {
+    const query = search.trim().toLowerCase();
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={`flex items-center gap-x-1 px-2 rounded text-[11px] border ${
+              hiddenHere
+                ? 'border-brand/70 text-brand'
+                : 'border-foreground/30 text-foreground'
+            }`}
+            title="Choose which spells show on the timeline"
+          >
+            <ListFilter size={12} />
+            Spells{hiddenHere ? ` · ${hiddenHere} hidden` : ''}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-80 p-0 text-xs text-foreground-lighter"
+        >
+          <div className="flex items-center gap-x-2 border-b border-background px-3 py-2">
+            <Search size={13} className="text-foreground/50" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Find a spell"
+              className="flex-1 bg-transparent outline-none placeholder:text-foreground/40"
+            />
+            {hiddenHere > 0 && (
+              <button
+                type="button"
+                className="text-brand hover:underline"
+                onClick={() =>
+                  setGroup(
+                    spellLists.flatMap(({ spells }) =>
+                      spells.map((x) => x.spellId),
+                    ),
+                    true,
+                  )
+                }
+              >
+                Show all
+              </button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto py-1">
+            {spellLists.map(({ row, spells }) => {
+              const shown = spells.filter(
+                (x) => !query || x.name.toLowerCase().includes(query),
+              );
+              if (!shown.length) return null;
+              const ids = shown.map((x) => x.spellId);
+              return (
+                <div key={row.key} className="pb-1">
+                  <div className="flex items-center px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-foreground/50">
+                    <span className="flex-1 truncate">
+                      {KIND_LABEL[row.kind]}
+                      {row.kind !== 'enemy' &&
+                      row.label !== KIND_LABEL[row.kind]
+                        ? ` · ${row.label}`
+                        : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className="normal-case hover:text-brand"
+                      onClick={() => setGroup(ids, true)}
+                    >
+                      All
+                    </button>
+                    <span className="px-1">/</span>
+                    <button
+                      type="button"
+                      className="normal-case hover:text-brand"
+                      onClick={() => setGroup(ids, false)}
+                    >
+                      None
+                    </button>
+                  </div>
+                  {shown.map((spell) => {
+                    const on = !hiddenSet.has(spell.spellId);
+                    return (
+                      <label
+                        key={spell.spellId}
+                        className="flex items-center gap-x-2 px-3 py-1 cursor-pointer hover:bg-background/40"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => toggleSpell(spell.spellId)}
+                          className="accent-[hsl(var(--brand))]"
+                        />
+                        <SpellIcon
+                          spellId={spell.spellId}
+                          name={spell.name}
+                          icon={icons[spell.spellId]}
+                          size={18}
+                          className={on ? '' : 'opacity-40 grayscale'}
+                        />
+                        <span
+                          className={`flex-1 truncate ${on ? '' : 'text-foreground/40'}`}
+                        >
+                          {spell.name}
+                        </span>
+                        <span className="text-foreground/50">
+                          {spell.count}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     );
   };
 
@@ -285,6 +565,7 @@ const SpellTimeline: React.FC<IProps> = ({
             {chip('boss', 'Boss')}
             {chip('enemy', 'Adds')}
             {chip('player', 'You')}
+            {renderSpellMenu()}
             <div className="ml-auto flex items-center gap-x-1">
               <button
                 type="button"
