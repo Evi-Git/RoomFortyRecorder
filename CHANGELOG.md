@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.8] - Unreleased
+### Changed
+- **Timeline review panel** replaces the progress bar on raid recordings that have a spell timeline:
+  - A ruler with tick marks and times, deaths (skulls) and the playhead. Click or drag on the ruler or any empty part of a row to scrub; hover shows the time under the cursor.
+  - Drag the top edge to resize the panel. Rows and spell icons grow with it (up to 56 px icons), and the size is remembered. Works in full screen.
+  - Ctrl + scroll zooms around the cursor (up to 48x), scroll pans, the zoom buttons keep the playhead in place, and Fit shows the whole pull. While playing, the view follows the playhead unless you've just scrolled.
+  - Deaths draw a faint line through the rows; clicking a skull jumps 2 s before the death.
+  - Collapsed, the panel is just the ruler, so it still works as the scrub bar.
+- Clip mode still uses the classic slider for its start and end handles.
+
 ## [1.8.7] - Unreleased
 ### Added
 - Guild server updater (`update-server.cmd` / `update-server.ps1`): installs the server files from the latest published release, checks them, backs up the old ones, restarts the Node task and rolls back if the server doesn't come back. `-InstallDaily` runs it every morning. See "Updating the server" in `docs/GuildCloudServer.md`.
