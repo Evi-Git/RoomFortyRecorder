@@ -98,7 +98,11 @@ const DIFFICULTIES = {
 };
 
 // "Psiethyr-TwistingNether-EU" -> "Psiethyr"
-export const shortName = (name) => String(name || '').split('-')[0];
+// Environment damage (falling, some ground effects) has "nil" as its source.
+export const shortName = (name) => {
+  const short = String(name || '').split('-')[0];
+  return short === 'nil' ? '' : short;
+};
 
 const isPlayerGuid = (guid) => String(guid).startsWith('Player-');
 const isNpcGuid = (guid) =>
@@ -372,10 +376,14 @@ export const analyzePull = (logText, options = {}) => {
 
         if (avoidable.has(hit.spellId) && !isPlayerGuid(hit.sourceGuid)) {
           const name = shortName(hit.destName);
-          const stats = avoidableHits.get(name) || { hits: 0, damage: 0, bySpell: {} };
+          const stats = avoidableHits.get(name) || { hits: 0, damage: 0, bySpell: {}, spells: {} };
           stats.hits += 1;
           stats.damage += hit.amount;
           stats.bySpell[hit.spellId] = (stats.bySpell[hit.spellId] || 0) + 1;
+          const spell = stats.spells[hit.spellId] || { hits: 0, damage: 0 };
+          spell.hits += 1;
+          spell.damage += hit.amount;
+          stats.spells[hit.spellId] = spell;
           avoidableHits.set(name, stats);
         }
       } else if (
@@ -569,6 +577,15 @@ export const analyzePull = (logText, options = {}) => {
         if (delta < -25 || delta > 25) continue;
         if (!best || Math.abs(delta) < Math.abs(best)) best = delta;
       }
+      // For a miss, the closest cast of that spell anywhere in the pull (or
+      // none), so the report can say "cast 48s late" or "never cast".
+      let nearest = null;
+      if (best === null) {
+        for (const cast of playerCasts) {
+          const delta = cast.t - item.t;
+          if (nearest === null || Math.abs(delta) < Math.abs(nearest)) nearest = delta;
+        }
+      }
       let status = 'missed';
       if (best !== null) {
         if (best < -5) status = 'early';
@@ -580,6 +597,7 @@ export const analyzePull = (logText, options = {}) => {
         spellName: spellName || spellNames.get(item.spellId) || null,
         status,
         delta: best === null ? null : Math.round(best * 10) / 10,
+        nearest: nearest === null ? null : Math.round(nearest * 10) / 10,
       };
     });
 
@@ -589,7 +607,17 @@ export const analyzePull = (logText, options = {}) => {
   });
 
   const avoidableList = [...avoidableHits.entries()]
-    .map(([name, stats]) => ({ name, ...stats }))
+    .map(([name, { spells, ...stats }]) => ({
+      name,
+      ...stats,
+      spells: Object.entries(spells)
+        .map(([spellId, spell]) => ({
+          spellId: Number(spellId),
+          spellName: spellNames.get(Number(spellId)) || null,
+          ...spell,
+        }))
+        .sort((a, b) => b.hits - a.hits),
+    }))
     .sort((a, b) => b.hits - a.hits);
 
   return {
