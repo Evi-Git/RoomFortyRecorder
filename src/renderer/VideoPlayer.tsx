@@ -302,39 +302,37 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    * Get the video timeline markers appropriate for the current video and
    * configuration.
    */
-  const getMarks = () => {
-    const marks: SliderMark[] = [];
-
+  const getDeathMarkers = (): VideoMarker[] => {
     const loaded = duration !== 0;
     const clip = !instantReplay && isClip(videos[0]);
 
     if (!loaded || clip || clipMode) {
-      return marks;
+      return [];
     }
 
     const deaths = instantReplay ? instantReplay.deaths : videos[0].deaths;
     const deathMarkerConfig = convertNumToDeathMarkers(config.deathMarkers);
 
     if (!deaths) {
-      return marks;
+      return [];
     }
 
+    let markers: VideoMarker[] = [];
+
     if (instantReplay || deathMarkerConfig === DeathMarkers.ALL) {
-      getAllDeathMarkers(deaths, language)
-        .map(getDeathMark)
-        .forEach((m) => marks.push(m));
+      markers = getAllDeathMarkers(deaths, language);
     } else if (deathMarkerConfig === DeathMarkers.OWN) {
       const { player } = videos[0];
 
       if (player) {
-        getOwnDeathMarkers(deaths, player, language)
-          .map(getDeathMark)
-          .forEach((m) => marks.push(m));
+        markers = getOwnDeathMarkers(deaths, player, language);
       }
     }
 
-    return marks.filter((m) => m.value <= duration);
+    return markers.filter((m) => m.time <= duration);
   };
+
+  const getMarks = (): SliderMark[] => getDeathMarkers().map(getDeathMark);
 
   /**
    * Return all the active video markers given the current video and config.
@@ -1380,13 +1378,21 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   /**
    * Returns the entire video control component.
    */
+  // [RoomFortyRecorder] Raid recordings with a spell timeline scrub on the
+  // timeline itself; the slider only returns for clip mode (three handles).
+  const timelineIsScrubber = Boolean(spellTimeline) && !clipMode;
+
   const renderControls = () => {
     return (
       <div className="w-full h-10 flex flex-row justify-center items-center bg-background-dark-gradient-to border border-background-dark-gradient-to px-1 py-2 rounded-br-sm">
         {renderPlayPause()}
         {renderVolumeButton()}
         {renderVolumeSlider()}
-        {renderProgressSlider()}
+        {timelineIsScrubber ? (
+          <div className="flex-1" />
+        ) : (
+          renderProgressSlider()
+        )}
         {renderProgressText()}
         {!multiPlayerMode && !clipMode && !instantReplay && (
           <Separator className="mx-2" orientation="vertical" />
@@ -1584,7 +1590,16 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           timeline={spellTimeline}
           duration={duration}
           progress={progress}
+          deaths={getDeathMarkers()}
+          bands={getActiveMarkers()}
           onSeek={(seconds) => {
+            seekAllPlayers(seconds);
+            setProgress(seconds);
+          }}
+          onScrubStart={onSliderMouseDown}
+          onScrub={(seconds) => setProgress(seconds)}
+          onScrubEnd={(seconds) => {
+            isDragging.current = false;
             seekAllPlayers(seconds);
             setProgress(seconds);
           }}
