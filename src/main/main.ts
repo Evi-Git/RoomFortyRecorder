@@ -43,6 +43,7 @@ import Recorder from './Recorder';
 import LiveStreamer from './LiveStreamer';
 import LiveViewer from './LiveViewer';
 import PullDesk from './PullDesk';
+import SpellIcons from './SpellIcons';
 import AsyncQueue from 'utils/AsyncQueue';
 import { getApplicationLogDir, setupApplicationLogging } from './logging';
 
@@ -489,6 +490,12 @@ ipcMain.handle('signInWithDiscord', async () => {
 
 ipcMain.handle('signOutDiscord', async () => {
   await CloudClient.getInstance().signOutDiscord();
+});
+
+// [RoomFortyRecorder] Icon names for spell IDs, for the spell timeline.
+ipcMain.handle('spellIcons', async (_event, args) => {
+  const ids = Array.isArray(args[0]) ? (args[0] as unknown[]).map(Number) : [];
+  return SpellIcons.getInstance().get(ids);
 });
 
 // [RoomFortyRecorder] Spell timeline for a video (raid pulls only). Returns
