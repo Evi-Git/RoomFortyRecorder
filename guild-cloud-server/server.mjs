@@ -16,6 +16,15 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPullDesk } from './pulldesk.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
+// [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
+// /health so you can see which version is running.
+const SERVER_VERSION = (() => {
+  try {
+    return fs.readFileSync(path.join(SERVER_DIR, 'SERVER_VERSION'), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+})();
 
 const loadEnvFile = () => {
   try {
@@ -1531,7 +1540,7 @@ const requestHandler = async (req, res) => {
     return handleDiscordAuth(req, res, url, parts);
   }
 
-  if (parts[0] === 'health') return json(res, 200, { ok: true });
+  if (parts[0] === 'health') return json(res, 200, { ok: true, version: SERVER_VERSION });
   if (parts[0] === 'internal' && parts[1] === 'mediamtx-auth' && req.method === 'POST') {
     return handleMediamtxAuth(req, res);
   }

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.7] - Unreleased
+### Added
+- Guild server updater (`update-server.cmd` / `update-server.ps1`): installs the server files from the latest published release, checks them, backs up the old ones, restarts the Node task and rolls back if the server doesn't come back. `-InstallDaily` runs it every morning. See "Updating the server" in `docs/GuildCloudServer.md`.
+- `/health` reports the server's installed release version.
+
 ## [1.8.6] - Unreleased
 ### Added
 - Spell timeline under raid recordings shows each spell's icon instead of a lettered tile. Icons are looked up from Wowhead the first time a spell is seen and cached, so the app doesn't get bigger; offline, the old tiles come back.
