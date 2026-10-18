@@ -61,6 +61,13 @@ console.info('[Main] In timezone:', tz, tzOffsetStr);
 
 let window: BrowserWindow | null = null;
 let tray: Tray | null = null;
+
+// [RoomFortyRecorder] Match the installer's app ID so the running window
+// shares the pinned/Start menu shortcut's taskbar button and icon (and
+// Windows notifications are attributed to the app).
+if (process.platform === 'win32') {
+  app.setAppUserModelId('org.RoomFortyRecorder');
+}
 let rendererRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
 const recoverRenderer = (reason: string, details?: unknown) => {

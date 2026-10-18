@@ -14,8 +14,10 @@ raider clicks that prompt. Draft releases are invisible to the app.
    then "Commit changes".
 2. **Add a changelog entry** at the top of `CHANGELOG.md`.
 3. **Build it.** On GitHub, go to **Actions -> Release -> Run workflow**. It
-   takes roughly 10-20 minutes. It creates a **draft** release called
-   `v<version>` with the installer attached.
+   takes roughly 10-20 minutes. At the very end it creates a **draft**
+   release called `v<version>` with three files attached: the installer,
+   its `.blockmap` and `latest.yml`. Publish only a draft that shows all
+   three; without `latest.yml` installed apps can't update.
    - If the run fails at "Pre-flight checks", the error message says what
      to fix (usually the version wasn't bumped).
 4. **Test the draft.** On the **Releases** page, open the draft and download
