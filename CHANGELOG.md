@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.10] - Unreleased
+### Fixed
+- Server updater: "The system cannot find the file specified" when the Node scheduled task has a different name, or the server is run by hand. The updater now finds the task by name or by its action pointing at `server.mjs`; with no task, it stops any Node running `server.mjs` and starts it again in its own window.
+
 ## [1.8.9] - Unreleased
 ### Fixed
 - Server updater: on Windows PowerShell 5.1 the window could close at once without doing anything. The script now finds its folder at runtime, `update-server.cmd` asks for administrator rights itself and runs everything in one window, and any error stays on screen and goes to `update-server.log`.
