@@ -1,4 +1,4 @@
-# Builds the Windows installer and uploads it to a DRAFT GitHub release.
+# Builds the Windows installer, then creates a DRAFT GitHub release with it.
 #
 # How to use: GitHub -> Actions -> "Release" -> "Run workflow".
 # Then test the installer from the draft, and click "Publish release".
@@ -48,34 +48,41 @@ jobs:
         shell: bash
         run: bash .github/scripts/run-logged.sh "Build" npm run build
 
-      # electron-builder uploads several files in parallel, and if no release
-      # exists yet each upload can create its own draft. Creating the draft
-      # up front means every file lands in the same one.
-      - name: Create the draft release
+      # Build the installer first and only then create the draft with every
+      # file attached, so a draft never shows up empty. (Publishing a draft
+      # before its files are uploaded leaves a release with no installer and
+      # no latest.yml, which breaks in-app updates.)
+      - name: Package
+        shell: bash
+        run: bash .github/scripts/run-logged.sh "Package" npx electron-builder build --win --publish never
+
+      - name: Create the draft release with the installer
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version=$(node -p "require('./release/app/package.json').version")
           tag="v$version"
-          ids=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$tag\") | .id")
-          count=$(echo -n "$ids" | grep -c . || true)
-          if [ "$count" -gt 1 ]; then
-            echo "::error::There are $count draft releases for $tag. Delete the extras on the Releases page and run this again."
+          exe="release/build/RoomFortyRecorder-Setup${version}.exe"
+          for f in "$exe" "$exe.blockmap" release/build/latest.yml; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing $f after packaging."
+              exit 1
+            fi
+          done
+          existing=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq ".[] | select(.tag_name==\"$tag\") | .draft")
+          if [ "$existing" = "false" ]; then
+            echo "::error::$tag is already published. Bump the version in release/app/package.json."
             exit 1
-          elif [ "$count" -eq 0 ]; then
-            gh api -X POST "repos/${{ github.repository }}/releases" \
-              -f tag_name="$tag" -f name="$version" -f target_commitish="${{ github.sha }}" \
-              -F draft=true --jq '"Created draft \(.name)"'
+          elif [ "$existing" = "true" ]; then
+            echo "Updating the existing draft for $tag"
+            gh release upload "$tag" "$exe" "$exe.blockmap" release/build/latest.yml --clobber -R "${{ github.repository }}"
           else
-            echo "Reusing existing draft for $tag"
+            gh release create "$tag" "$exe" "$exe.blockmap" release/build/latest.yml \
+              --draft --title "$version" --target "${{ github.sha }}" \
+              --notes "Room Forty Recorder $version. See CHANGELOG.md." -R "${{ github.repository }}"
           fi
-
-      - name: Package and upload to a draft release
-        shell: bash
-        run: bash .github/scripts/run-logged.sh "Package" npx electron-builder build --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Draft $tag is ready with the installer, blockmap and latest.yml."
 
       # Keeps a copy on the workflow run too, in case the upload step misbehaves.
       - name: Save installer as a workflow artifact

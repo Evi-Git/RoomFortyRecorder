@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.12] - Unreleased
+### Fixed
+- Releases: the draft is created only after the installer is built, with the installer, blockmap and `latest.yml` already attached. A draft published too early (1.8.11) had no files, so the app's update check said "No published release found yet".
+- Windows: the app sets its app ID to match the installer's shortcuts, so the running window uses the pinned shortcut's taskbar button and icon.
+
 ## [1.8.11] - Unreleased
 ### Added
 - Pull desk **Defensives** tab: raid cooldowns used (with who and when), then every raider with their personal and external defensives, health potions and healthstones. Externals show who they were cast on. Abilities are matched by name, using the guild's Warcraft Logs query lists.
