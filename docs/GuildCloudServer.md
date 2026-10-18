@@ -289,9 +289,49 @@ do not offer likes. Full-video like counts are stored in `state.json`.
 - `D:\GuildCloud\state.json` contains metadata, chat, and share-link state.
 - Back up both locations to a second disk or off-site storage. Tailscale and
   Caddy are not backups.
-- Before replacing `server.mjs`, stop the Node task, preserve `.env` and
-  `D:\GuildCloud`, replace only the code file, then start Node and Caddy again.
+- Server code updates: use the updater below rather than copying files by
+  hand.
 - Keep port `8787` closed in the router and keep the `.env` file private.
+
+## Updating the server
+
+The server code is updated from **published** GitHub releases. A draft does
+nothing, so clicking Publish on a release is what approves it for the server
+as well as for the app.
+
+**One-time setup:** copy `update-server.ps1` and `update-server.cmd` from
+`guild-cloud-server/` into `C:\RoomFortyRecorder\guild-cloud-server`.
+
+**Update by hand:** double-click `update-server.cmd` and choose **Yes** when
+Windows asks for administrator rights. It:
+
+1. finds the latest published release and downloads the files listed in
+   `server-files.txt` from it,
+2. checks every `.mjs` file with `node --check`,
+3. backs up the current files to `backup\<date>-<version>\` (keeps 5),
+4. stops the `RoomFortyRecorder Guild Cloud` task, copies the files in and
+   starts it again,
+5. waits for `/health`. If the server doesn't come back, it puts the old
+   files back and restarts that version.
+
+`.env` is never touched. If a release adds settings, the updater lists the new
+names from `.env.example` at the end. If the server is already on the latest
+release it says so and does nothing. A log is kept in `update-server.log`.
+
+**Update automatically:** run this once in an administrator PowerShell in the
+server folder:
+
+```powershell
+.\update-server.ps1 -InstallDaily
+```
+
+That adds a `RoomFortyRecorder Server Update` scheduled task that runs the
+updater every day at 06:00, away from raid hours (`-DailyAt 05:30` picks
+another time). Remove it with
+`Unregister-ScheduledTask -TaskName 'RoomFortyRecorder Server Update'`.
+
+`http://127.0.0.1:8787/health` shows the running version, for example
+`{"ok":true,"version":"v1.8.7"}`.
 
 ## Troubleshooting
 

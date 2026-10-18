@@ -36,9 +36,8 @@ the difficulties in `GUILD_CLOUD_PULLDESK_DIFFICULTIES` (Mythic by default).
 
 ## Server setup (one time)
 
-1. Copy `pulldesk.mjs` and `pulldesk-analyze.mjs` from `guild-cloud-server/`
-   into the server folder next to `server.mjs`, and copy the new
-   `server.mjs` too. No new npm packages are needed.
+1. Update the server code with `update-server.cmd` (see "Updating the
+   server" in `GuildCloudServer.md`). No new npm packages are needed.
 2. Add the pull desk lines from `.env.example` to the server's `.env`. At
    minimum set `GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL` to a Discord channel
    ID.
@@ -70,7 +69,7 @@ Open a pull for the boss, then **Boss settings**:
 
 Do steps 1-4 before a raid night; 5-8 happen during it.
 
-1. **Server.** Deploy the three files and restart Node. For a first test on
+1. **Server.** Run `update-server.cmd`. For a first test on
    Heroic, set `GUILD_CLOUD_PULLDESK_DIFFICULTIES=heroic,mythic`.
 2. **App.** Install the build on your PC and at least one raider's PC, and
    sign in with Discord.

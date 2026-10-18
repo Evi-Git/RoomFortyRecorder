@@ -12,3 +12,5 @@
 *.woff2 binary
 *.dll   binary
 *.node  binary
+guild-cloud-server/*.cmd -text
+guild-cloud-server/*.ps1 -text

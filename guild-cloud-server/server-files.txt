@@ -1,0 +1,8 @@
+# Files the server updater (update-server.ps1) installs from a published
+# release. One file name per line, all in this folder. Never list .env.
+server.mjs
+pulldesk.mjs
+pulldesk-analyze.mjs
+.env.example
+update-server.ps1
+update-server.cmd
