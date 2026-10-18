@@ -33,7 +33,7 @@ param(
   [switch]$Quiet,
   [switch]$InstallDaily,
   [string]$DailyAt = '06:00',
-  [string]$ServerDir = $PSScriptRoot,
+  [string]$ServerDir = '',
   [string]$HealthUrl = 'http://127.0.0.1:8787/health',
   [string]$ApiBase = 'https://api.github.com',
   [string]$RawBase = 'https://raw.githubusercontent.com',
@@ -42,6 +42,27 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell 5.1 doesn't always set $PSScriptRoot in param()
+# defaults, so work out the script's folder here.
+if (-not $ServerDir) { $ServerDir = $PSScriptRoot }
+if (-not $ServerDir -and $MyInvocation.MyCommand.Path) {
+  $ServerDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if (-not $ServerDir) { $ServerDir = (Get-Location).Path }
+$ScriptPath = $PSCommandPath
+if (-not $ScriptPath) { $ScriptPath = $MyInvocation.MyCommand.Path }
+
+# Any error nobody caught: log it and keep the window open so it can be read.
+trap {
+  $message = "Unexpected error: $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))"
+  Write-Host $message -ForegroundColor Red
+  try {
+    Add-Content -Path (Join-Path $ServerDir 'update-server.log') -Value ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $message)
+  } catch { }
+  if (-not $Quiet) { Read-Host 'Press Enter to close' | Out-Null }
+  exit 1
+}
 $UpdateTaskName = 'RoomFortyRecorder Server Update'
 $VersionFile = Join-Path $ServerDir 'SERVER_VERSION'
 $LogFile = Join-Path $ServerDir 'update-server.log'
@@ -127,7 +148,7 @@ if (-not $NoRestart -and -not (Test-Admin)) {
       $forward += ('"{0}"' -f $entry.Value)
     }
   }
-  $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath)) + $forward
+  $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $ScriptPath)) + $forward
   try {
     Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments | Out-Null
   } catch {
@@ -141,7 +162,7 @@ if (-not $NoRestart -and -not (Test-Admin)) {
 if ($InstallDaily) {
   $time = [datetime]::ParseExact($DailyAt, 'HH:mm', $null)
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-    -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Quiet' -f $PSCommandPath) `
+    -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Quiet' -f $ScriptPath) `
     -WorkingDirectory $ServerDir
   $trigger = New-ScheduledTaskTrigger -Daily -At $time
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
