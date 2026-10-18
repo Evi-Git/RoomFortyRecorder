@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.11] - Unreleased
+### Added
+- Pull desk **Defensives** tab: raid cooldowns used (with who and when), then every raider with their personal and external defensives, health potions and healthstones. Externals show who they were cast on. Abilities are matched by name, using the guild's Warcraft Logs query lists.
+- Pull desk deaths show **what was still ready**: each death row says how many defensives or consumables the raider had available, and opening it lists them next to the last hits (with "not used this pull" or when it was last used), plus what was on cooldown and for how long. Grouped raid deaths say how many had a defensive ready. Based on base cooldowns, so it's an estimate.
+
+### Changed
+- The Pull desk report is split into tabs (Deaths, Defensives, Cooldown plan, Avoidable hits) with counts, instead of one long page. The last tab you picked is remembered.
+
+Server: run `update-server.cmd` (adds `pulldesk-defensives.mjs`), then Re-run older reports to fill in the new sections.
+
 ## [1.8.10] - Unreleased
 ### Fixed
 - Server updater: "The system cannot find the file specified" when the Node scheduled task has a different name, or the server is run by hand. The updater now finds the task by name or by its action pointing at `server.mjs`; with no task, it stops any Node running `server.mjs` and starts it again in its own window.

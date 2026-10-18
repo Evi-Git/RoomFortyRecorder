@@ -62,6 +62,45 @@ type Hit = {
   overkill: number;
 };
 
+type DefensiveKind =
+  | 'personal'
+  | 'immunity'
+  | 'external'
+  | 'raid'
+  | 'potion'
+  | 'healthstone';
+
+type Available = {
+  ability: string;
+  kind: DefensiveKind;
+  status: 'ready' | 'cooldown';
+  readyIn: number;
+  lastUsed: number | null;
+  usedCount: number;
+};
+
+type Defensives = {
+  players: {
+    name: string;
+    role: string;
+    specId: number;
+    diedAt: number | null;
+    personal: number;
+    external: number;
+    raid: number;
+    potions: number;
+    healthstones: number;
+    uses: {
+      t: number;
+      ability: string;
+      kind: DefensiveKind;
+      target?: string;
+    }[];
+  }[];
+  raid: { t: number; name: string; ability: string }[];
+  warlockInRaid: boolean;
+};
+
 type Report = {
   id: string;
   encounterId: number;
@@ -79,7 +118,10 @@ type Report = {
     role: string;
     killingBlow: Omit<Hit, 't'> | null;
     lastHits: Hit[];
+    // Reports from 1.8.11 on.
+    available?: Available[];
   }[];
+  defensives?: Defensives;
   wipe: { text: string } | null;
   plan: {
     parsed: number;
@@ -194,6 +236,47 @@ const STATUS_STYLE: Record<PlanStatus, { label: string; className: string }> = {
   dead: { label: 'Died before it', className: 'text-foreground/50' },
 };
 
+const KIND_LABEL: Record<DefensiveKind, string> = {
+  personal: 'Personal',
+  immunity: 'Immunity',
+  external: 'External',
+  raid: 'Raid',
+  potion: 'Potion',
+  healthstone: 'Healthstone',
+};
+
+const KIND_STYLE: Record<DefensiveKind, string> = {
+  personal: 'text-sky-300',
+  immunity: 'text-purple-300',
+  external: 'text-green-300',
+  raid: 'text-brand-soft',
+  potion: 'text-red-300',
+  healthstone: 'text-emerald-300',
+};
+
+// Pre-pull uses have negative times.
+const timeLabel = (seconds: number) =>
+  seconds < 0 ? `-${mmss(-seconds)}` : mmss(seconds);
+
+type Section = 'deaths' | 'defensives' | 'plan' | 'avoidable';
+
+const loadSection = (): Section => {
+  try {
+    const saved = localStorage.getItem('rf-pulldesk-section');
+    if (
+      saved === 'deaths' ||
+      saved === 'defensives' ||
+      saved === 'plan' ||
+      saved === 'avoidable'
+    ) {
+      return saved;
+    }
+  } catch {
+    // Storage unavailable: start on Deaths.
+  }
+  return 'deaths';
+};
+
 const ROLE_STYLE: Record<string, string> = {
   tank: 'text-sky-300',
   healer: 'text-green-300',
@@ -266,6 +349,7 @@ const PullDeskPage = (props: IProps) => {
     () => getConfigValue<boolean>('pullDeskUpload') !== false,
   );
   const [expandedDeath, setExpandedDeath] = React.useState<number | null>(null);
+  const [section, setSection] = React.useState<Section>(loadSection);
   const [openGroups, setOpenGroups] = React.useState<number[]>([]);
   // Expanded per-player rows in the plan and avoidable sections.
   const [openRows, setOpenRows] = React.useState<string[]>([]);
@@ -490,9 +574,212 @@ const PullDeskPage = (props: IProps) => {
 
   // ---- Report -----------------------------------------------------------------
 
+  // What the raider still had when they died (base cooldowns, so talents
+  // that shorten a cooldown can make something ready earlier than shown).
+  const renderAvailable = (death: Report['deaths'][number]) => {
+    if (!death.available) {
+      return (
+        <span className="text-foreground/50">
+          Re-run this report to see what was available.
+        </span>
+      );
+    }
+    const ready = death.available.filter((a) => a.status === 'ready');
+    const cooling = death.available.filter((a) => a.status === 'cooldown');
+    return (
+      <>
+        <div className="mb-1 font-semibold text-foreground/80">
+          At death{' '}
+          <span
+            className="font-normal text-foreground/40"
+            title="From the last use and the ability's base cooldown. Talents can shorten cooldowns."
+          >
+            (estimate)
+          </span>
+        </div>
+        {ready.length === 0 && (
+          <div className="text-foreground/50">Nothing was ready.</div>
+        )}
+        {ready.map((a) => (
+          <div key={a.ability}>
+            <span className="text-yellow-400">Ready</span>{' '}
+            <span className={KIND_STYLE[a.kind]}>{a.ability}</span>
+            <span className="text-foreground/40">
+              {a.usedCount === 0
+                ? ' · not used this pull'
+                : ` · last used ${timeLabel(a.lastUsed ?? 0)}`}
+            </span>
+          </div>
+        ))}
+        {cooling.map((a) => (
+          <div key={a.ability} className="text-foreground/50">
+            On cooldown {a.ability} · ready in {mmss(a.readyIn)}
+          </div>
+        ))}
+      </>
+    );
+  };
+
+  const renderDefensives = (r: Report) => {
+    const d = r.defensives;
+    if (!d) {
+      return (
+        <p className="text-sm text-foreground/60">
+          Re-run this report to see defensives, potions and healthstones.
+        </p>
+      );
+    }
+
+    // Raiders who died first, in death order, then everyone else by name.
+    const players = [...d.players].sort((a, b) => {
+      if (a.diedAt !== null && b.diedAt !== null) return a.diedAt - b.diedAt;
+      if (a.diedAt !== null) return -1;
+      if (b.diedAt !== null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    const raidKey = `${r.id}:raidcds`;
+    const raidOpen = !openRows.includes(raidKey);
+
+    const count = (n: number, one: string, many: string) =>
+      n ? `${n} ${n === 1 ? one : many}` : '';
+
+    return (
+      <div className="text-sm">
+        <div className="border-b border-card mb-2">
+          <button
+            type="button"
+            className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+            onClick={() => toggleRow(raidKey)}
+          >
+            <ChevronRight
+              size={14}
+              className={`shrink-0 text-foreground/50 transition-transform ${raidOpen ? 'rotate-90' : ''}`}
+            />
+            <span className="font-semibold">Raid cooldowns</span>
+            <span className="text-foreground/50">({d.raid.length})</span>
+          </button>
+          {raidOpen && (
+            <div className="mb-2 pl-[22px] flex flex-wrap gap-1.5">
+              {d.raid.length === 0 && (
+                <span className="text-foreground/50">None used.</span>
+              )}
+              {d.raid.map((use) => (
+                <span
+                  key={`${use.t}-${use.name}-${use.ability}`}
+                  className="rounded bg-card/50 px-2 py-0.5 text-xs"
+                >
+                  <span className="font-mono text-foreground/60">
+                    {timeLabel(use.t)}
+                  </span>{' '}
+                  <span className="text-brand-soft">{use.ability}</span>
+                  <span className="text-foreground/50"> · {use.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {players.map((player) => {
+          const key = `${r.id}:def:${player.name}`;
+          const open = openRows.includes(key);
+          const own = player.personal;
+          const parts = [
+            count(own, 'defensive', 'defensives'),
+            count(player.external, 'external', 'externals'),
+            count(player.raid, 'raid cooldown', 'raid cooldowns'),
+            count(player.potions, 'potion', 'potions'),
+            count(player.healthstones, 'healthstone', 'healthstones'),
+          ].filter(Boolean);
+          return (
+            <div key={player.name} className="border-b border-card">
+              <button
+                type="button"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                onClick={() => toggleRow(key)}
+              >
+                <ChevronRight
+                  size={14}
+                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+                <span
+                  className={`font-semibold w-40 truncate ${ROLE_STYLE[player.role] || ''}`}
+                >
+                  {player.name}
+                </span>
+                <span className="w-24 text-xs">
+                  {player.diedAt !== null ? (
+                    <span className="text-red-400">
+                      died {mmss(player.diedAt)}
+                    </span>
+                  ) : (
+                    <span className="text-foreground/40">alive</span>
+                  )}
+                </span>
+                <span className="flex-1 truncate">
+                  {parts.length ? (
+                    parts.join(' · ')
+                  ) : (
+                    <span className="text-foreground/40">
+                      no defensives or consumables
+                    </span>
+                  )}
+                </span>
+              </button>
+              {open && (
+                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                  {player.uses.length === 0 && (
+                    <div className="py-1 pl-[22px] text-foreground/50">
+                      Nothing tracked this pull.
+                    </div>
+                  )}
+                  {player.uses.map((use) => (
+                    <div
+                      key={`${use.t}-${use.ability}`}
+                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
+                    >
+                      <span className="w-40 font-mono text-foreground/60">
+                        {timeLabel(use.t)}
+                      </span>
+                      <span className="w-56 truncate">
+                        {use.ability}
+                        {use.target && (
+                          <span className="text-foreground/50">
+                            {' '}
+                            on {use.target}
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`flex-1 text-xs ${KIND_STYLE[use.kind]}`}
+                      >
+                        {KIND_LABEL[use.kind]}
+                      </span>
+                      <span className="w-20 text-right">
+                        {use.t >= 0 && renderWatch(player.name, use.t)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <p className="mt-2 text-xs text-foreground/40">
+          Tracked by ability name: personal and external defensives, raid
+          cooldowns, health potions and healthstones
+          {d.warlockInRaid
+            ? ''
+            : ' (no warlock in this pull, so no healthstones)'}
+          .
+        </p>
+      </div>
+    );
+  };
+
   const renderDeathRow = (death: Report['deaths'][number], index: number) => {
     const kb = death.killingBlow;
     const open = expandedDeath === index;
+    const ready = (death.available || []).filter((a) => a.status === 'ready');
     return (
       <React.Fragment key={`${death.name}-${death.t}`}>
         <tr
@@ -522,6 +809,21 @@ const PullDeskPage = (props: IProps) => {
             )}
           </td>
           <td
+            className="py-1 pr-3 text-xs w-28 text-right"
+            title={
+              ready.length
+                ? `Still available: ${ready.map((a) => a.ability).join(', ')}`
+                : undefined
+            }
+          >
+            {death.available &&
+              (ready.length ? (
+                <span className="text-yellow-400">{ready.length} ready</span>
+              ) : (
+                <span className="text-foreground/40">none ready</span>
+              ))}
+          </td>
+          <td
             className="py-1 text-right w-20"
             onClick={(event) => event.stopPropagation()}
           >
@@ -531,17 +833,26 @@ const PullDeskPage = (props: IProps) => {
         {open && (
           <tr className="bg-card/30">
             <td />
-            <td colSpan={3} className="py-1 text-xs text-foreground/70">
-              {death.lastHits.length === 0
-                ? 'No damage recorded in the last 10 s.'
-                : death.lastHits.map((hit) => (
-                    <div key={`${hit.t}-${hit.spellId}`}>
-                      <span className="font-mono">{mmss(hit.t)}</span>{' '}
-                      {hit.spellName}
-                      {sourceText(hit.source)} · {compact(hit.amount)}
-                      {hit.overkill > 0 && ` (${compact(hit.overkill)} over)`}
-                    </div>
-                  ))}
+            <td colSpan={4} className="py-2 pr-2 text-xs text-foreground/70">
+              <div className="grid grid-cols-2 gap-x-6">
+                <div>
+                  <div className="mb-1 font-semibold text-foreground/80">
+                    Last hits
+                  </div>
+                  {death.lastHits.length === 0
+                    ? 'No damage recorded in the last 10 s.'
+                    : death.lastHits.map((hit) => (
+                        <div key={`${hit.t}-${hit.spellId}`}>
+                          <span className="font-mono">{mmss(hit.t)}</span>{' '}
+                          {hit.spellName}
+                          {sourceText(hit.source)} · {compact(hit.amount)}
+                          {hit.overkill > 0 &&
+                            ` (${compact(hit.overkill)} over)`}
+                        </div>
+                      ))}
+                </div>
+                <div>{renderAvailable(death)}</div>
+              </div>
             </td>
           </tr>
         )}
@@ -614,6 +925,18 @@ const PullDeskPage = (props: IProps) => {
             <span className="text-foreground/50">
               {sourceText(first.killingBlow?.source)}
             </span>
+          </td>
+          <td className="py-1 pr-3 text-xs w-28 text-right text-foreground/50">
+            {(() => {
+              const withReady = segment.filter((i) =>
+                (r.deaths[i].available || []).some(
+                  (a) => a.status === 'ready' && a.kind !== 'potion',
+                ),
+              ).length;
+              return r.deaths[segment[0]].available && withReady
+                ? `${withReady} had a defensive ready`
+                : '';
+            })()}
           </td>
           <td className="py-1 pr-2 text-right text-xs text-foreground/50 w-20">
             {open ? 'Hide' : 'Show'}
@@ -929,6 +1252,41 @@ const PullDeskPage = (props: IProps) => {
     setReportTick((tick) => tick + 1);
   };
 
+  const pickSection = (next: Section) => {
+    setSection(next);
+    try {
+      localStorage.setItem('rf-pulldesk-section', next);
+    } catch {
+      // Not remembered; fine.
+    }
+  };
+
+  const sectionTab = (
+    id: Section,
+    label: string,
+    badge: string,
+    alert = false,
+  ) => (
+    <button
+      type="button"
+      onClick={() => pickSection(id)}
+      className={`-mb-px px-3 py-1.5 border-b-2 font-display text-base font-bold transition-colors ${
+        section === id
+          ? 'border-brand text-foreground-lighter'
+          : 'border-transparent text-foreground/60 hover:text-foreground-lighter'
+      }`}
+    >
+      {label}
+      {badge && (
+        <span
+          className={`ml-1.5 font-sans text-xs font-normal ${alert ? 'text-red-400' : 'text-foreground/50'}`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+
   const renderReport = () => {
     if (reportError) return <p className="text-red-400">{reportError}</p>;
     // While a newly picked pull loads, don't show the previous one.
@@ -976,24 +1334,39 @@ const PullDeskPage = (props: IProps) => {
           </div>
         </div>
 
-        <section>
-          <h3 className="font-display text-lg font-bold mb-1">
-            Deaths ({r.deaths.length})
-          </h3>
-          {renderDeaths(r)}
-        </section>
-
-        <section>
-          <h3 className="font-display text-lg font-bold mb-1">Cooldown plan</h3>
-          {renderPlan(r)}
-        </section>
-
-        <section>
-          <h3 className="font-display text-lg font-bold mb-1">
-            Avoidable hits
-          </h3>
-          {renderAvoidable(r)}
-        </section>
+        <div>
+          <div className="flex items-end gap-x-1 border-b border-card mb-3">
+            {sectionTab('deaths', 'Deaths', String(r.deaths.length))}
+            {sectionTab(
+              'defensives',
+              'Defensives',
+              r.defensives
+                ? String(
+                    r.defensives.players.reduce((n, p) => n + p.uses.length, 0),
+                  )
+                : '',
+            )}
+            {sectionTab(
+              'plan',
+              'Cooldown plan',
+              r.plan.parsed
+                ? r.plan.summary.missed
+                  ? `${r.plan.summary.missed} missed`
+                  : 'all good'
+                : '',
+              r.plan.summary.missed > 0,
+            )}
+            {sectionTab(
+              'avoidable',
+              'Avoidable hits',
+              String(r.avoidable.length),
+            )}
+          </div>
+          {section === 'deaths' && renderDeaths(r)}
+          {section === 'defensives' && renderDefensives(r)}
+          {section === 'plan' && renderPlan(r)}
+          {section === 'avoidable' && renderAvoidable(r)}
+        </div>
       </div>
     );
   };
