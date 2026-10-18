@@ -1310,11 +1310,34 @@ input[type='submit'].btn-block {
   @apply border-none disabled:pointer-events-none disabled:opacity-50 bg-primary h-[40px] mx-2 hover:bg-primary/90;
 }
 
+/* [RoomFortyRecorder] Native scrollbars in the brass theme: a slim walnut
+   thumb on a clear track that warms to brass on hover. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--card));
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--brand) / 0.6);
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+
 /* Fixes scrollbars that are not ScrollAreas */
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: #555; /* thumb color */
+  background-color: hsl(var(--card)); /* thumb color */
   border-radius: 5px;
 }

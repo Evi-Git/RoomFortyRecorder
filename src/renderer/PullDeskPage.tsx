@@ -1,5 +1,12 @@
 import React from 'react';
-import { ClipboardList, Play, RefreshCw, Settings2, Skull } from 'lucide-react';
+import {
+  ChevronRight,
+  ClipboardList,
+  Play,
+  RefreshCw,
+  Settings2,
+  Skull,
+} from 'lucide-react';
 import { Dispatch, RefObject, SetStateAction } from 'react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
@@ -87,6 +94,8 @@ type Report = {
       spellName: string | null;
       status: PlanStatus;
       delta: number | null;
+      // Missed only: the closest cast of that spell anywhere in the pull.
+      nearest?: number | null;
     }[];
     summary: Record<PlanStatus, number>;
   };
@@ -95,7 +104,15 @@ type Report = {
     hits: number;
     damage: number;
     bySpell: Record<string, number>;
+    // Reports from 1.8.5 on; older ones only have bySpell counts.
+    spells?: {
+      spellId: number;
+      spellName: string | null;
+      hits: number;
+      damage: number;
+    }[];
   }[];
+  spellNames?: Record<string, string | null>;
   pullNumber: number;
   totalPullNumber: number;
   startedAt: number | null;
@@ -145,6 +162,21 @@ const compact = (value: number) => {
   return String(value);
 };
 
+// "+3.2s" / "-6s": how far a cast was from its assigned time.
+const signed = (seconds: number) => {
+  const rounded = Math.round(seconds * 10) / 10;
+  if (Math.abs(rounded) >= 60) {
+    return `${rounded < 0 ? '-' : '+'}${mmss(Math.abs(rounded))}`;
+  }
+  return `${rounded > 0 ? '+' : rounded < 0 ? '-' : '±'}${Math.abs(rounded)}s`;
+};
+
+// Environment damage has "nil" as its source in older reports.
+const sourceText = (source?: string) =>
+  source && source !== 'nil' ? ` · ${source}` : '';
+
+const hitsLabel = (count: number) => `${count} ${count === 1 ? 'hit' : 'hits'}`;
+
 const nightLabel = (night: string) => {
   const date = new Date(`${night}T12:00:00`);
   return date.toLocaleDateString(undefined, {
@@ -159,7 +191,7 @@ const STATUS_STYLE: Record<PlanStatus, { label: string; className: string }> = {
   late: { label: 'Late', className: 'text-yellow-400' },
   early: { label: 'Early', className: 'text-yellow-400' },
   missed: { label: 'Missed', className: 'text-red-400' },
-  dead: { label: 'Dead', className: 'text-foreground/50' },
+  dead: { label: 'Died before it', className: 'text-foreground/50' },
 };
 
 const ROLE_STYLE: Record<string, string> = {
@@ -235,6 +267,8 @@ const PullDeskPage = (props: IProps) => {
   );
   const [expandedDeath, setExpandedDeath] = React.useState<number | null>(null);
   const [openGroups, setOpenGroups] = React.useState<number[]>([]);
+  // Expanded per-player rows in the plan and avoidable sections.
+  const [openRows, setOpenRows] = React.useState<string[]>([]);
 
   // Bumping these refetches the list / the open report.
   const [listTick, setListTick] = React.useState(0);
@@ -478,8 +512,7 @@ const PullDeskPage = (props: IProps) => {
               <>
                 {kb.spellName}
                 <span className="text-foreground/50">
-                  {' '}
-                  · {kb.source}
+                  {sourceText(kb.source)}
                   {kb.amount > 0 && ` · ${compact(kb.amount)}`}
                   {kb.overkill > 0 && ` (${compact(kb.overkill)} over)`}
                 </span>
@@ -504,7 +537,8 @@ const PullDeskPage = (props: IProps) => {
                 : death.lastHits.map((hit) => (
                     <div key={`${hit.t}-${hit.spellId}`}>
                       <span className="font-mono">{mmss(hit.t)}</span>{' '}
-                      {hit.spellName} · {hit.source} · {compact(hit.amount)}
+                      {hit.spellName}
+                      {sourceText(hit.source)} · {compact(hit.amount)}
                       {hit.overkill > 0 && ` (${compact(hit.overkill)} over)`}
                     </div>
                   ))}
@@ -578,8 +612,7 @@ const PullDeskPage = (props: IProps) => {
           <td className="py-1 pr-3">
             {first.killingBlow?.spellName}
             <span className="text-foreground/50">
-              {' '}
-              · {first.killingBlow?.source}
+              {sourceText(first.killingBlow?.source)}
             </span>
           </td>
           <td className="py-1 pr-2 text-right text-xs text-foreground/50 w-20">
@@ -642,51 +675,165 @@ const PullDeskPage = (props: IProps) => {
             {plan.noteEncounterId}). Check Boss settings.
           </p>
         )}
-        <table className="w-full text-sm">
-          <tbody>
-            {plan.items.map((item) => {
-              const style = STATUS_STYLE[item.status];
-              return (
-                <tr
-                  key={`${item.t}-${item.name}-${item.spellId}`}
-                  className="border-b border-card"
+        {renderPlanPlayers(r)}
+      </>
+    );
+  };
+
+  const toggleRow = (key: string) =>
+    setOpenRows((rows) =>
+      rows.includes(key) ? rows.filter((k) => k !== key) : [...rows, key],
+    );
+
+  const roleOf = (r: Report, name: string) =>
+    r.roster.find((player) => player.name === name)?.role || '';
+
+  // One header row per player, problems first; click to see each
+  // assignment with how far off it was.
+  const renderPlanPlayers = (r: Report) => {
+    const byPlayer = new Map<string, Report['plan']['items']>();
+    r.plan.items.forEach((item) => {
+      byPlayer.set(item.name, [...(byPlayer.get(item.name) || []), item]);
+    });
+
+    const players = [...byPlayer.entries()]
+      .map(([name, items]) => {
+        const count = (status: PlanStatus) =>
+          items.filter((item) => item.status === status).length;
+        return {
+          name,
+          items: [...items].sort((a, b) => a.t - b.t),
+          missed: count('missed'),
+          off: count('late') + count('early'),
+          dead: count('dead'),
+          ontime: count('ontime'),
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.missed - a.missed || b.off - a.off || a.name.localeCompare(b.name),
+      );
+
+    return (
+      <div className="text-sm">
+        {players.map((player) => {
+          const key = `${r.id}:plan:${player.name}`;
+          const open = openRows.includes(key);
+          const clean = player.missed === 0 && player.off === 0;
+          return (
+            <div key={player.name} className="border-b border-card">
+              <button
+                type="button"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                onClick={() => toggleRow(key)}
+              >
+                <ChevronRight
+                  size={14}
+                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+                <span
+                  className={`font-semibold w-40 truncate ${ROLE_STYLE[roleOf(r, player.name)] || ''}`}
                 >
-                  <td className="py-1 pr-3 font-mono text-foreground/60 w-14">
-                    {mmss(item.t)}
-                  </td>
-                  <td className="py-1 pr-3 font-semibold">{item.name}</td>
-                  <td className="py-1 pr-3">
-                    {item.spellName || (
-                      <button
-                        type="button"
-                        className="underline decoration-dotted"
-                        title="Nobody cast this spell in the pull, so its name isn't in the log. Open it on Wowhead."
-                        onClick={() =>
-                          ipc.sendMessage('openURL', [
-                            `https://www.wowhead.com/spell=${item.spellId}`,
-                          ])
-                        }
-                      >
-                        Spell {item.spellId}
-                      </button>
-                    )}
-                  </td>
-                  <td className={`py-1 pr-3 ${style.className}`}>
-                    {style.label}
-                    {item.delta !== null &&
-                      item.status !== 'ontime' &&
-                      ` ${Math.abs(item.delta)}s`}
-                  </td>
-                  <td className="py-1 text-right w-20">
-                    {item.status !== 'ontime' &&
-                      item.status !== 'dead' &&
-                      renderWatch(item.name, item.t)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  {player.name}
+                </span>
+                <span className="flex-1">
+                  {clean && player.dead === 0 && (
+                    <span className="text-green-400">
+                      All {player.ontime} on time
+                    </span>
+                  )}
+                  {player.missed > 0 && (
+                    <span className="text-red-400">{player.missed} missed</span>
+                  )}
+                  {player.missed > 0 && player.off > 0 && ' · '}
+                  {player.off > 0 && (
+                    <span className="text-yellow-400">
+                      {player.off} late or early
+                    </span>
+                  )}
+                  {player.dead > 0 && (
+                    <span className="text-foreground/50">
+                      {(!clean || player.ontime > 0) && ' · '}
+                      {player.dead} skipped (dead)
+                    </span>
+                  )}
+                </span>
+                <span className="text-xs text-foreground/50">
+                  {player.items.length}{' '}
+                  {player.items.length === 1 ? 'assignment' : 'assignments'}
+                </span>
+              </button>
+              {open && (
+                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                  {player.items.map((item) => (
+                    <div
+                      key={`${item.t}-${item.spellId}`}
+                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
+                    >
+                      <span className="w-40 font-mono text-foreground/60">
+                        {mmss(item.t)}
+                      </span>
+                      <span className="w-56 truncate">{renderSpell(item)}</span>
+                      <span className="flex-1">{renderPlanStatus(item)}</span>
+                      <span className="w-20 text-right">
+                        {item.status !== 'ontime' &&
+                          item.status !== 'dead' &&
+                          renderWatch(item.name, item.t)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderSpell = (item: Report['plan']['items'][number]) =>
+    item.spellName || (
+      <button
+        type="button"
+        className="underline decoration-dotted"
+        title="Nobody cast this spell in the pull, so its name isn't in the log. Open it on Wowhead."
+        onClick={() =>
+          ipc.sendMessage('openURL', [
+            `https://www.wowhead.com/spell=${item.spellId}`,
+          ])
+        }
+      >
+        Spell {item.spellId}
+      </button>
+    );
+
+  // Status plus the signed offset from the assigned time.
+  const renderPlanStatus = (item: Report['plan']['items'][number]) => {
+    const style = STATUS_STYLE[item.status];
+    let detail = '';
+    if (item.status === 'missed') {
+      detail =
+        item.nearest === null || item.nearest === undefined
+          ? 'never cast'
+          : `nearest cast ${signed(item.nearest)}`;
+    } else if (item.delta !== null) {
+      detail = signed(item.delta);
+    }
+    return (
+      <>
+        <span className={style.className}>{style.label}</span>
+        {detail && (
+          <span
+            className={
+              item.status === 'late' || item.status === 'early'
+                ? 'text-yellow-400'
+                : 'text-foreground/50'
+            }
+          >
+            {' '}
+            {detail}
+          </span>
+        )}
       </>
     );
   };
@@ -700,20 +847,75 @@ const PullDeskPage = (props: IProps) => {
         </p>
       );
     }
+
+    // Older reports only stored hit counts per spell.
+    const spellsOf = (row: Report['avoidable'][number]) =>
+      row.spells ??
+      Object.entries(row.bySpell)
+        .map(([spellId, hits]) => ({
+          spellId: Number(spellId),
+          spellName: r.spellNames?.[spellId] ?? null,
+          hits,
+          damage: null as number | null,
+        }))
+        .sort((a, b) => b.hits - a.hits);
+
     return (
-      <table className="w-full text-sm">
-        <tbody>
-          {r.avoidable.map((row) => (
-            <tr key={row.name} className="border-b border-card">
-              <td className="py-1 pr-3 font-semibold">{row.name}</td>
-              <td className="py-1 pr-3">{row.hits} hits</td>
-              <td className="py-1 text-foreground/50">
-                {compact(row.damage)} damage
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="text-sm">
+        {r.avoidable.map((row) => {
+          const key = `${r.id}:avoid:${row.name}`;
+          const open = openRows.includes(key);
+          const spells = spellsOf(row);
+          return (
+            <div key={row.name} className="border-b border-card">
+              <button
+                type="button"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                onClick={() => toggleRow(key)}
+              >
+                <ChevronRight
+                  size={14}
+                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+                <span
+                  className={`font-semibold w-40 truncate ${ROLE_STYLE[roleOf(r, row.name)] || ''}`}
+                >
+                  {row.name}
+                </span>
+                <span className="w-24">{hitsLabel(row.hits)}</span>
+                <span className="w-32 text-foreground/50">
+                  {compact(row.damage)} damage
+                </span>
+                <span className="flex-1 truncate text-xs text-foreground/50">
+                  {spells
+                    .map((spell) => spell.spellName || `Spell ${spell.spellId}`)
+                    .join(', ')}
+                </span>
+              </button>
+              {open && (
+                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                  {spells.map((spell) => (
+                    <div
+                      key={spell.spellId}
+                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
+                    >
+                      <span className="w-40 truncate text-foreground/80">
+                        {spell.spellName || `Spell ${spell.spellId}`}
+                      </span>
+                      <span className="w-24">{hitsLabel(spell.hits)}</span>
+                      <span className="w-32 text-foreground/50">
+                        {spell.damage !== null
+                          ? `${compact(spell.damage)} damage`
+                          : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     );
   };
 

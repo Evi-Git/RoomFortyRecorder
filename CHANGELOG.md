@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - Unreleased
+### Changed
+- Pull desk, **Cooldown plan**: one collapsible row per raider, raiders with misses first. Open a row to see each assignment and how far off it was (`+3.2s`, `-6s`). For a missed one it says when the nearest cast of that spell was, or "never cast".
+- Pull desk, **Avoidable hits**: one collapsible row per raider with totals and the spells they were hit by. Open a row for hits and damage per spell. Per-spell damage needs a Re-run on reports from before this version.
+- Scrollbars match the brass theme.
+- Deaths to environment damage no longer show "nil" as the source.
+- Guild server: per-pull Discord posts are off by default. Set `GUILD_CLOUD_PULLDESK_POST_PULLS=true` to turn them back on.
+
 ## [1.8.4] - Unreleased
 ### Fixed
 - The title bar no longer covers the top of the sidebar status card.

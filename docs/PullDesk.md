@@ -1,8 +1,9 @@
 # Pull desk
 
 Shortly after every tracked raid pull, the guild server builds a report from
-one raider's combat log and posts a summary to that boss's Discord channel.
-The full report is on the **Pull desk** page in the app.
+one raider's combat log. The report is on the **Pull desk** page in the app.
+Posting a summary of every pull to Discord is optional and off by default
+(`GUILD_CLOUD_PULLDESK_POST_PULLS=true` turns it on).
 
 Each report has:
 
@@ -26,7 +27,8 @@ Each report has:
    kept. After 3 seconds the server picks the most complete log, and only
    that app uploads. If it never does, the next best uploads after about a
    minute.
-3. The server analyzes the log, saves the report, and posts to Discord.
+3. The server analyzes the log and saves the report (and posts to Discord if
+   `GUILD_CLOUD_PULLDESK_POST_PULLS` is on).
 
 Raiders can turn **Send my pull logs** off on the Pull desk page. Pulls are
 only captured on retail raid difficulties, and the server only reports on

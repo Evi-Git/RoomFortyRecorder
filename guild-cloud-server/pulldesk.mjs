@@ -96,6 +96,9 @@ export const createPullDesk = (options) => {
     .filter(Boolean);
   const envChannels = parseChannelMap(env.GUILD_CLOUD_PULLDESK_CHANNELS);
   const defaultChannel = String(env.GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL || '').trim();
+  // Per-pull Discord posts are off by default: the app's Pull desk page has
+  // the detail, and Discord gets the nightly summary and coaching clips.
+  const postPulls = /^(1|true|yes|on)$/i.test(String(env.GUILD_CLOUD_PULLDESK_POST_PULLS || '').trim());
   const logRetentionDays = Number.parseFloat(env.GUILD_CLOUD_PULLDESK_LOG_DAYS || '30');
   // Only overridden by tests.
   const discordApi = env.GUILD_CLOUD_PULLDESK_DISCORD_API || 'https://discord.com/api/v10';
@@ -477,7 +480,7 @@ export const createPullDesk = (options) => {
     json(res, 200, { status: 'ready' });
 
     // After responding: Discord and housekeeping don't hold up the app.
-    await discordPost(pull, report);
+    if (postPulls) await discordPost(pull, report);
     await pruneLogs();
     return undefined;
   };
