@@ -16,6 +16,15 @@ Each report has:
   the raider actually cast: on time, late, early, missed, or dead before
   their timing.
 - **Avoidable hits**: hits per raider from a per-boss list of spell IDs.
+- **Defensives**: every raider's personal and external defensives, raid
+  cooldowns, health potions and healthstones, matched by ability name (the
+  same lists as the guild's Warcraft Logs queries). Each death also shows
+  what that raider still had ready, from the last use and the ability's base
+  cooldown (talents can shorten cooldowns, so treat it as an estimate). The
+  list lives in `guild-cloud-server/pulldesk-defensives.mjs`.
+
+The report is split into tabs (Deaths, Defensives, Cooldown plan, Avoidable
+hits), and long sections are grouped per raider in rows you can open.
 
 ## How a pull gets to the server
 

@@ -4,6 +4,8 @@
 // Pure functions only -- no file system, no network -- so it can be tested
 // against the real logs under tests/logs.
 
+import { availabilityAt, defensiveFor } from './pulldesk-defensives.mjs';
+
 // ---- Log line parsing -------------------------------------------------------
 
 // Splits the part after the timestamp the same way the app's LogLine does:
@@ -295,6 +297,8 @@ export const analyzePull = (logText, options = {}) => {
   const deaths = [];
   const deadAt = new Map(); // name -> first death time
   const casts = new Map(); // name -> [{ t, spellId, spellName }]
+  // Defensives, raid cooldowns and health consumables, in cast order.
+  const defensiveUses = []; // { t, name, entry, target }
   const spellNames = new Map();
   const npcMaxHp = new Map(); // npcId -> max hp
   const npcHp = new Map(); // npcId -> { t, current, max }
@@ -425,6 +429,18 @@ export const analyzePull = (logText, options = {}) => {
       const list = casts.get(name) || [];
       list.push({ t, spellId });
       casts.set(name, list);
+      const entry = defensiveFor(args[10]);
+      if (entry) {
+        // Channels (Tranquility, Divine Hymn) log a cast per tick: keep the
+        // first of a burst.
+        const repeat = defensiveUses.some(
+          (use) => use.name === name && use.entry.name === entry.name && t - use.t < 10,
+        );
+        if (!repeat) {
+          const target = isPlayerGuid(args[5]) ? shortName(args[6]) : '';
+          defensiveUses.push({ t, name, entry, target: target === name ? '' : target });
+        }
+      }
       continue;
     }
 
@@ -503,6 +519,52 @@ export const analyzePull = (logText, options = {}) => {
     death.role = roleOf.get(death.name) || 'dps';
     delete death.guid;
   });
+
+  // Defensives: per raider, plus the raid cooldowns timeline, and for each
+  // death what that raider still had available.
+  const usesBy = new Map();
+  defensiveUses.forEach((use) => {
+    usesBy.set(use.name, [...(usesBy.get(use.name) || []), use]);
+  });
+  const warlockInRaid = roster.some((player) => [265, 266, 267].includes(player.specId));
+  const firstDeathAt = new Map();
+  deaths.forEach((death) => {
+    if (!firstDeathAt.has(death.name)) firstDeathAt.set(death.name, death.t);
+    const player = roster.find((p) => p.name === death.name);
+    death.available = player
+      ? availabilityAt(player, usesBy.get(death.name) || [], death.t, warlockInRaid)
+      : [];
+  });
+  const round1 = (value) => Math.round(value * 10) / 10;
+  const defensives = {
+    players: roster
+      .filter((player) => inPull.size === 0 || inPull.has(player.name))
+      .map((player) => {
+        const uses = (usesBy.get(player.name) || []).map((use) => ({
+          t: round1(use.t),
+          ability: use.entry.name,
+          kind: use.entry.kind,
+          target: use.target || undefined,
+        }));
+        const count = (kinds) => uses.filter((use) => kinds.includes(use.kind)).length;
+        return {
+          name: player.name,
+          role: player.role,
+          specId: player.specId,
+          diedAt: firstDeathAt.has(player.name) ? round1(firstDeathAt.get(player.name)) : null,
+          personal: count(['personal', 'immunity']),
+          external: count(['external']),
+          raid: count(['raid']),
+          potions: count(['potion']),
+          healthstones: count(['healthstone']),
+          uses,
+        };
+      }),
+    raid: defensiveUses
+      .filter((use) => use.entry.kind === 'raid')
+      .map((use) => ({ t: round1(use.t), name: use.name, ability: use.entry.name })),
+    warlockInRaid,
+  };
 
   // Wipe cause.
   let wipe = null;
@@ -621,7 +683,7 @@ export const analyzePull = (logText, options = {}) => {
     .sort((a, b) => b.hits - a.hits);
 
   return {
-    v: 1,
+    v: 2,
     encounterId: start.encounterId,
     encounterName: start.encounterName,
     difficultyId: start.difficultyId,
@@ -650,6 +712,7 @@ export const analyzePull = (logText, options = {}) => {
       summary: planSummary,
     },
     avoidable: avoidableList,
+    defensives,
     spellNames: Object.fromEntries(
       [...avoidable].map((id) => [id, spellNames.get(id) || null]),
     ),
