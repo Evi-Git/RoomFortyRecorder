@@ -4,6 +4,12 @@ server.mjs
 pulldesk.mjs
 pulldesk-analyze.mjs
 pulldesk-defensives.mjs
+recruit.mjs
+recruit-analyze.mjs
+recruit-clients.mjs
+recruit-crawl.mjs
+recruit-score.mjs
+recruit-page.html
 .env.example
 update-server.ps1
 update-server.cmd

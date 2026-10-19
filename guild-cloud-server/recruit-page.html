@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recruiting · Room Forty</title>
+<style>
+  :root {
+    --bg: #171412; --panel: #201c19; --card: #2a2420; --line: #39322d;
+    --text: #e6ded1; --muted: #a39887; --faint: #6f665b;
+    --brand: #cca85c; --brand-soft: #debf7c;
+    --good: #6fcf8a; --bad: #e57368; --warn: #e2c14d; --tank: #8fc7f2; --heal: #8fe0a6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button, input, select { font: inherit; color: inherit; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { margin: 0; font: 600 20px Georgia, 'Source Serif 4', serif; }
+  header h1 span { color: var(--brand); }
+  .spacer { flex: 1; }
+  .who { color: var(--muted); font-size: 13px; }
+  .btn { border: 1px solid var(--line); background: var(--card); padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+  .btn:hover { border-color: var(--brand); }
+  .btn.primary { background: var(--brand); color: #171412; border-color: var(--brand); font-weight: 600; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .status { display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); display: inline-block; }
+  .dot.run { background: var(--brand); animation: pulse 1.2s infinite; }
+  .dot.ok { background: var(--good); } .dot.err { background: var(--bad); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .progress { flex: 0 0 180px; height: 6px; background: var(--card); border-radius: 3px; overflow: hidden; }
+  .progress i { display: block; height: 100%; background: var(--brand); }
+  main { padding: 16px 20px 40px; }
+  .notice { padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--brand); background: var(--panel); border-radius: 8px; margin-bottom: 14px; }
+  .notice.err { border-left-color: var(--bad); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; flex-wrap: wrap; }
+  .tab { padding: 8px 14px; border: 0; background: none; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; font: 600 15px Georgia, serif; }
+  .tab.on { color: var(--text); border-bottom-color: var(--brand); }
+  .tab small { font: 12px Inter, system-ui, sans-serif; color: var(--faint); margin-left: 4px; }
+  .controls { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+  .controls label { display: flex; gap: 6px; align-items: center; }
+  .controls input[type=range] { accent-color: var(--brand); width: 110px; }
+  .controls input[type=number], .controls input[type=search], .controls select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  .controls input[type=number] { width: 64px; }
+  .controls input[type=search] { width: 180px; }
+  .wv { color: var(--text); width: 26px; text-align: right; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--bg); }
+  th.num, td.num { text-align: right; }
+  th:hover { color: var(--text); }
+  th .sub { display: block; font-weight: 400; color: var(--faint); font-size: 11px; }
+  td { padding: 7px 8px; border-bottom: 1px solid #2a2420; vertical-align: top; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: #1e1a17; }
+  tr.open td { background: #1e1a17; }
+  .score { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+  .bar { flex: 1; height: 6px; background: var(--card); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--brand); }
+  .name { font-weight: 600; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); }
+  .good { color: var(--good); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); font-size: 11px; margin: 2px 4px 0 0; color: var(--brand-soft); }
+  .reasons { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .detail { padding: 10px 8px 16px 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .detail h4 { margin: 0 0 6px; font: 600 14px Georgia, serif; color: var(--brand-soft); }
+  .detail .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 12.5px; }
+  .detail .kv span:nth-child(odd) { color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  details.log { margin-top: 24px; }
+  details.log pre { max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(720px, 94vw); }
+  dialog::backdrop { background: rgba(0,0,0,.55); }
+  .dlg-head { padding: 14px 18px; border-bottom: 1px solid var(--line); font: 600 17px Georgia, serif; }
+  .dlg-body { padding: 14px 18px; display: grid; gap: 12px; max-height: 70vh; overflow: auto; }
+  .dlg-body label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .dlg-body input, .dlg-body textarea, .dlg-body select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; color: var(--text); }
+  .dlg-body textarea { min-height: 220px; font: 12px ui-monospace, Consolas, monospace; }
+  .row2 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .dlg-foot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 8px; }
+  .wrap { overflow-x: auto; }
+  @media (max-width: 700px) { .row2 { grid-template-columns: 1fr 1fr; } header h1 { font-size: 17px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Room Forty</span> · Recruiting</h1>
+  <div class="spacer"></div>
+  <span class="who">Signed in as __USER__ · <a href="/recruit/logout">sign out</a></span>
+  <button class="btn" id="settingsBtn">Settings</button>
+  <button class="btn" id="testBtn" title="Crawl only the first guild in the range, to check everything works">Test with 1 guild</button>
+  <button class="btn primary" id="runBtn">Run crawl</button>
+  <button class="btn" id="stopBtn" hidden>Stop</button>
+</header>
+<div class="status" id="status"></div>
+<main>
+  <div id="notices"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="controls">
+    <label title="How much each part counts toward the score">Parse <input type="range" min="0" max="100" id="wParse"><span class="wv" id="wParseV"></span></label>
+    <label>Deaths <input type="range" min="0" max="100" id="wDeaths"><span class="wv" id="wDeathsV"></span></label>
+    <label>Mechanics <input type="range" min="0" max="100" id="wMech"><span class="wv" id="wMechV"></span></label>
+    <label title="Hide players with fewer counted pulls on these bosses">Min pulls <input type="number" min="0" id="minPulls"></label>
+    <label>Parse <select id="parseKind"><option value="median">median</option><option value="best">best</option></select></label>
+    <label>Guild rank <input type="number" id="rankMin" min="1"> – <input type="number" id="rankMax" min="1"></label>
+    <input type="search" id="search" placeholder="Find a player or guild">
+  </div>
+  <div class="wrap"><table id="table"></table></div>
+  <details class="log"><summary class="muted">Crawl log</summary><pre id="log"></pre></details>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <div class="dlg-head">Settings</div>
+    <div class="dlg-body">
+      <div class="row2">
+        <label>Region <select name="region"><option>us</option><option>eu</option><option>kr</option><option>tw</option></select></label>
+        <label>World rank from <input name="minRank" type="number" min="1"></label>
+        <label>to <input name="maxRank" type="number" min="1"></label>
+        <label>Count first N deaths <input name="deathCutoff" type="number" min="1" max="10"></label>
+      </div>
+      <div class="row2">
+        <label>Daily crawl hour (-1 = off) <input name="autoCrawlHour" type="number" min="-1" max="23"></label>
+        <label>Max reports per guild <input name="maxReportsPerGuild" type="number" min="5" max="200"></label>
+      </div>
+      <label>Spec groups and bosses (JSON). Bosses: excused death abilities and mechanics (kind "debuff" counts the debuff landing on a player; "interrupt" counts interrupts of that cast; beforeSeconds limits to early in the pull; assignedShare marks the assigned team).
+        <textarea name="advanced" spellcheck="false"></textarea></label>
+      <p class="faint" style="margin:0">Rank range, region, bosses and death rules apply on the next crawl. Weights and filters on the page apply instantly.</p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" value="cancel">Cancel</button>
+      <button class="btn primary" id="saveSettings" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+import { rankCandidates } from '/recruit/score.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+let state = null;
+let results = null;
+let group = store.get('rf-recruit-group', null);
+let sort = store.get('rf-recruit-sort', { key: 'score', dir: -1 });
+const open = new Set();
+
+const api = async (path, options = {}) => {
+  const response = await fetch(`/api/recruit/${path}`, {
+    credentials: 'same-origin',
+    headers: options.body ? { 'Content-Type': 'application/json' } : {},
+    ...options,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+  return data;
+};
+
+const ago = (ms) => {
+  if (!ms) return 'never';
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 36 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
+};
+const slug = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/'/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+// ---- Status ------------------------------------------------------------------
+const renderStatus = () => {
+  const s = state?.status || {};
+  const last = state?.lastRun;
+  const usage = state?.usage || {};
+  const running = s.running;
+  $('runBtn').disabled = running || !state?.configured;
+  $('testBtn').disabled = running || !state?.configured;
+  $('stopBtn').hidden = !running;
+  let html;
+  if (running) {
+    const pct = s.guildCount ? Math.round((100 * (s.guildIndex - 1)) / s.guildCount) : 0;
+    html = `<span class="dot run"></span> Crawling · ${esc(s.phase)}${s.guildCount ? ` · guild ${s.guildIndex}/${s.guildCount}` : ''}${s.currentGuild ? ` · ${esc(s.currentGuild)}` : ''}
+      <span class="progress"><i style="width:${pct}%"></i></span>`;
+  } else if (last?.phase === 'failed') {
+    html = `<span class="dot err"></span> Last crawl failed ${ago(last.finishedAt)}: ${esc(last.error)}`;
+  } else {
+    html = `<span class="dot ${results?.generatedAt ? 'ok' : ''}"></span> ${results?.generatedAt ? `Data from ${ago(results.generatedAt)}${results.test ? ' (test crawl, 1 guild)' : ''} · ${results.guilds.length} guilds · ${results.candidates.length} raiders` : 'No crawl yet'}`;
+  }
+  if (usage.limitPerHour) html += ` <span class="spacer"></span><span class="faint">Warcraft Logs points: ${Math.round(usage.spentThisHour)} / ${usage.limitPerHour} this hour</span>`;
+  $('status').innerHTML = html;
+  $('log').textContent = (s.log || []).join('\n') || 'Nothing yet.';
+
+  const notes = [];
+  if (state && !state.configured) {
+    notes.push(`<div class="notice err">Warcraft Logs API credentials aren't set. Create a client at warcraftlogs.com → Settings → API Clients, then add <code>GUILD_CLOUD_WCL_CLIENT_ID</code> and <code>GUILD_CLOUD_WCL_CLIENT_SECRET</code> to the server's <code>.env</code> and restart it.</div>`);
+  } else if (state && !results?.generatedAt && !running) {
+    notes.push('<div class="notice">No data yet. Start with <b>Test with 1 guild</b> to check everything works (a minute or two), then <b>Run crawl</b> for the full range. The first full crawl can take an hour or two; later ones only fetch new logs.</div>');
+  }
+  $('notices').innerHTML = notes.join('');
+};
+
+// ---- Table -----------------------------------------------------------------------
+const settings = () => state?.settings || {};
+const groups = () => (settings().specGroups || []).map((g) => g.label);
+const bosses = () => settings().bosses || [];
+
+const options = () => ({
+  weights: { parse: +$('wParse').value, deaths: +$('wDeaths').value, mechanics: +$('wMech').value },
+  minPulls: +$('minPulls').value || 0,
+  parseKind: $('parseKind').value,
+});
+
+const fmt = (v, digits = 2) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '–');
+const parseClass = (p) => (p == null ? 'faint' : p >= 95 ? 'good' : p >= 75 ? '' : p >= 50 ? 'warn' : 'bad');
+
+const columns = () => {
+  const cols = [
+    { key: 'score', label: 'Score', num: false, value: (r) => r.score },
+    { key: 'name', label: 'Player', value: (r) => r.name.toLowerCase() },
+    { key: 'guild', label: 'Guild', sub: 'world rank', value: (r) => r.guild.worldRank },
+    { key: 'parse', label: 'Parse', sub: settings().parseKind || 'median', num: true, value: (r) => r.metrics.parse ?? -1 },
+    { key: 'deaths', label: 'Early deaths', sub: 'per pull', num: true, value: (r) => r.metrics.deathRate ?? 99 },
+  ];
+  bosses().forEach((b) => (b.mechanics || []).forEach((m) => {
+    cols.push({
+      key: `m:${b.name}:${m.id}`,
+      label: m.label,
+      sub: m.assignedShare ? 'pulls done' : 'per pull vs raid',
+      num: true,
+      value: (r) => {
+        const x = r.bosses[b.name]?.mechanics?.[m.id];
+        if (!x || !x.pulls) return -1;
+        return m.assignedShare ? x.pullsDone / x.pulls : x.count / x.pulls;
+      },
+      boss: b.name, mech: m,
+    });
+  }));
+  cols.push({ key: 'pulls', label: 'Pulls', num: true, value: (r) => r.metrics.pulls });
+  return cols;
+};
+
+const renderTabs = (all) => {
+  const counts = Object.fromEntries(groups().map((g) => [g, all.filter((c) => c.group === g).length]));
+  if (!group || !groups().includes(group)) group = groups()[0];
+  $('tabs').innerHTML = groups().map((g) => `<button class="tab ${g === group ? 'on' : ''}" data-g="${esc(g)}">${esc(g)}<small>${counts[g] || 0}</small></button>`).join('');
+  $('tabs').querySelectorAll('.tab').forEach((b) => b.onclick = () => { group = b.dataset.g; store.set('rf-recruit-group', group); render(); });
+};
+
+const mechCell = (r, col) => {
+  const x = r.bosses[col.boss]?.mechanics?.[col.mech.id];
+  if (!x || !x.pulls) return '<span class="faint">–</span>';
+  if (col.mech.assignedShare) {
+    const share = x.pullsDone / x.pulls;
+    const assigned = share >= col.mech.assignedShare;
+    return `<span class="${assigned ? 'good' : 'faint'}">${Math.round(share * 100)}%</span><div class="faint">${x.pullsDone}/${x.pulls}${assigned ? ' · assigned' : ''}</div>`;
+  }
+  const rate = x.count / x.pulls;
+  const ratio = x.raidAvg > 0 ? rate / x.raidAvg : null;
+  return `${fmt(rate)}<div class="${ratio == null ? 'faint' : ratio >= 1.5 ? 'good' : ratio < 0.5 ? 'faint' : 'muted'}">${ratio == null ? '' : `${ratio.toFixed(1)}× raid`}</div>`;
+};
+
+const detail = (r) => {
+  const parts = Object.entries(r.bosses).map(([name, b]) => {
+    const causes = Object.entries(b.deathCauses || {}).sort((a, c) => c[1] - a[1]).slice(0, 4).map(([k, n]) => `${esc(k)} ×${n}`).join(', ') || 'none';
+    const mech = Object.values(b.mechanics || {}).map((m) => `<span>${esc(m.label)}</span><span>${m.count} in ${m.pulls} pulls (${m.pullsDone} pulls with one) · raid avg ${fmt(m.raidAvg)}/pull</span>`).join('');
+    const reports = (b.reports || []).map((code) => `<a href="https://www.warcraftlogs.com/reports/${esc(code)}" target="_blank" rel="noopener">${esc(code.slice(0, 6))}</a>`).join(' ');
+    return `<div><h4>${esc(name)}</h4><div class="kv">
+      <span>Pulls</span><span>${b.pulls} (${b.kills} kill${b.kills === 1 ? '' : 's'})</span>
+      <span>Parse</span><span>best ${fmt(b.parse?.best, 0)} · median ${fmt(b.parse?.median, 0)} · ${b.parse?.kills ?? 0} ranked kills</span>
+      <span>Early deaths</span><span>${b.earlyDeaths} (${fmt(b.pulls ? b.earlyDeaths / b.pulls : null)} per pull)</span>
+      <span>Not counted</span><span>${b.excusedDeaths} excused · ${b.lateDeaths} later in the wipe</span>
+      <span>Killed by</span><span>${causes}</span>
+      ${mech}
+      <span>Logs</span><span>${reports || '–'}</span>
+    </div></div>`;
+  }).join('');
+  const realm = slug(r.server);
+  return `<div class="detail">${parts}<div><h4>Links</h4><div class="kv">
+    <span>Warcraft Logs</span><span><a target="_blank" rel="noopener" href="https://www.warcraftlogs.com/character/${settings().region || 'us'}/${esc(realm)}/${esc(r.name.toLowerCase())}">${esc(r.name)}</a></span>
+    <span>Raider.IO</span><span><a target="_blank" rel="noopener" href="https://raider.io/characters/${settings().region || 'us'}/${esc(realm)}/${esc(r.name)}">${esc(r.name)}</a>${r.guild.profileUrl ? ` · <a target="_blank" rel="noopener" href="${esc(r.guild.profileUrl)}">guild</a>` : ''}</span>
+  </div></div></div>`;
+};
+
+const render = () => {
+  renderStatus();
+  const all = results?.candidates || [];
+  renderTabs(all);
+  const q = $('search').value.trim().toLowerCase();
+  const rMin = +$('rankMin').value || 0;
+  const rMax = +$('rankMax').value || Infinity;
+  const pool = all.filter((c) => c.group === group && c.guild.worldRank >= rMin && c.guild.worldRank <= rMax);
+  let rows = rankCandidates(pool, options());
+  if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.guild.name.toLowerCase().includes(q));
+  const cols = columns();
+  const col = cols.find((c) => c.key === sort.key) || cols[0];
+  rows.sort((a, b) => {
+    const x = col.value(a); const y = col.value(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * sort.dir;
+  });
+
+  if (!rows.length) {
+    $('table').innerHTML = `<tr><td class="empty">${all.length ? 'No raiders match these filters. Try lowering Min pulls.' : 'No data yet.'}</td></tr>`;
+    return;
+  }
+
+  const head = `<thead><tr>${cols.map((c) => `<th class="${c.num ? 'num' : ''}" data-k="${esc(c.key)}">${esc(c.label)}${sort.key === c.key ? (sort.dir < 0 ? ' ▾' : ' ▴') : ''}${c.sub ? `<span class="sub">${esc(c.sub)}</span>` : ''}</th>`).join('')}</tr></thead>`;
+  const body = rows.map((r) => {
+    const isOpen = open.has(r.key);
+    const cells = cols.map((c) => {
+      switch (c.key) {
+        case 'score': return `<td><div class="score"><b>${r.percentile}</b><span class="bar"><i style="width:${r.percentile}%"></i></span></div></td>`;
+        case 'name': return `<td><span class="name">${esc(r.name)}</span> <span class="faint">${esc(r.server)}</span><div class="muted">${esc(r.spec || r.className)}</div>${r.reasons.length ? `<div class="reasons">${esc(r.reasons.join(' · '))}</div>` : ''}</td>`;
+        case 'guild': return `<td>${esc(r.guild.name)}<div class="faint">#${r.guild.worldRank} world · #${r.guild.regionRank} ${esc((settings().region || '').toUpperCase())}</div></td>`;
+        case 'parse': return `<td class="num"><span class="${parseClass(r.metrics.parse)}">${fmt(r.metrics.parse, 0)}</span><div class="faint">${Object.entries(r.bosses).map(([n, b]) => `${esc(n.split(' ').pop())} ${fmt(b.parse?.[options().parseKind] ?? b.parse?.best, 0)}`).join(' · ')}</div></td>`;
+        case 'deaths': return `<td class="num">${fmt(r.metrics.deathRate)}<div class="faint">${r.metrics.earlyDeaths} in ${r.metrics.pulls}</div></td>`;
+        case 'pulls': return `<td class="num">${r.metrics.pulls}</td>`;
+        default: return `<td class="num">${mechCell(r, c)}</td>`;
+      }
+    }).join('');
+    return `<tr class="row ${isOpen ? 'open' : ''}" data-key="${esc(r.key)}">${cells}</tr>${isOpen ? `<tr><td colspan="${cols.length}">${detail(r)}</td></tr>` : ''}`;
+  }).join('');
+  $('table').innerHTML = head + `<tbody>${body}</tbody>`;
+  $('table').querySelectorAll('th').forEach((th) => th.onclick = () => {
+    const key = th.dataset.k;
+    sort = { key, dir: sort.key === key ? -sort.dir : (key === 'name' || key === 'guild' || key === 'deaths' ? 1 : -1) };
+    store.set('rf-recruit-sort', sort);
+    render();
+  });
+  $('table').querySelectorAll('tr.row').forEach((tr) => tr.onclick = (event) => {
+    if (event.target.closest('a')) return;
+    const key = tr.dataset.key;
+    open.has(key) ? open.delete(key) : open.add(key);
+    render();
+  });
+};
+
+// ---- Controls ----------------------------------------------------------------------
+const initControls = () => {
+  const s = settings();
+  const w = store.get('rf-recruit-weights', s.weights || { parse: 50, deaths: 30, mechanics: 20 });
+  $('wParse').value = w.parse; $('wDeaths').value = w.deaths; $('wMech').value = w.mechanics;
+  $('minPulls').value = store.get('rf-recruit-minpulls', s.minPulls ?? 15);
+  $('parseKind').value = store.get('rf-recruit-parse', s.parseKind || 'median');
+  $('rankMin').value = store.get('rf-recruit-rmin', '');
+  $('rankMax').value = store.get('rf-recruit-rmax', '');
+  const sync = () => {
+    $('wParseV').textContent = $('wParse').value;
+    $('wDeathsV').textContent = $('wDeaths').value;
+    $('wMechV').textContent = $('wMech').value;
+    store.set('rf-recruit-weights', options().weights);
+    store.set('rf-recruit-minpulls', $('minPulls').value);
+    store.set('rf-recruit-parse', $('parseKind').value);
+    store.set('rf-recruit-rmin', $('rankMin').value);
+    store.set('rf-recruit-rmax', $('rankMax').value);
+    render();
+  };
+  ['wParse', 'wDeaths', 'wMech', 'minPulls', 'parseKind', 'rankMin', 'rankMax', 'search'].forEach((id) => $(id).addEventListener('input', sync));
+  sync();
+};
+
+const openSettings = () => {
+  const s = settings();
+  const f = $('settings').querySelector('form');
+  ['region', 'minRank', 'maxRank', 'deathCutoff', 'autoCrawlHour', 'maxReportsPerGuild'].forEach((k) => { f.elements[k].value = s[k]; });
+  f.elements.advanced.value = JSON.stringify({ specGroups: s.specGroups, bosses: s.bosses }, null, 2);
+  $('settings').showModal();
+};
+
+$('saveSettings').onclick = async (event) => {
+  event.preventDefault();
+  const f = $('settings').querySelector('form');
+  let advanced;
+  try { advanced = JSON.parse(f.elements.advanced.value); } catch { alert('The JSON box has a typo.'); return; }
+  const body = {
+    region: f.elements.region.value,
+    minRank: f.elements.minRank.value,
+    maxRank: f.elements.maxRank.value,
+    deathCutoff: f.elements.deathCutoff.value,
+    autoCrawlHour: f.elements.autoCrawlHour.value,
+    maxReportsPerGuild: f.elements.maxReportsPerGuild.value,
+    specGroups: advanced.specGroups,
+    bosses: advanced.bosses,
+  };
+  try {
+    state.settings = await api('settings', { method: 'PUT', body: JSON.stringify(body) });
+    $('settings').close();
+    render();
+  } catch (error) { alert(error.message); }
+};
+
+$('settingsBtn').onclick = openSettings;
+const start = async (test) => {
+  try { await api('crawl', { method: 'POST', body: JSON.stringify({ test }) }); await refresh(); } catch (error) { alert(error.message); }
+};
+$('runBtn').onclick = () => start(false);
+$('testBtn').onclick = () => start(true);
+$('stopBtn').onclick = async () => { await api('stop', { method: 'POST' }).catch(() => {}); refresh(); };
+
+let wasRunning = false;
+const refresh = async () => {
+  let fresh = false;
+  try {
+    state = await api('state');
+    if (!results || (wasRunning && !state.status.running)) {
+      results = await api('results');
+      fresh = true;
+    }
+    wasRunning = state.status.running;
+  } catch (error) {
+    $('notices').innerHTML = `<div class="notice err">${esc(error.message)}</div>`;
+    return;
+  }
+  // Only redraw the table when the data changed; status every time.
+  if (fresh) render();
+  else renderStatus();
+};
+
+await refresh();
+initControls();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>
