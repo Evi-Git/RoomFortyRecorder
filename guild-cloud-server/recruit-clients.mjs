@@ -148,10 +148,10 @@ export const fetchRaiderIoGuilds = async ({
   for (let page = firstPage; page <= lastPage; page += 1) {
     const url = `${baseUrl}/api/v1/raiding/raid-rankings?raid=${encodeURIComponent(raid)}&difficulty=mythic&region=world&limit=50&page=${page}`;
     let data = null;
-    for (let attempt = 1; attempt <= 3 && !data; attempt += 1) {
+    for (let attempt = 1; attempt <= 4 && !data; attempt += 1) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        const response = await fetchImpl(url, { signal: AbortSignal.timeout(30000) });
+        const response = await fetchImpl(url, { signal: AbortSignal.timeout(90000) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         // eslint-disable-next-line no-await-in-loop
         data = await response.json();

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - Unreleased
+### Fixed
+- Recruiting: a guild found on Warcraft Logs but showing "0 reports" is now checked again without the raid-zone filter. Any reports with pulls on the tracked bosses are used, and the crawl log says which zones the guild's reports are in, so a filter mismatch can't hide a guild.
+- Recruiting: Raider.IO pages get more time before retrying (they timed out on the first live run).
+
 ## [1.9.1] - Unreleased
 ### Fixed
 - Recruiting: guilds weren't found on Warcraft Logs ("No guild exists for this name/server/region"). The crawler now looks each guild up first, with the region in capitals and both realm spellings, then fetches reports by guild ID. Guilds that still can't be found are listed as skipped.
