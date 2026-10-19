@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPullDesk } from './pulldesk.mjs';
+import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -500,14 +501,24 @@ const handleDiscordAuth = async (req, res, url, parts) => {
   if (parts[2] === 'start') {
     if (req.method !== 'GET') return fail(res, 405, 'Method not allowed');
 
+    // [RoomFortyRecorder] Browser sign-in for the web pages (recruiting):
+    // the session ends up in a cookie instead of being handed to the app.
+    const web = url.searchParams.get('web') === '1';
     let callback;
-    try {
-      callback = localCallback(url.searchParams.get('callback') || '');
-    } catch {
-      return fail(res, 400, 'Invalid OAuth callback');
+    let next = '/recruit';
+    if (web) {
+      const wanted = url.searchParams.get('next') || '/recruit';
+      if (/^\/[a-z0-9/_-]*$/i.test(wanted) && !wanted.startsWith('//')) next = wanted;
+    } else {
+      try {
+        callback = localCallback(url.searchParams.get('callback') || '');
+      } catch {
+        return fail(res, 400, 'Invalid OAuth callback');
+      }
     }
 
     if (!discordConfigured()) {
+      if (web) return text(res, 503, 'Discord sign-in is not configured on this server.');
       return redirect(
         res,
         callbackResult(callback, { error: 'discord_not_configured' }),
@@ -517,7 +528,9 @@ const handleDiscordAuth = async (req, res, url, parts) => {
     pruneOAuth();
     const state_ = crypto.randomBytes(24).toString('base64url');
     oauthStates.set(state_, {
-      callback: callback.toString(),
+      callback: web ? null : callback.toString(),
+      web,
+      next,
       expires: Math.floor(Date.now() / 1000) + OAUTH_STATE_TTL_SECONDS,
     });
 
@@ -539,7 +552,11 @@ const handleDiscordAuth = async (req, res, url, parts) => {
     if (!pending) return fail(res, 400, 'Invalid or expired OAuth state');
     oauthStates.delete(stateParam);
 
+    // Web sign-ins have no app callback: show the problem as a page.
+    const webError = (message) => text(res, 403, message);
+
     if (url.searchParams.get('error') || !url.searchParams.get('code')) {
+      if (pending.web) return webError('Discord sign-in was cancelled.');
       return redirect(
         res,
         callbackResult(pending.callback, { error: 'discord_denied' }),
@@ -576,6 +593,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         { headers: botHeaders },
       );
       if (memberResponse.status === 404) {
+        if (pending.web) return webError('You need to be in the Room Forty Discord.');
         return redirect(
           res,
           callbackResult(pending.callback, { error: 'not_room_forty_member' }),
@@ -604,10 +622,30 @@ const handleDiscordAuth = async (req, res, url, parts) => {
           DISCORD_ALLOWED_ROLES.includes(roleNames.get(roleId)),
         );
       if (!hasAllowedRole) {
+        if (pending.web) return webError('Your Discord account does not have a Room Forty role.');
         return redirect(
           res,
           callbackResult(pending.callback, { error: 'missing_room_forty_role' }),
         );
+      }
+
+      if (pending.web) {
+        const now = Math.floor(Date.now() / 1000);
+        state.knownUsers[user.id] = { userName, lastLogin: now };
+        await persist();
+        const token = encodeToken({
+          action: 'session',
+          guild: GUILD,
+          discordId: user.id,
+          userName,
+          iat: now,
+          exp: now + SESSION_TTL_SECONDS,
+        });
+        res.writeHead(302, {
+          'Set-Cookie': `${SESSION_COOKIE}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`,
+          Location: pending.next || '/recruit',
+        });
+        return res.end();
       }
 
       pruneOAuth();
@@ -623,6 +661,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       );
     } catch (error) {
       console.error('[guild-cloud] Discord OAuth failed', error.message);
+      if (pending.web) return webError('Discord sign-in failed. Try again in a minute.');
       return redirect(
         res,
         callbackResult(pending.callback, { error: 'discord_auth_failed' }),
@@ -989,6 +1028,17 @@ const pullDesk = createPullDesk({
   fail,
   memberRoleNames,
   botToken: DISCORD_BOT_TOKEN,
+  env: process.env,
+});
+
+// [RoomFortyRecorder] Officer-only recruiting page (/recruit).
+const recruit = createRecruit({
+  storage: STORAGE,
+  readBody,
+  json,
+  fail,
+  sessionFromToken,
+  memberRoleNames,
   env: process.env,
 });
 
@@ -1556,6 +1606,8 @@ const requestHandler = async (req, res) => {
   if (parts[0] === 'link' && parts.length === 2 && req.method === 'GET') {
     return handleLink(res, parts[1]);
   }
+  if (parts[0] === 'recruit') return recruit.handlePage(req, res, parts, url);
+  if (parts[0] === 'api' && parts[1] === 'recruit') return recruit.handleApi(req, res, parts);
   if (parts[0] === 'api') return handleApi(req, res, url, parts);
 
   return text(res, 404, 'Not found');

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - Unreleased
+### Added
+- **Recruiting page** on the guild server (`/recruit`, officers only, Discord sign-in). Ranks raiders of chosen specs (default Arms Warrior and any Warlock) from US guilds ranked 200-600 world, using only progression pulls up to each guild's first kill on The Coiled Altar and Ula'tek:
+  - **Early deaths:** first 2 per pull, ignoring Venom Rupture and deaths after the wipe call.
+  - **Mechanics vs their own raid:** Venom orbs, Wail of Terror kicks, and eggs picked up before 2:30 (assigned soak team).
+  - **Parse:** median or best percentile.
+  - Adjustable weights, filters, per-boss breakdown and links. It crawls Raider.IO and the Warcraft Logs API on the server, caches everything, stays within the hourly API points, and can run daily. See `docs/Recruiting.md`.
+
 ## [1.8.12] - Unreleased
 ### Fixed
 - Releases: the draft is created only after the installer is built, with the installer, blockmap and `latest.yml` already attached. A draft published too early (1.8.11) had no files, so the app's update check said "No published release found yet".

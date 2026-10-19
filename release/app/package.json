@@ -1,6 +1,6 @@
 {
   "name": "RoomFortyRecorder",
-  "version": "1.8.12",
+  "version": "1.9.0",
   "description": "RoomFortyRecorder",
   "main": "./dist/main/main.js",
   "author": {
