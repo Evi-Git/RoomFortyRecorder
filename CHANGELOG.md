@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - Unreleased
+### Added
+- Recruiting: a **Tanks** tab with every tank spec, ranked against other tanks, with the Room Forty yardstick and comparison for your own tanks. Settings saved with the DPS-only list pick up the new tab automatically.
+
 ## [1.9.5] - Unreleased
 ### Added
 - Recruiting: **your guild** (Room Forty) is crawled the same way, progression pulls up to the first kill on the tracked bosses, for comparison:

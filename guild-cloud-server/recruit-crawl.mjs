@@ -35,7 +35,10 @@ export const DEFAULT_SETTINGS = {
   })),
   // Who to rank. A group is either a role (every DPS spec) or a class with
   // optional specs, e.g. { label: 'Arms Warrior', className: 'Warrior', specs: ['Arms'] }.
-  specGroups: [{ label: 'DPS', role: 'dps' }],
+  specGroups: [
+    { label: 'DPS', role: 'dps' },
+    { label: 'Tanks', role: 'tank' },
+  ],
   // Your own guild, crawled the same way for comparison. Found by name in
   // Raider.IO's rankings; set the realm only if the name is ambiguous.
   homeGuild: { name: '', realm: '' },
@@ -104,7 +107,13 @@ export const createRecruitCrawler = ({
   ]);
   const getSettings = async () => {
     const saved = await readJson(file('settings.json'), {});
-    if (JSON.stringify(saved.specGroups) === OLD_DEFAULT_GROUPS) delete saved.specGroups;
+    // ...and the DPS-only list from 1.9.4 gains the Tanks tab.
+    if (
+      JSON.stringify(saved.specGroups) === OLD_DEFAULT_GROUPS ||
+      JSON.stringify(saved.specGroups) === JSON.stringify([{ label: 'DPS', role: 'dps' }])
+    ) {
+      delete saved.specGroups;
+    }
     return { ...DEFAULT_SETTINGS, ...saved };
   };
   const saveSettings = async (patch) => {
