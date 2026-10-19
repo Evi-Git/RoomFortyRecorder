@@ -75,7 +75,8 @@ logs, Warcraft Logs character page and Raider.IO.
   -1 to only crawl when you press the button.
 - **Weights, minimum pulls, parse kind, guild rank filter and search** apply
   instantly and are remembered in your browser.
-- **Spec groups** default to `[{ "label": "DPS", "role": "dps" }]`. A group
+- **Spec groups** default to a DPS tab and a Tanks tab:
+  `[{ "label": "DPS", "role": "dps" }, { "label": "Tanks", "role": "tank" }]`. A group
   can be a role (`dps`, `healer`, `tank`) or a class with specs, e.g.
   `{ "label": "Arms Warrior", "className": "Warrior", "specs": ["Arms"] }`;
   each group gets a tab.
