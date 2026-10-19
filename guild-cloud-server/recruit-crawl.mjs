@@ -111,23 +111,41 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
     return { zoneId: zone.id, encounters };
   };
 
-  const listReports = async (guild, zoneId, endTime, settings) => {
+  // Warcraft Logs wants the region in capitals ("US") and its own realm
+  // slug, which doesn't always match Raider.IO's. Try the likely spellings,
+  // then use the guild's ID for everything after.
+  const resolveGuild = async (guild) => {
+    const region = String(guild.region || '').toUpperCase();
+    const slugs = [...new Set([guild.realmSlug, serverSlug(guild.realm), serverSlug(guild.realmSlug)].filter(Boolean))];
+    for (const slug of slugs) {
+      let data = {};
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        data = await wcl.query(
+          `query($name: String!, $slug: String!, $region: String!) {
+            guildData { guild(name: $name, serverSlug: $slug, serverRegion: $region) { id name } } }`,
+          { name: guild.name, slug, region },
+          { quiet: true },
+        );
+      } catch (error) {
+        // "No guild exists..." comes back as an error: try the next spelling.
+        if (error.message === 'Stopped') throw error;
+      }
+      const found = data.guildData?.guild;
+      if (found?.id) return found.id;
+    }
+    return null;
+  };
+
+  const listReports = async (guildId, zoneId, endTime, settings) => {
     const reports = [];
     for (let page = 1; page <= 10 && reports.length < settings.maxReportsPerGuild; page += 1) {
       // eslint-disable-next-line no-await-in-loop
       const data = await wcl.query(
-        `query($name: String!, $slug: String!, $region: String!, $zone: Int!, $page: Int!, $end: Float) {
-          reportData { reports(guildName: $name, guildServerSlug: $slug, guildServerRegion: $region,
-            zoneID: $zone, limit: 25, page: $page, endTime: $end) {
+        `query($guild: Int!, $zone: Int!, $page: Int!, $end: Float) {
+          reportData { reports(guildID: $guild, zoneID: $zone, limit: 25, page: $page, endTime: $end) {
             has_more_pages data { code startTime endTime } } } }`,
-        {
-          name: guild.name,
-          slug: guild.realmSlug || serverSlug(guild.realm),
-          region: guild.region,
-          zone: zoneId,
-          page,
-          end: endTime,
-        },
+        { guild: guildId, zone: zoneId, page, end: endTime },
       );
       const result = data.reportData?.reports;
       (result?.data || []).forEach((r) => reports.push(r));
@@ -252,7 +270,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
       const batch = stale.slice(i, i + 6);
       const fields = batch
         .map(
-          (c, n) => `c${n}: character(name: ${JSON.stringify(c.name)}, serverSlug: ${JSON.stringify(serverSlug(c.server))}, serverRegion: ${JSON.stringify(settings.region)}) {
+          (c, n) => `c${n}: character(name: ${JSON.stringify(c.name)}, serverSlug: ${JSON.stringify(serverSlug(c.server))}, serverRegion: ${JSON.stringify(settings.region.toUpperCase())}) {
             ${bossEntries.map(([, id], b) => `e${b}: encounterRankings(encounterID: ${id}, difficulty: ${settings.difficulty}, metric: dps)`).join('\n')}
           }`,
         )
@@ -317,14 +335,18 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
         log,
       });
       log(`Raider.IO: ${guilds.length} ${settings.region.toUpperCase()} guilds ranked ${settings.minRank}-${settings.maxRank} world.`);
-      if (guildLimit) guilds = guilds.slice(0, guildLimit);
+      // A test crawl keeps trying guilds until one has public logs on these
+      // bosses (up to 10 tries), instead of stopping at the first.
+      if (guildLimit) guilds = guilds.slice(0, guildLimit + 9);
       status.guildCount = guilds.length;
+      let guildsWithPulls = 0;
 
       const guildResults = [];
       const players = new Map(); // guild|playerKey -> candidate
 
       for (const guild of guilds) {
         if (!status.running) throw new Error('Stopped');
+        if (guildLimit && guildsWithPulls >= guildLimit) break;
         status.guildIndex += 1;
         status.currentGuild = `${guild.name} (${guild.worldRank})`;
         status.phase = 'reports';
@@ -337,7 +359,14 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             : null;
 
           // eslint-disable-next-line no-await-in-loop
-          const reports = await listReports(guild, zoneId, endTime, settings);
+          const guildId = await resolveGuild(guild);
+          if (!guildId) {
+            log(`${guild.name} (${guild.realm}): not found on Warcraft Logs, skipped.`);
+            guildResults.push({ name: guild.name, realm: guild.realm, worldRank: guild.worldRank, error: 'Not found on Warcraft Logs' });
+            continue;
+          }
+          // eslint-disable-next-line no-await-in-loop
+          const reports = await listReports(guildId, zoneId, endTime, settings);
           const entries = [];
           let sawBoss = false;
           let emptyRun = 0;
@@ -437,6 +466,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             });
           }
           guildResults.push(summary);
+          if (Object.keys(summary.bosses).length) guildsWithPulls += 1;
           log(`${guild.name}: ${entries.length} reports, ${Object.entries(summary.bosses).map(([b, s]) => `${s.pulls} ${b} pulls`).join(', ') || 'no pulls on these bosses (private logs?)'}.`);
         } catch (error) {
           if (error.message === 'Stopped') throw error;
