@@ -142,16 +142,39 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
     for (let page = 1; page <= 10 && reports.length < settings.maxReportsPerGuild; page += 1) {
       // eslint-disable-next-line no-await-in-loop
       const data = await wcl.query(
-        `query($guild: Int!, $zone: Int!, $page: Int!, $end: Float) {
+        `query($guild: Int!, $zone: Int, $page: Int!, $end: Float) {
           reportData { reports(guildID: $guild, zoneID: $zone, limit: 25, page: $page, endTime: $end) {
-            has_more_pages data { code startTime endTime } } } }`,
-        { guild: guildId, zone: zoneId, page, end: endTime },
+            has_more_pages data { code startTime endTime zone { id name } } } } }`,
+        { guild: guildId, zone: zoneId ?? null, page, end: endTime ?? null },
       );
       const result = data.reportData?.reports;
       (result?.data || []).forEach((r) => reports.push(r));
       if (!result?.has_more_pages) break;
     }
     return reports.slice(0, settings.maxReportsPerGuild);
+  };
+
+  // Reports to scan for a guild. Normally: this raid's zone, up to the last
+  // first kill. If that finds nothing, fall back to their reports without
+  // the zone filter (the fights check below still keeps only these bosses)
+  // and log what we saw, so a filter mismatch can't silently hide a guild.
+  const findReports = async (guild, guildId, zoneId, endTime, settings) => {
+    const filtered = await listReports(guildId, zoneId, endTime, settings);
+    if (filtered.length) return filtered;
+
+    const anyZone = await listReports(guildId, null, endTime, settings);
+    const recent = anyZone.length ? anyZone : await listReports(guildId, null, null, settings);
+    const zones = {};
+    recent.forEach((r) => {
+      const name = r.zone?.name || 'no zone';
+      zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] = (zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] || 0) + 1;
+    });
+    const summary = Object.entries(zones).map(([z, n]) => `${z} ×${n}`).join(', ') || 'none';
+    log(
+      `${guild.name}: no reports in zone #${zoneId}${endTime ? ` before ${new Date(endTime).toISOString().slice(0, 10)}` : ''}; ` +
+        `${anyZone.length ? `${anyZone.length} in any zone before that date` : `${recent.length} recent in any zone`} (${summary}).`,
+    );
+    return recent;
   };
 
   // Mythic fights on the chosen bosses in one report (cached; reports older
@@ -366,7 +389,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             continue;
           }
           // eslint-disable-next-line no-await-in-loop
-          const reports = await listReports(guildId, zoneId, endTime, settings);
+          const reports = await findReports(guild, guildId, zoneId, endTime, settings);
           const entries = [];
           let sawBoss = false;
           let emptyRun = 0;
