@@ -57,6 +57,7 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
     storage,
     wcl,
     rioBaseUrl: env.GUILD_CLOUD_RAIDERIO_URL || undefined,
+    homeGuildName: env.GUILD_CLOUD_GUILD || 'Room Forty',
   });
 
   const sessionFor = (req) => {
@@ -239,6 +240,12 @@ export const validateSettings = (body) => {
       parse: clampInt(body.weights.parse, 0, 100) ?? 50,
       deaths: clampInt(body.weights.deaths, 0, 100) ?? 30,
       mechanics: clampInt(body.weights.mechanics, 0, 100) ?? 20,
+    };
+  }
+  if (body.homeGuild && typeof body.homeGuild === 'object') {
+    out.homeGuild = {
+      name: String(body.homeGuild.name || '').slice(0, 60),
+      realm: String(body.homeGuild.realm || '').slice(0, 60),
     };
   }
   if (Array.isArray(body.specGroups)) {

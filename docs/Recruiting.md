@@ -32,6 +32,14 @@ does the log review the way you'd do it by hand:
    within the group, with short reasons ("dies early far less than the
    group", "on assigned mechanics: Eggs before 2:30").
 
+**Your own guild** (`GUILD_CLOUD_GUILD`, Room Forty) is found in Raider.IO's
+rankings above the range and crawled the same way, with every raider kept
+(tanks and healers too). It gets its own tab, a yardstick line on the DPS tab
+("Room Forty DPS: median parse 87 · early deaths 0.05 per pull · 9 on
+assigned mechanics", following the Spec filter), and **Compare with Room
+Forty** ranks your raiders alongside the candidates, tagged R40. If it isn't
+found, set its realm under Settings -> "Its realm".
+
 Click a row for the per-boss breakdown, what killed them, and links to their
 logs, Warcraft Logs character page and Raider.IO.
 
