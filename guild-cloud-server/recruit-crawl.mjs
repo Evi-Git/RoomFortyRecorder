@@ -36,6 +36,9 @@ export const DEFAULT_SETTINGS = {
   // Who to rank. A group is either a role (every DPS spec) or a class with
   // optional specs, e.g. { label: 'Arms Warrior', className: 'Warrior', specs: ['Arms'] }.
   specGroups: [{ label: 'DPS', role: 'dps' }],
+  // Your own guild, crawled the same way for comparison. Found by name in
+  // Raider.IO's rankings; set the realm only if the name is ambiguous.
+  homeGuild: { name: '', realm: '' },
   deathCutoff: 2,
   minPulls: 15,
   parseKind: 'median',
@@ -49,7 +52,13 @@ export const DEFAULT_SETTINGS = {
 const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const DAY = 24 * 60 * 60 * 1000;
 
-export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = console.log }) => {
+export const createRecruitCrawler = ({
+  storage,
+  wcl,
+  rioBaseUrl,
+  homeGuildName = '',
+  log: baseLog = console.log,
+}) => {
   const dir = path.join(storage, 'recruit');
   const reportsDir = path.join(dir, 'reports');
   const file = (name) => path.join(dir, name);
@@ -380,9 +389,48 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
         log,
       });
       log(`Raider.IO: ${guilds.length} ${settings.region.toUpperCase()} guilds ranked ${settings.minRank}-${settings.maxRank} world.`);
+
+      // Your own guild, for comparison: look for it above the range first.
+      const homeName = settings.homeGuild?.name || homeGuildName;
+      const homeRealm = settings.homeGuild?.realm || '';
+      let home = null;
+      if (homeName) {
+        const above = settings.minRank > 1
+          ? await fetchRaiderIoGuilds({
+              raid: settings.raidSlug,
+              region: settings.region,
+              minRank: 1,
+              maxRank: settings.minRank - 1,
+              baseUrl: rioBaseUrl,
+              log,
+            })
+          : [];
+        home = [...above, ...guilds].find(
+          (g) => norm(g.name) === norm(homeName) && (!homeRealm || norm(g.realm) === norm(homeRealm)),
+        );
+        if (!home && homeRealm) {
+          home = {
+            name: homeName,
+            realm: homeRealm,
+            realmSlug: serverSlug(homeRealm),
+            region: settings.region,
+            worldRank: null,
+            regionRank: null,
+            kills: {},
+            pulled: {},
+          };
+        }
+        if (home) {
+          guilds = guilds.filter((g) => g !== home);
+          log(`Your guild: ${home.name} (${home.realm})${home.worldRank ? `, #${home.worldRank} world` : ''}.`);
+        } else {
+          log(`Your guild "${homeName}" isn't in Raider.IO's ${settings.region.toUpperCase()} rankings up to #${settings.maxRank}. Set its realm in Settings to include it.`);
+        }
+      }
       // A test crawl keeps trying guilds until one has public logs on these
       // bosses (up to 10 tries), instead of stopping at the first.
       if (guildLimit) guilds = guilds.slice(0, guildLimit + 9);
+      if (home) guilds = [{ ...home, home: true }, ...guilds];
       status.guildCount = guilds.length;
       let guildsWithPulls = 0;
 
@@ -391,7 +439,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
 
       for (const guild of guilds) {
         if (!status.running) throw new Error('Stopped');
-        if (guildLimit && guildsWithPulls >= guildLimit) break;
+        if (guildLimit && !guild.home && guildsWithPulls >= guildLimit) break;
         status.guildIndex += 1;
         status.currentGuild = `${guild.name} (${guild.worldRank})`;
         status.phase = 'reports';
@@ -435,6 +483,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             worldRank: guild.worldRank,
             regionRank: guild.regionRank,
             profileUrl: guild.profileUrl,
+            home: Boolean(guild.home),
             reports: entries.length,
             bosses: {},
           };
@@ -467,7 +516,10 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             };
 
             Object.values(totals.players).forEach((p) => {
-              const group = settings.specGroups.find((g) => inGroup(p, g));
+              // Your own raiders are all kept (tanks and healers too).
+              const group = guild.home
+                ? { label: guild.name }
+                : settings.specGroups.find((g) => inGroup(p, g));
               if (!group) return;
               const id = `${guild.name}|${p.key}`;
               const candidate = players.get(id) || {
@@ -479,6 +531,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
                 spec: p.spec,
                 role: p.role || roleForSpec(p.className, p.spec),
                 group: group.label,
+                home: Boolean(guild.home),
                 guild: {
                   name: guild.name,
                   realm: guild.realm,
@@ -512,7 +565,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
             });
           }
           guildResults.push(summary);
-          if (Object.keys(summary.bosses).length) guildsWithPulls += 1;
+          if (!guild.home && Object.keys(summary.bosses).length) guildsWithPulls += 1;
           log(`${guild.name}: ${entries.length} reports, ${Object.entries(summary.bosses).map(([b, s]) => `${s.pulls} ${b} pulls`).join(', ') || 'no pulls on these bosses (private logs?)'}.`);
         } catch (error) {
           if (error.message === 'Stopped') throw error;
@@ -538,6 +591,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
         zoneId,
         encounters,
         guilds: guildResults,
+        home: home ? { name: home.name, realm: home.realm, worldRank: home.worldRank, regionRank: home.regionRank } : null,
         candidates,
         points: { ...wcl.usage },
       });

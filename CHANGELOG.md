@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.5] - Unreleased
+### Added
+- Recruiting: **your guild** (Room Forty) is crawled the same way, progression pulls up to the first kill on the tracked bosses, for comparison:
+  - A **Room Forty** tab with every raider (tanks and healers too).
+  - A yardstick line on the DPS tab with your team's median parse, early deaths per pull and how many are on assigned mechanics (follows the Spec filter).
+  - **Compare with Room Forty** ranks your raiders alongside the candidates, tagged R40.
+  - The guild is found in Raider.IO's rankings automatically; Settings has a realm field in case it isn't.
+- Recruiting page has a browser tab icon.
+
 ## [1.9.4] - Unreleased
 ### Changed
 - Recruiting ranks **every DPS spec** by default, not just Arms Warriors and Warlocks. A **Spec** dropdown ranks one spec against itself, or all specs together. Roles come from each log's player details (spec name as fallback). Settings saved with the old Arms/Warlock list switch over automatically; spec groups can still be set to roles (`dps`, `healer`, `tank`) or class + specs.

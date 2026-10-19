@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Recruiting · Room Forty</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E %3Crect x='1' y='1' width='62' height='62' rx='14' fill='%23221d19' stroke='%234a4038' stroke-width='0.8'/%3E %3Cg fill='%23cca85c' transform='translate(32 32) scale(0.78) translate(-32 -32)'%3E%3Cg transform='translate(1.1 -1.5)'%3E%3Cpath d='M21.28 47.65L5.85 47.65L5.85 41.72L19 20.99L28.56 20.99L28.56 41.66L32.41 41.66L32.41 47.65L28.56 47.65L28.56 53L21.28 53L21.28 47.65ZM13.39 41.66L21.45 41.66L21.45 29.07L21.19 29.07L13.39 41.40Z'/%3E%3Ccircle cx='46' cy='24' r='10'/%3E%3Cpolygon points='40,29 52,29 56,53 36,53'/%3E%3C/g%3E%3C/g%3E %3C/svg%3E">
 <style>
   :root {
     --bg: #171412; --panel: #201c19; --card: #2a2420; --line: #39322d;
@@ -55,6 +56,10 @@
   td { padding: 7px 8px; border-bottom: 1px solid #2a2420; vertical-align: top; }
   tr.row { cursor: pointer; }
   tr.row:hover td { background: #1e1a17; }
+  tr.home td { background: rgba(204, 168, 92, .06); }
+  .r40 { display: inline-block; font-size: 10px; font-weight: 700; color: #171412; background: var(--brand); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  .bench { margin: -4px 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; color: var(--muted); display: none; }
+  .bench b { color: var(--text); font-weight: 600; }
   tr.open td { background: #1e1a17; }
   .score { display: flex; align-items: center; gap: 8px; min-width: 110px; }
   .bar { flex: 1; height: 6px; background: var(--card); border-radius: 3px; overflow: hidden; }
@@ -106,8 +111,10 @@
     <label title="Rank one spec against itself, or all of them together">Spec <select id="specFilter"><option value="">All specs</option></select></label>
     <label>Parse <select id="parseKind"><option value="median">median</option><option value="best">best</option></select></label>
     <label>Guild rank <input type="number" id="rankMin" min="1"> – <input type="number" id="rankMax" min="1"></label>
+    <label id="compareWrap" title="Rank your own raiders alongside the candidates (tagged R40)"><input type="checkbox" id="compareHome"> <span id="compareLabel">Compare with your guild</span></label>
     <input type="search" id="search" placeholder="Find a player or guild">
   </div>
+  <div class="bench" id="bench"></div>
   <div class="wrap"><table id="table"></table></div>
   <details class="log"><summary class="muted">Crawl log</summary><pre id="log"></pre></details>
 </main>
@@ -125,6 +132,8 @@
       <div class="row2">
         <label>Daily crawl hour (-1 = off) <input name="autoCrawlHour" type="number" min="-1" max="23"></label>
         <label>Max reports per guild <input name="maxReportsPerGuild" type="number" min="5" max="200"></label>
+        <label>Your guild <input name="homeName" placeholder="from the server"></label>
+        <label>Its realm (only if needed) <input name="homeRealm" placeholder="found automatically"></label>
       </div>
       <label>Spec groups and bosses (JSON). Bosses: excused death abilities and mechanics (kind "debuff" counts the debuff landing on a player; "interrupt" counts interrupts of that cast; beforeSeconds limits to early in the pull; assignedShare marks the assigned team).
         <textarea name="advanced" spellcheck="false"></textarea></label>
@@ -208,7 +217,25 @@ const renderStatus = () => {
 
 // ---- Table -----------------------------------------------------------------------
 const settings = () => state?.settings || {};
-const groups = () => (settings().specGroups || []).map((g) => g.label);
+const homeName = () => results?.home?.name || null;
+const groups = () => [
+  ...(settings().specGroups || []).map((g) => g.label),
+  ...(homeName() && (results?.candidates || []).some((c) => c.home) ? [homeName()] : []),
+];
+const groupDef = (label) => (settings().specGroups || []).find((g) => g.label === label);
+const roleOf = (c) => c.role || '';
+const matchesGroup = (c, def) => {
+  if (!def) return false;
+  if (def.role) return roleOf(c) === def.role;
+  const n = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return n(c.className) === n(def.className) && (!def.specs?.length || def.specs.some((sp) => n(sp) === n(c.spec)));
+};
+const median = (values) => {
+  const v = values.filter((x) => typeof x === 'number').sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
 const bosses = () => settings().bosses || [];
 
 const options = () => ({
@@ -311,12 +338,38 @@ const render = () => {
   const q = $('search').value.trim().toLowerCase();
   const rMin = +$('rankMin').value || 0;
   const rMax = +$('rankMax').value || Infinity;
-  const inGroup = all.filter((c) => c.group === group);
-  renderSpecFilter(inGroup);
+  const isHome = group === homeName();
+  const def = groupDef(group);
+  // Your raiders who'd fit this tab (e.g. your DPS on the DPS tab).
+  const homeMatches = isHome ? [] : all.filter((c) => c.home && matchesGroup(c, def));
+  const compare = !isHome && homeMatches.length > 0 && $('compareHome').checked;
+  $('compareWrap').style.display = !isHome && homeMatches.length ? '' : 'none';
+  $('compareLabel').textContent = `Compare with ${homeName() || 'your guild'}`;
+
+  const inGroup = all.filter((c) => c.group === group && !(c.home && !isHome));
+  renderSpecFilter(compare ? [...inGroup, ...homeMatches] : inGroup);
   const spec = $('specFilter').value;
+  const specOk = (c) => !spec || specLabel(c) === spec;
   // Ranking happens within what's shown: one spec against itself, or every
   // spec together (parse is already a percentile within each spec).
-  const pool = inGroup.filter((c) => (!spec || specLabel(c) === spec) && c.guild.worldRank >= rMin && c.guild.worldRank <= rMax);
+  const pool = [
+    ...inGroup.filter((c) => specOk(c) && (c.home || (c.guild.worldRank >= rMin && c.guild.worldRank <= rMax))),
+    ...(compare ? homeMatches.filter(specOk) : []),
+  ];
+
+  // Your guild's numbers for the same spec(s), as a yardstick.
+  const benchPool = homeMatches.filter(specOk);
+  if (benchPool.length) {
+    const ranked = rankCandidates(benchPool, { ...options(), minPulls: 1 });
+    const parse = median(ranked.map((r) => r.metrics.parse));
+    const deaths = median(ranked.map((r) => r.metrics.deathRate));
+    const assigned = ranked.filter((r) => r.metrics.assigned.length).length;
+    $('bench').style.display = 'block';
+    $('bench').innerHTML = `<b>${esc(homeName())}</b> ${spec ? esc(spec) : esc(group)} (${ranked.length}): median parse <b>${fmt(parse, 0)}</b> · early deaths <b>${fmt(deaths)}</b> per pull · ${assigned} on assigned mechanics`;
+  } else {
+    $('bench').style.display = 'none';
+  }
+
   let rows = rankCandidates(pool, options());
   if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.guild.name.toLowerCase().includes(q));
   const cols = columns();
@@ -337,15 +390,15 @@ const render = () => {
     const cells = cols.map((c) => {
       switch (c.key) {
         case 'score': return `<td><div class="score"><b>${r.percentile}</b><span class="bar"><i style="width:${r.percentile}%"></i></span></div></td>`;
-        case 'name': return `<td><span class="name">${esc(r.name)}</span> <span class="faint">${esc(r.server)}</span><div class="muted">${esc(specLabel(r))}</div>${r.reasons.length ? `<div class="reasons">${esc(r.reasons.join(' · '))}</div>` : ''}</td>`;
-        case 'guild': return `<td>${esc(r.guild.name)}<div class="faint">#${r.guild.worldRank} world · #${r.guild.regionRank} ${esc((settings().region || '').toUpperCase())}</div></td>`;
+        case 'name': return `<td><span class="name">${esc(r.name)}</span>${r.home ? '<span class="r40">R40</span>' : ''} <span class="faint">${esc(r.server)}</span><div class="muted">${esc(specLabel(r))}</div>${r.reasons.length ? `<div class="reasons">${esc(r.reasons.join(' · '))}</div>` : ''}</td>`;
+        case 'guild': return `<td>${esc(r.guild.name)}<div class="faint">${r.guild.worldRank ? `#${r.guild.worldRank} world · #${r.guild.regionRank} ${esc((settings().region || '').toUpperCase())}` : 'your guild'}</div></td>`;
         case 'parse': return `<td class="num"><span class="${parseClass(r.metrics.parse)}">${fmt(r.metrics.parse, 0)}</span><div class="faint">${Object.entries(r.bosses).map(([n, b]) => `${esc(n.split(' ').pop())} ${fmt(b.parse?.[options().parseKind] ?? b.parse?.best, 0)}`).join(' · ')}</div></td>`;
         case 'deaths': return `<td class="num">${fmt(r.metrics.deathRate)}<div class="faint">${r.metrics.earlyDeaths} in ${r.metrics.pulls}</div></td>`;
         case 'pulls': return `<td class="num">${r.metrics.pulls}</td>`;
         default: return `<td class="num">${mechCell(r, c)}</td>`;
       }
     }).join('');
-    return `<tr class="row ${isOpen ? 'open' : ''}" data-key="${esc(r.key)}">${cells}</tr>${isOpen ? `<tr><td colspan="${cols.length}">${detail(r)}</td></tr>` : ''}`;
+    return `<tr class="row ${isOpen ? 'open' : ''} ${r.home ? 'home' : ''}" data-key="${esc(r.key)}">${cells}</tr>${isOpen ? `<tr><td colspan="${cols.length}">${detail(r)}</td></tr>` : ''}`;
   }).join('');
   $('table').innerHTML = head + `<tbody>${body}</tbody>`;
   $('table').querySelectorAll('th').forEach((th) => th.onclick = () => {
@@ -381,9 +434,11 @@ const initControls = () => {
     store.set('rf-recruit-rmin', $('rankMin').value);
     store.set('rf-recruit-rmax', $('rankMax').value);
     store.set('rf-recruit-spec', $('specFilter').value);
+    store.set('rf-recruit-compare', $('compareHome').checked);
     render();
   };
-  ['wParse', 'wDeaths', 'wMech', 'minPulls', 'parseKind', 'specFilter', 'rankMin', 'rankMax', 'search'].forEach((id) => $(id).addEventListener('input', sync));
+  $('compareHome').checked = store.get('rf-recruit-compare', true);
+  ['wParse', 'wDeaths', 'wMech', 'minPulls', 'parseKind', 'specFilter', 'compareHome', 'rankMin', 'rankMax', 'search'].forEach((id) => $(id).addEventListener('input', sync));
   sync();
 };
 
@@ -391,6 +446,8 @@ const openSettings = () => {
   const s = settings();
   const f = $('settings').querySelector('form');
   ['region', 'minRank', 'maxRank', 'deathCutoff', 'autoCrawlHour', 'maxReportsPerGuild'].forEach((k) => { f.elements[k].value = s[k]; });
+  f.elements.homeName.value = s.homeGuild?.name || '';
+  f.elements.homeRealm.value = s.homeGuild?.realm || '';
   f.elements.advanced.value = JSON.stringify({ specGroups: s.specGroups, bosses: s.bosses }, null, 2);
   $('settings').showModal();
 };
@@ -407,6 +464,7 @@ $('saveSettings').onclick = async (event) => {
     deathCutoff: f.elements.deathCutoff.value,
     autoCrawlHour: f.elements.autoCrawlHour.value,
     maxReportsPerGuild: f.elements.maxReportsPerGuild.value,
+    homeGuild: { name: f.elements.homeName.value.trim(), realm: f.elements.homeRealm.value.trim() },
     specGroups: advanced.specGroups,
     bosses: advanced.bosses,
   };
