@@ -54,6 +54,20 @@ export const DEFAULT_BOSSES = [
 
 const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// Tank and healer specs; every other spec is DPS. Used when a report's
+// playerDetails didn't say (older cached analyses).
+const TANK_SPECS = new Set(['blood', 'vengeance', 'guardian', 'brewmaster', 'protection']);
+const HEALER_SPECS = new Set(['restoration', 'mistweaver', 'holy', 'discipline', 'preservation']);
+
+/** 'tank' | 'healer' | 'dps' | '' from a spec name (and class for Holy/Protection). */
+export const roleForSpec = (className, spec) => {
+  const s = norm(spec);
+  if (!s) return '';
+  if (TANK_SPECS.has(s)) return 'tank';
+  if (HEALER_SPECS.has(s)) return 'healer';
+  return 'dps';
+};
+
 // "Kel'Thuzad" -> "kelthuzad", "Area 52" -> "area-52" (Warcraft Logs slugs).
 export const serverSlug = (server) =>
   String(server || '')
@@ -96,6 +110,7 @@ export const analyzeBossReport = ({
   actors,
   abilities,
   specs,
+  roles,
   deaths = [],
   debuffs = [],
   interrupts = [],
@@ -118,6 +133,7 @@ export const analyzeBossReport = ({
         server: actor.server || '',
         className: actor.subType || '',
         spec: specs?.get(actorId) || '',
+        role: roles?.get(actorId) || '',
         pulls: 0,
         kills: 0,
         earlyDeaths: 0,
@@ -128,6 +144,7 @@ export const analyzeBossReport = ({
       };
     }
     if (!players[key].spec && specs?.get(actorId)) players[key].spec = specs.get(actorId);
+    if (!players[key].role && roles?.get(actorId)) players[key].role = roles.get(actorId);
     return players[key];
   };
 
@@ -245,6 +262,7 @@ export const mergeBossTotals = (total, part) => {
       return;
     }
     if (!t.spec && p.spec) t.spec = p.spec;
+    if (!t.role && p.role) t.role = p.role;
     ['pulls', 'kills', 'earlyDeaths', 'excusedDeaths', 'lateDeaths'].forEach((f) => {
       t[f] += p[f];
     });
@@ -316,6 +334,18 @@ export const specsFromPlayerDetails = (details) => {
     });
   });
   return specs;
+};
+
+/** Role per actor ('tank' | 'healer' | 'dps') from report.playerDetails JSON. */
+export const rolesFromPlayerDetails = (details) => {
+  const roles = new Map();
+  const data = details?.data?.playerDetails || details?.playerDetails || details || {};
+  [['tanks', 'tank'], ['healers', 'healer'], ['dps', 'dps']].forEach(([key, role]) => {
+    (data[key] || []).forEach((player) => {
+      if (player.id !== undefined) roles.set(player.id, role);
+    });
+  });
+  return roles;
 };
 
 /** Best and median parse from character.encounterRankings JSON, for a spec. */

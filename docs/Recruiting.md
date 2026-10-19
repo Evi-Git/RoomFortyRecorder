@@ -1,7 +1,10 @@
 # Recruiting
 
 An officer-only page on the guild server, `https://<your domain>/recruit`,
-that ranks raiders of chosen specs from guilds in a world-rank range. It
+that ranks every DPS raider (or chosen specs) from guilds in a world-rank
+range. Use the **Spec** dropdown to rank one spec against itself, or leave it
+on **All specs** to rank everyone together (parse is already a percentile
+within each spec, so that's fair). It
 does the log review the way you'd do it by hand:
 
 1. **Guilds:** Raider.IO's Mythic rankings for the current raid, filtered to
@@ -64,6 +67,10 @@ logs, Warcraft Logs character page and Raider.IO.
   -1 to only crawl when you press the button.
 - **Weights, minimum pulls, parse kind, guild rank filter and search** apply
   instantly and are remembered in your browser.
+- **Spec groups** default to `[{ "label": "DPS", "role": "dps" }]`. A group
+  can be a role (`dps`, `healer`, `tank`) or a class with specs, e.g.
+  `{ "label": "Arms Warrior", "className": "Warrior", "specs": ["Arms"] }`;
+  each group gets a tab.
 - **Settings** (rank range, region, spec groups, bosses, excused deaths,
   mechanics, death cutoff) apply on the next crawl. Bosses and mechanics are
   edited as JSON; each mechanic is either `"kind": "debuff"` (counts the

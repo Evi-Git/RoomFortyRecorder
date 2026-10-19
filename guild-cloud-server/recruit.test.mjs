@@ -8,6 +8,8 @@ import {
   playerKey,
   progressionFights,
   raidAverages,
+  roleForSpec,
+  rolesFromPlayerDetails,
   serverSlug,
   specsFromPlayerDetails,
 } from './recruit-analyze.mjs';
@@ -177,4 +179,14 @@ test('ranking favours parse + few deaths + assigned mechanics', () => {
     { minPulls: 10, weights: { parse: 100, deaths: 0, mechanics: 0 } },
   );
   assert.equal(byParse[0].name, 'Parser');
+});
+
+test('roles: from playerDetails, else from the spec name', () => {
+  const roles = rolesFromPlayerDetails({ data: { playerDetails: { tanks: [{ id: 1 }], healers: [{ id: 2 }], dps: [{ id: 3 }] } } });
+  assert.deepEqual([...roles.entries()], [[1, 'tank'], [2, 'healer'], [3, 'dps']]);
+  assert.equal(roleForSpec('Warrior', 'Arms'), 'dps');
+  assert.equal(roleForSpec('Paladin', 'Protection'), 'tank');
+  assert.equal(roleForSpec('Priest', 'Holy'), 'healer');
+  assert.equal(roleForSpec('Demon Hunter', 'Devourer'), 'dps');
+  assert.equal(roleForSpec('Evoker', 'Preservation'), 'healer');
 });
