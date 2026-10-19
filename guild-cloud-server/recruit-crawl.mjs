@@ -16,6 +16,8 @@ import {
   progressionFights,
   raidAverages,
   serverSlug,
+  roleForSpec,
+  rolesFromPlayerDetails,
   specsFromPlayerDetails,
 } from './recruit-analyze.mjs';
 import { fetchRaiderIoGuilds } from './recruit-clients.mjs';
@@ -31,10 +33,9 @@ export const DEFAULT_SETTINGS = {
     ...boss,
     rioSlug: boss.name === 'The Coiled Altar' ? 'the-coiled-altar' : 'ulatek',
   })),
-  specGroups: [
-    { label: 'Arms Warrior', className: 'Warrior', specs: ['Arms'] },
-    { label: 'Warlock', className: 'Warlock', specs: [] },
-  ],
+  // Who to rank. A group is either a role (every DPS spec) or a class with
+  // optional specs, e.g. { label: 'Arms Warrior', className: 'Warrior', specs: ['Arms'] }.
+  specGroups: [{ label: 'DPS', role: 'dps' }],
   deathCutoff: 2,
   minPulls: 15,
   parseKind: 'median',
@@ -86,7 +87,17 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
     await fs.rename(tmp, name);
   };
 
-  const getSettings = async () => ({ ...DEFAULT_SETTINGS, ...(await readJson(file('settings.json'), {})) });
+  // The first version ranked only Arms Warriors and Warlocks; settings saved
+  // with exactly that list move to the new all-DPS default.
+  const OLD_DEFAULT_GROUPS = JSON.stringify([
+    { label: 'Arms Warrior', className: 'Warrior', specs: ['Arms'] },
+    { label: 'Warlock', className: 'Warlock', specs: [] },
+  ]);
+  const getSettings = async () => {
+    const saved = await readJson(file('settings.json'), {});
+    if (JSON.stringify(saved.specGroups) === OLD_DEFAULT_GROUPS) delete saved.specGroups;
+    return { ...DEFAULT_SETTINGS, ...saved };
+  };
   const saveSettings = async (patch) => {
     const next = { ...(await getSettings()), ...patch };
     await writeJson(file('settings.json'), next);
@@ -270,6 +281,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
       actors: report.masterData?.actors || [],
       abilities: report.masterData?.abilities || [],
       specs: specsFromPlayerDetails(report.playerDetails),
+      roles: rolesFromPlayerDetails(report.playerDetails),
       deaths,
       debuffs,
       interrupts,
@@ -325,9 +337,15 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
 
   // ---- The crawl ------------------------------------------------------------------
 
-  const inGroup = (player, group) =>
-    norm(player.className) === norm(group.className) &&
-    (!group.specs?.length || group.specs.some((s) => norm(s) === norm(player.spec)));
+  const inGroup = (player, group) => {
+    if (group.role) {
+      return (player.role || roleForSpec(player.className, player.spec)) === group.role;
+    }
+    return (
+      norm(player.className) === norm(group.className) &&
+      (!group.specs?.length || group.specs.some((s) => norm(s) === norm(player.spec)))
+    );
+  };
 
   const run = async ({ guildLimit = 0 } = {}) => {
     if (status.running) return false;
@@ -459,6 +477,7 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
                 server: p.server,
                 className: p.className,
                 spec: p.spec,
+                role: p.role || roleForSpec(p.className, p.spec),
                 group: group.label,
                 guild: {
                   name: guild.name,

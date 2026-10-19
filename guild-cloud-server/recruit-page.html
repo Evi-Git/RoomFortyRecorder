@@ -103,6 +103,7 @@
     <label>Deaths <input type="range" min="0" max="100" id="wDeaths"><span class="wv" id="wDeathsV"></span></label>
     <label>Mechanics <input type="range" min="0" max="100" id="wMech"><span class="wv" id="wMechV"></span></label>
     <label title="Hide players with fewer counted pulls on these bosses">Min pulls <input type="number" min="0" id="minPulls"></label>
+    <label title="Rank one spec against itself, or all of them together">Spec <select id="specFilter"><option value="">All specs</option></select></label>
     <label>Parse <select id="parseKind"><option value="median">median</option><option value="best">best</option></select></label>
     <label>Guild rank <input type="number" id="rankMin" min="1"> – <input type="number" id="rankMax" min="1"></label>
     <input type="search" id="search" placeholder="Find a player or guild">
@@ -287,6 +288,22 @@ const detail = (r) => {
   </div></div></div>`;
 };
 
+const specLabel = (c) => `${c.spec || '?'} ${c.className || ''}`.trim();
+
+const renderSpecFilter = (pool) => {
+  const select = $('specFilter');
+  const current = select.value || store.get('rf-recruit-spec', '');
+  const counts = {};
+  pool.forEach((c) => { counts[specLabel(c)] = (counts[specLabel(c)] || 0) + 1; });
+  const specs = Object.keys(counts).sort();
+  const html = `<option value="">All specs (${pool.length})</option>` + specs.map((sp) => `<option value="${esc(sp)}">${esc(sp)} (${counts[sp]})</option>`).join('');
+  if (select.dataset.html !== html) {
+    select.innerHTML = html;
+    select.dataset.html = html;
+  }
+  select.value = specs.includes(current) ? current : '';
+};
+
 const render = () => {
   renderStatus();
   const all = results?.candidates || [];
@@ -294,7 +311,12 @@ const render = () => {
   const q = $('search').value.trim().toLowerCase();
   const rMin = +$('rankMin').value || 0;
   const rMax = +$('rankMax').value || Infinity;
-  const pool = all.filter((c) => c.group === group && c.guild.worldRank >= rMin && c.guild.worldRank <= rMax);
+  const inGroup = all.filter((c) => c.group === group);
+  renderSpecFilter(inGroup);
+  const spec = $('specFilter').value;
+  // Ranking happens within what's shown: one spec against itself, or every
+  // spec together (parse is already a percentile within each spec).
+  const pool = inGroup.filter((c) => (!spec || specLabel(c) === spec) && c.guild.worldRank >= rMin && c.guild.worldRank <= rMax);
   let rows = rankCandidates(pool, options());
   if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.guild.name.toLowerCase().includes(q));
   const cols = columns();
@@ -315,7 +337,7 @@ const render = () => {
     const cells = cols.map((c) => {
       switch (c.key) {
         case 'score': return `<td><div class="score"><b>${r.percentile}</b><span class="bar"><i style="width:${r.percentile}%"></i></span></div></td>`;
-        case 'name': return `<td><span class="name">${esc(r.name)}</span> <span class="faint">${esc(r.server)}</span><div class="muted">${esc(r.spec || r.className)}</div>${r.reasons.length ? `<div class="reasons">${esc(r.reasons.join(' · '))}</div>` : ''}</td>`;
+        case 'name': return `<td><span class="name">${esc(r.name)}</span> <span class="faint">${esc(r.server)}</span><div class="muted">${esc(specLabel(r))}</div>${r.reasons.length ? `<div class="reasons">${esc(r.reasons.join(' · '))}</div>` : ''}</td>`;
         case 'guild': return `<td>${esc(r.guild.name)}<div class="faint">#${r.guild.worldRank} world · #${r.guild.regionRank} ${esc((settings().region || '').toUpperCase())}</div></td>`;
         case 'parse': return `<td class="num"><span class="${parseClass(r.metrics.parse)}">${fmt(r.metrics.parse, 0)}</span><div class="faint">${Object.entries(r.bosses).map(([n, b]) => `${esc(n.split(' ').pop())} ${fmt(b.parse?.[options().parseKind] ?? b.parse?.best, 0)}`).join(' · ')}</div></td>`;
         case 'deaths': return `<td class="num">${fmt(r.metrics.deathRate)}<div class="faint">${r.metrics.earlyDeaths} in ${r.metrics.pulls}</div></td>`;
@@ -358,9 +380,10 @@ const initControls = () => {
     store.set('rf-recruit-parse', $('parseKind').value);
     store.set('rf-recruit-rmin', $('rankMin').value);
     store.set('rf-recruit-rmax', $('rankMax').value);
+    store.set('rf-recruit-spec', $('specFilter').value);
     render();
   };
-  ['wParse', 'wDeaths', 'wMech', 'minPulls', 'parseKind', 'rankMin', 'rankMax', 'search'].forEach((id) => $(id).addEventListener('input', sync));
+  ['wParse', 'wDeaths', 'wMech', 'minPulls', 'parseKind', 'specFilter', 'rankMin', 'rankMax', 'search'].forEach((id) => $(id).addEventListener('input', sync));
   sync();
 };
 

@@ -242,11 +242,15 @@ export const validateSettings = (body) => {
     };
   }
   if (Array.isArray(body.specGroups)) {
-    out.specGroups = body.specGroups.slice(0, 12).map((g) => ({
-      label: String(g.label || g.className || 'Group').slice(0, 40),
-      className: String(g.className || '').slice(0, 30),
-      specs: stringList(g.specs, 4),
-    }));
+    out.specGroups = body.specGroups.slice(0, 12).map((g) =>
+      ['dps', 'healer', 'tank'].includes(g.role)
+        ? { label: String(g.label || g.role).slice(0, 40), role: g.role }
+        : {
+            label: String(g.label || g.className || 'Group').slice(0, 40),
+            className: String(g.className || '').slice(0, 30),
+            specs: stringList(g.specs, 4),
+          },
+    );
   }
   if (Array.isArray(body.bosses)) {
     out.bosses = body.bosses.slice(0, 10).map((b) => ({
