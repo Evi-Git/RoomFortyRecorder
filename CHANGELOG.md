@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - Unreleased
+### Fixed
+- Recruiting: guilds weren't found on Warcraft Logs ("No guild exists for this name/server/region"). The crawler now looks each guild up first, with the region in capitals and both realm spellings, then fetches reports by guild ID. Guilds that still can't be found are listed as skipped.
+- Recruiting: "Test with 1 guild" keeps trying (up to 10 guilds) until it finds one with public logs on the tracked bosses.
+- Recruiting page: no light band under the content; "1 guild" instead of "1 guilds".
+
 ## [1.9.0] - Unreleased
 ### Added
 - **Recruiting page** on the guild server (`/recruit`, officers only, Discord sign-in). Ranks raiders of chosen specs (default Arms Warrior and any Warlock) from US guilds ranked 200-600 world, using only progression pulls up to each guild's first kill on The Coiled Altar and Ula'tek:

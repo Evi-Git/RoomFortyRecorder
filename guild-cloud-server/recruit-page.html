@@ -12,7 +12,8 @@
     --good: #6fcf8a; --bad: #e57368; --warn: #e2c14d; --tank: #8fc7f2; --heal: #8fe0a6;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
+  html { background: var(--bg); min-height: 100%; color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, -apple-system, Segoe UI, sans-serif; }
   a { color: var(--brand); text-decoration: none; }
   a:hover { text-decoration: underline; }
   button, input, select { font: inherit; color: inherit; }
@@ -189,7 +190,7 @@ const renderStatus = () => {
   } else if (last?.phase === 'failed') {
     html = `<span class="dot err"></span> Last crawl failed ${ago(last.finishedAt)}: ${esc(last.error)}`;
   } else {
-    html = `<span class="dot ${results?.generatedAt ? 'ok' : ''}"></span> ${results?.generatedAt ? `Data from ${ago(results.generatedAt)}${results.test ? ' (test crawl, 1 guild)' : ''} · ${results.guilds.length} guilds · ${results.candidates.length} raiders` : 'No crawl yet'}`;
+    html = `<span class="dot ${results?.generatedAt ? 'ok' : ''}"></span> ${results?.generatedAt ? `Data from ${ago(results.generatedAt)}${results.test ? ' (test crawl, 1 guild)' : ''} · ${results.guilds.length} guild${results.guilds.length === 1 ? '' : 's'} · ${results.candidates.length} raider${results.candidates.length === 1 ? '' : 's'}` : 'No crawl yet'}`;
   }
   if (usage.limitPerHour) html += ` <span class="spacer"></span><span class="faint">Warcraft Logs points: ${Math.round(usage.spentThisHour)} / ${usage.limitPerHour} this hour</span>`;
   $('status').innerHTML = html;

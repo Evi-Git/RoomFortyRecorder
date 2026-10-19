@@ -57,7 +57,7 @@ export const createWclClient = ({
   };
 
   /** Run a GraphQL query. Returns `data`. */
-  const query = async (text, variables = {}) => {
+  const query = async (text, variables = {}, { quiet = false } = {}) => {
     if (stopRequested) throw new Error('Stopped');
     await waitForBudget();
     const withRate = text.replace(
@@ -109,7 +109,7 @@ export const createWclClient = ({
       if (body.errors?.length && !body.data) {
         throw new Error(`Warcraft Logs query error: ${body.errors.map((e) => e.message).join('; ')}`);
       }
-      if (body.errors?.length) {
+      if (body.errors?.length && !quiet) {
         log(`Warcraft Logs warning: ${body.errors.map((e) => e.message).join('; ').slice(0, 300)}`);
       }
       return body.data || {};
