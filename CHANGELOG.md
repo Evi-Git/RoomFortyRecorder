@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3] - Unreleased
+### Changed
+- Recruiting: a guild whose public logs are all from other raids or Mythic+ is skipped instead of scanned report by report ("none from this raid, skipping"), saving Warcraft Logs points on guilds that don't log the current raid publicly.
+
 ## [1.9.2] - Unreleased
 ### Fixed
 - Recruiting: a guild found on Warcraft Logs but showing "0 reports" is now checked again without the raid-zone filter. Any reports with pulls on the tracked bosses are used, and the crawl log says which zones the guild's reports are in, so a filter mismatch can't hide a guild.
