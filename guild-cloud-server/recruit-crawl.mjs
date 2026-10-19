@@ -170,11 +170,15 @@ export const createRecruitCrawler = ({ storage, wcl, rioBaseUrl, log: baseLog = 
       zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] = (zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] || 0) + 1;
     });
     const summary = Object.entries(zones).map(([z, n]) => `${z} ×${n}`).join(', ') || 'none';
+    // Only reports that could hold these bosses: this zone, or no zone set.
+    // A guild whose logs are all older raids or Mythic+ isn't worth scanning.
+    const usable = recent.filter((r) => !r.zone?.id || r.zone.id === zoneId);
     log(
       `${guild.name}: no reports in zone #${zoneId}${endTime ? ` before ${new Date(endTime).toISOString().slice(0, 10)}` : ''}; ` +
-        `${anyZone.length ? `${anyZone.length} in any zone before that date` : `${recent.length} recent in any zone`} (${summary}).`,
+        `${anyZone.length ? `${anyZone.length} in any zone before that date` : `${recent.length} recent in any zone`} (${summary})` +
+        `${usable.length ? `; scanning ${usable.length} that could hold these bosses.` : '; none from this raid, skipping (not logged publicly).'}`,
     );
-    return recent;
+    return usable;
   };
 
   // Mythic fights on the chosen bosses in one report (cached; reports older
