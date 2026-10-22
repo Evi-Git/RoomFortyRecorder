@@ -90,7 +90,7 @@ export const makeCoachClip = async (
   await run(
     ffmpeg(videoPath)
       .inputOptions([`-ss ${Math.min(at - start, LENGTH_SECONDS - 1)}`])
-      .outputOptions(['-frames:v 1', '-vf scale=-2:540', '-q:v 4'])
+      .outputOptions(['-frames:v 1', '-vf scale=-2:480', '-q:v 6'])
       .output(thumbPath),
   );
   const thumbnail = (await fsp.readFile(thumbPath)).toString('base64');

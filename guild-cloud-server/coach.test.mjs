@@ -44,7 +44,11 @@ const setup = async () => {
   const roles = { 100001: ['officer'], 200001: ['raider'], 200002: ['raider'] };
   const coach = createCoach({
     storage,
-    readBody: async (req) => req.body || {},
+    // Like the server's readBody: refuse bodies over the limit.
+    readBody: async (req, max) => {
+      if (max && JSON.stringify(req.body || {}).length > max) throw new Error('Request body too large');
+      return req.body || {};
+    },
     json: (res, status, body) => Object.assign(res, { status, body }),
     fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
     memberRoleNames: async (id) => roles[id] || [],
@@ -108,6 +112,11 @@ test('officers send anywhere; raiders only to their mapped channel', async (t) =
   assert.equal(withThumb.status, 200);
   assert.ok(await coach.thumbnailPath('link-clip-1'));
   assert.equal(await coach.thumbnailPath('link-mage-a-pull-7'), null);
+  // A full-size preview frame fits (a real game frame is ~100-300 KB).
+  const big = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(300 * 1024, 7)]).toString('base64');
+  assert.equal((await call('officer1', 'POST', ['send'], { videoName: 'clip-big', channelId: '222222', thumbnail: big })).status, 200);
+  assert.ok(await coach.thumbnailPath('link-clip-big'));
+
   // Anything that isn't a JPEG is ignored.
   await call('officer1', 'POST', ['send'], { videoName: 'clip-2', channelId: '222222', thumbnail: Buffer.from('<svg>').toString('base64') });
   assert.equal(await coach.thumbnailPath('link-clip-2'), null);
