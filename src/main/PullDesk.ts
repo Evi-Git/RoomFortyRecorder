@@ -4,6 +4,7 @@ import axios from 'axios';
 import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
+import PullBackfill, { BossPercentHint } from './PullBackfill';
 import { send } from './main';
 
 /**
@@ -57,6 +58,15 @@ export type PullDeskRequest =
   | { action: 'night'; night: string }
   | { action: 'progression'; encounterId: number; difficultyId?: number }
   | { action: 'importWcl'; reports: string[] }
+  | { action: 'logFiles' }
+  | { action: 'scanLog'; file: string }
+  | {
+      action: 'backfillLog';
+      file: string;
+      bosses: string[];
+      hints: BossPercentHint[];
+    }
+  | { action: 'backfillStatus' }
   | { action: 'watcher' }
   | {
       action: 'setWatcher';
@@ -98,6 +108,11 @@ export default class PullDesk {
   private capture = new PullLogCapture(
     (pull) => this.onPullFinished(pull),
     () => this.cfg.get<boolean>('pullDeskUpload'),
+  );
+
+  // Upload from a saved combat log file.
+  private backfill = new PullBackfill(() =>
+    this.cfg.get<string>('retailLogPath'),
   );
 
   // Boss % from the recorder's encounter logic, by encounter ID.
@@ -251,7 +266,10 @@ export default class PullDesk {
             message || `The guild server said no (${status ?? error.message}).`,
         };
       }
-      return { ok: false, error: String(error) };
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -316,6 +334,15 @@ export default class PullDesk {
           undefined,
           { timeout: 120000 },
         );
+      case 'logFiles':
+        return this.backfill.listLogs();
+      case 'scanLog':
+        return this.backfill.scan(request.file);
+      case 'backfillLog':
+        this.backfill.start(request.file, request.bosses, request.hints);
+        return this.backfill.status;
+      case 'backfillStatus':
+        return this.backfill.status;
       case 'importWcl':
         return client.pullDeskRequest(
           'post',

@@ -240,6 +240,65 @@ export const createPullDesk = (options) => {
     });
   };
 
+  // A pull uploaded later from a raider's saved combat log (the app's
+  // "Upload from combat log"). Placed by its real start time; returns the
+  // pull to upload to, or upload: false if it already has a log.
+  const backfill = async (req, res) => {
+    const body = await readBody(req, 16 * 1024);
+    const encounterId = Number(body.encounterId);
+    const difficultyId = Number(body.difficultyId);
+    const startedAt = Number(body.startedAt);
+    const duration = Number(body.duration);
+    if (
+      !Number.isInteger(encounterId) ||
+      !Number.isInteger(difficultyId) ||
+      !Number.isFinite(startedAt) ||
+      !Number.isFinite(duration) ||
+      startedAt > Date.now() + 60000
+    ) {
+      return fail(res, 400, 'Invalid pull');
+    }
+    if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId])) {
+      return json(res, 200, { skip: true });
+    }
+    const bossPercent = Number.isFinite(Number(body.bossPercent)) ? Number(body.bossPercent) : null;
+    let pull = index.pulls.find(
+      (p) =>
+        p.encounterId === encounterId &&
+        p.difficultyId === difficultyId &&
+        Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
+    );
+    if (pull?.hasLog) return json(res, 200, { pullId: pull.id, upload: false });
+
+    if (!pull) {
+      pull = {
+        id: `${Math.round(startedAt).toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
+        encounterId,
+        encounterName: String(body.encounterName || `Encounter ${encounterId}`).slice(0, 100),
+        difficultyId,
+        night: nightOf(startedAt),
+        createdAt: startedAt,
+        startedAt,
+        claimDuration: duration,
+        candidates: {},
+        chosen: null,
+        hasLog: false,
+        result: body.result ? 'kill' : 'wipe',
+        duration,
+        bossPercent: body.result ? 0 : bossPercent,
+        appBossPercent: body.result ? 0 : bossPercent,
+        status: 'claimed',
+      };
+      index.pulls.push(pull);
+      index.pulls.sort((a, b) => a.createdAt - b.createdAt);
+      renumber(encounterId, difficultyId);
+    } else if (pull.appBossPercent == null && bossPercent !== null && !body.result) {
+      pull.appBossPercent = bossPercent;
+    }
+    await persist();
+    return json(res, 200, { pullId: pull.id, upload: true });
+  };
+
   const importReports = async (codes) => {
     if (!wcl.configured) {
       throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
@@ -616,6 +675,8 @@ export const createPullDesk = (options) => {
 
     await fsp.writeFile(logFile(pull.id), gz);
     pull.hasLog = true;
+    // A Warcraft Logs import gets the full report from the real log.
+    if (pull.source === 'wcl') delete pull.source;
     pull.uploadedBy = req.cloudUserName;
     pull.status = 'analyzing';
     await persist();
@@ -704,6 +765,8 @@ export const createPullDesk = (options) => {
     }
 
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
+
+    if (first === 'backfill' && req.method === 'POST') return backfill(req, res);
 
     if (first === 'import' && req.method === 'POST') {
       if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');

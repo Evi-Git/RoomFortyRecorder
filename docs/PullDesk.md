@@ -49,6 +49,17 @@ from the reports it already has, so they need nothing extra from raiders.
   wipe causes per night (a cause that fades out is a solved mechanic) and
   each raider's early deaths per pull, night by night.
 
+### Uploading a night from your combat log
+
+If nobody had "Send my pull logs" on for a night, anyone who was in the raid
+can send it afterwards: **Upload from combat log** on the Night summary or
+Progression view lists the combat log files in your WoW Logs folder (WoW
+writes one per session, e.g. `WoWCombatLog-102126_195812.txt`). Pick the
+night's file, **Scan**, tick the bosses and **Upload**. Every pull gets the
+same full report as a live upload, placed at its real time, with the boss %
+from your recording where there is one. Pulls the server already has a log
+for are skipped, so it's safe to run twice or from two raiders' PCs.
+
 ### Importing pulls from Warcraft Logs
 
 If a night wasn't captured (nobody had "Send my pull logs" on, or it was

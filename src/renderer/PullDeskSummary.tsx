@@ -1762,3 +1762,289 @@ export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
     </div>
   );
 };
+
+type LogFile = { name: string; size: number; modified: number };
+type LogBoss = {
+  encounterId: number;
+  encounterName: string;
+  difficultyId: number;
+  pulls: number;
+  kills: number;
+  firstAt: number;
+  lastAt: number;
+};
+type BackfillStatus = {
+  running: boolean;
+  file: string;
+  found: number;
+  uploaded: number;
+  alreadyThere: number;
+  skipped: number;
+  failed: number;
+  error: string;
+  finishedAt: number | null;
+};
+
+export type BossPercentHint = {
+  encounterId: number;
+  difficultyId: number;
+  start: number;
+  bossPercent: number;
+};
+
+const DIFFICULTY_KEYS: Record<number, string> = {
+  14: 'normal',
+  15: 'heroic',
+  16: 'mythic',
+  17: 'lfr',
+};
+
+const fileSize = (bytes: number) =>
+  bytes >= 1e9
+    ? `${(bytes / 1e9).toFixed(1)} GB`
+    : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+
+const timeOfDay = (at: number) =>
+  new Date(at).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+/**
+ * Send pulls from a saved combat log: for nights nobody had "Send my pull
+ * logs" on. Full reports (cooldown plan, avoidable hits, defensives), placed
+ * by their real start time; pulls the server already has are skipped.
+ */
+export const UploadFromLog = ({
+  hints,
+  tracked,
+  onUploaded,
+}: {
+  hints: BossPercentHint[];
+  tracked: string[];
+  onUploaded: () => void;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [files, setFiles] = React.useState<LogFile[] | null>(null);
+  const [file, setFile] = React.useState('');
+  const [bosses, setBosses] = React.useState<LogBoss[] | null>(null);
+  const [picked, setPicked] = React.useState<string[]>([]);
+  const [scanning, setScanning] = React.useState(false);
+  const [status, setStatus] = React.useState<BackfillStatus | null>(null);
+  const [error, setError] = React.useState('');
+
+  const isTracked = (difficultyId: number) =>
+    !tracked.length || tracked.includes(DIFFICULTY_KEYS[difficultyId]);
+  const key = (b: LogBoss) => `${b.encounterId}:${b.difficultyId}`;
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    call<LogFile[]>({ action: 'logFiles' }).then((response) => {
+      if (cancelled) return;
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setFiles(response.data);
+      setFile((current) => current || response.data[0]?.name || '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Follow a running upload.
+  React.useEffect(() => {
+    if (!status?.running) return undefined;
+    const timer = setInterval(() => {
+      call<BackfillStatus>({ action: 'backfillStatus' }).then((response) => {
+        if (!response.ok) return;
+        setStatus(response.data);
+        if (!response.data.running) onUploaded();
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [status?.running, onUploaded]);
+
+  const scan = async () => {
+    setScanning(true);
+    setError('');
+    setBosses(null);
+    setStatus(null);
+    const response = await call<LogBoss[]>({ action: 'scanLog', file });
+    setScanning(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setBosses(response.data);
+    setPicked(response.data.filter((b) => isTracked(b.difficultyId)).map(key));
+  };
+
+  const upload = async () => {
+    setError('');
+    const response = await call<BackfillStatus>({
+      action: 'backfillLog',
+      file,
+      bosses: picked,
+      hints,
+    });
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setStatus(response.data);
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" onClick={() => setOpen(true)}>
+        Upload from combat log
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+      <div className="flex items-center">
+        <h3 className="font-display text-base text-foreground-lighter">
+          Upload pulls from your combat log
+        </h3>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setOpen(false)}
+        >
+          Close
+        </Button>
+      </div>
+      <p className="text-xs text-foreground">
+        For a night the app didn&apos;t send live. Pick the combat log from that
+        night (WoW writes one per session to your Logs folder), scan it, and
+        upload. Each pull gets the full report, placed at its real time; pulls
+        the server already has are skipped. Boss % comes from your recordings
+        where there is one.
+      </p>
+
+      {files && !files.length && (
+        <p className="text-sm text-foreground">
+          No combat log files in your retail Logs folder.
+        </p>
+      )}
+      {files && files.length > 0 && (
+        <div className="flex items-center gap-x-2 flex-wrap">
+          <select
+            className="h-9 bg-card text-foreground-lighter rounded-md px-2 text-sm border border-background"
+            value={file}
+            onChange={(e) => {
+              setFile(e.target.value);
+              setBosses(null);
+              setStatus(null);
+            }}
+          >
+            {files.map((f) => (
+              <option key={f.name} value={f.name}>
+                {new Date(f.modified).toLocaleString(undefined, {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}{' '}
+                · {fileSize(f.size)} · {f.name}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={scan}
+            disabled={!file || scanning || Boolean(status?.running)}
+          >
+            {scanning ? 'Scanning…' : 'Scan'}
+          </Button>
+          {scanning && (
+            <span className="text-xs text-foreground">
+              A full raid night takes a minute or so.
+            </span>
+          )}
+        </div>
+      )}
+
+      {bosses && !bosses.length && (
+        <p className="text-sm text-foreground">No raid pulls in that log.</p>
+      )}
+      {bosses && bosses.length > 0 && (
+        <div className="flex flex-col gap-y-1">
+          {bosses.map((b) => {
+            const ok = isTracked(b.difficultyId);
+            return (
+              <label
+                key={key(b)}
+                className={`flex items-center gap-x-2 text-sm ${ok ? '' : 'opacity-50'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  disabled={!ok}
+                  checked={picked.includes(key(b))}
+                  onChange={(e) =>
+                    setPicked((current) =>
+                      e.target.checked
+                        ? [...current, key(b)]
+                        : current.filter((k) => k !== key(b)),
+                    )
+                  }
+                />
+                <span className="text-foreground-lighter">
+                  {b.encounterName}
+                </span>
+                <span className="text-foreground">
+                  {difficultyName(b.difficultyId)} · {b.pulls}{' '}
+                  {b.pulls === 1 ? 'pull' : 'pulls'}
+                  {b.kills ? ` · ${b.kills} kill` : ''} · {timeOfDay(b.firstAt)}
+                  –{timeOfDay(b.lastAt)}
+                </span>
+                {!ok && (
+                  <span className="text-xs text-foreground">
+                    (difficulty not tracked by the server)
+                  </span>
+                )}
+              </label>
+            );
+          })}
+          <div className="flex items-center gap-x-2 mt-1">
+            <Button
+              size="sm"
+              onClick={upload}
+              disabled={!picked.length || Boolean(status?.running)}
+            >
+              {status?.running ? 'Uploading…' : 'Upload'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status && (
+        <p className="text-sm">
+          {status.running ? 'Uploading: ' : 'Done: '}
+          <span className="text-foreground-lighter">
+            {status.uploaded} uploaded
+          </span>
+          {status.alreadyThere > 0 && `, ${status.alreadyThere} already here`}
+          {status.skipped > 0 && `, ${status.skipped} not tracked`}
+          {status.failed > 0 && (
+            <span className="text-red-400">, {status.failed} failed</span>
+          )}
+          {status.running && ` (${status.found} found so far)`}
+          {status.error && (
+            <span className="text-red-400"> · {status.error}</span>
+          )}
+        </p>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+    </div>
+  );
+};
