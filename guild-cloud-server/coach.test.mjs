@@ -64,11 +64,11 @@ const setup = async () => {
     );
     return res;
   };
-  return { discord, call };
+  return { discord, call, coach };
 };
 
 test('officers send anywhere; raiders only to their mapped channel', async (t) => {
-  const { discord, call } = await setup();
+  const { discord, call, coach } = await setup();
   t.after(() => discord.server.close());
 
   const officer = await call('officer1', 'GET', ['config']);
@@ -101,6 +101,16 @@ test('officers send anywhere; raiders only to their mapped channel', async (t) =
   assert.match(discord.posted[0].content, /watch from 2:31/);
   assert.match(discord.posted[0].content, /> Watch the orb soak here/);
   assert.deepEqual(discord.posted[0].allowed_mentions, { parse: [] });
+
+  // A clip sent with its preview frame: the link page gets an og:image.
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
+  const withThumb = await call('officer1', 'POST', ['send'], { videoName: 'clip-1', channelId: '222222', thumbnail: jpeg });
+  assert.equal(withThumb.status, 200);
+  assert.ok(await coach.thumbnailPath('link-clip-1'));
+  assert.equal(await coach.thumbnailPath('link-mage-a-pull-7'), null);
+  // Anything that isn't a JPEG is ignored.
+  await call('officer1', 'POST', ['send'], { videoName: 'clip-2', channelId: '222222', thumbnail: Buffer.from('<svg>').toString('base64') });
+  assert.equal(await coach.thumbnailPath('link-clip-2'), null);
 
   // A raider without a mapping can't send anywhere.
   assert.equal((await call('raider1', 'POST', ['send'], { videoName: 'v', channelId: '222222' })).status, 403);
