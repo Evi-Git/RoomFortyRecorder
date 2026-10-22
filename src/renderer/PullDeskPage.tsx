@@ -17,7 +17,13 @@ import Switch from './components/Switch/Switch';
 import { getCategoryIndex } from './rendererutils';
 import { getConfigValue, setConfigValue } from './useSettings';
 import { BRAND } from 'renderer/brand';
-import { NightSummaryView, ProgressionView } from './PullDeskSummary';
+import {
+  BossPercentHint,
+  ImportFromLogs,
+  UploadFromLog,
+  NightSummaryView,
+  ProgressionView,
+} from './PullDeskSummary';
 import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 
 /**
@@ -397,6 +403,13 @@ const PullDeskPage = (props: IProps) => {
   const [flags, setFlags] = React.useState<Flag[]>([]);
   const [officer, setOfficer] = React.useState(false);
   const [channelsOpen, setChannelsOpen] = React.useState(false);
+  // Bumped after an import so the summary views reload.
+  const [importTick, setImportTick] = React.useState(0);
+  const [tracked, setTracked] = React.useState<string[]>([]);
+  const reloadSummaries = React.useCallback(
+    () => setImportTick((k) => k + 1),
+    [],
+  );
 
   const changeView = (next: View) => {
     setView(next);
@@ -406,6 +419,22 @@ const PullDeskPage = (props: IProps) => {
       // Storage unavailable: the view just isn't remembered.
     }
   };
+
+  // Boss % from recordings, for pulls uploaded from a saved combat log.
+  const bossPercentHints: BossPercentHint[] = videoState
+    .filter(
+      (video) =>
+        video.category === VideoCategory.Raids &&
+        typeof video.bossPercent === 'number' &&
+        typeof video.start === 'number' &&
+        typeof video.encounterID === 'number',
+    )
+    .map((video) => ({
+      encounterId: video.encounterID as number,
+      difficultyId: Number(video.difficultyID),
+      start: video.start as number,
+      bossPercent: video.bossPercent as number,
+    }));
 
   // From a summary: open that pull's report in the Pulls view.
   const openPull = (id: string) => {
@@ -451,8 +480,12 @@ const PullDeskPage = (props: IProps) => {
   }, [days, listTick]);
 
   React.useEffect(() => {
-    call<{ canEdit: boolean }>({ action: 'config' }).then((response) => {
-      if (response.ok) setCanEdit(response.data.canEdit);
+    call<{ canEdit: boolean; trackedDifficulties?: string[] }>({
+      action: 'config',
+    }).then((response) => {
+      if (!response.ok) return;
+      setCanEdit(response.data.canEdit);
+      setTracked(response.data.trackedDifficulties ?? []);
     });
   }, []);
 
@@ -1653,14 +1686,23 @@ const PullDeskPage = (props: IProps) => {
         </label>
       </div>
 
-      {view === 'night' && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          <NightSummaryView onOpenPull={openPull} />
-        </div>
-      )}
-      {view === 'progression' && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          <ProgressionView onOpenPull={openPull} />
+      {view !== 'pulls' && (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-y-3">
+          <div className="flex flex-col gap-y-2 items-start">
+            <div className="flex gap-x-2">
+              <UploadFromLog
+                hints={bossPercentHints}
+                tracked={tracked}
+                onUploaded={reloadSummaries}
+              />
+              {canEdit && <ImportFromLogs onImported={reloadSummaries} />}
+            </div>
+          </div>
+          {view === 'night' ? (
+            <NightSummaryView key={importTick} onOpenPull={openPull} />
+          ) : (
+            <ProgressionView key={importTick} onOpenPull={openPull} />
+          )}
         </div>
       )}
 

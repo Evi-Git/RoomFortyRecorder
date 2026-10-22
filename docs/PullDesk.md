@@ -49,6 +49,44 @@ from the reports it already has, so they need nothing extra from raiders.
   wipe causes per night (a cause that fades out is a solved mechanic) and
   each raider's early deaths per pull, night by night.
 
+### Missed pulls are sent automatically
+
+Pulls the live capture didn't send (the app was closed, signed out, or
+crashed) are picked up from the saved combat logs. With "Send my pull logs"
+on, every raider's app checks its finished combat log files from the last
+week, 2 minutes after it starts and then every 30 minutes, never during a
+pull. It asks the server which pulls it still needs a log for and sends only
+those, with the boss % from that raider's recordings. A file is checked once
+and again only if it grows. When several raiders have the same night, the
+server gives each pull to one of them (the others skip it for 5 minutes, then
+check again in case that upload failed).
+
+### Uploading a night from your combat log by hand
+
+To send a file right away, anyone who was in the raid can use **Upload from
+combat log** on the Night summary or Progression view. It lists the combat
+log files in your WoW Logs folder (WoW writes one per session, e.g.
+`WoWCombatLog-102126_195812.txt`). Pick the
+night's file, **Scan**, tick the bosses and **Upload**. Every pull gets the
+same full report as a live upload, placed at its real time, with the boss %
+from your recording where there is one. Pulls the server already has a log
+for are skipped, so it's safe to run twice or from two raiders' PCs.
+
+### Importing pulls from Warcraft Logs
+
+If a night wasn't captured (nobody had "Send my pull logs" on, or it was
+before the app), editors can click **Import from Warcraft Logs** on the Night
+summary or Progression view and paste the report links. Boss pulls on the
+tracked difficulties are added with their result, boss %, roster and deaths,
+so wipe causes, early deaths and the progression curve all work. Pulls the
+app already has are skipped. Imported pulls have no cooldown plan, avoidable
+hits or defensives (those need the app's own log) and show "WCL" instead of
+an Open button. Needs the Warcraft Logs API keys in `.env` (see
+Recruiting.md).
+
+Pulls the app saw but never got a log for also count in both views after
+10 minutes, with the result, boss % and length the app reported.
+
 ### Top guilds (Progression)
 
 Officers add up to 3 guilds that log publicly on Warcraft Logs (name, realm,

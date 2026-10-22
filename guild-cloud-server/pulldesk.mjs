@@ -20,6 +20,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
 import { summarizeNight, summarizeProgression } from './pulldesk-summary.mjs';
+import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
+import { createWclClient } from './recruit-clients.mjs';
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
@@ -31,6 +33,16 @@ const CLAIM_STALE_MS = 60 * 1000; // a chosen uploader that never uploaded
 // someone who disconnected or stood far away has a partial log.
 const CLAIM_WINDOW_MS = 3000;
 const NIGHT_CUTOFF_HOURS = 6; // pulls before 6am count as the night before
+// A claim with no log after this long never got one (nobody uploading): it
+// still counts in the summaries, from what the claim said.
+const STALE_CLAIM_MS = 10 * 60 * 1000;
+// An imported pull within this of an existing one is the same pull.
+const IMPORT_MATCH_MS = 60 * 1000;
+const MAX_IMPORT_REPORTS = 10;
+// Several raiders' apps may backfill the same night: the first gets the
+// pull for this long, the rest skip it (and retry later if it never lands).
+const BACKFILL_LOCK_MS = 5 * 60 * 1000;
+const MAX_BACKFILL_CHECK = 500;
 const MAX_NOTE_CHARS = 100 * 1024;
 
 const DIFFICULTY_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr' };
@@ -80,6 +92,14 @@ export const createPullDesk = (options) => {
   const indexFile = path.join(dir, 'index.json');
   const reportFile = (id) => path.join(dir, 'reports', `${id}.json`);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
+
+  // Warcraft Logs, for importing pulls the app didn't capture.
+  const wcl = options.wcl ||
+    createWclClient({
+      clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
+      clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
+      baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
+    });
 
   const trackedDifficulties = new Set(
     String(env.GUILD_CLOUD_PULLDESK_DIFFICULTIES ?? 'mythic')
@@ -198,7 +218,208 @@ export const createPullDesk = (options) => {
     plan: pull.plan ?? null,
     avoidableHits: pull.avoidableHits ?? null,
     error: pull.error || null,
+    source: pull.source || 'app',
   });
+
+  // Pulls the summaries count: analyzed ones, imported ones, and claims that
+  // never got a log (from what the claim said).
+  const countedPulls = () => {
+    const now = Date.now();
+    return index.pulls.filter(
+      (pull) => pull.status !== 'claimed' || now - pull.createdAt > STALE_CLAIM_MS,
+    );
+  };
+
+  // Pull numbers in time order for one boss and difficulty, per night and
+  // overall. Needed after an import fills in earlier pulls.
+  const renumber = (encounterId, difficultyId) => {
+    const pulls = index.pulls
+      .filter((p) => p.encounterId === encounterId && p.difficultyId === difficultyId)
+      .sort((a, b) => (a.startedAt ?? a.createdAt) - (b.startedAt ?? b.createdAt));
+    const perNight = {};
+    pulls.forEach((p, i) => {
+      perNight[p.night] = (perNight[p.night] || 0) + 1;
+      p.pullNumber = perNight[p.night];
+      p.totalPullNumber = i + 1;
+    });
+  };
+
+  // A pull uploaded later from a raider's saved combat log (the app's
+  // "Upload from combat log"). Placed by its real start time; returns the
+  // pull to upload to, or upload: false if it already has a log.
+  const backfill = async (req, res) => {
+    const body = await readBody(req, 16 * 1024);
+    const encounterId = Number(body.encounterId);
+    const difficultyId = Number(body.difficultyId);
+    const startedAt = Number(body.startedAt);
+    const duration = Number(body.duration);
+    if (
+      !Number.isInteger(encounterId) ||
+      !Number.isInteger(difficultyId) ||
+      !Number.isFinite(startedAt) ||
+      !Number.isFinite(duration) ||
+      startedAt > Date.now() + 60000
+    ) {
+      return fail(res, 400, 'Invalid pull');
+    }
+    if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId])) {
+      return json(res, 200, { skip: true });
+    }
+    const bossPercent = Number.isFinite(Number(body.bossPercent)) ? Number(body.bossPercent) : null;
+    let pull = index.pulls.find(
+      (p) =>
+        p.encounterId === encounterId &&
+        p.difficultyId === difficultyId &&
+        Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
+    );
+    if (pull?.hasLog) return json(res, 200, { pullId: pull.id, upload: false });
+    const who = String(req.cloudUserId || req.cloudUserName);
+    if (pull && pull.backfillBy && pull.backfillBy !== who && Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) {
+      return json(res, 200, { pullId: pull.id, upload: false, busy: true });
+    }
+
+    if (!pull) {
+      pull = {
+        id: `${Math.round(startedAt).toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
+        encounterId,
+        encounterName: String(body.encounterName || `Encounter ${encounterId}`).slice(0, 100),
+        difficultyId,
+        night: nightOf(startedAt),
+        createdAt: startedAt,
+        startedAt,
+        claimDuration: duration,
+        candidates: {},
+        chosen: null,
+        hasLog: false,
+        result: body.result ? 'kill' : 'wipe',
+        duration,
+        bossPercent: body.result ? 0 : bossPercent,
+        appBossPercent: body.result ? 0 : bossPercent,
+        status: 'claimed',
+      };
+      index.pulls.push(pull);
+      index.pulls.sort((a, b) => a.createdAt - b.createdAt);
+      renumber(encounterId, difficultyId);
+    } else if (pull.appBossPercent == null && bossPercent !== null && !body.result) {
+      pull.appBossPercent = bossPercent;
+    }
+    pull.backfillBy = who;
+    pull.backfillAt = Date.now();
+    await persist();
+    return json(res, 200, { pullId: pull.id, upload: true });
+  };
+
+  // Which of these pulls (from a raider's saved log) does the server still
+  // need a log for? Lets the app's automatic backfill upload only those.
+  const backfillCheck = async (req, res) => {
+    const body = await readBody(req, 256 * 1024);
+    const pulls = Array.isArray(body?.pulls) ? body.pulls.slice(0, MAX_BACKFILL_CHECK) : [];
+    const who = String(req.cloudUserId || req.cloudUserName);
+    const now = Date.now();
+    const missing = [];
+    pulls.forEach((item, i) => {
+      const encounterId = Number(item?.encounterId);
+      const difficultyId = Number(item?.difficultyId);
+      const startedAt = Number(item?.startedAt);
+      if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId]) || !Number.isFinite(startedAt)) return;
+      const pull = index.pulls.find(
+        (p) =>
+          p.encounterId === encounterId &&
+          p.difficultyId === difficultyId &&
+          Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
+      );
+      if (pull?.hasLog) return;
+      // Another raider's app is sending it right now.
+      if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
+      // A live pull still in its claim window: the live upload will come.
+      if (pull && pull.status === 'claimed' && now - pull.createdAt < STALE_CLAIM_MS) return;
+      missing.push(i);
+    });
+    return json(res, 200, { missing });
+  };
+
+  const importReports = async (codes) => {
+    if (!wcl.configured) {
+      throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
+    }
+    const gameDifficulties = new Set(
+      Object.entries(DIFFICULTY_NAMES)
+        .filter(([, name]) => trackedDifficulties.has(name))
+        .map(([id]) => Number(id)),
+    );
+    const results = [];
+    const touched = new Set();
+    for (const code of codes) {
+      let fetched;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        fetched = await fetchReportPulls(wcl, code, gameDifficulties);
+      } catch (error) {
+        results.push({ code, error: error.message });
+        continue;
+      }
+      let added = 0;
+      let skipped = 0;
+      let filled = 0;
+      for (const item of fetched.pulls) {
+        const same = index.pulls.find(
+          (p) =>
+            p.encounterId === item.encounterId &&
+            p.difficultyId === item.difficultyId &&
+            Math.abs((p.startedAt ?? p.createdAt) - item.startedAt) <= IMPORT_MATCH_MS,
+        );
+        // Already here with a report (from the app, or imported before).
+        if (same && same.status !== 'claimed') {
+          skipped += 1;
+          continue;
+        }
+        const pull = same || {
+          id: `${item.startedAt.toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
+          candidates: {},
+          chosen: null,
+          hasLog: false,
+        };
+        Object.assign(pull, {
+          encounterId: item.encounterId,
+          encounterName: item.encounterName,
+          difficultyId: item.difficultyId,
+          night: nightOf(item.startedAt),
+          createdAt: same?.createdAt ?? item.startedAt,
+          startedAt: item.startedAt,
+          result: item.result,
+          // The app's boss % (phases, rebirths) wins if a claim had one.
+          bossPercent: same?.appBossPercent ?? item.bossPercent,
+          duration: item.duration,
+          deaths: item.report.deaths.length,
+          wipeText: null,
+          status: 'ready',
+          source: 'wcl',
+          uploadedBy: 'Warcraft Logs',
+          error: null,
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await fsp.writeFile(
+          reportFile(pull.id),
+          JSON.stringify({ ...item.report, id: pull.id, night: pull.night, startedAt: pull.startedAt, bossPercent: pull.bossPercent }),
+        );
+        if (same) filled += 1;
+        else {
+          index.pulls.push(pull);
+          added += 1;
+        }
+        touched.add(`${item.encounterId}:${item.difficultyId}`);
+      }
+      const bosses = [...new Set(fetched.pulls.map((p) => p.encounterName))];
+      results.push({ code, title: fetched.title, bosses, added, filled, skipped });
+    }
+    touched.forEach((key) => {
+      const [encounterId, difficultyId] = key.split(':').map(Number);
+      renumber(encounterId, difficultyId);
+    });
+    index.pulls.sort((a, b) => a.createdAt - b.createdAt);
+    await persist();
+    return results;
+  };
 
   // ---- Analysis -------------------------------------------------------------
 
@@ -258,7 +479,10 @@ export const createPullDesk = (options) => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const pulls = index.pulls.filter(
       (pull) =>
-        pull.encounterId === encounterId && pull.status === 'ready' && pull.createdAt >= cutoff,
+        pull.encounterId === encounterId &&
+        pull.status === 'ready' &&
+        pull.source !== 'wcl' &&
+        pull.createdAt >= cutoff,
     );
     for (const pull of pulls) {
       try {
@@ -490,6 +714,8 @@ export const createPullDesk = (options) => {
 
     await fsp.writeFile(logFile(pull.id), gz);
     pull.hasLog = true;
+    // A Warcraft Logs import gets the full report from the real log.
+    if (pull.source === 'wcl') delete pull.source;
     pull.uploadedBy = req.cloudUserName;
     pull.status = 'analyzing';
     await persist();
@@ -579,11 +805,28 @@ export const createPullDesk = (options) => {
 
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
 
+    if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
+    if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
+
+    if (first === 'import' && req.method === 'POST') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const body = await readBody(req, 64 * 1024);
+      const codes = [...new Set((Array.isArray(body?.reports) ? body.reports : []).map(reportCode).filter(Boolean))];
+      if (!codes.length) return fail(res, 400, 'Paste one or more Warcraft Logs report links');
+      if (codes.length > MAX_IMPORT_REPORTS) return fail(res, 400, `Up to ${MAX_IMPORT_REPORTS} reports at a time`);
+      try {
+        return json(res, 200, { results: await importReports(codes) });
+      } catch (error) {
+        return fail(res, error.status || 502, error.message);
+      }
+    }
+
     if (first === 'pulls' && !second && req.method === 'GET') {
       const days = Math.min(Math.max(Number(url?.searchParams.get('days')) || 7, 1), 120);
       const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
       const pulls = index.pulls
-        .filter((pull) => pull.createdAt >= cutoff && pull.status !== 'claimed')
+        // Imported pulls have no app report; they show in the summaries.
+        .filter((pull) => pull.createdAt >= cutoff && pull.status !== 'claimed' && pull.source !== 'wcl')
         .map(summaryOf)
         .reverse();
       return json(res, 200, { pulls });
@@ -626,7 +869,7 @@ export const createPullDesk = (options) => {
 
     // Night summary and progression views.
     if (first === 'summary' && req.method === 'GET') {
-      const counted = index.pulls.filter((pull) => pull.status !== 'claimed');
+      const counted = countedPulls();
       if (second === 'nights') {
         const nights = new Map();
         counted.forEach((pull) => {

@@ -58,6 +58,7 @@ type PullRow = {
   duration: number;
   deaths: number | null;
   cause: string | null;
+  source?: 'app' | 'wcl';
 };
 
 type BossNight = {
@@ -108,6 +109,7 @@ type Progression = {
     percent: number | null;
     kill: boolean;
     id: string;
+    source?: 'app' | 'wcl';
   }[];
   firstKill: { pull: number; night: string } | null;
   causes: Cause[];
@@ -560,13 +562,22 @@ const BossNightCard = ({
                     {p.cause ?? ''}
                   </td>
                   <td className="px-2 py-1 text-right">
-                    <button
-                      type="button"
-                      className="text-xs text-brand hover:underline"
-                      onClick={() => onOpenPull(p.id)}
-                    >
-                      Open
-                    </button>
+                    {p.source === 'wcl' ? (
+                      <span
+                        className="text-xs text-foreground/50"
+                        title="Imported from Warcraft Logs: no app report to open"
+                      >
+                        WCL
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs text-brand hover:underline"
+                        onClick={() => onOpenPull(p.id)}
+                      >
+                        Open
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -790,7 +801,9 @@ const ProgressionChart = ({
         aria-label={`Boss health at the end of each pull on ${data.encounterName}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
-        onClick={() => hovered && onOpenPull(hovered.id)}
+        onClick={() =>
+          hovered && hovered.source !== 'wcl' && onOpenPull(hovered.id)
+        }
         className="cursor-pointer select-none"
       >
         {[0, 25, 50, 75, 100].map((v) => (
@@ -1001,7 +1014,11 @@ const ProgressionChart = ({
             </div>
           )}
           {hovered && (
-            <div className="text-foreground/70 mt-0.5">Click to open</div>
+            <div className="text-foreground/70 mt-0.5">
+              {hovered.source === 'wcl'
+                ? 'From Warcraft Logs'
+                : 'Click to open'}
+            </div>
           )}
         </div>
       )}
@@ -1478,13 +1495,22 @@ export const ProgressionView = ({
                           )}
                         </td>
                         <td className="px-2 py-1 text-right">
-                          <button
-                            type="button"
-                            className="text-xs text-brand hover:underline"
-                            onClick={() => onOpenPull(p.id)}
-                          >
-                            Open
-                          </button>
+                          {p.source === 'wcl' ? (
+                            <span
+                              className="text-xs text-foreground/50"
+                              title="Imported from Warcraft Logs: no app report to open"
+                            >
+                              WCL
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs text-brand hover:underline"
+                              onClick={() => onOpenPull(p.id)}
+                            >
+                              Open
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1609,6 +1635,443 @@ export const ProgressionView = ({
           </Panel>
         </div>
       )}
+    </div>
+  );
+};
+
+type ImportResult = {
+  code: string;
+  title?: string;
+  bosses?: string[];
+  added?: number;
+  filled?: number;
+  skipped?: number;
+  error?: string;
+};
+
+/**
+ * Backfill pulls the app didn't capture from Warcraft Logs report links.
+ * Imported pulls get boss %, result, roster and deaths (for wipe causes and
+ * early deaths); the cooldown plan, avoidable hits and defensives need the
+ * app's own log.
+ */
+export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [results, setResults] = React.useState<ImportResult[] | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError('');
+    setResults(null);
+    const reports = text
+      .split(/[\s,]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const response = await call<{ results: ImportResult[] }>({
+      action: 'importWcl',
+      reports,
+    });
+    setBusy(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setResults(response.data.results);
+    if (
+      response.data.results.some((r) => (r.added ?? 0) + (r.filled ?? 0) > 0)
+    ) {
+      onImported();
+    }
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        Import from Warcraft Logs
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+      <div className="flex items-center">
+        <h3 className="font-display text-base text-foreground-lighter">
+          Import pulls from Warcraft Logs
+        </h3>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setOpen(false)}
+        >
+          Close
+        </Button>
+      </div>
+      <p className="text-xs text-foreground">
+        For pulls the app didn&apos;t capture. Paste report links (one per line,
+        up to 10). Tracked-difficulty boss pulls are added with their boss %,
+        deaths and wipe causes; pulls already here are skipped. The cooldown
+        plan, avoidable hits and defensives need the app&apos;s own log, so they
+        stay empty for imported pulls.
+      </p>
+      <textarea
+        className="w-full min-h-[72px] rounded-md bg-card px-2 py-1.5 text-sm text-foreground-lighter border border-background"
+        placeholder="https://www.warcraftlogs.com/reports/..."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="flex items-center gap-x-2">
+        <Button size="sm" onClick={run} disabled={busy || !text.trim()}>
+          {busy ? 'Importing…' : 'Import'}
+        </Button>
+        {busy && (
+          <span className="text-xs text-foreground">
+            Can take a minute for a long night.
+          </span>
+        )}
+      </div>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {results && (
+        <ul className="text-sm flex flex-col gap-y-1">
+          {results.map((r) => (
+            <li key={r.code}>
+              {r.error ? (
+                <span className="text-red-400">
+                  {r.code}: {r.error}
+                </span>
+              ) : (
+                <span>
+                  <span className="text-foreground-lighter">
+                    {r.title || r.code}
+                  </span>
+                  {': '}
+                  {(r.added ?? 0) + (r.filled ?? 0)} pulls added
+                  {r.skipped ? `, ${r.skipped} already here` : ''}
+                  {r.bosses?.length
+                    ? ` (${r.bosses.join(', ')})`
+                    : ' (no tracked boss pulls)'}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+type LogFile = { name: string; size: number; modified: number };
+type LogBoss = {
+  encounterId: number;
+  encounterName: string;
+  difficultyId: number;
+  pulls: number;
+  kills: number;
+  firstAt: number;
+  lastAt: number;
+};
+type BackfillStatus = {
+  running: boolean;
+  auto?: boolean;
+  lastAuto?: { at: number; uploaded: number; files: number } | null;
+  file: string;
+  found: number;
+  uploaded: number;
+  alreadyThere: number;
+  skipped: number;
+  failed: number;
+  error: string;
+  finishedAt: number | null;
+};
+
+export type BossPercentHint = {
+  encounterId: number;
+  difficultyId: number;
+  start: number;
+  bossPercent: number;
+};
+
+const DIFFICULTY_KEYS: Record<number, string> = {
+  14: 'normal',
+  15: 'heroic',
+  16: 'mythic',
+  17: 'lfr',
+};
+
+const fileSize = (bytes: number) =>
+  bytes >= 1e9
+    ? `${(bytes / 1e9).toFixed(1)} GB`
+    : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+
+const timeOfDay = (at: number) =>
+  new Date(at).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+/**
+ * Send pulls from a saved combat log: for nights nobody had "Send my pull
+ * logs" on. Full reports (cooldown plan, avoidable hits, defensives), placed
+ * by their real start time; pulls the server already has are skipped.
+ */
+export const UploadFromLog = ({
+  hints,
+  tracked,
+  onUploaded,
+}: {
+  hints: BossPercentHint[];
+  tracked: string[];
+  onUploaded: () => void;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [files, setFiles] = React.useState<LogFile[] | null>(null);
+  const [file, setFile] = React.useState('');
+  const [bosses, setBosses] = React.useState<LogBoss[] | null>(null);
+  const [picked, setPicked] = React.useState<string[]>([]);
+  const [scanning, setScanning] = React.useState(false);
+  const [status, setStatus] = React.useState<BackfillStatus | null>(null);
+  const [error, setError] = React.useState('');
+
+  const isTracked = (difficultyId: number) =>
+    !tracked.length || tracked.includes(DIFFICULTY_KEYS[difficultyId]);
+  const key = (b: LogBoss) => `${b.encounterId}:${b.difficultyId}`;
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    call<BackfillStatus>({ action: 'backfillStatus' }).then((response) => {
+      if (
+        !cancelled &&
+        response.ok &&
+        (response.data.running || response.data.lastAuto)
+      ) {
+        setStatus(response.data);
+      }
+    });
+    call<LogFile[]>({ action: 'logFiles' }).then((response) => {
+      if (cancelled) return;
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setFiles(response.data);
+      setFile((current) => current || response.data[0]?.name || '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Follow a running upload.
+  React.useEffect(() => {
+    if (!status?.running) return undefined;
+    const timer = setInterval(() => {
+      call<BackfillStatus>({ action: 'backfillStatus' }).then((response) => {
+        if (!response.ok) return;
+        setStatus(response.data);
+        if (!response.data.running) onUploaded();
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [status?.running, onUploaded]);
+
+  const scan = async () => {
+    setScanning(true);
+    setError('');
+    setBosses(null);
+    setStatus(null);
+    const response = await call<LogBoss[]>({ action: 'scanLog', file });
+    setScanning(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setBosses(response.data);
+    setPicked(response.data.filter((b) => isTracked(b.difficultyId)).map(key));
+  };
+
+  const upload = async () => {
+    setError('');
+    const response = await call<BackfillStatus>({
+      action: 'backfillLog',
+      file,
+      bosses: picked,
+      hints,
+    });
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setStatus(response.data);
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" onClick={() => setOpen(true)}>
+        Upload from combat log
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+      <div className="flex items-center">
+        <h3 className="font-display text-base text-foreground-lighter">
+          Upload pulls from your combat log
+        </h3>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setOpen(false)}
+        >
+          Close
+        </Button>
+      </div>
+      <p className="text-xs text-foreground">
+        The app does this by itself: with &quot;Send my pull logs&quot; on, it
+        checks your finished combat logs from the last week every half hour and
+        sends any pulls the server doesn&apos;t have. Use this to send a
+        specific file now: pick it, scan, and upload. Each pull gets the full
+        report at its real time; pulls the server already has are skipped. Boss
+        % comes from your recordings where there is one.
+      </p>
+      {status?.lastAuto && !status.running && (
+        <p className="text-xs text-foreground">
+          Last automatic check{' '}
+          {new Date(status.lastAuto.at).toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+          : {status.lastAuto.uploaded}{' '}
+          {status.lastAuto.uploaded === 1 ? 'pull' : 'pulls'} sent.
+        </p>
+      )}
+
+      {files && !files.length && (
+        <p className="text-sm text-foreground">
+          No combat log files in your retail Logs folder.
+        </p>
+      )}
+      {files && files.length > 0 && (
+        <div className="flex items-center gap-x-2 flex-wrap">
+          <select
+            className="h-9 bg-card text-foreground-lighter rounded-md px-2 text-sm border border-background"
+            value={file}
+            onChange={(e) => {
+              setFile(e.target.value);
+              setBosses(null);
+              setStatus(null);
+            }}
+          >
+            {files.map((f) => (
+              <option key={f.name} value={f.name}>
+                {new Date(f.modified).toLocaleString(undefined, {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}{' '}
+                · {fileSize(f.size)} · {f.name}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={scan}
+            disabled={!file || scanning || Boolean(status?.running)}
+          >
+            {scanning ? 'Scanning…' : 'Scan'}
+          </Button>
+          {scanning && (
+            <span className="text-xs text-foreground">
+              A full raid night takes a minute or so.
+            </span>
+          )}
+        </div>
+      )}
+
+      {bosses && !bosses.length && (
+        <p className="text-sm text-foreground">No raid pulls in that log.</p>
+      )}
+      {bosses && bosses.length > 0 && (
+        <div className="flex flex-col gap-y-1">
+          {bosses.map((b) => {
+            const ok = isTracked(b.difficultyId);
+            return (
+              <label
+                key={key(b)}
+                className={`flex items-center gap-x-2 text-sm ${ok ? '' : 'opacity-50'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  disabled={!ok}
+                  checked={picked.includes(key(b))}
+                  onChange={(e) =>
+                    setPicked((current) =>
+                      e.target.checked
+                        ? [...current, key(b)]
+                        : current.filter((k) => k !== key(b)),
+                    )
+                  }
+                />
+                <span className="text-foreground-lighter">
+                  {b.encounterName}
+                </span>
+                <span className="text-foreground">
+                  {difficultyName(b.difficultyId)} · {b.pulls}{' '}
+                  {b.pulls === 1 ? 'pull' : 'pulls'}
+                  {b.kills ? ` · ${b.kills} kill` : ''} · {timeOfDay(b.firstAt)}
+                  –{timeOfDay(b.lastAt)}
+                </span>
+                {!ok && (
+                  <span className="text-xs text-foreground">
+                    (difficulty not tracked by the server)
+                  </span>
+                )}
+              </label>
+            );
+          })}
+          <div className="flex items-center gap-x-2 mt-1">
+            <Button
+              size="sm"
+              onClick={upload}
+              disabled={!picked.length || Boolean(status?.running)}
+            >
+              {status?.running ? 'Uploading…' : 'Upload'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status && (
+        <p className="text-sm">
+          {status.running
+            ? status.auto
+              ? 'Sending missing pulls automatically: '
+              : 'Uploading: '
+            : 'Done: '}
+          <span className="text-foreground-lighter">
+            {status.uploaded} uploaded
+          </span>
+          {status.alreadyThere > 0 && `, ${status.alreadyThere} already here`}
+          {status.skipped > 0 && `, ${status.skipped} not tracked`}
+          {status.failed > 0 && (
+            <span className="text-red-400">, {status.failed} failed</span>
+          )}
+          {status.running && ` (${status.found} found so far)`}
+          {status.error && (
+            <span className="text-red-400"> · {status.error}</span>
+          )}
+        </p>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 };
