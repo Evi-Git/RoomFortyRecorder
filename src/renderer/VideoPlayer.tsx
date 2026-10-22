@@ -1496,6 +1496,17 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    * such events, so instead we do this.
    */
   const handleKeyDown = (e: KeyboardEvent) => {
+    // [RoomFortyRecorder] Typing in a text box (the Send to Discord note,
+    // tags, chat) must not pause or seek the video.
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+
     if (e.key === 'k' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
