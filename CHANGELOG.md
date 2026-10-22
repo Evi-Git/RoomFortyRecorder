@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] - Unreleased
+### Added
+- Pull desk has three views: **Pulls** (the per-pull reports), **Night summary** and **Progression**.
+  - **Night summary:** pick a raid night. Per boss: pulls, kills, best and median wipe, time in combat, why pulls ended (a raid-wide mechanic or the first death's killing blow), a sortable raider table (early deaths, first deaths, cooldown plan missed/off, avoidable hits, defensives, potions, healthstones) and every pull, each opening its report.
+  - **Progression:** pick a boss. Boss health at the end of every pull with the best-so-far line, night markers and the first kill; a table view; night-by-night totals; wipe causes per night; each raider's early deaths per pull night by night.
+- **Send to Discord** button on recordings and clips (next to the share link): pick a text channel, add a note, optionally "watch from" the current time. It posts a share link Discord plays inline, so there's no file-size limit. Officers can send to any channel; raiders only to their own personal channel. Needs the video in the guild cloud.
+- **Personal channels** (officers, in the Pull desk header): which raider owns which Discord channel. Personal channels show first in the send dropdown, labelled with the raider.
+- **Flag this moment** on Watch live: the Flag button or **B**. Tonight's flags show under the header with an editable note; in Pull desk they show on that pull's report (brass ticks on the boss health line, a list with Watch buttons that open the recording at that moment).
+- **Top-guild watcher** (Pull desk → Progression → Top guilds): officers pick up to 3 guilds that log publicly; the server crawls Warcraft Logs for their Mythic pulls on every boss up to the first kill. A table compares their pulls, nights and kill dates with Room Forty's, and **Compare with…** draws their best-so-far line on the boss health chart. It starts **frozen** (no automatic crawls; **Crawl now** still works) until an officer unfreezes it for a new tier; then it crawls daily at 6 am server time. Uses the same Warcraft Logs keys as recruiting.
+- Share link pages accept `?t=seconds` to start the video there.
+- Guild server: `pulldesk-summary.mjs` builds both summary views from the reports it already keeps, `coach.mjs` handles flags and clip sending, and `watcher.mjs` crawls the watched guilds. Run `update-server.cmd` to install them.
+
 ## [1.9.6] - Unreleased
 ### Added
 - Recruiting: a **Tanks** tab with every tank spec, ranked against other tanks, with the Room Forty yardstick and comparison for your own tanks. Settings saved with the DPS-only list pick up the new tab automatically.

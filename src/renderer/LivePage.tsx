@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Flag as FlagIcon,
   Lock,
   Maximize,
   Radio,
@@ -9,6 +10,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { Button } from './components/Button/Button';
+import { coachCall, Flag, FlagBar } from './Coaching';
 
 /**
  * [RoomFortyRecorder] Live page: watch a raider's live POV inside the app.
@@ -142,6 +144,42 @@ const LivePage: React.FC = () => {
     watchingRef.current = watching;
     listRef.current = list;
   }, [watching, list]);
+
+  // [RoomFortyRecorder] Flag this moment: B or the Flag button.
+  const [flags, setFlags] = React.useState<Flag[]>([]);
+  const [flagError, setFlagError] = React.useState('');
+  const bufferMsRef = React.useRef(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    coachCall<{ flags: Flag[] }>({ action: 'flags', days: 1 }).then(
+      (response) => {
+        if (!cancelled && response.ok) setFlags(response.data.flags);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const flagMoment = React.useCallback(async () => {
+    // What's on screen is the buffer behind real time.
+    // Plus about half a second of capture and network delay.
+    const at =
+      Date.now() -
+      (watchingRef.current ? Math.round(bufferMsRef.current) + 500 : 0);
+    const response = await coachCall<Flag>({
+      action: 'addFlag',
+      streamer: watchingRef.current ?? '',
+      at,
+    });
+    if (!response.ok) {
+      setFlagError(response.error);
+      return;
+    }
+    setFlagError('');
+    setFlags((current) => [response.data, ...current]);
+  }, []);
 
   const closePeer = () => {
     const pc = pcRef.current;
@@ -348,6 +386,7 @@ const LivePage: React.FC = () => {
         const bufferMs =
           frames > 0 ? ((delay - (prevBuffer?.delay ?? 0)) / frames) * 1000 : 0;
         lastBufferRef.current = { delay, count };
+        bufferMsRef.current = bufferMs;
         setStats({
           width: entry.frameWidth || 0,
           height: entry.frameHeight || 0,
@@ -370,7 +409,7 @@ const LivePage: React.FC = () => {
     }
   }, []);
 
-  // Keys: 1-9 watch, Esc stop, F fullscreen, M mute.
+  // Keys: 1-9 watch, Esc stop, F fullscreen, M mute, B flag.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -386,12 +425,14 @@ const LivePage: React.FC = () => {
         if (watchingRef.current) toggleFullscreen();
       } else if (event.key === 'm' || event.key === 'M') {
         setMuted((m) => !m);
+      } else if (event.key === 'b' || event.key === 'B') {
+        flagMoment();
       }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [watch, stopWatching, toggleFullscreen]);
+  }, [watch, stopWatching, toggleFullscreen, flagMoment]);
 
   const renderGate = () => {
     if (!list) {
@@ -516,6 +557,15 @@ const LivePage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={flagMoment}
+            title="Flag this moment (B)"
+            className="gap-x-1"
+          >
+            <FlagIcon size={14} /> Flag
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             disabled={!watching}
             onClick={stopWatching}
             className="gap-x-1"
@@ -524,6 +574,17 @@ const LivePage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {!gate && (
+        <div className="flex items-center gap-x-3 px-4 py-1.5 border-b border-card min-h-[40px]">
+          <span className="text-xs text-foreground shrink-0">Flags today</span>
+          {flagError ? (
+            <span className="text-xs text-red-400">{flagError}</span>
+          ) : (
+            <FlagBar flags={flags} onChange={setFlags} />
+          )}
+        </div>
+      )}
 
       <div
         ref={boxRef}

@@ -14,6 +14,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPullDesk } from './pulldesk.mjs';
+import { createCoach } from './coach.mjs';
+import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1031,6 +1033,43 @@ const pullDesk = createPullDesk({
   env: process.env,
 });
 
+// A public /link/<id> page for a video (Discord embeds it as a player).
+const createShareLink = async (guild, video) => {
+  const id = crypto.randomBytes(9).toString('base64url');
+  state.links.push({ id, guild, key: video.videoKey, likes: 0 });
+  await persist();
+  return { id };
+};
+
+// [RoomFortyRecorder] Flag this moment and send clips to Discord channels.
+const coach = createCoach({
+  storage: STORAGE,
+  readBody,
+  json,
+  fail,
+  memberRoleNames,
+  botToken: DISCORD_BOT_TOKEN,
+  discordGuildId: DISCORD_GUILD_ID,
+  publicUrl: PUBLIC_URL,
+  createShareLink: async (videoName) => {
+    const video = state.videos.find(
+      (entry) => entry.videoName === videoName || entry.videoKey === videoName,
+    );
+    return video ? createShareLink(GUILD, video) : null;
+  },
+  env: process.env,
+});
+
+// [RoomFortyRecorder] Top-guild watcher for the Progression view.
+const watcher = createWatcher({
+  storage: STORAGE,
+  readBody,
+  json,
+  fail,
+  memberRoleNames,
+  env: process.env,
+});
+
 // [RoomFortyRecorder] Officer-only recruiting page (/recruit).
 const recruit = createRecruit({
   storage: STORAGE,
@@ -1224,6 +1263,14 @@ const handleApi = async (req, res, url, parts) => {
 
   const guild = parts[2];
 
+  if (parts[3] === 'pulldesk' && parts[4] === 'watcher') {
+    return watcher.handle(req, res, parts.slice(5), url);
+  }
+
+  if (parts[3] === 'pulldesk' && parts[4] === 'coach') {
+    return coach.handle(req, res, parts.slice(5), url);
+  }
+
   if (parts[3] === 'pulldesk') {
     return pullDesk.handle(req, res, parts.slice(4), url);
   }
@@ -1320,9 +1367,7 @@ const handleApi = async (req, res, url, parts) => {
     );
     if (!video) return fail(res, 404, 'Video not found');
 
-    const id = crypto.randomBytes(9).toString('base64url');
-    state.links.push({ id, guild, key: video.videoKey, likes: 0 });
-    await persist();
+    const { id } = await createShareLink(guild, video);
     return json(res, 200, { id });
   }
 
@@ -1476,14 +1521,18 @@ const findLink = (id) => state.links.find((entry) => entry.id === id);
 const linkLikes = (link) =>
   Number.isSafeInteger(link.likes) && link.likes >= 0 ? link.likes : 0;
 
-const handleLink = async (res, id) => {
+const handleLink = async (res, id, startAt) => {
   const link = findLink(id);
   if (!link) return text(res, 404, 'Link not found');
   if (!(await r2Exists(link.key))) return text(res, 404, 'Video not found');
 
   const video = state.videos.find((entry) => entry.videoKey === link.key);
   const title = video?.videoName || 'RoomFortyRecorder video';
-  const source = `/link/${encodeURIComponent(id)}/video`;
+  // ?t=151 starts the page's player at 2:31 (sent coaching clips use it).
+  const start = Math.floor(Number(startAt));
+  const source = `/link/${encodeURIComponent(id)}/video${
+    Number.isFinite(start) && start > 0 ? `#t=${start}` : ''
+  }`;
   const likes = linkLikes(link);
   // Discord's link unfurler (and most other chat apps) reads these tags
   // from the raw HTML -- no JS execution -- to decide whether to render an
@@ -1604,7 +1653,7 @@ const requestHandler = async (req, res) => {
     return handleLike(res, parts[1]);
   }
   if (parts[0] === 'link' && parts.length === 2 && req.method === 'GET') {
-    return handleLink(res, parts[1]);
+    return handleLink(res, parts[1], url.searchParams.get('t'));
   }
   if (parts[0] === 'recruit') return recruit.handlePage(req, res, parts, url);
   if (parts[0] === 'api' && parts[1] === 'recruit') return recruit.handleApi(req, res, parts);

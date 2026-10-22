@@ -751,7 +751,7 @@ export default class CloudClient implements StorageClient {
    * Throws on any non-2xx response (axios default).
    */
   public async pullDeskRequest<T>(
-    method: 'get' | 'post' | 'put',
+    method: 'get' | 'post' | 'put' | 'patch' | 'delete',
     path: string,
     data?: unknown,
     options: { contentType?: string; timeout?: number } = {},

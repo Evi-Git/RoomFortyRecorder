@@ -26,6 +26,68 @@ Each report has:
 The report is split into tabs (Deaths, Defensives, Cooldown plan, Avoidable
 hits), and long sections are grouped per raider in rows you can open.
 
+## Night summary and Progression
+
+The buttons at the top of the page switch between **Pulls** (the reports
+above), **Night summary** and **Progression**. Both are built by the server
+from the reports it already has, so they need nothing extra from raiders.
+
+- **Night summary**: pick a night. For each boss: pulls, kills, best and
+  median wipe, time in combat, why pulls ended, a raider table and the list
+  of pulls (Open jumps to that pull's report).
+  - *Why pulls ended*: a raid-wide mechanic if one killed many at once,
+    otherwise the first death's killing blow; short pulls with no deaths
+    count as resets.
+  - *Early deaths*: the first 2 deaths of each pull, the same rule as the
+    recruiting page; later deaths are usually the wipe. Hover a raider's
+    number to see what killed them. Click any column to sort.
+- **Progression**: pick a boss. Boss health at the end of every pull, the
+  best so far, where each night starts and the first kill. Hover for the
+  pull, click to open it, or switch to the table. Below: totals per night,
+  wipe causes per night (a cause that fades out is a solved mechanic) and
+  each raider's early deaths per pull, night by night.
+
+### Top guilds (Progression)
+
+Officers add up to 3 guilds that log publicly on Warcraft Logs (name, realm,
+region as shown there) under **Top guilds**, then **Crawl now**. The server
+fetches their Mythic pulls on every boss of the raid named there, up to and
+including each first kill (farm kills are ignored), using the same Warcraft
+Logs API keys as the recruiting page. The table shows each guild's pulls,
+nights and kill date on the selected boss next to Room Forty's, and
+**Compare with…** on the chart draws that guild's best-so-far line beside
+ours (pull 1 lined up with pull 1).
+
+The watcher starts **frozen**: no automatic crawls. At the start of a new
+tier, set the raid's name, click **Unfreeze**, and it crawls every day at
+6 am (server time). Reports older than a day are cached, so daily crawls
+cost few points.
+
+## Coaching: flags and sending clips
+
+- **Flag this moment** (Watch live): click **Flag** or press **B** while
+  watching. The flag is timed to what was on screen (the stream buffer is
+  taken off). Tonight's flags are listed under the header; click *Add note*
+  to say what happened. In Pull desk, flags raised during a pull show as
+  brass ticks on its boss health line and in a list under it, with a Watch
+  button (the streamer's own recording if their Discord name matches a
+  raider, otherwise anyone's recording of that pull).
+- **Send to Discord** (any recording or clip in the guild cloud): the paper
+  plane button next to the share link. Pick a channel, add a note, and keep
+  "Watch from" ticked to start at the current time. The bot posts a share
+  link, which Discord plays inline, so size doesn't matter.
+  - **Officers** (`GUILD_CLOUD_COACH_OFFICER_ROLES`, default `Officer`) can
+    send to any text channel. Example: Mage A's clip sent to Mage B's channel
+    as "this is how to soak it".
+  - **Raiders** can only send to their own personal channel.
+- **Personal channels** (officers, Pull desk header): add a raider, pick
+  their channel, Save. The raider list comes from Discord if the bot has the
+  **Server Members Intent** (Discord Developer Portal → Bot → Privileged
+  Gateway Intents); without it, the list is everyone who has signed in to
+  the app.
+- The bot needs **View Channel, Send Messages and Embed Links** in every
+  channel it posts to (granting them on the category is easiest).
+
 ## How a pull gets to the server
 
 1. While a raid encounter is running, every raider's app keeps a filtered
