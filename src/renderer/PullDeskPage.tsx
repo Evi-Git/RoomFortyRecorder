@@ -154,6 +154,9 @@ type Report = {
       spellName: string | null;
       hits: number;
       damage: number;
+      // 1.9.8+: when each hit landed; ticks within 5 s are one moment
+      // (t = first tick, end = last tick).
+      times?: { t: number; end?: number; hits: number; damage: number }[];
     }[];
   }[];
   spellNames?: Record<string, string | null>;
@@ -187,6 +190,8 @@ const ipc = window.electron.ipcRenderer;
 const REFRESH_MS = 30000;
 // Seconds of video to show before a death or an assignment.
 const WATCH_LEAD_SECONDS = 10;
+// Avoidable hits are short: start the video just before the hit.
+const HIT_LEAD_SECONDS = 4;
 // Recordings and the report agree on the pull start within this.
 const VIDEO_MATCH_MS = 2 * 60 * 1000;
 
@@ -556,8 +561,12 @@ const PullDeskPage = (props: IProps) => {
     return (match && findVideo(match.name)) || findVideo();
   };
 
-  const watch = (video: RendererVideo, seconds: number) => {
-    persistentProgressRef.current = Math.max(0, seconds - WATCH_LEAD_SECONDS);
+  const watch = (
+    video: RendererVideo,
+    seconds: number,
+    lead = WATCH_LEAD_SECONDS,
+  ) => {
+    persistentProgressRef.current = Math.max(0, seconds - lead);
     setConfigValue('selectedCategory', getCategoryIndex(VideoCategory.Raids));
     setAppState((prev) => ({
       ...prev,
@@ -1281,6 +1290,48 @@ const PullDeskPage = (props: IProps) => {
     );
   };
 
+  /**
+   * One chip per avoidable hit; click to open the raider's recording just
+   * before it. Reports older than 1.9.8 have no hit times until re-run.
+   */
+  const renderHitTimes = (
+    name: string,
+    times?: { t: number; end?: number; hits: number; damage: number }[],
+  ) => {
+    if (!times) {
+      return (
+        <span className="flex-1 text-xs text-foreground/40">
+          Re-run the report to see when each hit landed
+        </span>
+      );
+    }
+    const video = findVideo(name);
+    return (
+      <span className="flex-1 flex flex-wrap gap-1">
+        {times.map((hit) => (
+          <button
+            key={hit.t}
+            type="button"
+            disabled={!video}
+            onClick={() => video && watch(video, hit.t, HIT_LEAD_SECONDS)}
+            title={
+              video
+                ? `Watch ${name} from ${mmss(Math.max(0, hit.t - HIT_LEAD_SECONDS))}: ${hitsLabel(hit.hits)}${hit.end ? ` over ${Math.round(hit.end - hit.t)} s` : ''}, ${compact(hit.damage)} damage`
+                : `No recording from ${name} for this pull`
+            }
+            className="inline-flex items-center gap-x-1 rounded border border-card px-1.5 py-0.5 text-xs tabular-nums enabled:hover:border-brand enabled:hover:text-foreground-lighter disabled:opacity-50"
+          >
+            {video && <Play size={10} />}
+            {mmss(hit.t)}
+            {hit.hits > 1 && (
+              <span className="text-foreground/50">×{hit.hits}</span>
+            )}
+          </button>
+        ))}
+      </span>
+    );
+  };
+
   const renderAvoidable = (r: Report) => {
     if (!r.avoidable.length) {
       return (
@@ -1300,6 +1351,9 @@ const PullDeskPage = (props: IProps) => {
           spellName: r.spellNames?.[spellId] ?? null,
           hits,
           damage: null as number | null,
+          times: undefined as
+            | { t: number; end?: number; hits: number; damage: number }[]
+            | undefined,
         }))
         .sort((a, b) => b.hits - a.hits);
 
@@ -1351,6 +1405,7 @@ const PullDeskPage = (props: IProps) => {
                           ? `${compact(spell.damage)} damage`
                           : ''}
                       </span>
+                      {renderHitTimes(row.name, spell.times)}
                     </div>
                   ))}
                 </div>

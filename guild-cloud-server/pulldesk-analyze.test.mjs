@@ -55,6 +55,17 @@ test('Mythic wipe: deaths, killing blows and wipe cause', () => {
   assert.equal(report.plan.phaseSkipped, 1);
 
   assert.equal(report.avoidable.length, 20);
+  // Each hit moment has a time (ticks within 5 s merged), for Watch buttons.
+  report.avoidable.forEach((row) =>
+    row.spells.forEach((spell) => {
+      assert.ok(spell.times.length >= 1);
+      assert.equal(spell.times.reduce((n, m) => n + m.hits, 0), spell.hits);
+      spell.times.forEach((m, i) => {
+        assert.ok(m.t >= 0 && m.t <= report.duration + 1);
+        if (i > 0) assert.ok(m.t - spell.times[i - 1].t > 0);
+      });
+    }),
+  );
   assert.equal(report.spellNames[1241932], 'Voidlight Convergence');
 });
 

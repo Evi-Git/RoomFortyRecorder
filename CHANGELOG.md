@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.8] - Unreleased
+### Added
+- Pull desk **Avoidable hits**: open a raider, and each spell lists every moment they were hit as a button (`0:51 ×5`). Click one to open that raider's recording 4 s before the hit. Ticks within 5 s of each other are one moment. Reports from before this version need **Re-run** (logs are kept 30 days) to get hit times. Run `update-server.cmd` for the server side.
+
 ## [1.9.7] - Unreleased
 ### Added
 - Pull desk has three views: **Pulls** (the per-pull reports), **Night summary** and **Progression**.

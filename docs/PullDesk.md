@@ -16,6 +16,8 @@ Each report has:
   the raider actually cast: on time, late, early, missed, or dead before
   their timing.
 - **Avoidable hits**: hits per raider from a per-boss list of spell IDs.
+  Open a raider to see each hit moment per spell; click one to watch their
+  recording just before it (ticks within 5 s count as one moment).
 - **Defensives**: every raider's personal and external defensives, raid
   cooldowns, health potions and healthstones, matched by ability name (the
   same lists as the guild's Warcraft Logs queries). Each death also shows

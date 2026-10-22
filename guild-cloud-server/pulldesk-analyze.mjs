@@ -83,6 +83,11 @@ export const parseLine = (raw) => {
 
 // ---- Helpers ------------------------------------------------------------------
 
+// Avoidable hits: a hit within this many seconds of the previous one is the
+// same moment (standing in it, ticking), so it gets one Watch button. At most
+// AVOIDABLE_MAX_TIMES moments are kept per raider per spell.
+const AVOIDABLE_MERGE_SECONDS = 5;
+const AVOIDABLE_MAX_TIMES = 40;
 const TANK_SPECS = new Set([250, 581, 104, 268, 66, 73]);
 const HEALER_SPECS = new Set([105, 270, 65, 256, 257, 264, 1468]);
 
@@ -384,9 +389,19 @@ export const analyzePull = (logText, options = {}) => {
           stats.hits += 1;
           stats.damage += hit.amount;
           stats.bySpell[hit.spellId] = (stats.bySpell[hit.spellId] || 0) + 1;
-          const spell = stats.spells[hit.spellId] || { hits: 0, damage: 0 };
+          const spell = stats.spells[hit.spellId] || { hits: 0, damage: 0, times: [] };
           spell.hits += 1;
           spell.damage += hit.amount;
+          // When each hit landed, for the Watch buttons. A tick within
+          // AVOIDABLE_MERGE_SECONDS of the previous one is the same mistake.
+          const last = spell.times[spell.times.length - 1];
+          if (last && t - (last.end ?? last.t) <= AVOIDABLE_MERGE_SECONDS) {
+            last.hits += 1;
+            last.damage += hit.amount;
+            last.end = Math.round(t * 10) / 10;
+          } else if (spell.times.length < AVOIDABLE_MAX_TIMES) {
+            spell.times.push({ t: Math.round(t * 10) / 10, hits: 1, damage: hit.amount });
+          }
           stats.spells[hit.spellId] = spell;
           avoidableHits.set(name, stats);
         }
