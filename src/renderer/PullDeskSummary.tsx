@@ -2,6 +2,13 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
 import { Button } from './components/Button/Button';
+import {
+  guildKey,
+  loadWatcher,
+  WatcherSettings,
+  WatcherState,
+  WatcherTable,
+} from './PullDeskWatcher';
 
 /**
  * [RoomFortyRecorder] Pull desk summary views, built by the guild server from
@@ -690,6 +697,21 @@ export const NightSummaryView = ({
 
 const KILL_COLOR = '#4ade80';
 const PULL_COLOR = 'hsl(30 8% 55%)';
+// A watched guild's line. Validated against the brass on the dark surface
+// (CVD ΔE 26, normal-vision ΔE 29).
+const COMPARE_COLOR = '#3987e5';
+
+export type CompareSeries = {
+  name: string;
+  series: { n: number; percent: number; kill: boolean; night: string }[];
+};
+
+const bestSoFar = (values: { percent: number | null; kill: boolean }[]) =>
+  values.reduce<number[]>((acc, p) => {
+    const prev = acc.length ? acc[acc.length - 1] : 100;
+    acc.push(Math.min(prev, p.kill ? 0 : (p.percent ?? 100)));
+    return acc;
+  }, []);
 
 /**
  * Boss health at the end of every pull (dots), with the best so far (brass
@@ -699,9 +721,11 @@ const PULL_COLOR = 'hsl(30 8% 55%)';
 const ProgressionChart = ({
   data,
   onOpenPull,
+  compare,
 }: {
   data: Progression;
   onOpenPull: (id: string) => void;
+  compare?: CompareSeries | null;
 }) => {
   const ref = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(800);
@@ -720,7 +744,7 @@ const ProgressionChart = ({
   const height = 260;
   const pad = { left: 40, right: 16, top: 26, bottom: 24 };
   const series = data.series.filter((p) => p.percent !== null || p.kill);
-  const count = Math.max(series.length, 2);
+  const count = Math.max(series.length, compare?.series.length ?? 0, 2);
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const x = (i: number) => pad.left + (i / (count - 1)) * plotW;
@@ -728,16 +752,18 @@ const ProgressionChart = ({
     pad.top + (1 - Math.min(100, Math.max(0, v)) / 100) * plotH;
 
   // Best so far after each pull, drawn as a step line.
-  const bestAt = series.reduce<number[]>((acc, p) => {
-    const prev = acc.length ? acc[acc.length - 1] : 100;
-    acc.push(Math.min(prev, p.kill ? 0 : (p.percent ?? 100)));
-    return acc;
-  }, []);
-  const bestPoints = bestAt.flatMap((b, i) =>
-    i > 0 && b < bestAt[i - 1]
-      ? [`${x(i)},${y(bestAt[i - 1])}`, `${x(i)},${y(b)}`]
-      : [`${x(i)},${y(b)}`],
-  );
+  const steps = (best: number[]) =>
+    best
+      .flatMap((b, i) =>
+        i > 0 && b < best[i - 1]
+          ? [`${x(i)},${y(best[i - 1])}`, `${x(i)},${y(b)}`]
+          : [`${x(i)},${y(b)}`],
+      )
+      .join(' ');
+  const bestAt = bestSoFar(series);
+  const bestPoints = steps(bestAt);
+  const compareBest = compare ? bestSoFar(compare.series) : [];
+  const compareKill = compare?.series.findIndex((p) => p.kill) ?? -1;
 
   // Night boundaries.
   const nightStarts = series
@@ -748,10 +774,10 @@ const ProgressionChart = ({
     const rect = event.currentTarget.getBoundingClientRect();
     const px = ((event.clientX - rect.left) / rect.width) * width;
     const i = Math.round(((px - pad.left) / plotW) * (count - 1));
-    setHover(Math.min(series.length - 1, Math.max(0, i)));
+    setHover(Math.min(count - 1, Math.max(0, i)));
   };
 
-  const hovered = hover !== null ? series[hover] : null;
+  const hovered = hover !== null ? (series[hover] ?? null) : null;
   const tipLeft = hover !== null ? (x(hover) / width) * 100 : 0;
 
   return (
@@ -812,8 +838,42 @@ const ProgressionChart = ({
           </g>
         ))}
 
+        {compare && compareBest.length > 0 && (
+          <g>
+            <polyline
+              points={steps(compareBest)}
+              fill="none"
+              stroke={COMPARE_COLOR}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+            {compareKill >= 0 && (
+              <>
+                <circle
+                  cx={x(compareKill)}
+                  cy={y(0)}
+                  r={6}
+                  fill={COMPARE_COLOR}
+                  stroke="hsl(var(--background-higher))"
+                  strokeWidth={2}
+                />
+                <text
+                  x={x(compareKill)}
+                  y={y(0) - 12}
+                  textAnchor={compareKill > count * 0.8 ? 'end' : 'middle'}
+                  fontSize={11}
+                  className="fill-foreground-lighter"
+                >
+                  {compare.name} kill · pull {compareKill + 1}
+                </text>
+              </>
+            )}
+          </g>
+        )}
+
         <polyline
-          points={bestPoints.join(' ')}
+          points={bestPoints}
           fill="none"
           stroke={BRAND}
           strokeWidth={2}
@@ -880,7 +940,7 @@ const ProgressionChart = ({
             fontSize={11}
             className="fill-foreground"
           >
-            Pull {series.length}
+            Pull {count}
           </text>
         )}
         <text
@@ -893,7 +953,7 @@ const ProgressionChart = ({
         </text>
       </svg>
 
-      {hovered && hover !== null && (
+      {hover !== null && (hovered || compare) && (
         <div
           className="pointer-events-none absolute top-6 z-10 rounded-md border border-card bg-background px-2 py-1.5 text-xs shadow-lg whitespace-nowrap"
           style={{
@@ -904,23 +964,45 @@ const ProgressionChart = ({
                 : 'translateX(8px)',
           }}
         >
-          <div className="font-semibold text-sm text-foreground-lighter">
-            {hovered.kill ? 'Kill' : pct(hovered.percent)}
-          </div>
-          <div className="text-foreground">
-            Pull {hovered.n} · {nightLabel(hovered.night)}
-          </div>
-          <div className="flex items-center gap-x-1.5 text-foreground mt-0.5">
-            <span
-              className="inline-block w-3 h-[2px]"
-              style={{ background: BRAND }}
-            />
-            <span className="text-foreground-lighter">
-              {pct(bestAt[hover])}
-            </span>
-            best so far
-          </div>
-          <div className="text-foreground/70 mt-0.5">Click to open</div>
+          {hovered ? (
+            <>
+              <div className="font-semibold text-sm text-foreground-lighter">
+                {hovered.kill ? 'Kill' : pct(hovered.percent)}
+              </div>
+              <div className="text-foreground">
+                Pull {hovered.n} · {nightLabel(hovered.night)}
+              </div>
+            </>
+          ) : (
+            <div className="text-foreground">Pull {hover + 1}</div>
+          )}
+          {hover < bestAt.length && (
+            <div className="flex items-center gap-x-1.5 text-foreground mt-0.5">
+              <span
+                className="inline-block w-3 h-[2px]"
+                style={{ background: BRAND }}
+              />
+              <span className="text-foreground-lighter">
+                {pct(bestAt[hover])}
+              </span>
+              {compare ? 'Room Forty best' : 'best so far'}
+            </div>
+          )}
+          {compare && hover < compareBest.length && (
+            <div className="flex items-center gap-x-1.5 text-foreground mt-0.5">
+              <span
+                className="inline-block w-3 h-[2px]"
+                style={{ background: COMPARE_COLOR }}
+              />
+              <span className="text-foreground-lighter">
+                {compareBest[hover] === 0 ? 'Killed' : pct(compareBest[hover])}
+              </span>
+              {compare.name} best
+            </div>
+          )}
+          {hovered && (
+            <div className="text-foreground/70 mt-0.5">Click to open</div>
+          )}
         </div>
       )}
 
@@ -937,8 +1019,17 @@ const ProgressionChart = ({
             className="inline-block w-4 h-[2px]"
             style={{ background: BRAND }}
           />
-          Best so far
+          {compare ? 'Room Forty best so far' : 'Best so far'}
         </span>
+        {compare && (
+          <span className="flex items-center gap-x-1.5">
+            <span
+              className="inline-block w-4 h-[2px]"
+              style={{ background: COMPARE_COLOR }}
+            />
+            {compare.name} best so far
+          </span>
+        )}
         <span className="flex items-center gap-x-1.5">
           <span
             className="inline-block w-2.5 h-2.5 rounded-full"
@@ -1166,6 +1257,27 @@ export const ProgressionView = ({
   const [loadedChoice, setLoadedChoice] = React.useState('');
   const loading = choice !== loadedChoice;
   const [asTable, setAsTable] = React.useState(false);
+  // Top-guild watcher: results, and which guild the chart compares with.
+  const [watcher, setWatcher] = React.useState<WatcherState | null>(null);
+  const [watcherTick, setWatcherTick] = React.useState(0);
+  const [compareKey, setCompareKey] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fetchState = () =>
+      loadWatcher().then((response) => {
+        if (cancelled || !response.ok) return;
+        setWatcher(response.data);
+        // Keep the log moving while a crawl runs.
+        if (response.data.status.running) timer = setTimeout(fetchState, 3000);
+      });
+    fetchState();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [watcherTick]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1234,6 +1346,23 @@ export const ProgressionView = ({
   }
 
   const wipes = data ? data.pulls - data.kills : 0;
+
+  // The compared guild's pulls on this boss (matched by encounter ID, or by
+  // name in case IDs differ).
+  const compareGuild = watcher?.results.guilds.find(
+    (g) => guildKey(g) === compareKey,
+  );
+  const compareBoss =
+    data && compareGuild
+      ? (compareGuild.bosses?.[data.encounterId] ??
+        Object.values(compareGuild.bosses ?? {}).find(
+          (b) => b.name === data.encounterName,
+        ))
+      : undefined;
+  const compare = compareBoss
+    ? { name: compareGuild?.name ?? '', series: compareBoss.series }
+    : null;
+  const watchedGuilds = watcher?.results.guilds ?? [];
   const bestWipe = data
     ? Math.min(
         ...data.series
@@ -1295,15 +1424,32 @@ export const ProgressionView = ({
           <Panel
             title="Boss health by pull"
             aside={
-              <Button
-                size="xs"
-                variant="ghost"
-                className="gap-x-1"
-                onClick={() => setAsTable((v) => !v)}
-              >
-                {asTable ? <LineChart size={14} /> : <Table2 size={14} />}
-                {asTable ? 'Chart' : 'Table'}
-              </Button>
+              <>
+                {watchedGuilds.length > 0 && !asTable && (
+                  <select
+                    className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
+                    value={compareKey}
+                    onChange={(e) => setCompareKey(e.target.value)}
+                    aria-label="Compare with a watched guild"
+                  >
+                    <option value="">Compare with…</option>
+                    {watchedGuilds.map((g) => (
+                      <option key={guildKey(g)} value={guildKey(g)}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="gap-x-1"
+                  onClick={() => setAsTable((v) => !v)}
+                >
+                  {asTable ? <LineChart size={14} /> : <Table2 size={14} />}
+                  {asTable ? 'Chart' : 'Table'}
+                </Button>
+              </>
             }
           >
             {asTable ? (
@@ -1346,7 +1492,49 @@ export const ProgressionView = ({
                 </table>
               </div>
             ) : (
-              <ProgressionChart data={data} onOpenPull={onOpenPull} />
+              <>
+                <ProgressionChart
+                  data={data}
+                  onOpenPull={onOpenPull}
+                  compare={compare}
+                />
+                {compareKey && !compare && (
+                  <p className="text-xs text-foreground mt-1">
+                    {compareGuild?.name ?? 'That guild'} has no logged Mythic
+                    pulls on this boss.
+                  </p>
+                )}
+              </>
+            )}
+          </Panel>
+
+          <Panel title="Top guilds">
+            {watcher ? (
+              <div className="flex flex-col gap-y-4">
+                {watchedGuilds.length > 0 && (
+                  <WatcherTable
+                    state={watcher}
+                    encounterId={data.encounterId}
+                    encounterName={data.encounterName}
+                    home={{
+                      pulls: data.pulls,
+                      nights: data.nights.length,
+                      kill: data.firstKill?.pull ?? null,
+                      best:
+                        bestWipe !== null && Number.isFinite(bestWipe)
+                          ? bestWipe
+                          : null,
+                    }}
+                  />
+                )}
+                <WatcherSettings
+                  key={JSON.stringify(watcher.settings)}
+                  state={watcher}
+                  onChange={() => setWatcherTick((t) => t + 1)}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-foreground">Loading…</p>
             )}
           </Panel>
 

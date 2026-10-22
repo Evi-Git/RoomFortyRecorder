@@ -47,6 +47,22 @@ from the reports it already has, so they need nothing extra from raiders.
   wipe causes per night (a cause that fades out is a solved mechanic) and
   each raider's early deaths per pull, night by night.
 
+### Top guilds (Progression)
+
+Officers add up to 3 guilds that log publicly on Warcraft Logs (name, realm,
+region as shown there) under **Top guilds**, then **Crawl now**. The server
+fetches their Mythic pulls on every boss of the raid named there, up to and
+including each first kill (farm kills are ignored), using the same Warcraft
+Logs API keys as the recruiting page. The table shows each guild's pulls,
+nights and kill date on the selected boss next to Room Forty's, and
+**Compare with…** on the chart draws that guild's best-so-far line beside
+ours (pull 1 lined up with pull 1).
+
+The watcher starts **frozen**: no automatic crawls. At the start of a new
+tier, set the raid's name, click **Unfreeze**, and it crawls every day at
+6 am (server time). Reports older than a day are cached, so daily crawls
+cost few points.
+
 ## Coaching: flags and sending clips
 
 - **Flag this moment** (Watch live): click **Flag** or press **B** while

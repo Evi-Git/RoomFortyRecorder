@@ -56,6 +56,17 @@ export type PullDeskRequest =
   | { action: 'nights' }
   | { action: 'night'; night: string }
   | { action: 'progression'; encounterId: number; difficultyId?: number }
+  | { action: 'watcher' }
+  | {
+      action: 'setWatcher';
+      settings: {
+        guilds?: { name: string; realm: string; region: string }[];
+        zoneName?: string;
+        frozen?: boolean;
+      };
+    }
+  | { action: 'watcherCrawl' }
+  | { action: 'watcherStop' }
   | { action: 'coachConfig' }
   | {
       action: 'setPersonalChannels';
@@ -304,6 +315,18 @@ export default class PullDesk {
           undefined,
           { timeout: 120000 },
         );
+      case 'watcher':
+        return client.pullDeskRequest('get', '/watcher');
+      case 'setWatcher':
+        return client.pullDeskRequest(
+          'put',
+          '/watcher/settings',
+          request.settings,
+        );
+      case 'watcherCrawl':
+        return client.pullDeskRequest('post', '/watcher/crawl');
+      case 'watcherStop':
+        return client.pullDeskRequest('post', '/watcher/stop');
       case 'coachConfig':
         return client.pullDeskRequest('get', '/coach/config');
       case 'setPersonalChannels':

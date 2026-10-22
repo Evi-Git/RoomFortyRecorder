@@ -15,6 +15,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPullDesk } from './pulldesk.mjs';
 import { createCoach } from './coach.mjs';
+import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1059,6 +1060,16 @@ const coach = createCoach({
   env: process.env,
 });
 
+// [RoomFortyRecorder] Top-guild watcher for the Progression view.
+const watcher = createWatcher({
+  storage: STORAGE,
+  readBody,
+  json,
+  fail,
+  memberRoleNames,
+  env: process.env,
+});
+
 // [RoomFortyRecorder] Officer-only recruiting page (/recruit).
 const recruit = createRecruit({
   storage: STORAGE,
@@ -1251,6 +1262,10 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   const guild = parts[2];
+
+  if (parts[3] === 'pulldesk' && parts[4] === 'watcher') {
+    return watcher.handle(req, res, parts.slice(5), url);
+  }
 
   if (parts[3] === 'pulldesk' && parts[4] === 'coach') {
     return coach.handle(req, res, parts.slice(5), url);

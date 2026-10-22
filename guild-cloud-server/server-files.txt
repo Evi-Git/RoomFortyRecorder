@@ -6,6 +6,7 @@ pulldesk-analyze.mjs
 pulldesk-defensives.mjs
 pulldesk-summary.mjs
 coach.mjs
+watcher.mjs
 recruit.mjs
 recruit-analyze.mjs
 recruit-clients.mjs

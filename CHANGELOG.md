@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Send to Discord** button on recordings and clips (next to the share link): pick a text channel, add a note, optionally "watch from" the current time. It posts a share link Discord plays inline, so there's no file-size limit. Officers can send to any channel; raiders only to their own personal channel. Needs the video in the guild cloud.
 - **Personal channels** (officers, in the Pull desk header): which raider owns which Discord channel. Personal channels show first in the send dropdown, labelled with the raider.
 - **Flag this moment** on Watch live: the Flag button or **B**. Tonight's flags show under the header with an editable note; in Pull desk they show on that pull's report (brass ticks on the boss health line, a list with Watch buttons that open the recording at that moment).
+- **Top-guild watcher** (Pull desk → Progression → Top guilds): officers pick up to 3 guilds that log publicly; the server crawls Warcraft Logs for their Mythic pulls on every boss up to the first kill. A table compares their pulls, nights and kill dates with Room Forty's, and **Compare with…** draws their best-so-far line on the boss health chart. It starts **frozen** (no automatic crawls; **Crawl now** still works) until an officer unfreezes it for a new tier; then it crawls daily at 6 am server time. Uses the same Warcraft Logs keys as recruiting.
 - Share link pages accept `?t=seconds` to start the video there.
-- Guild server: `pulldesk-summary.mjs` builds both summary views from the reports it already keeps, and `coach.mjs` handles flags and clip sending. Run `update-server.cmd` to install them.
+- Guild server: `pulldesk-summary.mjs` builds both summary views from the reports it already keeps, `coach.mjs` handles flags and clip sending, and `watcher.mjs` crawls the watched guilds. Run `update-server.cmd` to install them.
 
 ## [1.9.6] - Unreleased
 ### Added
