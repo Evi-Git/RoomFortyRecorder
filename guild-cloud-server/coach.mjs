@@ -244,7 +244,8 @@ export const createCoach = ({
     }
 
     if (first === 'send' && req.method === 'POST') {
-      const body = await readBody(req, 64 * 1024);
+      // Room for the preview frame (a JPEG, base64) the app sends along.
+      const body = await readBody(req, 1024 * 1024);
       const channelId = String(body?.channelId || '');
       if (!isSnowflake(channelId)) return fail(res, 400, 'Pick a channel');
       const officer = await isOfficer(req);

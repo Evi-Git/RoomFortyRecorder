@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - Unreleased
+### Fixed
+- Send to Discord failed with "Internal server error": the guild server refused the clip's preview image as too large. The server now accepts it (run `update-server.cmd`), and the preview is smaller.
+
 ## [1.9.11] - Unreleased
 ### Changed
 - **Send to Discord sends a short clip** instead of a link to the whole recording, so Discord plays it inline. The app cuts 30 s starting **5 s before** where you are in the video (a lead-up to the moment), re-encodes it to 720p H.264 (a few MB, any recording codec), uploads it to the guild cloud and posts it with a preview of the moment. The clip also appears under Clips. Works for recordings that are only on your PC too. Needs the server update for the preview image.
