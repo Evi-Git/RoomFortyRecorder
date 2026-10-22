@@ -1240,12 +1240,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    * [RoomFortyRecorder] Send this video to a Discord channel (coaching).
    */
   const renderSendToDiscordButton = () => {
-    let tooltip = 'Send to a Discord channel';
-    if (storageFilter === StorageFilter.DISK) {
-      tooltip = getLocalePhrase(language, Phrase.DisabledDueToFilter);
-    } else if (!cloudVideo) {
-      tooltip = 'Upload to the guild cloud first to send it to Discord';
-    }
+    // A local copy is faster to cut; otherwise read the cloud copy.
+    const sendVideo = diskVideo ?? cloudVideo;
+    const tooltip = sendVideo
+      ? 'Send a 30 s clip from here to Discord'
+      : 'Nothing to send';
     const video = videos[0];
     const title = [
       video?.encounterName || video?.zoneName || video?.category,
@@ -1265,17 +1264,18 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
                 event.stopPropagation();
                 setSendOpen(true);
               }}
-              disabled={storageFilter === StorageFilter.DISK || !cloudVideo}
+              disabled={!sendVideo}
             >
               <Send size={18} color="white" />
             </Button>
           </div>
         </Tooltip>
-        {cloudVideo && (
+        {sendVideo && (
           <SendClipDialog
             open={sendOpen}
             onOpenChange={setSendOpen}
-            videoName={cloudVideo.videoName}
+            video={sendVideo}
+            source={sendVideo.videoSource}
             title={title}
             currentTime={progress}
           />

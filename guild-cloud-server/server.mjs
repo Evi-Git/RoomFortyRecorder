@@ -1548,6 +1548,10 @@ const handleLink = async (res, id, startAt) => {
   const embedWidth = 1920;
   const embedHeight = 1080;
   const canonicalUrl = `${PUBLIC_URL || ''}/link/${encodeURIComponent(id)}`;
+  // Coaching clips carry a preview frame; Discord shows it until played.
+  const thumb = (await coach.thumbnailPath(id))
+    ? `${PUBLIC_URL || ''}/link/${encodeURIComponent(id)}/thumb.jpg`
+    : null;
   const page = `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta property="og:type" content="video.other">
@@ -1558,7 +1562,10 @@ const handleLink = async (res, id, startAt) => {
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="${embedWidth}">
 <meta property="og:video:height" content="${embedHeight}">
-<meta name="twitter:card" content="player">
+${thumb ? `<meta property="og:image" content="${htmlEscape(thumb)}">
+<meta property="og:image:type" content="image/jpeg">
+<meta name="twitter:image" content="${htmlEscape(thumb)}">
+` : ''}<meta name="twitter:card" content="player">
 <title>${htmlEscape(title)}</title>
 <style>
 :root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
@@ -1648,6 +1655,12 @@ const requestHandler = async (req, res) => {
   // server never touches video bytes.
   if (parts[0] === 'link' && parts[2] === 'video' && req.method === 'GET') {
     return handleLinkVideo(req, res, parts[1]);
+  }
+  if (parts[0] === 'link' && parts[2] === 'thumb.jpg' && req.method === 'GET') {
+    const file = await coach.thumbnailPath(parts[1]);
+    if (!file) return fail(res, 404, 'No preview');
+    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+    return fs.createReadStream(file).pipe(res);
   }
   if (parts[0] === 'link' && parts[2] === 'like' && req.method === 'POST') {
     return handleLike(res, parts[1]);
