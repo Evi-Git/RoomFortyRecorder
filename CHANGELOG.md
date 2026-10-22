@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.9] - Unreleased
+### Added
+- Pull desk **Import from Warcraft Logs** (Night summary and Progression, for editors): paste report links to backfill pulls the app didn't capture. Tracked-difficulty boss pulls are added with result, boss %, roster with roles and deaths with killing blows, so they count in both views (wipe causes, early deaths, first kill). Pulls already here are skipped; a pull the app saw but never got a log for is filled in, keeping the app's boss %. Pull numbers are redone in time order. Imported pulls show "WCL" instead of Open (no cooldown plan, avoidable hits or defensives without the app's log). Uses the recruiting page's Warcraft Logs keys.
+### Changed
+- Night summary and Progression now count pulls the app saw but nobody uploaded a log for (after 10 minutes), from what the app reported: result, boss % and length.
+
 ## [1.9.8] - Unreleased
 ### Added
 - Pull desk **Avoidable hits**: open a raider, and each spell lists every moment they were hit as a button (`0:51 ×5`). Click one to open that raider's recording 4 s before the hit. Ticks within 5 s of each other are one moment. Reports from before this version need **Re-run** (logs are kept 30 days) to get hit times. Run `update-server.cmd` for the server side.

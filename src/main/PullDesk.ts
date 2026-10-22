@@ -56,6 +56,7 @@ export type PullDeskRequest =
   | { action: 'nights' }
   | { action: 'night'; night: string }
   | { action: 'progression'; encounterId: number; difficultyId?: number }
+  | { action: 'importWcl'; reports: string[] }
   | { action: 'watcher' }
   | {
       action: 'setWatcher';
@@ -314,6 +315,13 @@ export default class PullDesk {
           }`,
           undefined,
           { timeout: 120000 },
+        );
+      case 'importWcl':
+        return client.pullDeskRequest(
+          'post',
+          '/import',
+          { reports: request.reports },
+          { timeout: 300000 },
         );
       case 'watcher':
         return client.pullDeskRequest('get', '/watcher');

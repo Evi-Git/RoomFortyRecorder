@@ -49,6 +49,21 @@ from the reports it already has, so they need nothing extra from raiders.
   wipe causes per night (a cause that fades out is a solved mechanic) and
   each raider's early deaths per pull, night by night.
 
+### Importing pulls from Warcraft Logs
+
+If a night wasn't captured (nobody had "Send my pull logs" on, or it was
+before the app), editors can click **Import from Warcraft Logs** on the Night
+summary or Progression view and paste the report links. Boss pulls on the
+tracked difficulties are added with their result, boss %, roster and deaths,
+so wipe causes, early deaths and the progression curve all work. Pulls the
+app already has are skipped. Imported pulls have no cooldown plan, avoidable
+hits or defensives (those need the app's own log) and show "WCL" instead of
+an Open button. Needs the Warcraft Logs API keys in `.env` (see
+Recruiting.md).
+
+Pulls the app saw but never got a log for also count in both views after
+10 minutes, with the result, boss % and length the app reported.
+
 ### Top guilds (Progression)
 
 Officers add up to 3 guilds that log publicly on Warcraft Logs (name, realm,

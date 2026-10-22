@@ -58,6 +58,7 @@ type PullRow = {
   duration: number;
   deaths: number | null;
   cause: string | null;
+  source?: 'app' | 'wcl';
 };
 
 type BossNight = {
@@ -108,6 +109,7 @@ type Progression = {
     percent: number | null;
     kill: boolean;
     id: string;
+    source?: 'app' | 'wcl';
   }[];
   firstKill: { pull: number; night: string } | null;
   causes: Cause[];
@@ -560,13 +562,22 @@ const BossNightCard = ({
                     {p.cause ?? ''}
                   </td>
                   <td className="px-2 py-1 text-right">
-                    <button
-                      type="button"
-                      className="text-xs text-brand hover:underline"
-                      onClick={() => onOpenPull(p.id)}
-                    >
-                      Open
-                    </button>
+                    {p.source === 'wcl' ? (
+                      <span
+                        className="text-xs text-foreground/50"
+                        title="Imported from Warcraft Logs: no app report to open"
+                      >
+                        WCL
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs text-brand hover:underline"
+                        onClick={() => onOpenPull(p.id)}
+                      >
+                        Open
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -790,7 +801,9 @@ const ProgressionChart = ({
         aria-label={`Boss health at the end of each pull on ${data.encounterName}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
-        onClick={() => hovered && onOpenPull(hovered.id)}
+        onClick={() =>
+          hovered && hovered.source !== 'wcl' && onOpenPull(hovered.id)
+        }
         className="cursor-pointer select-none"
       >
         {[0, 25, 50, 75, 100].map((v) => (
@@ -1001,7 +1014,11 @@ const ProgressionChart = ({
             </div>
           )}
           {hovered && (
-            <div className="text-foreground/70 mt-0.5">Click to open</div>
+            <div className="text-foreground/70 mt-0.5">
+              {hovered.source === 'wcl'
+                ? 'From Warcraft Logs'
+                : 'Click to open'}
+            </div>
           )}
         </div>
       )}
@@ -1478,13 +1495,22 @@ export const ProgressionView = ({
                           )}
                         </td>
                         <td className="px-2 py-1 text-right">
-                          <button
-                            type="button"
-                            className="text-xs text-brand hover:underline"
-                            onClick={() => onOpenPull(p.id)}
-                          >
-                            Open
-                          </button>
+                          {p.source === 'wcl' ? (
+                            <span
+                              className="text-xs text-foreground/50"
+                              title="Imported from Warcraft Logs: no app report to open"
+                            >
+                              WCL
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs text-brand hover:underline"
+                              onClick={() => onOpenPull(p.id)}
+                            >
+                              Open
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1608,6 +1634,130 @@ export const ProgressionView = ({
             <RaiderTable raiders={data.raiders} />
           </Panel>
         </div>
+      )}
+    </div>
+  );
+};
+
+type ImportResult = {
+  code: string;
+  title?: string;
+  bosses?: string[];
+  added?: number;
+  filled?: number;
+  skipped?: number;
+  error?: string;
+};
+
+/**
+ * Backfill pulls the app didn't capture from Warcraft Logs report links.
+ * Imported pulls get boss %, result, roster and deaths (for wipe causes and
+ * early deaths); the cooldown plan, avoidable hits and defensives need the
+ * app's own log.
+ */
+export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [results, setResults] = React.useState<ImportResult[] | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError('');
+    setResults(null);
+    const reports = text
+      .split(/[\s,]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const response = await call<{ results: ImportResult[] }>({
+      action: 'importWcl',
+      reports,
+    });
+    setBusy(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setResults(response.data.results);
+    if (
+      response.data.results.some((r) => (r.added ?? 0) + (r.filled ?? 0) > 0)
+    ) {
+      onImported();
+    }
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        Import from Warcraft Logs
+      </Button>
+    );
+  }
+
+  return (
+    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+      <div className="flex items-center">
+        <h3 className="font-display text-base text-foreground-lighter">
+          Import pulls from Warcraft Logs
+        </h3>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          onClick={() => setOpen(false)}
+        >
+          Close
+        </Button>
+      </div>
+      <p className="text-xs text-foreground">
+        For pulls the app didn&apos;t capture. Paste report links (one per line,
+        up to 10). Tracked-difficulty boss pulls are added with their boss %,
+        deaths and wipe causes; pulls already here are skipped. The cooldown
+        plan, avoidable hits and defensives need the app&apos;s own log, so they
+        stay empty for imported pulls.
+      </p>
+      <textarea
+        className="w-full min-h-[72px] rounded-md bg-card px-2 py-1.5 text-sm text-foreground-lighter border border-background"
+        placeholder="https://www.warcraftlogs.com/reports/..."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="flex items-center gap-x-2">
+        <Button size="sm" onClick={run} disabled={busy || !text.trim()}>
+          {busy ? 'Importing…' : 'Import'}
+        </Button>
+        {busy && (
+          <span className="text-xs text-foreground">
+            Can take a minute for a long night.
+          </span>
+        )}
+      </div>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {results && (
+        <ul className="text-sm flex flex-col gap-y-1">
+          {results.map((r) => (
+            <li key={r.code}>
+              {r.error ? (
+                <span className="text-red-400">
+                  {r.code}: {r.error}
+                </span>
+              ) : (
+                <span>
+                  <span className="text-foreground-lighter">
+                    {r.title || r.code}
+                  </span>
+                  {': '}
+                  {(r.added ?? 0) + (r.filled ?? 0)} pulls added
+                  {r.skipped ? `, ${r.skipped} already here` : ''}
+                  {r.bosses?.length
+                    ? ` (${r.bosses.join(', ')})`
+                    : ' (no tracked boss pulls)'}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

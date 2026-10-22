@@ -123,6 +123,7 @@ export const summarizePulls = (pulls) => {
     duration: summary.duration,
     deaths: report?.deaths?.length ?? summary.deaths ?? null,
     cause: wipeCause(summary, report),
+    source: summary.source || 'app',
   }));
 
   return {
@@ -188,7 +189,14 @@ export const summarizeProgression = (pulls) => {
   let n = 0;
   const series = all.pullsList.map((p) => {
     n += 1;
-    return { n, night: p.night, percent: p.result === 'kill' ? 0 : p.bossPercent, kill: p.result === 'kill', id: p.id };
+    return {
+      n,
+      night: p.night,
+      percent: p.result === 'kill' ? 0 : p.bossPercent,
+      kill: p.result === 'kill',
+      id: p.id,
+      source: p.source,
+    };
   });
   const firstKill = series.find((p) => p.kill) || null;
 

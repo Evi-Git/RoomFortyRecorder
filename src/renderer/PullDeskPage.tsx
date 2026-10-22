@@ -17,7 +17,11 @@ import Switch from './components/Switch/Switch';
 import { getCategoryIndex } from './rendererutils';
 import { getConfigValue, setConfigValue } from './useSettings';
 import { BRAND } from 'renderer/brand';
-import { NightSummaryView, ProgressionView } from './PullDeskSummary';
+import {
+  ImportFromLogs,
+  NightSummaryView,
+  ProgressionView,
+} from './PullDeskSummary';
 import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 
 /**
@@ -397,6 +401,8 @@ const PullDeskPage = (props: IProps) => {
   const [flags, setFlags] = React.useState<Flag[]>([]);
   const [officer, setOfficer] = React.useState(false);
   const [channelsOpen, setChannelsOpen] = React.useState(false);
+  // Bumped after an import so the summary views reload.
+  const [importTick, setImportTick] = React.useState(0);
 
   const changeView = (next: View) => {
     setView(next);
@@ -1653,14 +1659,18 @@ const PullDeskPage = (props: IProps) => {
         </label>
       </div>
 
-      {view === 'night' && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          <NightSummaryView onOpenPull={openPull} />
-        </div>
-      )}
-      {view === 'progression' && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          <ProgressionView onOpenPull={openPull} />
+      {view !== 'pulls' && (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-y-3">
+          {canEdit && (
+            <div className="flex">
+              <ImportFromLogs onImported={() => setImportTick((k) => k + 1)} />
+            </div>
+          )}
+          {view === 'night' ? (
+            <NightSummaryView key={importTick} onOpenPull={openPull} />
+          ) : (
+            <ProgressionView key={importTick} onOpenPull={openPull} />
+          )}
         </div>
       )}
 
