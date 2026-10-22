@@ -49,6 +49,9 @@ export const createCoach = ({
   env,
 }) => {
   const file = path.join(storage, 'coach.json');
+  // Preview frames for sent clips: <storage>/coach-thumbs/<link id>.jpg
+  const thumbDir = path.join(storage, 'coach-thumbs');
+  const thumbFile = (linkId) => path.join(thumbDir, `${String(linkId).replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
   const discordApi = env.GUILD_CLOUD_COACH_DISCORD_API || 'https://discord.com/api/v10';
   const officerRoles = String(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer')
     .split(',')
@@ -251,6 +254,15 @@ export const createCoach = ({
       const link = await createShareLink(String(body?.videoName || ''));
       if (!link) return fail(res, 404, 'That video is not in the guild cloud. Upload it first.');
 
+      // The app sends the frame being coached as the link's preview image.
+      if (typeof body?.thumbnail === 'string' && body.thumbnail.length < 700 * 1024) {
+        const jpeg = Buffer.from(body.thumbnail, 'base64');
+        if (jpeg[0] === 0xff && jpeg[1] === 0xd8) {
+          await fsp.mkdir(thumbDir, { recursive: true });
+          await fsp.writeFile(thumbFile(link.id), jpeg);
+        }
+      }
+
       const at = Number(body?.at);
       const hasAt = Number.isFinite(at) && at > 0;
       const note = clean(body?.note, MAX_NOTE);
@@ -325,5 +337,15 @@ export const createCoach = ({
     return fail(res, 404, 'Unknown coaching route');
   };
 
-  return { handle, ready };
+  /** A sent clip's preview image, if it has one. */
+  const thumbnailPath = async (linkId) => {
+    try {
+      await fsp.access(thumbFile(linkId));
+      return thumbFile(linkId);
+    } catch {
+      return null;
+    }
+  };
+
+  return { handle, ready, thumbnailPath };
 };

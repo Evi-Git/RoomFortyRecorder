@@ -9,6 +9,17 @@ import {
 } from './components/Dialog/Dialog';
 import { Button } from './components/Button/Button';
 import { Textarea } from './components/TextArea/textarea';
+import { RendererVideo } from 'main/types';
+
+// Must match src/main/CoachClip.ts.
+const CLIP_LEAD_SECONDS = 5;
+const CLIP_LENGTH_SECONDS = 30;
+
+const STAGE_TEXT: Record<string, string> = {
+  cutting: 'Cutting the clip…',
+  uploading: 'Uploading the clip…',
+  sending: 'Posting to Discord…',
+};
 
 /**
  * [RoomFortyRecorder] Coaching: send a recording or clip to a Discord text
@@ -54,20 +65,34 @@ const loadLastChannel = () => {
 interface SendClipProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  videoName: string;
+  // The recording, and where to read it: local file if there is one,
+  // otherwise the cloud copy.
+  video: RendererVideo;
+  source: string;
   title: string;
   currentTime: number;
 }
 
 /** Pick a channel, add a note, send. */
 export const SendClipDialog = (props: SendClipProps) => {
-  const { open, onOpenChange, videoName, title, currentTime } = props;
+  const { open, onOpenChange, video, source, title, currentTime } = props;
   const [config, setConfig] = React.useState<CoachConfig | null>(null);
   const [error, setError] = React.useState('');
   const [channelId, setChannelId] = React.useState('');
   const [note, setNote] = React.useState('');
-  const [fromHere, setFromHere] = React.useState(true);
   const [sending, setSending] = React.useState(false);
+  const [stage, setStage] = React.useState('');
+
+  // Progress from the main process while the clip is cut and uploaded.
+  React.useEffect(
+    () =>
+      window.electron.ipcRenderer.on('coachClipStage', (value) =>
+        setStage(String(value)),
+      ),
+    [],
+  );
+
+  const clipStart = Math.max(0, Math.floor(currentTime) - CLIP_LEAD_SECONDS);
   const [sent, setSent] = React.useState('');
 
   React.useEffect(() => {
@@ -106,16 +131,19 @@ export const SendClipDialog = (props: SendClipProps) => {
 
   const send = async () => {
     setSending(true);
+    setStage('cutting');
     setError('');
     const response = await coachCall<{ url: string }>({
       action: 'sendClip',
-      videoName,
+      video,
+      source,
+      at: Math.floor(currentTime),
       channelId,
       note,
-      title,
-      at: fromHere && currentTime >= 1 ? Math.floor(currentTime) : undefined,
+      title: `${title} at ${mmss(currentTime)}`,
     });
     setSending(false);
+    setStage('');
     if (!response.ok) {
       setError(response.error);
       return;
@@ -222,16 +250,19 @@ export const SendClipDialog = (props: SendClipProps) => {
           />
         </label>
 
-        {currentTime >= 1 && (
-          <label className="flex items-center gap-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={fromHere}
-              onChange={(e) => setFromHere(e.target.checked)}
-              className="accent-brand"
-            />
-            Watch from {mmss(currentTime)} (where you are now)
-          </label>
+        <p className="text-sm text-foreground">
+          Sends a {CLIP_LENGTH_SECONDS} s clip from{' '}
+          <span className="text-foreground-lighter">{mmss(clipStart)}</span> to{' '}
+          <span className="text-foreground-lighter">
+            {mmss(clipStart + CLIP_LENGTH_SECONDS)}
+          </span>
+          : {CLIP_LEAD_SECONDS} s before where you are, so there&apos;s a lead
+          up. It plays right in Discord and is saved under Clips.
+        </p>
+        {sending && stage && (
+          <p className="text-sm text-foreground-lighter">
+            {STAGE_TEXT[stage] ?? stage}
+          </p>
         )}
 
         {error && <p className="text-sm text-red-400">{error}</p>}

@@ -112,10 +112,12 @@ cost few points.
   brass ticks on its boss health line and in a list under it, with a Watch
   button (the streamer's own recording if their Discord name matches a
   raider, otherwise anyone's recording of that pull).
-- **Send to Discord** (any recording or clip in the guild cloud): the paper
-  plane button next to the share link. Pick a channel, add a note, and keep
-  "Watch from" ticked to start at the current time. The bot posts a share
-  link, which Discord plays inline, so size doesn't matter.
+- **Send to Discord** (any recording or clip): the paper plane button next to
+  the share link. Pick a channel, add a note, Send. The app cuts a 30 s clip
+  starting 5 s before where you are in the video, re-encodes it to 720p
+  H.264 (a few MB, so Discord plays it inline; whole recordings are too big
+  for Discord's player), uploads it to the guild cloud (it also shows under
+  Clips) and the bot posts it with your note and a preview of the moment.
   - **Officers** (`GUILD_CLOUD_COACH_OFFICER_ROLES`, default `Officer`) can
     send to any text channel. Example: Mage A's clip sent to Mage B's channel
     as "this is how to soak it".

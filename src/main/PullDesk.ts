@@ -7,6 +7,8 @@ import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
 import PullBackfill, { BossPercentHint } from './PullBackfill';
+import { makeCoachClip } from './CoachClip';
+import { RendererVideo } from './types';
 import { send } from './main';
 
 /**
@@ -91,10 +93,12 @@ export type PullDeskRequest =
     }
   | {
       action: 'sendClip';
-      videoName: string;
+      // The recording, and where to read it from (local path or cloud URL).
+      video: RendererVideo;
+      source: string;
+      at: number;
       channelId: string;
       note: string;
-      at?: number;
       title: string;
     }
   | { action: 'flags'; days?: number }
@@ -301,6 +305,35 @@ export default class PullDesk {
     }
   }
 
+  /**
+   * Coaching clip: cut 5 s before the moment to 25 s after, upload it, and
+   * have the bot post it with the note and a preview frame.
+   */
+  private async sendClip(
+    client: CloudClient,
+    request: Extract<PullDeskRequest, { action: 'sendClip' }>,
+  ) {
+    const clip = await makeCoachClip(
+      request.video,
+      request.source,
+      request.at,
+      (stage) => send('coachClipStage', stage),
+    );
+    send('coachClipStage', 'sending');
+    return client.pullDeskRequest(
+      'post',
+      '/coach/send',
+      {
+        videoName: clip.videoName,
+        channelId: request.channelId,
+        note: request.note,
+        title: request.title,
+        thumbnail: clip.thumbnail,
+      },
+      { timeout: 60000 },
+    );
+  }
+
   private route(client: CloudClient, request: PullDeskRequest) {
     const id = (value: string | number) => encodeURIComponent(String(value));
 
@@ -397,13 +430,7 @@ export default class PullDesk {
           mapping: request.mapping,
         });
       case 'sendClip':
-        return client.pullDeskRequest('post', '/coach/send', {
-          videoName: request.videoName,
-          channelId: request.channelId,
-          note: request.note,
-          at: request.at,
-          title: request.title,
-        });
+        return this.sendClip(client, request);
       case 'flags':
         return client.pullDeskRequest(
           'get',

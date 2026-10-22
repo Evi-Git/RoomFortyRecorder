@@ -66,7 +66,8 @@ export type Channels =
   | 'liveWatch'
   | 'liveUnwatch'
   | 'pullDesk'
-  | 'pullDeskUpdated';
+  | 'pullDeskUpdated'
+  | 'coachClipStage';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
