@@ -26,6 +26,27 @@ Each report has:
 The report is split into tabs (Deaths, Defensives, Cooldown plan, Avoidable
 hits), and long sections are grouped per raider in rows you can open.
 
+## Night summary and Progression
+
+The buttons at the top of the page switch between **Pulls** (the reports
+above), **Night summary** and **Progression**. Both are built by the server
+from the reports it already has, so they need nothing extra from raiders.
+
+- **Night summary**: pick a night. For each boss: pulls, kills, best and
+  median wipe, time in combat, why pulls ended, a raider table and the list
+  of pulls (Open jumps to that pull's report).
+  - *Why pulls ended*: a raid-wide mechanic if one killed many at once,
+    otherwise the first death's killing blow; short pulls with no deaths
+    count as resets.
+  - *Early deaths*: the first 2 deaths of each pull, the same rule as the
+    recruiting page; later deaths are usually the wipe. Hover a raider's
+    number to see what killed them. Click any column to sort.
+- **Progression**: pick a boss. Boss health at the end of every pull, the
+  best so far, where each night starts and the first kill. Hover for the
+  pull, click to open it, or switch to the table. Below: totals per night,
+  wipe causes per night (a cause that fades out is a solved mechanic) and
+  each raider's early deaths per pull, night by night.
+
 ## How a pull gets to the server
 
 1. While a raid encounter is running, every raider's app keeps a filtered

@@ -19,6 +19,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
+import { summarizeNight, summarizeProgression } from './pulldesk-summary.mjs';
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
@@ -126,7 +127,34 @@ export const createPullDesk = (options) => {
     return loaded;
   };
 
+  // Summaries read many reports; cache them until the index changes.
+  let indexVersion = 0;
+  const summaryCache = new Map();
+  const cached = async (key, build) => {
+    const hit = summaryCache.get(key);
+    if (hit && hit.version === indexVersion) return hit.data;
+    const data = await build();
+    summaryCache.set(key, { version: indexVersion, data });
+    if (summaryCache.size > 50) summaryCache.delete(summaryCache.keys().next().value);
+    return data;
+  };
+  const withReports = (pulls) =>
+    Promise.all(
+      pulls.map(async (pull) => {
+        let report = null;
+        if (pull.status === 'ready') {
+          try {
+            report = JSON.parse(await fsp.readFile(reportFile(pull.id), 'utf8'));
+          } catch {
+            report = null;
+          }
+        }
+        return { summary: summaryOf(pull), report };
+      }),
+    );
+
   const persist = () => {
+    indexVersion += 1;
     const snapshot = JSON.stringify(index);
     const temp = `${indexFile}.${process.pid}.tmp`;
     saveQueue = saveQueue
@@ -594,6 +622,53 @@ export const createPullDesk = (options) => {
           return fail(res, 404, 'Report missing');
         }
       }
+    }
+
+    // Night summary and progression views.
+    if (first === 'summary' && req.method === 'GET') {
+      const counted = index.pulls.filter((pull) => pull.status !== 'claimed');
+      if (second === 'nights') {
+        const nights = new Map();
+        counted.forEach((pull) => {
+          const night = nights.get(pull.night) || new Map();
+          const key = `${pull.encounterId}:${pull.difficultyId}`;
+          const boss = night.get(key) || {
+            encounterId: pull.encounterId,
+            encounterName: pull.encounterName,
+            difficultyId: pull.difficultyId,
+            pulls: 0,
+            kills: 0,
+          };
+          boss.pulls += 1;
+          if (pull.result === 'kill') boss.kills += 1;
+          night.set(key, boss);
+          nights.set(pull.night, night);
+        });
+        return json(res, 200, {
+          nights: [...nights.entries()]
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([night, bosses]) => ({ night, bosses: [...bosses.values()] })),
+        });
+      }
+      if (second === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(third || '')) {
+        const data = await cached(`night:${third}`, async () =>
+          summarizeNight(await withReports(counted.filter((pull) => pull.night === third))),
+        );
+        return json(res, 200, { night: third, bosses: data });
+      }
+      if (second === 'boss' && /^\d+$/.test(third || '')) {
+        const encounterId = Number(third);
+        const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
+        const pulls = counted.filter(
+          (pull) => pull.encounterId === encounterId && (!difficultyId || pull.difficultyId === difficultyId),
+        );
+        if (!pulls.length) return fail(res, 404, 'No pulls on that boss yet');
+        const data = await cached(`boss:${encounterId}:${difficultyId}`, async () =>
+          summarizeProgression(await withReports(pulls)),
+        );
+        return json(res, 200, data);
+      }
+      return fail(res, 404, 'Unknown summary');
     }
 
     if (first === 'bosses' && /^\d+$/.test(second || '')) {

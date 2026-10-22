@@ -4,6 +4,7 @@ server.mjs
 pulldesk.mjs
 pulldesk-analyze.mjs
 pulldesk-defensives.mjs
+pulldesk-summary.mjs
 recruit.mjs
 recruit-analyze.mjs
 recruit-clients.mjs

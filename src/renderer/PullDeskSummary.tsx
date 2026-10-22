@@ -1,0 +1,1426 @@
+import React from 'react';
+import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
+import { BRAND } from 'renderer/brand';
+import { Button } from './components/Button/Button';
+
+/**
+ * [RoomFortyRecorder] Pull desk summary views, built by the guild server from
+ * the reports it already keeps (see guild-cloud-server/pulldesk-summary.mjs).
+ *
+ * - Night summary: pick a raid night; per boss the totals, why pulls ended,
+ *   a raider table and every pull (click one to open its report).
+ * - Progression: pick a boss; boss health at the end of every pull with the
+ *   best-so-far line, a row per night, wipe causes over time and each
+ *   raider's early deaths night by night.
+ */
+
+const ipc = window.electron.ipcRenderer;
+
+type Response<T> = { ok: true; data: T } | { ok: false; error: string };
+
+const call = <T,>(request: Record<string, unknown>) =>
+  ipc.invoke('pullDesk', [request]) as Promise<Response<T>>;
+
+type Cause = { name: string; count: number };
+
+type Raider = {
+  name: string;
+  role: string;
+  pulls: number;
+  deaths: number;
+  earlyDeaths: number;
+  firstDeaths: number;
+  planChecked: number;
+  planMissed: number;
+  planOff: number;
+  avoidableHits: number;
+  avoidableDamage: number;
+  defensives: number;
+  potions: number;
+  healthstones: number;
+  earlyDeathCauses: Record<string, number>;
+};
+
+type PullRow = {
+  id: string;
+  night: string;
+  pullNumber: number;
+  totalPullNumber?: number;
+  result: 'kill' | 'wipe' | string;
+  bossPercent: number | null;
+  duration: number;
+  deaths: number | null;
+  cause: string | null;
+};
+
+type BossNight = {
+  encounterId: number;
+  encounterName: string;
+  difficultyId: number;
+  pulls: number;
+  kills: number;
+  bestPercent: number | null;
+  medianPercent: number | null;
+  combatSeconds: number;
+  longestPull: number | null;
+  causes: Cause[];
+  raiders: Raider[];
+  pullsList: PullRow[];
+};
+
+type NightIndex = {
+  night: string;
+  bosses: {
+    encounterId: number;
+    encounterName: string;
+    difficultyId: number;
+    pulls: number;
+    kills: number;
+  }[];
+};
+
+type Progression = {
+  encounterId: number;
+  encounterName: string;
+  difficultyId: number;
+  pulls: number;
+  kills: number;
+  nights: {
+    night: string;
+    pulls: number;
+    kills: number;
+    bestPercent: number | null;
+    medianPercent: number | null;
+    combatSeconds: number;
+    topCause: Cause | null;
+    causes: Cause[];
+  }[];
+  series: {
+    n: number;
+    night: string;
+    percent: number | null;
+    kill: boolean;
+    id: string;
+  }[];
+  firstKill: { pull: number; night: string } | null;
+  causes: Cause[];
+  raiders: Raider[];
+  trend: {
+    name: string;
+    role: string;
+    nights: Record<
+      string,
+      { pulls: number; earlyDeaths: number; rate: number }
+    >;
+  }[];
+};
+
+const DIFFICULTY: Record<number, string> = {
+  14: 'Normal',
+  15: 'Heroic',
+  16: 'Mythic',
+  17: 'LFR',
+};
+
+const difficultyName = (id: number) => DIFFICULTY[id] ?? `Difficulty ${id}`;
+
+const mmss = (seconds: number) => {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+const hours = (seconds: number) => {
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return m ? `${h} h ${m} min` : `${h} h`;
+};
+
+const pct = (value: number | null | undefined) =>
+  value === null || value === undefined
+    ? '–'
+    : `${Math.round(value * 10) / 10}%`;
+
+const nightLabel = (night: string) =>
+  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
+const shortNight = (night: string) =>
+  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+
+const ROLE_STYLE: Record<string, string> = {
+  tank: 'text-sky-300',
+  healer: 'text-green-300',
+  dps: '',
+};
+
+const bossKey = (encounterId: number, difficultyId: number) =>
+  `${encounterId}:${difficultyId}`;
+
+/* ------------------------------------------------------------------ */
+/* Shared pieces                                                       */
+/* ------------------------------------------------------------------ */
+
+const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  <div className="flex flex-col min-w-[96px]">
+    <span className="text-xs text-foreground">{label}</span>
+    <span className="text-lg font-semibold text-foreground-lighter tabular-nums">
+      {value}
+    </span>
+  </div>
+);
+
+const Panel = ({
+  title,
+  aside,
+  children,
+}: {
+  title: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <section className="rounded-md border border-card bg-background/40 p-3">
+    <div className="flex items-center gap-x-2 mb-2">
+      <h3 className="font-display text-base text-foreground-lighter">
+        {title}
+      </h3>
+      {aside && (
+        <div className="ml-auto flex items-center gap-x-1">{aside}</div>
+      )}
+    </div>
+    {children}
+  </section>
+);
+
+/** Why pulls ended: one bar per cause, count at the tip. */
+const CauseBars = ({
+  causes,
+  limit = 8,
+}: {
+  causes: Cause[];
+  limit?: number;
+}) => {
+  const shown = causes.slice(0, limit);
+  const rest = causes.slice(limit).reduce((sum, c) => sum + c.count, 0);
+  const rows = rest ? [...shown, { name: 'Other', count: rest }] : shown;
+  const max = Math.max(1, ...rows.map((c) => c.count));
+
+  if (!rows.length) {
+    return <p className="text-sm text-foreground">No wipes.</p>;
+  }
+
+  return (
+    <ul className="flex flex-col gap-y-1.5">
+      {rows.map((cause) => (
+        <li
+          key={cause.name}
+          className="grid grid-cols-[minmax(120px,40%)_1fr] items-center gap-x-3 text-sm"
+          title={`${cause.name}: ${cause.count} ${cause.count === 1 ? 'pull' : 'pulls'}`}
+        >
+          <span className="truncate text-foreground-lighter">{cause.name}</span>
+          <span className="flex items-center gap-x-2">
+            <span
+              className="h-[14px] rounded-r-[4px]"
+              style={{
+                width: `${(cause.count / max) * 85}%`,
+                minWidth: 4,
+                background: BRAND,
+              }}
+            />
+            <span className="tabular-nums text-foreground">{cause.count}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+type SortKey =
+  | 'name'
+  | 'pulls'
+  | 'earlyDeaths'
+  | 'rate'
+  | 'firstDeaths'
+  | 'planMissed'
+  | 'planOff'
+  | 'avoidableHits'
+  | 'defensives'
+  | 'potions'
+  | 'healthstones';
+
+const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
+  { key: 'name', label: 'Raider', title: 'Raider' },
+  { key: 'pulls', label: 'Pulls', title: 'Pulls they were in' },
+  {
+    key: 'earlyDeaths',
+    label: 'Early deaths',
+    title: 'Deaths among the first 2 of a pull',
+  },
+  { key: 'rate', label: 'Per pull', title: 'Early deaths per pull' },
+  { key: 'firstDeaths', label: 'Died first', title: 'First death of the pull' },
+  {
+    key: 'planMissed',
+    label: 'Plan missed',
+    title: 'Cooldown plan casts never made (while alive)',
+  },
+  {
+    key: 'planOff',
+    label: 'Plan off',
+    title: 'Cooldown plan casts made early or late',
+  },
+  {
+    key: 'avoidableHits',
+    label: 'Avoidable',
+    title: 'Hits from avoidable spells set in Boss settings',
+  },
+  {
+    key: 'defensives',
+    label: 'Defensives',
+    title: 'Personal and external defensives used',
+  },
+  { key: 'potions', label: 'Pots', title: 'Health potions' },
+  { key: 'healthstones', label: 'Stones', title: 'Healthstones' },
+];
+
+const sortValue = (r: Raider, key: SortKey) => {
+  if (key === 'rate') return r.pulls ? r.earlyDeaths / r.pulls : 0;
+  return r[key];
+};
+
+/** One row per raider, sortable by any column. */
+const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
+  const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({
+    key: 'earlyDeaths',
+    desc: true,
+  });
+  const [role, setRole] = React.useState('all');
+
+  const rows = raiders
+    .filter((r) => role === 'all' || r.role === role)
+    .sort((a, b) => {
+      const av = sortValue(a, sort.key);
+      const bv = sortValue(b, sort.key);
+      const order =
+        typeof av === 'string'
+          ? av.localeCompare(String(bv))
+          : (av as number) - (bv as number);
+      return (sort.desc ? -order : order) || a.name.localeCompare(b.name);
+    });
+
+  const header = (col: (typeof RAIDER_COLUMNS)[number]) => {
+    const active = sort.key === col.key;
+    return (
+      <th
+        key={col.key}
+        title={col.title}
+        className={`px-2 py-1 font-normal whitespace-nowrap ${
+          col.key === 'name' ? 'text-left' : 'text-right'
+        }`}
+      >
+        <button
+          type="button"
+          className={`inline-flex items-center gap-x-0.5 hover:text-foreground-lighter ${
+            active ? 'text-foreground-lighter' : ''
+          }`}
+          onClick={() =>
+            setSort({
+              key: col.key,
+              desc: active ? !sort.desc : col.key !== 'name',
+            })
+          }
+        >
+          {col.label}
+          {active &&
+            (sort.desc ? <ChevronDown size={12} /> : <ChevronUp size={12} />)}
+        </button>
+      </th>
+    );
+  };
+
+  const cell = (value: number, warn = false) => (
+    <td
+      className={`px-2 py-1 text-right tabular-nums ${
+        value === 0
+          ? 'text-foreground/50'
+          : warn
+            ? 'text-foreground-lighter'
+            : ''
+      }`}
+    >
+      {value}
+    </td>
+  );
+
+  const causesTitle = (r: Raider) =>
+    Object.entries(r.earlyDeathCauses)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `${name} ×${count}`)
+      .join('\n');
+
+  return (
+    <div>
+      <div className="flex gap-x-1 mb-2">
+        {['all', 'tank', 'healer', 'dps'].map((r) => (
+          <Button
+            key={r}
+            size="xs"
+            variant={role === r ? 'default' : 'ghost'}
+            onClick={() => setRole(r)}
+          >
+            {r === 'all'
+              ? 'Everyone'
+              : r === 'dps'
+                ? 'DPS'
+                : `${r[0].toUpperCase()}${r.slice(1)}s`}
+          </Button>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-foreground border-b border-card">
+            <tr>{RAIDER_COLUMNS.map(header)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.name}
+                className="border-b border-card/40 hover:bg-card/30"
+              >
+                <td
+                  className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
+                >
+                  {r.name}
+                </td>
+                {cell(r.pulls)}
+                <td
+                  className={`px-2 py-1 text-right tabular-nums ${
+                    r.earlyDeaths
+                      ? 'text-foreground-lighter'
+                      : 'text-foreground/50'
+                  }`}
+                  title={causesTitle(r) || undefined}
+                >
+                  {r.earlyDeaths}
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums">
+                  {r.pulls ? (r.earlyDeaths / r.pulls).toFixed(2) : '–'}
+                </td>
+                {cell(r.firstDeaths, true)}
+                <td
+                  className={`px-2 py-1 text-right tabular-nums ${
+                    r.planMissed ? 'text-red-400' : 'text-foreground/50'
+                  }`}
+                  title={
+                    r.planChecked
+                      ? `${r.planChecked} plan casts checked`
+                      : 'No plan casts'
+                  }
+                >
+                  {r.planChecked ? r.planMissed : '–'}
+                </td>
+                <td
+                  className={`px-2 py-1 text-right tabular-nums ${
+                    r.planOff ? 'text-yellow-400' : 'text-foreground/50'
+                  }`}
+                >
+                  {r.planChecked ? r.planOff : '–'}
+                </td>
+                {cell(r.avoidableHits, true)}
+                {cell(r.defensives)}
+                {cell(r.potions)}
+                {cell(r.healthstones)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-foreground mt-2">
+        Early deaths are the first 2 deaths of a pull; later ones are usually
+        the wipe. Hover a raider&apos;s early deaths to see what killed them.
+      </p>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Night summary                                                       */
+/* ------------------------------------------------------------------ */
+
+const BossNightCard = ({
+  boss,
+  onOpenPull,
+}: {
+  boss: BossNight;
+  onOpenPull: (id: string) => void;
+}) => {
+  const [showPulls, setShowPulls] = React.useState(false);
+
+  return (
+    <div className="flex flex-col gap-y-3">
+      <div className="flex items-baseline gap-x-2">
+        <h2 className="font-display text-xl text-foreground-lighter">
+          {boss.encounterName}
+        </h2>
+        <span className="text-sm text-foreground">
+          {difficultyName(boss.difficultyId)}
+        </span>
+        {boss.kills > 0 && (
+          <span className="flex items-center gap-x-1 text-sm text-green-400">
+            <Crown size={14} /> Killed
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <Stat label="Pulls" value={boss.pulls} />
+        <Stat label="Kills" value={boss.kills} />
+        <Stat
+          label="Best"
+          value={boss.kills ? 'Kill' : pct(boss.bestPercent)}
+        />
+        <Stat label="Median wipe" value={pct(boss.medianPercent)} />
+        <Stat label="Time in combat" value={hours(boss.combatSeconds)} />
+        <Stat
+          label="Longest pull"
+          value={boss.longestPull ? mmss(boss.longestPull) : '–'}
+        />
+      </div>
+
+      <div className="grid items-start grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
+        <Panel title="Why pulls ended">
+          <CauseBars causes={boss.causes} />
+          <p className="text-xs text-foreground mt-2">
+            A raid-wide mechanic if it killed many at once, else the first
+            death&apos;s killing blow.
+          </p>
+        </Panel>
+        <Panel title="Raiders">
+          <RaiderTable raiders={boss.raiders} />
+        </Panel>
+      </div>
+
+      <Panel
+        title={`Pulls (${boss.pulls})`}
+        aside={
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setShowPulls((v) => !v)}
+          >
+            {showPulls ? 'Hide' : 'Show'}
+          </Button>
+        }
+      >
+        {showPulls ? (
+          <table className="w-full text-sm">
+            <thead className="text-xs text-foreground border-b border-card">
+              <tr>
+                <th className="px-2 py-1 text-left font-normal">Pull</th>
+                <th className="px-2 py-1 text-left font-normal">Result</th>
+                <th className="px-2 py-1 text-right font-normal">Length</th>
+                <th className="px-2 py-1 text-right font-normal">Deaths</th>
+                <th className="px-2 py-1 text-left font-normal">Cause</th>
+                <th aria-label="Open" />
+              </tr>
+            </thead>
+            <tbody>
+              {boss.pullsList.map((p) => (
+                <tr
+                  key={p.id}
+                  className="border-b border-card/40 hover:bg-card/30"
+                >
+                  <td className="px-2 py-1 tabular-nums">{p.pullNumber}</td>
+                  <td className="px-2 py-1">
+                    {p.result === 'kill' ? (
+                      <span className="text-green-400">Kill</span>
+                    ) : (
+                      <span className="tabular-nums">{pct(p.bossPercent)}</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums">
+                    {mmss(p.duration)}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums">
+                    {p.deaths ?? '–'}
+                  </td>
+                  <td className="px-2 py-1 truncate max-w-[280px]">
+                    {p.cause ?? ''}
+                  </td>
+                  <td className="px-2 py-1 text-right">
+                    <button
+                      type="button"
+                      className="text-xs text-brand hover:underline"
+                      onClick={() => onOpenPull(p.id)}
+                    >
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-sm text-foreground">
+            Every pull with its result and cause. Open one for its full report.
+          </p>
+        )}
+      </Panel>
+    </div>
+  );
+};
+
+export const NightSummaryView = ({
+  onOpenPull,
+}: {
+  onOpenPull: (id: string) => void;
+}) => {
+  const [nights, setNights] = React.useState<NightIndex[] | null>(null);
+  const [night, setNight] = React.useState<string>('');
+  const [bosses, setBosses] = React.useState<BossNight[] | null>(null);
+  const [error, setError] = React.useState('');
+  // The night the shown bosses belong to; differs while a new one loads.
+  const [loadedNight, setLoadedNight] = React.useState('');
+  const loading = night !== loadedNight;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    call<{ nights: NightIndex[] }>({ action: 'nights' }).then((response) => {
+      if (cancelled) return;
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setNights(response.data.nights);
+      setNight((current) => current || response.data.nights[0]?.night || '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!night) return undefined;
+    let cancelled = false;
+    call<{ night: string; bosses: BossNight[] }>({
+      action: 'night',
+      night,
+    }).then((response) => {
+      if (cancelled) return;
+      setLoadedNight(night);
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setError('');
+      setBosses(response.data.bosses);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [night]);
+
+  if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
+  if (!nights)
+    return <p className="text-sm text-foreground">Loading nights…</p>;
+  if (!nights.length) {
+    return (
+      <p className="text-sm text-foreground">
+        No pulls yet. Once raiders have &quot;Send my pull logs&quot; on, each
+        raid night shows up here.
+      </p>
+    );
+  }
+
+  const current = nights.find((n) => n.night === night);
+  const totalPulls = current?.bosses.reduce((s, b) => s + b.pulls, 0) ?? 0;
+  const totalKills = current?.bosses.reduce((s, b) => s + b.kills, 0) ?? 0;
+
+  return (
+    <div className="flex flex-col gap-y-4">
+      <div className="flex items-center gap-x-3 flex-wrap">
+        <label className="flex items-center gap-x-2 text-sm">
+          Night
+          <select
+            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+            value={night}
+            onChange={(e) => setNight(e.target.value)}
+          >
+            {nights.map((n) => (
+              <option key={n.night} value={n.night}>
+                {nightLabel(n.night)} ·{' '}
+                {n.bosses.map((b) => b.encounterName).join(', ')}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-sm text-foreground">
+          {totalPulls} {totalPulls === 1 ? 'pull' : 'pulls'} · {totalKills}{' '}
+          {totalKills === 1 ? 'kill' : 'kills'}
+        </span>
+        {error && <span className="text-sm text-red-400">{error}</span>}
+      </div>
+
+      <div
+        className={`flex flex-col gap-y-8 transition-opacity ${
+          loading ? 'opacity-50' : ''
+        }`}
+      >
+        {bosses?.map((boss) => (
+          <BossNightCard
+            key={bossKey(boss.encounterId, boss.difficultyId)}
+            boss={boss}
+            onOpenPull={onOpenPull}
+          />
+        ))}
+        {!bosses && <p className="text-sm text-foreground">Loading…</p>}
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Progression                                                         */
+/* ------------------------------------------------------------------ */
+
+const KILL_COLOR = '#4ade80';
+const PULL_COLOR = 'hsl(30 8% 55%)';
+
+/**
+ * Boss health at the end of every pull (dots), with the best so far (brass
+ * step line). Thin hairlines split nights; a crown marks the first kill.
+ * Hover anywhere to snap to the nearest pull; click to open it.
+ */
+const ProgressionChart = ({
+  data,
+  onOpenPull,
+}: {
+  data: Progression;
+  onOpenPull: (id: string) => void;
+}) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [width, setWidth] = React.useState(800);
+  const [hover, setHover] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const observer = new ResizeObserver(([entry]) =>
+      setWidth(Math.max(320, Math.floor(entry.contentRect.width))),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const height = 260;
+  const pad = { left: 40, right: 16, top: 26, bottom: 24 };
+  const series = data.series.filter((p) => p.percent !== null || p.kill);
+  const count = Math.max(series.length, 2);
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const x = (i: number) => pad.left + (i / (count - 1)) * plotW;
+  const y = (v: number) =>
+    pad.top + (1 - Math.min(100, Math.max(0, v)) / 100) * plotH;
+
+  // Best so far after each pull, drawn as a step line.
+  const bestAt = series.reduce<number[]>((acc, p) => {
+    const prev = acc.length ? acc[acc.length - 1] : 100;
+    acc.push(Math.min(prev, p.kill ? 0 : (p.percent ?? 100)));
+    return acc;
+  }, []);
+  const bestPoints = bestAt.flatMap((b, i) =>
+    i > 0 && b < bestAt[i - 1]
+      ? [`${x(i)},${y(bestAt[i - 1])}`, `${x(i)},${y(b)}`]
+      : [`${x(i)},${y(b)}`],
+  );
+
+  // Night boundaries.
+  const nightStarts = series
+    .map((p, i) => ({ night: p.night, i }))
+    .filter((p, idx, all) => idx === 0 || all[idx - 1].night !== p.night);
+
+  const onMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const px = ((event.clientX - rect.left) / rect.width) * width;
+    const i = Math.round(((px - pad.left) / plotW) * (count - 1));
+    setHover(Math.min(series.length - 1, Math.max(0, i)));
+  };
+
+  const hovered = hover !== null ? series[hover] : null;
+  const tipLeft = hover !== null ? (x(hover) / width) * 100 : 0;
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Boss health at the end of each pull on ${data.encounterName}`}
+        onPointerMove={onMove}
+        onPointerLeave={() => setHover(null)}
+        onClick={() => hovered && onOpenPull(hovered.id)}
+        className="cursor-pointer select-none"
+      >
+        {[0, 25, 50, 75, 100].map((v) => (
+          <g key={v}>
+            <line
+              x1={pad.left}
+              x2={width - pad.right}
+              y1={y(v)}
+              y2={y(v)}
+              stroke="currentColor"
+              strokeOpacity={0.12}
+            />
+            <text
+              x={pad.left - 6}
+              y={y(v) + 4}
+              textAnchor="end"
+              fontSize={11}
+              className="fill-foreground"
+            >
+              {v}%
+            </text>
+          </g>
+        ))}
+
+        {nightStarts.map(({ night, i }, idx) => (
+          <g key={night}>
+            {idx > 0 && (
+              <line
+                x1={(x(i) + x(i - 1)) / 2}
+                x2={(x(i) + x(i - 1)) / 2}
+                y1={pad.top - 14}
+                y2={height - pad.bottom}
+                stroke="currentColor"
+                strokeOpacity={0.2}
+              />
+            )}
+            <text
+              x={idx > 0 ? (x(i) + x(i - 1)) / 2 + 4 : pad.left}
+              y={pad.top - 8}
+              fontSize={11}
+              className="fill-foreground"
+            >
+              {shortNight(night)}
+            </text>
+          </g>
+        ))}
+
+        <polyline
+          points={bestPoints.join(' ')}
+          fill="none"
+          stroke={BRAND}
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {series.map((p, i) =>
+          p.kill ? null : (
+            <circle
+              key={p.id}
+              cx={x(i)}
+              cy={y(p.percent ?? 100)}
+              r={series.length > 150 ? 2.5 : 4}
+              fill={PULL_COLOR}
+              stroke="hsl(var(--background-higher))"
+              strokeWidth={series.length > 150 ? 1 : 2}
+            />
+          ),
+        )}
+
+        {series.map((p, i) =>
+          p.kill ? (
+            <g key={p.id}>
+              <circle
+                cx={x(i)}
+                cy={y(0)}
+                r={6}
+                fill={KILL_COLOR}
+                stroke="hsl(var(--background-higher))"
+                strokeWidth={2}
+              />
+              {data.firstKill?.pull === p.n && (
+                <text
+                  x={i > series.length * 0.8 ? x(i) + 6 : x(i)}
+                  y={height - 6}
+                  textAnchor={i > series.length * 0.8 ? 'end' : 'middle'}
+                  fontSize={11}
+                  className="fill-foreground-lighter"
+                >
+                  First kill · pull {p.n}
+                </text>
+              )}
+            </g>
+          ) : null,
+        )}
+
+        {hover !== null && (
+          <line
+            x1={x(hover)}
+            x2={x(hover)}
+            y1={pad.top}
+            y2={height - pad.bottom}
+            stroke="currentColor"
+            strokeOpacity={0.35}
+          />
+        )}
+
+        {!(data.firstKill && data.firstKill.pull > series.length * 0.8) && (
+          <text
+            x={width - pad.right}
+            y={height - 6}
+            textAnchor="end"
+            fontSize={11}
+            className="fill-foreground"
+          >
+            Pull {series.length}
+          </text>
+        )}
+        <text
+          x={pad.left}
+          y={height - 6}
+          fontSize={11}
+          className="fill-foreground"
+        >
+          Pull 1
+        </text>
+      </svg>
+
+      {hovered && hover !== null && (
+        <div
+          className="pointer-events-none absolute top-6 z-10 rounded-md border border-card bg-background px-2 py-1.5 text-xs shadow-lg whitespace-nowrap"
+          style={{
+            left: `${tipLeft}%`,
+            transform:
+              tipLeft > 70
+                ? 'translateX(calc(-100% - 8px))'
+                : 'translateX(8px)',
+          }}
+        >
+          <div className="font-semibold text-sm text-foreground-lighter">
+            {hovered.kill ? 'Kill' : pct(hovered.percent)}
+          </div>
+          <div className="text-foreground">
+            Pull {hovered.n} · {nightLabel(hovered.night)}
+          </div>
+          <div className="flex items-center gap-x-1.5 text-foreground mt-0.5">
+            <span
+              className="inline-block w-3 h-[2px]"
+              style={{ background: BRAND }}
+            />
+            <span className="text-foreground-lighter">
+              {pct(bestAt[hover])}
+            </span>
+            best so far
+          </div>
+          <div className="text-foreground/70 mt-0.5">Click to open</div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-x-4 text-xs text-foreground mt-1">
+        <span className="flex items-center gap-x-1.5">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-full"
+            style={{ background: PULL_COLOR }}
+          />
+          Boss health when the pull ended
+        </span>
+        <span className="flex items-center gap-x-1.5">
+          <span
+            className="inline-block w-4 h-[2px]"
+            style={{ background: BRAND }}
+          />
+          Best so far
+        </span>
+        <span className="flex items-center gap-x-1.5">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-full"
+            style={{ background: KILL_COLOR }}
+          />
+          Kill
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/** Early deaths per pull, one column per night; darker brass = more. */
+const RaiderTrend = ({ data }: { data: Progression }) => {
+  const [role, setRole] = React.useState('all');
+  const nights = data.nights.map((n) => n.night).slice(-10);
+  const rows = data.trend
+    .filter((r) => role === 'all' || r.role === role)
+    .map((r) => {
+      const totals = Object.values(r.nights).reduce(
+        (acc, v) => ({
+          pulls: acc.pulls + v.pulls,
+          early: acc.early + v.earlyDeaths,
+        }),
+        { pulls: 0, early: 0 },
+      );
+      return {
+        ...r,
+        overall: totals.pulls ? totals.early / totals.pulls : 0,
+        pulls: totals.pulls,
+      };
+    })
+    .filter((r) => r.pulls > 0)
+    .sort((a, b) => b.overall - a.overall || a.name.localeCompare(b.name));
+
+  const max = Math.max(
+    0.25,
+    ...rows.flatMap((r) => Object.values(r.nights).map((v) => v.rate)),
+  );
+
+  return (
+    <div>
+      <div className="flex gap-x-1 mb-2">
+        {['all', 'tank', 'healer', 'dps'].map((r) => (
+          <Button
+            key={r}
+            size="xs"
+            variant={role === r ? 'default' : 'ghost'}
+            onClick={() => setRole(r)}
+          >
+            {r === 'all'
+              ? 'Everyone'
+              : r === 'dps'
+                ? 'DPS'
+                : `${r[0].toUpperCase()}${r.slice(1)}s`}
+          </Button>
+        ))}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="text-sm border-separate border-spacing-[2px]">
+          <thead className="text-xs text-foreground">
+            <tr>
+              <th className="px-2 py-1 text-left font-normal">Raider</th>
+              <th className="px-2 py-1 text-right font-normal">All nights</th>
+              {nights.map((n) => (
+                <th
+                  key={n}
+                  className="px-2 py-1 text-right font-normal whitespace-nowrap"
+                >
+                  {shortNight(n)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name}>
+                <td
+                  className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
+                >
+                  {r.name}
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums text-foreground-lighter">
+                  {r.overall.toFixed(2)}
+                </td>
+                {nights.map((n) => {
+                  const v = r.nights[n];
+                  if (!v) {
+                    return (
+                      <td
+                        key={n}
+                        className="px-2 py-1 text-right text-foreground/40"
+                      >
+                        –
+                      </td>
+                    );
+                  }
+                  const strength = Math.min(1, v.rate / max);
+                  return (
+                    <td
+                      key={n}
+                      className="px-2 py-1 text-right tabular-nums rounded-[3px] min-w-[52px]"
+                      style={{
+                        background: v.rate
+                          ? `hsl(var(--brand) / ${0.08 + strength * 0.4})`
+                          : undefined,
+                        color: v.rate
+                          ? 'hsl(var(--foreground-lighter))'
+                          : 'hsl(var(--foreground) / 0.5)',
+                      }}
+                      title={`${v.earlyDeaths} early ${
+                        v.earlyDeaths === 1 ? 'death' : 'deaths'
+                      } in ${v.pulls} ${v.pulls === 1 ? 'pull' : 'pulls'}`}
+                    >
+                      {v.rate.toFixed(2)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-foreground mt-2">
+        Early deaths per pull. Lower is better; a falling row means someone is
+        learning the fight.
+        {data.nights.length > 10 && ' Showing the last 10 nights.'}
+      </p>
+    </div>
+  );
+};
+
+/** Top causes, one row per night: how often each one ended a pull. */
+const CauseTrend = ({ data }: { data: Progression }) => {
+  const top = data.causes.slice(0, 6).map((c) => c.name);
+  const nights = data.nights.slice(-10);
+  if (!top.length) return <p className="text-sm text-foreground">No wipes.</p>;
+  const max = Math.max(
+    1,
+    ...nights.flatMap((n) =>
+      n.causes.filter((c) => top.includes(c.name)).map((c) => c.count),
+    ),
+  );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="text-sm border-separate border-spacing-[2px]">
+        <thead className="text-xs text-foreground">
+          <tr>
+            <th className="px-2 py-1 text-left font-normal">Cause</th>
+            {nights.map((n) => (
+              <th
+                key={n.night}
+                className="px-2 py-1 text-right font-normal whitespace-nowrap"
+              >
+                {shortNight(n.night)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {top.map((name) => (
+            <tr key={name}>
+              <td className="px-2 py-1 whitespace-nowrap max-w-[260px] truncate">
+                {name}
+              </td>
+              {nights.map((n) => {
+                const count = n.causes.find((c) => c.name === name)?.count ?? 0;
+                const share = n.pulls ? Math.round((count / n.pulls) * 100) : 0;
+                const strength = count / max;
+                return (
+                  <td
+                    key={n.night}
+                    className="px-2 py-1 text-right tabular-nums rounded-[3px] min-w-[52px]"
+                    style={{
+                      background: count
+                        ? `hsl(var(--brand) / ${0.08 + strength * 0.4})`
+                        : undefined,
+                      color: count
+                        ? 'hsl(var(--foreground-lighter))'
+                        : 'hsl(var(--foreground) / 0.4)',
+                    }}
+                    title={`${count} of ${n.pulls} pulls (${share}%)`}
+                  >
+                    {count || '–'}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-xs text-foreground mt-2">
+        Pulls ended by each cause, per night. A cause that fades out is a
+        mechanic the raid has solved.
+      </p>
+    </div>
+  );
+};
+
+type BossOption = {
+  encounterId: number;
+  encounterName: string;
+  difficultyId: number;
+  lastNight: string;
+};
+
+const loadBossChoice = () => {
+  try {
+    return localStorage.getItem('rf-pulldesk-progression-boss') || '';
+  } catch {
+    return '';
+  }
+};
+
+export const ProgressionView = ({
+  onOpenPull,
+}: {
+  onOpenPull: (id: string) => void;
+}) => {
+  const [options, setOptions] = React.useState<BossOption[] | null>(null);
+  const [choice, setChoice] = React.useState<string>(loadBossChoice);
+  const [data, setData] = React.useState<Progression | null>(null);
+  const [error, setError] = React.useState('');
+  const [loadedChoice, setLoadedChoice] = React.useState('');
+  const loading = choice !== loadedChoice;
+  const [asTable, setAsTable] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    call<{ nights: NightIndex[] }>({ action: 'nights' }).then((response) => {
+      if (cancelled) return;
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      const seen = new Map<string, BossOption>();
+      // Nights come newest first, so the first sighting is the latest.
+      response.data.nights.forEach((n) =>
+        n.bosses.forEach((b) => {
+          const key = bossKey(b.encounterId, b.difficultyId);
+          if (!seen.has(key)) seen.set(key, { ...b, lastNight: n.night });
+        }),
+      );
+      const list = [...seen.values()];
+      setOptions(list);
+      setChoice((current) =>
+        list.some((b) => bossKey(b.encounterId, b.difficultyId) === current)
+          ? current
+          : list[0]
+            ? bossKey(list[0].encounterId, list[0].difficultyId)
+            : '',
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!choice) return undefined;
+    try {
+      localStorage.setItem('rf-pulldesk-progression-boss', choice);
+    } catch {
+      // Storage unavailable: the choice just isn't remembered.
+    }
+    const [encounterId, difficultyId] = choice.split(':').map(Number);
+    let cancelled = false;
+    call<Progression>({
+      action: 'progression',
+      encounterId,
+      difficultyId,
+    }).then((response) => {
+      if (cancelled) return;
+      setLoadedChoice(choice);
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
+      setError('');
+      setData(response.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [choice]);
+
+  if (error && !options) return <p className="text-sm text-red-400">{error}</p>;
+  if (!options)
+    return <p className="text-sm text-foreground">Loading bosses…</p>;
+  if (!options.length) {
+    return <p className="text-sm text-foreground">No pulls yet.</p>;
+  }
+
+  const wipes = data ? data.pulls - data.kills : 0;
+  const bestWipe = data
+    ? Math.min(
+        ...data.series
+          .filter((p) => !p.kill && p.percent !== null)
+          .map((p) => p.percent as number),
+      )
+    : null;
+
+  return (
+    <div className="flex flex-col gap-y-4">
+      <div className="flex items-center gap-x-3 flex-wrap">
+        <label className="flex items-center gap-x-2 text-sm">
+          Boss
+          <select
+            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            {options.map((b) => (
+              <option
+                key={bossKey(b.encounterId, b.difficultyId)}
+                value={bossKey(b.encounterId, b.difficultyId)}
+              >
+                {b.encounterName} · {difficultyName(b.difficultyId)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {error && <span className="text-sm text-red-400">{error}</span>}
+      </div>
+
+      {data && (
+        <div
+          className={`flex flex-col gap-y-4 transition-opacity ${
+            loading ? 'opacity-50' : ''
+          }`}
+        >
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <Stat label="Pulls" value={data.pulls} />
+            <Stat label="Nights" value={data.nights.length} />
+            <Stat
+              label={data.firstKill ? 'First kill' : 'Best wipe'}
+              value={
+                data.firstKill
+                  ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
+                  : pct(Number.isFinite(bestWipe) ? bestWipe : null)
+              }
+            />
+            <Stat label="Kills" value={data.kills} />
+            <Stat
+              label="Time in combat"
+              value={hours(
+                data.nights.reduce((s, n) => s + n.combatSeconds, 0),
+              )}
+            />
+            <Stat label="Wipes" value={wipes} />
+          </div>
+
+          <Panel
+            title="Boss health by pull"
+            aside={
+              <Button
+                size="xs"
+                variant="ghost"
+                className="gap-x-1"
+                onClick={() => setAsTable((v) => !v)}
+              >
+                {asTable ? <LineChart size={14} /> : <Table2 size={14} />}
+                {asTable ? 'Chart' : 'Table'}
+              </Button>
+            }
+          >
+            {asTable ? (
+              <div className="max-h-[300px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-foreground border-b border-card sticky top-0 bg-background-higher">
+                    <tr>
+                      <th className="px-2 py-1 text-left font-normal">Pull</th>
+                      <th className="px-2 py-1 text-left font-normal">Night</th>
+                      <th className="px-2 py-1 text-right font-normal">
+                        Boss health
+                      </th>
+                      <th aria-label="Open" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.series.map((p) => (
+                      <tr key={p.id} className="border-b border-card/40">
+                        <td className="px-2 py-1 tabular-nums">{p.n}</td>
+                        <td className="px-2 py-1">{nightLabel(p.night)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {p.kill ? (
+                            <span className="text-green-400">Kill</span>
+                          ) : (
+                            pct(p.percent)
+                          )}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          <button
+                            type="button"
+                            className="text-xs text-brand hover:underline"
+                            onClick={() => onOpenPull(p.id)}
+                          >
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <ProgressionChart data={data} onOpenPull={onOpenPull} />
+            )}
+          </Panel>
+
+          <Panel title="Night by night">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-foreground border-b border-card">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-normal">Night</th>
+                    <th className="px-2 py-1 text-right font-normal">Pulls</th>
+                    <th className="px-2 py-1 text-right font-normal">Kills</th>
+                    <th className="px-2 py-1 text-right font-normal">Best</th>
+                    <th className="px-2 py-1 text-right font-normal">
+                      Median wipe
+                    </th>
+                    <th className="px-2 py-1 text-right font-normal">
+                      In combat
+                    </th>
+                    <th className="px-2 py-1 text-left font-normal">
+                      Top cause
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data.nights].reverse().map((n) => (
+                    <tr key={n.night} className="border-b border-card/40">
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        {nightLabel(n.night)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {n.pulls}
+                      </td>
+                      <td
+                        className={`px-2 py-1 text-right tabular-nums ${
+                          n.kills ? 'text-green-400' : 'text-foreground/50'
+                        }`}
+                      >
+                        {n.kills}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {n.kills ? 'Kill' : pct(n.bestPercent)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {pct(n.medianPercent)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {hours(n.combatSeconds)}
+                      </td>
+                      <td className="px-2 py-1 truncate max-w-[280px]">
+                        {n.topCause
+                          ? `${n.topCause.name} (${n.topCause.count})`
+                          : '–'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
+            <Panel title="Wipe causes over time">
+              <CauseTrend data={data} />
+            </Panel>
+            <Panel title="Early deaths by night">
+              <RaiderTrend data={data} />
+            </Panel>
+          </div>
+
+          <Panel title="Raiders, all nights">
+            <RaiderTable raiders={data.raiders} />
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+};

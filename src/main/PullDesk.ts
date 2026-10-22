@@ -52,7 +52,10 @@ export type PullDeskRequest =
   | { action: 'boss'; encounterId: number }
   | { action: 'setNote'; encounterId: number; note: string }
   | { action: 'setAvoidable'; encounterId: number; spells: number[] }
-  | { action: 'setChannel'; encounterId: number; channelId: string };
+  | { action: 'setChannel'; encounterId: number; channelId: string }
+  | { action: 'nights' }
+  | { action: 'night'; night: string }
+  | { action: 'progression'; encounterId: number; difficultyId?: number };
 
 export type PullDeskResponse =
   | { ok: true; data: unknown }
@@ -265,6 +268,24 @@ export default class PullDesk {
           'put',
           `/bosses/${id(request.encounterId)}/channel`,
           { channelId: request.channelId },
+        );
+      case 'nights':
+        return client.pullDeskRequest('get', '/summary/nights');
+      case 'night':
+        return client.pullDeskRequest(
+          'get',
+          `/summary/night/${id(request.night)}`,
+          undefined,
+          { timeout: 120000 },
+        );
+      case 'progression':
+        return client.pullDeskRequest(
+          'get',
+          `/summary/boss/${id(request.encounterId)}${
+            request.difficultyId ? `?difficulty=${request.difficultyId}` : ''
+          }`,
+          undefined,
+          { timeout: 120000 },
         );
       default:
         throw new Error('Unknown pull desk request');

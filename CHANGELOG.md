@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] - Unreleased
+### Added
+- Pull desk has three views: **Pulls** (the per-pull reports), **Night summary** and **Progression**.
+  - **Night summary:** pick a raid night. Per boss: pulls, kills, best and median wipe, time in combat, why pulls ended (a raid-wide mechanic or the first death's killing blow), a sortable raider table (early deaths, first deaths, cooldown plan missed/off, avoidable hits, defensives, potions, healthstones) and every pull, each opening its report.
+  - **Progression:** pick a boss. Boss health at the end of every pull with the best-so-far line, night markers and the first kill; a table view; night-by-night totals; wipe causes per night; each raider's early deaths per pull night by night.
+- Guild server: `pulldesk-summary.mjs` builds both from the reports it already keeps (`/summary/nights`, `/summary/night/<date>`, `/summary/boss/<id>`). Run `update-server.cmd` to install it.
+
 ## [1.9.6] - Unreleased
 ### Added
 - Recruiting: a **Tanks** tab with every tank spec, ranked against other tanks, with the Room Forty yardstick and comparison for your own tanks. Settings saved with the DPS-only list pick up the new tab automatically.

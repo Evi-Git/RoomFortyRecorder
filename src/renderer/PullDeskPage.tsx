@@ -17,6 +17,7 @@ import Switch from './components/Switch/Switch';
 import { getCategoryIndex } from './rendererutils';
 import { getConfigValue, setConfigValue } from './useSettings';
 import { BRAND } from 'renderer/brand';
+import { NightSummaryView, ProgressionView } from './PullDeskSummary';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -277,6 +278,20 @@ const loadSection = (): Section => {
   return 'deaths';
 };
 
+type View = 'pulls' | 'night' | 'progression';
+
+const loadView = (): View => {
+  try {
+    const saved = localStorage.getItem('rf-pulldesk-view');
+    if (saved === 'pulls' || saved === 'night' || saved === 'progression') {
+      return saved;
+    }
+  } catch {
+    // Storage unavailable: start on Pulls.
+  }
+  return 'pulls';
+};
+
 const ROLE_STYLE: Record<string, string> = {
   tank: 'text-sky-300',
   healer: 'text-green-300',
@@ -353,6 +368,24 @@ const PullDeskPage = (props: IProps) => {
   const [openGroups, setOpenGroups] = React.useState<number[]>([]);
   // Expanded per-player rows in the plan and avoidable sections.
   const [openRows, setOpenRows] = React.useState<string[]>([]);
+  const [view, setView] = React.useState<View>(loadView);
+
+  const changeView = (next: View) => {
+    setView(next);
+    try {
+      localStorage.setItem('rf-pulldesk-view', next);
+    } catch {
+      // Storage unavailable: the view just isn't remembered.
+    }
+  };
+
+  // From a summary: open that pull's report in the Pulls view.
+  const openPull = (id: string) => {
+    setSelectedId(id);
+    setTab('report');
+    if (days < 30) setDays(30);
+    changeView('pulls');
+  };
 
   // Bumping these refetches the list / the open report.
   const [listTick, setListTick] = React.useState(0);
@@ -1384,30 +1417,56 @@ const PullDeskPage = (props: IProps) => {
           <ClipboardList size={18} className="text-brand" />
           <span className="font-display text-lg">Pull desk</span>
         </span>
-        <Button
-          size="sm"
-          variant={days === 1 ? 'default' : 'outline'}
-          onClick={() => setDays(1)}
-        >
-          Tonight
-        </Button>
-        <Button
-          size="sm"
-          variant={days === 7 ? 'default' : 'outline'}
-          onClick={() => setDays(7)}
-        >
-          7 days
-        </Button>
-        <Button
-          size="sm"
-          variant={days === 30 ? 'default' : 'outline'}
-          onClick={() => setDays(30)}
-        >
-          30 days
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => loadPulls()}>
-          <RefreshCw size={14} />
-        </Button>
+        <div className="flex rounded-md border border-card overflow-hidden mr-2">
+          {(
+            [
+              ['pulls', 'Pulls'],
+              ['night', 'Night summary'],
+              ['progression', 'Progression'],
+            ] as [View, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => changeView(key)}
+              className={`px-3 h-9 text-xs ${
+                view === key
+                  ? 'bg-brand text-background font-semibold'
+                  : 'hover:bg-card'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === 'pulls' && (
+          <>
+            <Button
+              size="sm"
+              variant={days === 1 ? 'default' : 'outline'}
+              onClick={() => setDays(1)}
+            >
+              Tonight
+            </Button>
+            <Button
+              size="sm"
+              variant={days === 7 ? 'default' : 'outline'}
+              onClick={() => setDays(7)}
+            >
+              7 days
+            </Button>
+            <Button
+              size="sm"
+              variant={days === 30 ? 'default' : 'outline'}
+              onClick={() => setDays(30)}
+            >
+              30 days
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => loadPulls()}>
+              <RefreshCw size={14} />
+            </Button>
+          </>
+        )}
         {error && <span className="text-sm text-red-400">{error}</span>}
         <label
           className="ml-auto flex items-center gap-x-2 text-sm"
@@ -1418,7 +1477,20 @@ const PullDeskPage = (props: IProps) => {
         </label>
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      {view === 'night' && (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+          <NightSummaryView onOpenPull={openPull} />
+        </div>
+      )}
+      {view === 'progression' && (
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
+          <ProgressionView onOpenPull={openPull} />
+        </div>
+      )}
+
+      <div
+        className={`flex flex-1 min-h-0 ${view === 'pulls' ? '' : 'hidden'}`}
+      >
         <div className="w-72 shrink-0 border-r border-card overflow-y-auto">
           {renderPullList()}
         </div>
