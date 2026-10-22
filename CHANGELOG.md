@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - Unreleased
+### Fixed
+- Typing in a text box while a video is open (the Send to Discord note, tags, chat) no longer controls the player: Space, K, J, L, the arrow keys, comma and period now type as normal instead of pausing or seeking.
+
 ## [1.9.9] - Unreleased
 ### Added
 - **Missed pulls are sent automatically** from your saved combat logs. With "Send my pull logs" on, the app checks finished combat log files from the last week (2 minutes after start, then every 30 minutes, never during a pull), asks the server which pulls it still needs, and sends only those, with the boss % from your recordings. Each file is checked once (again only if it grows). If several raiders' apps have the same night, only one sends each pull. Nights the app wasn't running for now fill in on their own the next time it is.
