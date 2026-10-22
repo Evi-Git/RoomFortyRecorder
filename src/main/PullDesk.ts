@@ -55,7 +55,24 @@ export type PullDeskRequest =
   | { action: 'setChannel'; encounterId: number; channelId: string }
   | { action: 'nights' }
   | { action: 'night'; night: string }
-  | { action: 'progression'; encounterId: number; difficultyId?: number };
+  | { action: 'progression'; encounterId: number; difficultyId?: number }
+  | { action: 'coachConfig' }
+  | {
+      action: 'setPersonalChannels';
+      mapping: { discordId: string; name: string; channelId: string }[];
+    }
+  | {
+      action: 'sendClip';
+      videoName: string;
+      channelId: string;
+      note: string;
+      at?: number;
+      title: string;
+    }
+  | { action: 'flags'; days?: number }
+  | { action: 'addFlag'; streamer: string; at: number; note?: string }
+  | { action: 'editFlag'; id: string; note: string }
+  | { action: 'deleteFlag'; id: string };
 
 export type PullDeskResponse =
   | { ok: true; data: unknown }
@@ -286,6 +303,44 @@ export default class PullDesk {
           }`,
           undefined,
           { timeout: 120000 },
+        );
+      case 'coachConfig':
+        return client.pullDeskRequest('get', '/coach/config');
+      case 'setPersonalChannels':
+        return client.pullDeskRequest('put', '/coach/mapping', {
+          mapping: request.mapping,
+        });
+      case 'sendClip':
+        return client.pullDeskRequest('post', '/coach/send', {
+          videoName: request.videoName,
+          channelId: request.channelId,
+          note: request.note,
+          at: request.at,
+          title: request.title,
+        });
+      case 'flags':
+        return client.pullDeskRequest(
+          'get',
+          `/coach/flags?days=${request.days ?? 7}`,
+        );
+      case 'addFlag':
+        return client.pullDeskRequest('post', '/coach/flags', {
+          streamer: request.streamer,
+          at: request.at,
+          note: request.note ?? '',
+        });
+      case 'editFlag':
+        return client.pullDeskRequest(
+          'patch',
+          `/coach/flags/${id(request.id)}`,
+          {
+            note: request.note,
+          },
+        );
+      case 'deleteFlag':
+        return client.pullDeskRequest(
+          'delete',
+          `/coach/flags/${id(request.id)}`,
         );
       default:
         throw new Error('Unknown pull desk request');

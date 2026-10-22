@@ -52,6 +52,7 @@ import {
   CloudUpload,
   FolderOpen,
   Link,
+  Send,
   Pencil,
   RotateCw,
 } from 'lucide-react';
@@ -60,6 +61,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import Separator from './components/Separator/Separator';
 import { toast } from './components/Toast/useToast';
+import { SendClipDialog } from './Coaching';
 import { Phrase } from 'localisation/phrases';
 import { VideoCategory } from 'types/VideoCategory';
 import { SpellTimeline as SpellTimelineData } from 'main/types';
@@ -163,6 +165,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   // slider, which is usally the same as the video except for
   // when the user is dragging.
   const [progress, setProgress] = useState<number>(0);
+  const [sendOpen, setSendOpen] = useState(false);
 
   // While the user is dragging the thumb of the slider, we don't
   // want to update the video position. This is used to conditionally
@@ -1234,6 +1237,54 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   /**
+   * [RoomFortyRecorder] Send this video to a Discord channel (coaching).
+   */
+  const renderSendToDiscordButton = () => {
+    let tooltip = 'Send to a Discord channel';
+    if (storageFilter === StorageFilter.DISK) {
+      tooltip = getLocalePhrase(language, Phrase.DisabledDueToFilter);
+    } else if (!cloudVideo) {
+      tooltip = 'Upload to the guild cloud first to send it to Discord';
+    }
+    const video = videos[0];
+    const title = [
+      video?.encounterName || video?.zoneName || video?.category,
+      video?.player?._name,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    return (
+      <>
+        <Tooltip content={tooltip}>
+          <div>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={(event) => {
+                event.stopPropagation();
+                setSendOpen(true);
+              }}
+              disabled={storageFilter === StorageFilter.DISK || !cloudVideo}
+            >
+              <Send size={18} color="white" />
+            </Button>
+          </div>
+        </Tooltip>
+        {cloudVideo && (
+          <SendClipDialog
+            open={sendOpen}
+            onOpenChange={setSendOpen}
+            videoName={cloudVideo.videoName}
+            title={title}
+            currentTime={progress}
+          />
+        )}
+      </>
+    );
+  };
+
+  /**
    * Returns the playback rate button for the video controls.
    */
   const renderClipButton = () => {
@@ -1412,6 +1463,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           !clipMode &&
           !instantReplay &&
           renderGetLinkButton()}
+        {!multiPlayerMode &&
+          !clipMode &&
+          !instantReplay &&
+          renderSendToDiscordButton()}
         <Separator className="mx-2" orientation="vertical" />
         {instantReplay && (
           <>

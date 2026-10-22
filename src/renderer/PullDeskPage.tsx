@@ -18,6 +18,7 @@ import { getCategoryIndex } from './rendererutils';
 import { getConfigValue, setConfigValue } from './useSettings';
 import { BRAND } from 'renderer/brand';
 import { NightSummaryView, ProgressionView } from './PullDeskSummary';
+import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -299,7 +300,13 @@ const ROLE_STYLE: Record<string, string> = {
 };
 
 /** Boss HP over the pull, with a red tick for each death. */
-const HpCurve = ({ report }: { report: Report }) => {
+const HpCurve = ({
+  report,
+  flagTimes = [],
+}: {
+  report: Report;
+  flagTimes?: number[];
+}) => {
   const width = 600;
   const height = 70;
   const duration = Math.max(report.duration, 1);
@@ -332,6 +339,18 @@ const HpCurve = ({ report }: { report: Report }) => {
         strokeWidth={2}
         vectorEffect="non-scaling-stroke"
       />
+      {flagTimes.map((t) => (
+        <line
+          key={`flag-${t}`}
+          x1={x(t)}
+          x2={x(t)}
+          y1={0}
+          y2={8}
+          stroke={BRAND}
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
       {report.deaths.map((death) => (
         <line
           key={`${death.name}-${death.t}`}
@@ -369,6 +388,10 @@ const PullDeskPage = (props: IProps) => {
   // Expanded per-player rows in the plan and avoidable sections.
   const [openRows, setOpenRows] = React.useState<string[]>([]);
   const [view, setView] = React.useState<View>(loadView);
+  // Flags from Watch live (last 30 days) and whether you're an officer.
+  const [flags, setFlags] = React.useState<Flag[]>([]);
+  const [officer, setOfficer] = React.useState(false);
+  const [channelsOpen, setChannelsOpen] = React.useState(false);
 
   const changeView = (next: View) => {
     setView(next);
@@ -467,9 +490,11 @@ const PullDeskPage = (props: IProps) => {
   };
 
   /** This raider's recording of the selected pull, if we have it. */
-  const findVideo = (name: string) => {
+  const findVideo = (name?: string) => {
     if (!report || !report.startedAt) return undefined;
-    const guid = report.roster.find((player) => player.name === name)?.guid;
+    const guid = name
+      ? report.roster.find((player) => player.name === name)?.guid
+      : undefined;
 
     const candidates = videoState.filter(
       (video) =>
@@ -478,7 +503,8 @@ const PullDeskPage = (props: IProps) => {
         video.difficultyID === report.difficultyId &&
         typeof video.start === 'number' &&
         Math.abs(video.start - (report.startedAt as number)) < VIDEO_MATCH_MS &&
-        (guid ? video.player?._GUID === guid : video.player?._name === name),
+        (!name ||
+          (guid ? video.player?._GUID === guid : video.player?._name === name)),
     );
 
     // Prefer a local copy (instant), then the closest start time.
@@ -489,6 +515,45 @@ const PullDeskPage = (props: IProps) => {
           Math.abs((b.start as number) - (report.startedAt as number)),
     );
     return candidates[0];
+  };
+
+  React.useEffect(() => {
+    let cancelled = false;
+    coachCall<{ flags: Flag[] }>({ action: 'flags', days: 30 }).then(
+      (response) => {
+        if (!cancelled && response.ok) setFlags(response.data.flags);
+      },
+    );
+    coachCall<{ officer: boolean }>({ action: 'coachConfig' }).then(
+      (response) => {
+        if (!cancelled && response.ok) setOfficer(response.data.officer);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [listTick]);
+
+  /** Flags raised on Watch live during this pull, as seconds into it. */
+  const pullFlags = (r: Report) => {
+    if (!r.startedAt) return [];
+    const start = r.startedAt;
+    return flags
+      .filter(
+        (f) =>
+          f.at >= start - 5000 && f.at <= start + r.duration * 1000 + 10000,
+      )
+      .map((f) => ({ ...f, t: Math.max(0, (f.at - start) / 1000) }))
+      .sort((a, b) => a.t - b.t);
+  };
+
+  // The streamer's own recording if their Discord name matches a raider,
+  // otherwise anyone's recording of the pull.
+  const flagVideo = (streamer: string) => {
+    const match = report?.roster.find(
+      (p) => p.name.toLowerCase() === streamer.toLowerCase(),
+    );
+    return (match && findVideo(match.name)) || findVideo();
   };
 
   const watch = (video: RendererVideo, seconds: number) => {
@@ -518,6 +583,26 @@ const PullDeskPage = (props: IProps) => {
           video
             ? `Open ${name}'s recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
             : `No recording from ${name} for this pull`
+        }
+        onClick={() => video && watch(video, seconds)}
+        className="gap-x-1 h-6 px-2"
+      >
+        <Play size={12} /> Watch
+      </Button>
+    );
+  };
+
+  const renderFlagWatch = (streamer: string, seconds: number) => {
+    const video = flagVideo(streamer);
+    return (
+      <Button
+        size="xs"
+        variant="ghost"
+        disabled={!video}
+        title={
+          video
+            ? `Open ${video.player?._name ?? 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
+            : 'No recording of this pull'
         }
         onClick={() => video && watch(video, seconds)}
         className="gap-x-1 h-6 px-2"
@@ -1363,8 +1448,29 @@ const PullDeskPage = (props: IProps) => {
           </div>
           {r.wipe?.text && <p className="mt-1 text-sm">{r.wipe.text}</p>}
           <div className="mt-2 text-foreground/80">
-            <HpCurve report={r} />
+            <HpCurve report={r} flagTimes={pullFlags(r).map((f) => f.t)} />
           </div>
+          {pullFlags(r).length > 0 && (
+            <div className="mt-2 flex flex-col gap-y-1">
+              {pullFlags(r).map((f) => {
+                return (
+                  <div key={f.id} className="flex items-center gap-x-2 text-sm">
+                    <span className="text-brand font-semibold tabular-nums">
+                      ⚑ {mmss(f.t)}
+                    </span>
+                    <span className="text-foreground-lighter">
+                      {f.note || 'Flagged'}
+                    </span>
+                    <span className="text-xs text-foreground/60">
+                      {f.by}
+                      {f.streamer ? ` watching ${f.streamer}` : ''}
+                    </span>
+                    {renderFlagWatch(f.streamer, f.t)}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div>
@@ -1468,8 +1574,23 @@ const PullDeskPage = (props: IProps) => {
           </>
         )}
         {error && <span className="text-sm text-red-400">{error}</span>}
+        {officer && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => setChannelsOpen(true)}
+            title="Which raider owns which Discord channel, for sending clips"
+          >
+            Personal channels
+          </Button>
+        )}
+        <PersonalChannelsDialog
+          open={channelsOpen}
+          onOpenChange={setChannelsOpen}
+        />
         <label
-          className="ml-auto flex items-center gap-x-2 text-sm"
+          className={`${officer ? '' : 'ml-auto '}flex items-center gap-x-2 text-sm`}
           title="When on, your app may upload your combat log for a pull. Only one raider's upload is used per pull."
         >
           Send my pull logs
