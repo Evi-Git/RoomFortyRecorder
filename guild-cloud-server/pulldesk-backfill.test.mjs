@@ -33,10 +33,10 @@ const setup = async () => {
     wcl: { configured: false },
   });
   await desk.ready();
-  const call = async (method, rest, body, query = '') => {
+  const call = async (method, rest, body, query = '', who = '1') => {
     const res = {};
     const req = body instanceof Buffer ? Object.assign(Readable.from([body]), { method }) : { method, body };
-    Object.assign(req, { cloudUserId: '1', cloudUserName: 'Evi' });
+    Object.assign(req, { cloudUserId: who, cloudUserName: who === '1' ? 'Evi' : `Raider${who}` });
     await desk.handle(req, res, rest, new URL(`http://x/${query}`));
     return res;
   };
@@ -74,4 +74,27 @@ test('backfill skips untracked difficulties and rejects bad input', async () => 
   const { call } = await setup();
   assert.equal((await call('POST', ['backfill'], { encounterId: 1, difficultyId: 15, startedAt: Date.now() - 1e6, duration: 10 })).body.skip, true);
   assert.equal((await call('POST', ['backfill'], { encounterId: 1, difficultyId: 16, startedAt: Date.now() + 3600e3, duration: 10 })).status, 400);
+});
+
+test('automatic backfill: check finds only missing pulls; one raider at a time', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pulls = [
+    { encounterId, difficultyId, startedAt: at },
+    { encounterId, difficultyId, startedAt: at + 600000 },
+    { encounterId, difficultyId: 15, startedAt: at + 900000 }, // not tracked
+  ];
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls })).body.missing, [0, 1]);
+
+  // Raider 2's app takes pull 0; raider 3's app is told to leave it.
+  const taken = await call('POST', ['backfill'], { ...pulls[0], encounterName, duration: 172 }, '', '2');
+  assert.equal(taken.body.upload, true);
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls }, '', '3')).body.missing, [1]);
+  const busy = await call('POST', ['backfill'], { ...pulls[0], encounterName, duration: 172 }, '', '3');
+  assert.equal(busy.body.upload, false);
+  assert.equal(busy.body.busy, true);
+
+  // Once the log lands, nobody needs it.
+  await call('PUT', ['pulls', taken.body.pullId, 'log'], zlib.gzipSync(slice), '', '2');
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls }, '', '2')).body.missing, [1]);
 });

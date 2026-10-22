@@ -39,6 +39,10 @@ const STALE_CLAIM_MS = 10 * 60 * 1000;
 // An imported pull within this of an existing one is the same pull.
 const IMPORT_MATCH_MS = 60 * 1000;
 const MAX_IMPORT_REPORTS = 10;
+// Several raiders' apps may backfill the same night: the first gets the
+// pull for this long, the rest skip it (and retry later if it never lands).
+const BACKFILL_LOCK_MS = 5 * 60 * 1000;
+const MAX_BACKFILL_CHECK = 500;
 const MAX_NOTE_CHARS = 100 * 1024;
 
 const DIFFICULTY_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr' };
@@ -269,6 +273,10 @@ export const createPullDesk = (options) => {
         Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
     );
     if (pull?.hasLog) return json(res, 200, { pullId: pull.id, upload: false });
+    const who = String(req.cloudUserId || req.cloudUserName);
+    if (pull && pull.backfillBy && pull.backfillBy !== who && Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) {
+      return json(res, 200, { pullId: pull.id, upload: false, busy: true });
+    }
 
     if (!pull) {
       pull = {
@@ -295,8 +303,39 @@ export const createPullDesk = (options) => {
     } else if (pull.appBossPercent == null && bossPercent !== null && !body.result) {
       pull.appBossPercent = bossPercent;
     }
+    pull.backfillBy = who;
+    pull.backfillAt = Date.now();
     await persist();
     return json(res, 200, { pullId: pull.id, upload: true });
+  };
+
+  // Which of these pulls (from a raider's saved log) does the server still
+  // need a log for? Lets the app's automatic backfill upload only those.
+  const backfillCheck = async (req, res) => {
+    const body = await readBody(req, 256 * 1024);
+    const pulls = Array.isArray(body?.pulls) ? body.pulls.slice(0, MAX_BACKFILL_CHECK) : [];
+    const who = String(req.cloudUserId || req.cloudUserName);
+    const now = Date.now();
+    const missing = [];
+    pulls.forEach((item, i) => {
+      const encounterId = Number(item?.encounterId);
+      const difficultyId = Number(item?.difficultyId);
+      const startedAt = Number(item?.startedAt);
+      if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId]) || !Number.isFinite(startedAt)) return;
+      const pull = index.pulls.find(
+        (p) =>
+          p.encounterId === encounterId &&
+          p.difficultyId === difficultyId &&
+          Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
+      );
+      if (pull?.hasLog) return;
+      // Another raider's app is sending it right now.
+      if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
+      // A live pull still in its claim window: the live upload will come.
+      if (pull && pull.status === 'claimed' && now - pull.createdAt < STALE_CLAIM_MS) return;
+      missing.push(i);
+    });
+    return json(res, 200, { missing });
   };
 
   const importReports = async (codes) => {
@@ -766,7 +805,8 @@ export const createPullDesk = (options) => {
 
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
 
-    if (first === 'backfill' && req.method === 'POST') return backfill(req, res);
+    if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
+    if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
 
     if (first === 'import' && req.method === 'POST') {
       if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');

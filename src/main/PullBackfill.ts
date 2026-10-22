@@ -11,11 +11,15 @@ import { leadingFields } from 'parsing/PullLogFilter';
 import CloudClient from 'storage/CloudClient';
 
 /**
- * [RoomFortyRecorder] Pull desk "Upload from combat log": send pulls from a
- * saved combat log file (a night nobody had "Send my pull logs" on). The
- * same filter as the live capture, the same reports on the server; each pull
- * is placed by its real start time. Pulls the server already has a log for
- * are skipped.
+ * [RoomFortyRecorder] Pull desk backfill: send pulls from saved combat log
+ * files that the live capture didn't (the app was closed, signed out, or
+ * nobody had "Send my pull logs" on). The same filter as the live capture,
+ * the same reports on the server; each pull is placed by its real start time.
+ *
+ * - Automatic: every so often, finished log files from the last week are
+ *   checked against the server, and only the pulls it still needs a log for
+ *   are sent. Each file is checked once (again only if it grows).
+ * - Manual: "Upload from combat log" in the Pull desk, for any file.
  */
 
 const gzip = promisify(zlib.gzip);
@@ -24,6 +28,14 @@ const RAID_DIFFICULTIES = new Set([14, 15, 16, 17]);
 const TEST_BUTTON_ENCOUNTER = 9999;
 // A recording and a pull in the log agree on the start within this.
 const HINT_MATCH_MS = 2 * 60 * 1000;
+// Automatic backfill: files written to in this window...
+const AUTO_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// ...and untouched for this long (the live capture handles the open one).
+const AUTO_QUIET_MS = 20 * 60 * 1000;
+// A pull in the file and one the server knows are the same within this.
+const SAME_PULL_MS = 2000;
+
+type Done = Record<string, string>; // file name -> "size:mtime" checked
 
 export type LogFile = { name: string; size: number; modified: number };
 
@@ -47,6 +59,7 @@ export type BossPercentHint = {
 
 export type BackfillStatus = {
   running: boolean;
+  auto: boolean;
   file: string;
   found: number;
   uploaded: number;
@@ -66,6 +79,7 @@ const lines = (file: string) =>
 export default class PullBackfill {
   public status: BackfillStatus = {
     running: false,
+    auto: false,
     file: '',
     found: 0,
     uploaded: 0,
@@ -76,7 +90,15 @@ export default class PullBackfill {
     finishedAt: null,
   };
 
-  constructor(private logDir: () => string) {}
+  /** The last automatic check, for the Pull desk to show. */
+  public lastAuto: { at: number; uploaded: number; files: number } | null =
+    null;
+
+  constructor(
+    private logDir: () => string,
+    private storageDir: () => string = () => '',
+    private statePath = '',
+  ) {}
 
   /** Combat log files in the retail Logs folder, newest first. */
   public async listLogs(): Promise<LogFile[]> {
@@ -141,10 +163,17 @@ export default class PullBackfill {
 
   /** Upload the chosen bosses' pulls from a log, in the background. */
   public start(name: string, keys: string[], hints: BossPercentHint[]) {
-    if (this.status.running) throw new Error('An upload is already running');
+    if (this.status.running) {
+      throw new Error(
+        this.status.auto
+          ? 'The app is already sending missing pulls automatically; try again in a few minutes.'
+          : 'An upload is already running',
+      );
+    }
     const file = this.resolve(name);
     this.status = {
       running: true,
+      auto: false,
       file: path.basename(file),
       found: 0,
       uploaded: 0,
@@ -154,7 +183,12 @@ export default class PullBackfill {
       error: '',
       finishedAt: null,
     };
-    this.run(file, new Set(keys), hints)
+    const wanted = new Set(keys);
+    this.run(
+      file,
+      (pull) => wanted.has(`${pull.encounterId}:${pull.difficultyId}`),
+      hints,
+    )
       .catch((error) => {
         this.status.error = String(error?.message || error);
       })
@@ -164,7 +198,12 @@ export default class PullBackfill {
       });
   }
 
-  private async run(file: string, keys: Set<string>, hints: BossPercentHint[]) {
+  private async run(
+    file: string,
+    want: (pull: CapturedPull) => boolean,
+    hints: BossPercentHint[],
+    shouldStop: () => boolean = () => false,
+  ) {
     const client = CloudClient.getInstance();
     if (!client.pullDeskReady()) {
       throw new Error('Sign in with Discord in Cloud settings first.');
@@ -172,11 +211,13 @@ export default class PullBackfill {
 
     const queue: CapturedPull[] = [];
     const capture = new PullLogCapture((pull) => {
-      if (keys.has(`${pull.encounterId}:${pull.difficultyId}`))
-        queue.push(pull);
+      if (want(pull)) queue.push(pull);
     });
 
+    let count = 0;
     for await (const line of lines(file)) {
+      count += 1;
+      if (count % 50000 === 0 && shouldStop()) throw new Error('Paused');
       capture.onLine(line);
       while (queue.length) {
         // One pull at a time, so memory stays at one pull's log.
@@ -237,6 +278,179 @@ export default class PullBackfill {
     } catch (error) {
       console.warn('[PullBackfill] Pull failed', String(error));
       this.status.failed += 1;
+    }
+  }
+
+  // ---- Automatic ------------------------------------------------------------
+
+  private async readDone(): Promise<Done> {
+    if (!this.statePath) return {};
+    try {
+      return JSON.parse(await fs.promises.readFile(this.statePath, 'utf8'));
+    } catch {
+      return {};
+    }
+  }
+
+  private async writeDone(done: Done) {
+    if (!this.statePath) return;
+    await fs.promises.writeFile(this.statePath, JSON.stringify(done));
+  }
+
+  /** Raid pull starts in a file (ENCOUNTER_START lines only). */
+  private async pullStarts(file: string, shouldStop: () => boolean) {
+    const starts: {
+      encounterId: number;
+      difficultyId: number;
+      startedAt: number;
+    }[] = [];
+    let count = 0;
+    for await (const line of lines(file)) {
+      count += 1;
+      if (count % 50000 === 0 && shouldStop()) throw new Error('Paused');
+      if (!line.includes('  ENCOUNTER_START,')) continue;
+      const [, id, , difficulty] = leadingFields(line, 4);
+      const difficultyId = Number(difficulty);
+      if (!RAID_DIFFICULTIES.has(difficultyId)) continue;
+      if (Number(id) === TEST_BUTTON_ENCOUNTER) continue;
+      starts.push({
+        encounterId: Number(id),
+        difficultyId,
+        startedAt: logLineEpochMs(line),
+      });
+    }
+    return starts;
+  }
+
+  /** Boss % from the recordings' metadata files near these times. */
+  private async recordingHints(from: number, to: number) {
+    const dir = this.storageDir();
+    if (!dir) return [];
+    const hints: BossPercentHint[] = [];
+    try {
+      const names = (await fs.promises.readdir(dir)).filter((n) =>
+        n.endsWith('.json'),
+      );
+      for (const name of names) {
+        const full = path.join(dir, name);
+        const stat = await fs.promises.stat(full);
+        if (stat.mtimeMs < from - 86400000 || stat.mtimeMs > to + 86400000) {
+          continue;
+        }
+        try {
+          const meta = JSON.parse(await fs.promises.readFile(full, 'utf8'));
+          if (
+            typeof meta.encounterID === 'number' &&
+            typeof meta.start === 'number' &&
+            typeof meta.bossPercent === 'number'
+          ) {
+            hints.push({
+              encounterId: meta.encounterID,
+              difficultyId: Number(meta.difficultyID),
+              start: meta.start,
+              bossPercent: meta.bossPercent,
+            });
+          }
+        } catch {
+          // Not a recording's metadata.
+        }
+      }
+    } catch {
+      // No recordings folder: the server works the boss % out from the log.
+    }
+    return hints;
+  }
+
+  /**
+   * Check finished log files from the last week and send the pulls the
+   * server still needs. `shouldStop` pauses it (a raid pull started).
+   */
+  public async auto(shouldStop: () => boolean) {
+    if (this.status.running) return;
+    const client = CloudClient.getInstance();
+    if (!client.pullDeskReady()) return;
+
+    const now = Date.now();
+    const files = (await this.listLogs()).filter(
+      (f) =>
+        now - f.modified < AUTO_MAX_AGE_MS && now - f.modified > AUTO_QUIET_MS,
+    );
+    const done = await this.readDone();
+    const todo = files.filter(
+      (f) => done[f.name] !== `${f.size}:${Math.round(f.modified)}`,
+    );
+    if (!todo.length) return;
+
+    this.status = {
+      running: true,
+      auto: true,
+      file: '',
+      found: 0,
+      uploaded: 0,
+      alreadyThere: 0,
+      skipped: 0,
+      failed: 0,
+      error: '',
+      finishedAt: null,
+    };
+    try {
+      for (const f of todo) {
+        if (shouldStop()) break;
+        this.status.file = f.name;
+        const file = this.resolve(f.name);
+        const starts = await this.pullStarts(file, shouldStop);
+        let complete = true;
+        if (starts.length) {
+          const check = await client.pullDeskRequest<{ missing: number[] }>(
+            'post',
+            '/backfill/check',
+            { pulls: starts },
+          );
+          const missing = check.missing.map((i) => starts[i]);
+          if (missing.length) {
+            console.info(
+              `[PullBackfill] ${f.name}: sending ${missing.length} pulls the server doesn't have`,
+            );
+            const hints = await this.recordingHints(
+              missing[0].startedAt,
+              missing[missing.length - 1].startedAt,
+            );
+            const failedBefore = this.status.failed;
+            await this.run(
+              file,
+              (pull) =>
+                missing.some(
+                  (m) =>
+                    m.encounterId === pull.encounterId &&
+                    m.difficultyId === pull.difficultyId &&
+                    Math.abs(m.startedAt - pull.startedAt) < SAME_PULL_MS,
+                ),
+              hints,
+              shouldStop,
+            );
+            complete = this.status.failed === failedBefore;
+          }
+        }
+        // Checked; look again only if the file changes (or a pull failed).
+        if (complete) {
+          done[f.name] = `${f.size}:${Math.round(f.modified)}`;
+          await this.writeDone(done);
+        }
+      }
+    } catch (error) {
+      const message = String((error as Error)?.message || error);
+      if (message !== 'Paused') {
+        this.status.error = message;
+        console.warn('[PullBackfill] Automatic backfill failed', message);
+      }
+    } finally {
+      this.status.running = false;
+      this.status.finishedAt = Date.now();
+      this.lastAuto = {
+        at: Date.now(),
+        uploaded: this.status.uploaded,
+        files: todo.length,
+      };
     }
   }
 }

@@ -1775,6 +1775,8 @@ type LogBoss = {
 };
 type BackfillStatus = {
   running: boolean;
+  auto?: boolean;
+  lastAuto?: { at: number; uploaded: number; files: number } | null;
   file: string;
   found: number;
   uploaded: number;
@@ -1840,6 +1842,15 @@ export const UploadFromLog = ({
   React.useEffect(() => {
     if (!open) return undefined;
     let cancelled = false;
+    call<BackfillStatus>({ action: 'backfillStatus' }).then((response) => {
+      if (
+        !cancelled &&
+        response.ok &&
+        (response.data.running || response.data.lastAuto)
+      ) {
+        setStatus(response.data);
+      }
+    });
     call<LogFile[]>({ action: 'logFiles' }).then((response) => {
       if (cancelled) return;
       if (!response.ok) {
@@ -1921,12 +1932,24 @@ export const UploadFromLog = ({
         </Button>
       </div>
       <p className="text-xs text-foreground">
-        For a night the app didn&apos;t send live. Pick the combat log from that
-        night (WoW writes one per session to your Logs folder), scan it, and
-        upload. Each pull gets the full report, placed at its real time; pulls
-        the server already has are skipped. Boss % comes from your recordings
-        where there is one.
+        The app does this by itself: with &quot;Send my pull logs&quot; on, it
+        checks your finished combat logs from the last week every half hour and
+        sends any pulls the server doesn&apos;t have. Use this to send a
+        specific file now: pick it, scan, and upload. Each pull gets the full
+        report at its real time; pulls the server already has are skipped. Boss
+        % comes from your recordings where there is one.
       </p>
+      {status?.lastAuto && !status.running && (
+        <p className="text-xs text-foreground">
+          Last automatic check{' '}
+          {new Date(status.lastAuto.at).toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
+          : {status.lastAuto.uploaded}{' '}
+          {status.lastAuto.uploaded === 1 ? 'pull' : 'pulls'} sent.
+        </p>
+      )}
 
       {files && !files.length && (
         <p className="text-sm text-foreground">
@@ -2029,7 +2052,11 @@ export const UploadFromLog = ({
 
       {status && (
         <p className="text-sm">
-          {status.running ? 'Uploading: ' : 'Done: '}
+          {status.running
+            ? status.auto
+              ? 'Sending missing pulls automatically: '
+              : 'Uploading: '
+            : 'Done: '}
           <span className="text-foreground-lighter">
             {status.uploaded} uploaded
           </span>

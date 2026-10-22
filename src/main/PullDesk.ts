@@ -1,4 +1,6 @@
+import path from 'path';
 import zlib from 'zlib';
+import { app } from 'electron';
 import { promisify } from 'util';
 import axios from 'axios';
 import ConfigService from 'config/ConfigService';
@@ -39,6 +41,10 @@ type ClaimResponse = {
 // If the raider chosen to upload hasn't after this long, the server hands
 // the pull to the next best log.
 const STANDBY_CHECK_MS = 70 * 1000;
+
+// Automatic backfill from saved combat logs.
+const AUTO_BACKFILL_FIRST_MS = 2 * 60 * 1000;
+const AUTO_BACKFILL_EVERY_MS = 30 * 60 * 1000;
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
@@ -110,9 +116,12 @@ export default class PullDesk {
     () => this.cfg.get<boolean>('pullDeskUpload'),
   );
 
-  // Upload from a saved combat log file.
-  private backfill = new PullBackfill(() =>
-    this.cfg.get<string>('retailLogPath'),
+  // Pulls from saved combat log files: automatic, and the manual
+  // "Upload from combat log".
+  private backfill = new PullBackfill(
+    () => this.cfg.get<string>('retailLogPath'),
+    () => this.cfg.get<string>('storagePath'),
+    path.join(app.getPath('userData'), 'pull-backfill.json'),
   );
 
   // Boss % from the recorder's encounter logic, by encounter ID.
@@ -121,6 +130,25 @@ export default class PullDesk {
   static getInstance() {
     if (!PullDesk.instance) PullDesk.instance = new PullDesk();
     return PullDesk.instance;
+  }
+
+  constructor() {
+    // Automatic backfill: shortly after start, then every half hour. Only
+    // with "Send my pull logs" on, and never during a pull.
+    const tick = () => {
+      if (this.cfg.get<boolean>('pullDeskUpload') === false) return;
+      if (this.capture.capturing) return;
+      this.backfill
+        .auto(() => this.capture.capturing)
+        .then(() => {
+          if (this.backfill.lastAuto?.uploaded) send('pullDeskUpdated');
+        })
+        .catch((error) =>
+          console.warn('[PullDesk] Automatic backfill failed', String(error)),
+        );
+    };
+    setTimeout(tick, AUTO_BACKFILL_FIRST_MS);
+    setInterval(tick, AUTO_BACKFILL_EVERY_MS);
   }
 
   /** Raw combat log line from the retail log watcher. */
@@ -342,7 +370,7 @@ export default class PullDesk {
         this.backfill.start(request.file, request.bosses, request.hints);
         return this.backfill.status;
       case 'backfillStatus':
-        return this.backfill.status;
+        return { ...this.backfill.status, lastAuto: this.backfill.lastAuto };
       case 'importWcl':
         return client.pullDeskRequest(
           'post',
