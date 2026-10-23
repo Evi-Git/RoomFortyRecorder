@@ -108,3 +108,35 @@ test('MRT note names are matched against the roster', () => {
   );
   assert.equal(parsed.unmatched, 1);
 });
+
+test('avoidable by name catches every spell ID an ability hits as', () => {
+  // Wrong ID, right name: still counted (Venom Roar casts as one ID, hits as two).
+  const byName = analyzePull(slice(), { avoidable: [{ id: 1, name: 'Voidlight Convergence' }] });
+  const byId = analyzePull(slice(), { avoidable: [1241932] });
+  const total = (r) => r.avoidable.reduce((n, row) => n + row.hits, 0);
+  assert.ok(total(byId) > 0);
+  // By name also catches the other IDs it hits as.
+  assert.ok(total(byName) >= total(byId));
+  const ids = new Set(byName.avoidable.flatMap((r) => r.spells.map((s) => s.spellId)));
+  assert.ok(ids.has(1241932));
+  // Every enemy spell that hit the raid is listed with its ID and totals.
+  const vc = byId.damageTaken.find((d) => d.spellId === 1241932);
+  assert.equal(vc.spellName, 'Voidlight Convergence');
+  assert.ok(vc.hits >= total(byId));
+});
+
+test('combat potions by name are counted per raider, not as defensives', () => {
+  const text = slice();
+  // Pretend one raider cast a combat potion.
+  const line = text.split('\n').find((l) => l.includes('  SPELL_CAST_SUCCESS,Player-'));
+  const fields = line.split(',');
+  fields[10] = '"Light\'s Potential"';
+  const withPotion = text.replace(line, fields.join(','));
+  const report = analyzePull(withPotion, { combatPotions: ["Light's Potential"] });
+  const user = report.defensives.players.find((p) => p.combatPotions > 0);
+  assert.ok(user, 'someone has a combat potion');
+  assert.equal(user.combatPotions, 1);
+  assert.ok(user.uses.some((u) => u.kind === 'combatPotion' && u.ability === "Light's Potential"));
+  // Not listed as something that was "ready" at a death.
+  report.deaths.forEach((d) => (d.available || []).forEach((a) => assert.notEqual(a.kind, 'combatPotion')));
+});

@@ -130,7 +130,9 @@ export const createPullDesk = (options) => {
   // Only overridden by tests.
   const discordApi = env.GUILD_CLOUD_PULLDESK_DISCORD_API || 'https://discord.com/api/v10';
 
-  let index = { pulls: [], bosses: {} };
+  // Guild-wide analysis settings (editable by the owner in the admin view).
+  const DEFAULT_SETTINGS = { combatPotions: ["Light's Potential"] };
+  let index = { pulls: [], bosses: {}, settings: { ...DEFAULT_SETTINGS } };
   let saveQueue = Promise.resolve();
   let loaded = null;
 
@@ -142,6 +144,7 @@ export const createPullDesk = (options) => {
       index = {
         pulls: Array.isArray(parsed.pulls) ? parsed.pulls : [],
         bosses: parsed.bosses && typeof parsed.bosses === 'object' ? parsed.bosses : {},
+        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}) },
       };
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -435,7 +438,8 @@ export const createPullDesk = (options) => {
     const settings = bossSettings(pull.encounterId);
     const report = analyzePull(text, {
       note: settings.note,
-      avoidable: settings.avoidable.map((spell) => spell.id),
+      avoidable: settings.avoidable,
+      combatPotions: index.settings.combatPotions,
     });
 
     // The app knows encounter-specific progress (phases, rebirths) that a
@@ -498,6 +502,29 @@ export const createPullDesk = (options) => {
       }
     }
     await persist();
+    return pulls.length;
+  };
+
+  // After an avoidable or potion change: recheck the older pulls too (those
+  // with a log still kept), one at a time in the background.
+  let backgroundQueue = Promise.resolve();
+  const reanalyzeOlder = (filter) => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const pulls = index.pulls.filter(
+      (pull) =>
+        pull.status === 'ready' && pull.hasLog && pull.source !== 'wcl' && pull.createdAt < cutoff && filter(pull),
+    );
+    backgroundQueue = backgroundQueue.then(async () => {
+      for (const pull of pulls) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await runAnalysis(pull);
+        } catch {
+          // Its log may have been cleaned up; the old report stays.
+        }
+      }
+      if (pulls.length) await persist();
+    });
     return pulls.length;
   };
 
@@ -782,7 +809,8 @@ export const createPullDesk = (options) => {
       .map((spell) => ({ id: spell.id, name: spell.name || known.get(spell.id) || null }));
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
-    return json(res, 200, { reanalyzed, avoidable: settings.avoidable });
+    const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
+    return json(res, 200, { reanalyzed, older, avoidable: settings.avoidable });
   };
 
   // One ability on or off a boss's avoidable list (the Journal view and
@@ -798,7 +826,8 @@ export const createPullDesk = (options) => {
       : without;
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
-    return json(res, 200, { reanalyzed, avoidable: settings.avoidable });
+    const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
+    return json(res, 200, { reanalyzed, older, avoidable: settings.avoidable });
   };
 
   const setJournalId = async (req, res, encounterId) => {
@@ -944,6 +973,33 @@ export const createPullDesk = (options) => {
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
 
     if (first === 'journal') return handleJournal(req, res, rest, url);
+
+    if (first === 'settings' && req.method === 'GET') {
+      return json(res, 200, index.settings);
+    }
+    if (first === 'settings' && req.method === 'PUT') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const body = await readBody(req, 16 * 1024);
+      if (body.combatPotions !== undefined) {
+        if (!Array.isArray(body.combatPotions) || body.combatPotions.length > 50) {
+          return fail(res, 400, 'Expected a list of up to 50 potion names');
+        }
+        index.settings.combatPotions = [
+          ...new Set(body.combatPotions.map((n) => String(n).trim().slice(0, 80)).filter(Boolean)),
+        ];
+      }
+      await persist();
+      // Recount potions in every report whose log is still kept.
+      const day = Date.now() - 24 * 60 * 60 * 1000;
+      const recent = index.pulls.filter(
+        (p) => p.status === 'ready' && p.hasLog && p.source !== 'wcl' && p.createdAt >= day,
+      );
+      recent.forEach((p) => {
+        backgroundQueue = backgroundQueue.then(() => runAnalysis(p).catch(() => {}));
+      });
+      const older = reanalyzeOlder(() => true);
+      return json(res, 200, { settings: index.settings, rechecking: recent.length + older });
+    }
 
     if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
     if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);

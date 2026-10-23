@@ -103,3 +103,30 @@ test('spell IDs for ability names, and per-ability stats for the journal', () =>
   const rupture = stats.find((s) => s.name === 'Venom Rupture');
   assert.deepEqual([rupture.wipes, rupture.deaths, rupture.spellId], [1, 0, 777]);
 });
+
+test('avoidable section: per ability (all its spell IDs), raiders, deaths', () => {
+  const withAvoid = (night, n, avoidable, deaths = []) => {
+    const p = pull(night, n, 'wipe', 50, deaths);
+    p.report.avoidable = avoidable;
+    return p;
+  };
+  const pulls = [
+    withAvoid('2026-10-21', 1, [
+      { name: 'Mage', hits: 3, damage: 300, spells: [{ spellId: 1302914, spellName: 'Venom Roar', hits: 2, damage: 200 }, { spellId: 1302917, spellName: 'Venom Roar', hits: 1, damage: 100 }] },
+      { name: 'Evi', hits: 1, damage: 50, spells: [{ spellId: 1302914, spellName: 'Venom Roar', hits: 1, damage: 50 }] },
+    ], [['Mage', 'Venom Roar'], ['Tank', 'Crush']]),
+    withAvoid('2026-10-21', 2, [{ name: 'Mage', hits: 1, damage: 100, spells: [{ spellId: 1302914, spellName: 'Venom Roar', hits: 1, damage: 100 }] }]),
+  ];
+  const [boss] = summarizeNight(pulls);
+  const roar = boss.avoidable.find((a) => a.name === 'Venom Roar');
+  assert.deepEqual(roar.spellIds.sort(), [1302914, 1302917]);
+  assert.equal(roar.hits, 5);
+  assert.equal(roar.damage, 450);
+  assert.equal(roar.pulls, 2);
+  assert.equal(roar.raidersHit, 2);
+  assert.equal(roar.deaths, 1);
+  assert.deepEqual(roar.raiders[0], { name: 'Mage', hits: 4, damage: 400, deaths: 1 });
+  // Crush isn't avoidable: not in the section.
+  assert.equal(boss.avoidable.length, 1);
+  assert.equal(summarizeProgression(pulls).avoidable[0].hits, 5);
+});

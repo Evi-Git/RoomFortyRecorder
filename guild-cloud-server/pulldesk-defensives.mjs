@@ -178,7 +178,8 @@ const hasBaseline = (entry, specId) => {
 export const availabilityAt = (player, uses, atTime, warlockInRaid) => {
   const candidates = new Map();
   const add = (entry) => {
-    if (entry.kind === 'raid') return;
+    // Raid cooldowns are about the raid; combat potions don't save a life.
+    if (entry.kind === 'raid' || entry.kind === 'combatPotion') return;
     candidates.set(entry.name, entry);
   };
 

@@ -4,7 +4,7 @@ import { Check, Copy, Plus } from 'lucide-react';
 
 /**
  * [RoomFortyRecorder] Boss ability hover card: hover (or focus) an ability
- * name anywhere in the Pull desk to see its journal text, spell ID, what it
+ * name anywhere in Analysis to see its journal text, spell ID, what it
  * did to the raid, and add it to the boss's avoidable list.
  *
  * Text and icons come from Blizzard's Encounter Journal via the guild server
@@ -30,6 +30,8 @@ export type AbilityCardData = {
     wipes: number;
     deaths: number;
     earlyDeaths: number;
+    spellIds?: number[];
+    hits?: number;
   } | null;
   avoidable: boolean;
   error: string;
@@ -313,6 +315,15 @@ const AbilityName = (props: Props) => {
                   early deaths
                 </span>
               </div>
+              {(data.stats.spellIds ?? []).some((id) => id !== spellId) && (
+                <span className="col-span-3 text-[11px] text-foreground">
+                  Hits as{' '}
+                  {(data.stats.spellIds ?? [])
+                    .filter((id) => id !== spellId)
+                    .slice(0, 6)
+                    .join(', ')}
+                </span>
+              )}
               <span className="col-span-3 text-[11px] text-foreground/70">
                 All your pulls on this boss
                 {difficultyId
