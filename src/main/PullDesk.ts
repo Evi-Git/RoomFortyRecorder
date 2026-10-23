@@ -64,7 +64,13 @@ export type PullDeskRequest =
   | { action: 'setChannel'; encounterId: number; channelId: string }
   | { action: 'nights' }
   | { action: 'night'; night: string }
-  | { action: 'progression'; encounterId: number; difficultyId?: number }
+  | {
+      action: 'progression';
+      encounterId: number;
+      difficultyId?: number;
+      phase?: 'progression' | 'reclear';
+    }
+  | { action: 'setKilledBefore'; encounterId: number; on: boolean }
   | { action: 'importWcl'; reports: string[] }
   | { action: 'journalBoss'; encounterId: number; difficultyId?: number }
   | {
@@ -417,9 +423,9 @@ export default class PullDesk {
       case 'progression':
         return client.pullDeskRequest(
           'get',
-          `/summary/boss/${id(request.encounterId)}${
-            request.difficultyId ? `?difficulty=${request.difficultyId}` : ''
-          }`,
+          `/summary/boss/${id(request.encounterId)}?phase=${
+            request.phase ?? 'progression'
+          }${request.difficultyId ? `&difficulty=${request.difficultyId}` : ''}`,
           undefined,
           { timeout: 120000 },
         );
@@ -525,6 +531,12 @@ export default class PullDesk {
         return client.pullDeskRequest(
           'delete',
           `/coach/flags/${id(request.id)}`,
+        );
+      case 'setKilledBefore':
+        return client.pullDeskRequest(
+          'put',
+          `/bosses/${id(request.encounterId)}/killed-before`,
+          { on: request.on },
         );
       case 'permissionsMe':
         return client.pullDeskRequest('get', '/me', undefined, {

@@ -925,6 +925,8 @@ export const NightSummaryView = ({
   const [nights, setNights] = React.useState<NightIndex[] | null>(null);
   const [night, setNight] = React.useState<string>('');
   const [bosses, setBosses] = React.useState<BossNight[] | null>(null);
+  // Which boss's widgets to show; empty = the one pulled most that night.
+  const [bossChoice, setBossChoice] = React.useState('');
   const [error, setError] = React.useState('');
   // The night the shown bosses belong to; differs while a new one loads.
   const [loadedNight, setLoadedNight] = React.useState('');
@@ -983,6 +985,16 @@ export const NightSummaryView = ({
   const totalPulls = current?.bosses.reduce((s, b) => s + b.pulls, 0) ?? 0;
   const totalKills = current?.bosses.reduce((s, b) => s + b.kills, 0) ?? 0;
 
+  // The chosen boss if it was pulled this night, else the most-pulled one.
+  const shown =
+    bosses?.find(
+      (b) => bossKey(b.encounterId, b.difficultyId) === bossChoice,
+    ) ??
+    (bosses?.length
+      ? [...bosses].sort((a, b) => b.pulls - a.pulls)[0]
+      : undefined);
+  const shownKey = shown ? bossKey(shown.encounterId, shown.difficultyId) : '';
+
   return (
     <div className="flex flex-col gap-y-4">
       <div className="flex items-center gap-x-3 flex-wrap">
@@ -1001,9 +1013,30 @@ export const NightSummaryView = ({
             ))}
           </select>
         </label>
+        {bosses && bosses.length > 0 && (
+          <label className="flex items-center gap-x-2 text-sm">
+            Boss
+            <select
+              className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+              value={shownKey}
+              onChange={(e) => setBossChoice(e.target.value)}
+            >
+              {bosses.map((b) => (
+                <option
+                  key={bossKey(b.encounterId, b.difficultyId)}
+                  value={bossKey(b.encounterId, b.difficultyId)}
+                >
+                  {b.encounterName} ({difficultyName(b.difficultyId)}) ·{' '}
+                  {b.pulls} {b.pulls === 1 ? 'pull' : 'pulls'}
+                  {b.kills ? ' · killed' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <span className="text-sm text-foreground">
-          {totalPulls} {totalPulls === 1 ? 'pull' : 'pulls'} · {totalKills}{' '}
-          {totalKills === 1 ? 'kill' : 'kills'}
+          Night: {totalPulls} {totalPulls === 1 ? 'pull' : 'pulls'} ·{' '}
+          {totalKills} {totalKills === 1 ? 'kill' : 'kills'}
         </span>
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
@@ -1013,14 +1046,14 @@ export const NightSummaryView = ({
           loading ? 'opacity-50' : ''
         }`}
       >
-        {bosses?.map((boss) => (
+        {shown && (
           <BossNightCard
-            key={bossKey(boss.encounterId, boss.difficultyId)}
-            boss={boss}
+            key={shownKey}
+            boss={shown}
             onOpenPull={onOpenPull}
             canEdit={canEdit}
           />
-        ))}
+        )}
         {!bosses && <p className="text-sm text-foreground">Loading…</p>}
       </div>
     </div>
@@ -1587,13 +1620,31 @@ const loadBossChoice = () => {
   }
 };
 
+type PhaseInfo = {
+  phase: 'progression' | 'reclear';
+  counts: { progression: number; reclear: number };
+  killedBefore: boolean;
+  empty?: boolean;
+};
+
+/**
+ * Progression (every pull up to and including the first kill, in all
+ * recorded history) or Reclears (every pull after it), for one boss.
+ */
 export const ProgressionView = ({
   onOpenPull,
   canEdit = false,
+  phase = 'progression',
+  onShowReclears,
 }: {
   onOpenPull: (id: string) => void;
   canEdit?: boolean;
+  phase?: 'progression' | 'reclear';
+  onShowReclears?: () => void;
 }) => {
+  const reclear = phase === 'reclear';
+  const [phaseInfo, setPhaseInfo] = React.useState<PhaseInfo | null>(null);
+  const [phaseTick, setPhaseTick] = React.useState(0);
   const [options, setOptions] = React.useState<BossOption[] | null>(null);
   const [choice, setChoice] = React.useState<string>(loadBossChoice);
   const [data, setData] = React.useState<Progression | null>(null);
@@ -1663,10 +1714,11 @@ export const ProgressionView = ({
     }
     const [encounterId, difficultyId] = choice.split(':').map(Number);
     let cancelled = false;
-    call<Progression>({
+    call<Progression & PhaseInfo>({
       action: 'progression',
       encounterId,
       difficultyId,
+      phase,
     }).then((response) => {
       if (cancelled) return;
       setLoadedChoice(choice);
@@ -1675,12 +1727,20 @@ export const ProgressionView = ({
         return;
       }
       setError('');
-      setData(response.data);
+      setPhaseInfo(response.data);
+      setData(response.data.empty ? null : response.data);
     });
     return () => {
       cancelled = true;
     };
-  }, [choice]);
+  }, [choice, phase, phaseTick]);
+
+  const setKilledBefore = async (on: boolean) => {
+    const [encounterId] = choice.split(':').map(Number);
+    const response = await call({ action: 'setKilledBefore', encounterId, on });
+    if (!response.ok) setError(response.error);
+    else setPhaseTick((t) => t + 1);
+  };
 
   if (error && !options) return <p className="text-sm text-red-400">{error}</p>;
   if (!options)
@@ -1735,8 +1795,56 @@ export const ProgressionView = ({
             ))}
           </select>
         </label>
+        {phaseInfo && !loading && (
+          <span className="text-sm text-foreground">
+            {reclear
+              ? `${phaseInfo.counts.reclear} reclear pulls`
+              : `${phaseInfo.counts.progression} progression pulls`}
+            {onShowReclears &&
+              (reclear
+                ? phaseInfo.counts.progression > 0
+                : phaseInfo.counts.reclear > 0) && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2 hover:text-foreground-lighter"
+                    onClick={onShowReclears}
+                  >
+                    {reclear
+                      ? `${phaseInfo.counts.progression} progression pulls`
+                      : `${phaseInfo.counts.reclear} reclear pulls after the first kill`}
+                  </button>
+                </>
+              )}
+          </span>
+        )}
+        {canEdit && phaseInfo && !loading && (
+          <label
+            className="ml-auto flex items-center gap-x-2 text-xs text-foreground cursor-pointer"
+            title="For bosses you killed before Bellhop recorded them: every pull counts as a reclear."
+          >
+            <input
+              type="checkbox"
+              checked={phaseInfo.killedBefore}
+              onChange={(e) => setKilledBefore(e.target.checked)}
+              className="w-3.5 h-3.5 accent-[hsl(var(--brand))]"
+            />
+            Killed before we tracked it
+          </label>
+        )}
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
+
+      {!data && phaseInfo?.empty && !loading && (
+        <p className="text-sm text-foreground max-w-[720px]">
+          {reclear
+            ? 'No reclears yet: every pull on this boss so far is progression (up to and including the first kill).'
+            : phaseInfo.killedBefore
+              ? 'Marked as killed before we tracked it, so all its pulls are under Reclears. Import the progression nights from Warcraft Logs (Pulls → Import from Warcraft Logs) and untick the box to see them here.'
+              : 'No progression pulls for this boss.'}
+        </p>
+      )}
 
       {data && (
         <AbilityScope
@@ -1753,14 +1861,21 @@ export const ProgressionView = ({
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               <Stat label="Pulls" value={data.pulls} />
               <Stat label="Nights" value={data.nights.length} />
-              <Stat
-                label={data.firstKill ? 'First kill' : 'Best wipe'}
-                value={
-                  data.firstKill
-                    ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
-                    : pct(Number.isFinite(bestWipe) ? bestWipe : null)
-                }
-              />
+              {reclear ? (
+                <Stat
+                  label="Nights with a kill"
+                  value={`${data.nights.filter((n) => n.kills > 0).length} of ${data.nights.length}`}
+                />
+              ) : (
+                <Stat
+                  label={data.firstKill ? 'First kill' : 'Best wipe'}
+                  value={
+                    data.firstKill
+                      ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
+                      : pct(Number.isFinite(bestWipe) ? bestWipe : null)
+                  }
+                />
+              )}
               <Stat label="Kills" value={data.kills} />
               <Stat
                 label="Time in combat"
@@ -1775,7 +1890,7 @@ export const ProgressionView = ({
               title="Boss health by pull"
               aside={
                 <>
-                  {watchedGuilds.length > 0 && !asTable && (
+                  {watchedGuilds.length > 0 && !asTable && !reclear && (
                     <select
                       className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
                       value={compareKey}
@@ -1871,35 +1986,37 @@ export const ProgressionView = ({
               )}
             </Panel>
 
-            <Panel title="Top guilds">
-              {watcher ? (
-                <div className="flex flex-col gap-y-4">
-                  {watchedGuilds.length > 0 && (
-                    <WatcherTable
+            {!reclear && (
+              <Panel title="Top guilds">
+                {watcher ? (
+                  <div className="flex flex-col gap-y-4">
+                    {watchedGuilds.length > 0 && (
+                      <WatcherTable
+                        state={watcher}
+                        encounterId={data.encounterId}
+                        encounterName={data.encounterName}
+                        home={{
+                          pulls: data.pulls,
+                          nights: data.nights.length,
+                          kill: data.firstKill?.pull ?? null,
+                          best:
+                            bestWipe !== null && Number.isFinite(bestWipe)
+                              ? bestWipe
+                              : null,
+                        }}
+                      />
+                    )}
+                    <WatcherSettings
+                      key={JSON.stringify(watcher.settings)}
                       state={watcher}
-                      encounterId={data.encounterId}
-                      encounterName={data.encounterName}
-                      home={{
-                        pulls: data.pulls,
-                        nights: data.nights.length,
-                        kill: data.firstKill?.pull ?? null,
-                        best:
-                          bestWipe !== null && Number.isFinite(bestWipe)
-                            ? bestWipe
-                            : null,
-                      }}
+                      onChange={() => setWatcherTick((t) => t + 1)}
                     />
-                  )}
-                  <WatcherSettings
-                    key={JSON.stringify(watcher.settings)}
-                    state={watcher}
-                    onChange={() => setWatcherTick((t) => t + 1)}
-                  />
-                </div>
-              ) : (
-                <p className="text-sm text-foreground">Loading…</p>
-              )}
-            </Panel>
+                  </div>
+                ) : (
+                  <p className="text-sm text-foreground">Loading…</p>
+                )}
+              </Panel>
+            )}
 
             <Panel title="Night by night">
               <div className="overflow-x-auto">

@@ -130,3 +130,15 @@ test('avoidable section: per ability (all its spell IDs), raiders, deaths', () =
   assert.equal(boss.avoidable.length, 1);
   assert.equal(summarizeProgression(pulls).avoidable[0].hits, 5);
 });
+
+test('progression ends at the first kill per difficulty; the rest are reclears', async () => {
+  const { splitAtFirstKill } = await import('./pulldesk.mjs');
+  const p = (id, startedAt, result, difficultyId = 16) => ({ id, startedAt, result, difficultyId });
+  const pulls = [p('c', 3, 'kill'), p('a', 1, 'wipe'), p('b', 2, 'wipe'), p('d', 4, 'wipe'), p('e', 5, 'kill'), p('h1', 2, 'wipe', 15), p('h2', 6, 'wipe', 15)];
+  const split = splitAtFirstKill(pulls, false);
+  assert.deepEqual(split.progression.map((x) => x.id), ['a', 'b', 'h1', 'c', 'h2']);
+  assert.deepEqual(split.reclear.map((x) => x.id), ['d', 'e']);
+  const before = splitAtFirstKill(pulls, true);
+  assert.equal(before.progression.length, 0);
+  assert.equal(before.reclear.length, 7);
+});

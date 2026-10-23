@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.22] - Unreleased
+### Changed
+- **Night summary:** one boss at a time. A Boss dropdown next to Night picks which boss's widgets to show (it starts on the boss pulled most that night).
+- **Progression** now holds only the pulls up to and including the first kill on that difficulty, across all recorded history (Warcraft Logs imports included). Everything after is in the new **Reclears** tab, which has the same widgets apart from the top-guild comparison.
+- For a boss killed before Bellhop tracked it (Ula'tek), editors can tick **Killed before we tracked it** so all its pulls count as reclears. Importing the old progression nights from Warcraft Logs and leaving it unticked shows them under Progression instead.
+- Consumables & buffs: the Pre-pot column and the Gems column and strip are removed. The log lists gems but not empty sockets, so gems can't be judged reliably. A pre-pot still counts toward combat potions.
+
 ## [1.9.21] - Unreleased
 ### Added
 - **Consumables & buffs** in Analysis, read from each raider's gear and buffs at the pull (advanced combat logging):

@@ -298,7 +298,7 @@ const loadSection = (): Section => {
   return 'deaths';
 };
 
-type View = 'pulls' | 'night' | 'progression' | 'journal';
+type View = 'pulls' | 'night' | 'progression' | 'reclears' | 'journal';
 
 const loadView = (): View => {
   try {
@@ -307,6 +307,7 @@ const loadView = (): View => {
       saved === 'pulls' ||
       saved === 'night' ||
       saved === 'progression' ||
+      saved === 'reclears' ||
       saved === 'journal'
     ) {
       return saved;
@@ -1648,6 +1649,7 @@ const PullDeskPage = (props: IProps) => {
               ['pulls', 'Pulls'],
               ['night', 'Night summary'],
               ['progression', 'Progression'],
+              ['reclears', 'Reclears'],
               ['journal', 'Journal'],
             ] as [View, string][]
           ).map(([key, label]) => (
@@ -1741,9 +1743,20 @@ const PullDeskPage = (props: IProps) => {
           )}
           {view === 'progression' && (
             <ProgressionView
-              key={importTick}
+              key={`p${importTick}`}
+              phase="progression"
               onOpenPull={openPull}
               canEdit={canEdit}
+              onShowReclears={() => changeView('reclears')}
+            />
+          )}
+          {view === 'reclears' && (
+            <ProgressionView
+              key={`r${importTick}`}
+              phase="reclear"
+              onOpenPull={openPull}
+              canEdit={canEdit}
+              onShowReclears={() => changeView('progression')}
             />
           )}
           {view === 'journal' && <JournalView canEdit={canEdit} />}

@@ -85,6 +85,28 @@ const readRawBody = async (req, maxBytes) => {
 };
 
 /**
+ * Progression = every pull up to and including the first kill on each
+ * difficulty (in all recorded history, Warcraft Logs imports included);
+ * reclears = everything after. `killedBefore` (a boss setting) makes it
+ * all reclears.
+ */
+export const splitAtFirstKill = (pulls, killedBefore) => {
+  const ordered = [...pulls].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  if (killedBefore) return { progression: [], reclear: ordered };
+  const firstKill = new Map();
+  ordered.forEach((pull) => {
+    if (pull.result === 'kill' && !firstKill.has(pull.difficultyId)) firstKill.set(pull.difficultyId, pull.startedAt || 0);
+  });
+  const progression = [];
+  const reclear = [];
+  ordered.forEach((pull) => {
+    const kill = firstKill.get(pull.difficultyId);
+    (kill === undefined || (pull.startedAt || 0) <= kill ? progression : reclear).push(pull);
+  });
+  return { progression, reclear };
+};
+
+/**
  * @param {object} options
  * @param {string} options.storage        the guild cloud storage directory
  * @param {Function} options.readBody     server.mjs JSON body reader
@@ -1183,14 +1205,23 @@ export const createPullDesk = (options) => {
       if (second === 'boss' && /^\d+$/.test(third || '')) {
         const encounterId = Number(third);
         const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
+        const phase = url?.searchParams.get('phase') === 'reclear' ? 'reclear' : 'progression';
         const pulls = counted.filter(
           (pull) => pull.encounterId === encounterId && (!difficultyId || pull.difficultyId === difficultyId),
         );
         if (!pulls.length) return fail(res, 404, 'No pulls on that boss yet');
-        const data = await cached(`boss:${encounterId}:${difficultyId}`, async () =>
-          summarizeProgression(await withReports(pulls)),
+        const split = splitAtFirstKill(pulls, bossSettings(encounterId).killedBefore);
+        const chosen = split[phase];
+        const meta = {
+          phase,
+          counts: { progression: split.progression.length, reclear: split.reclear.length },
+          killedBefore: Boolean(bossSettings(encounterId).killedBefore),
+        };
+        if (!chosen.length) return json(res, 200, { ...meta, empty: true, encounterId, difficultyId });
+        const data = await cached(`boss:${encounterId}:${difficultyId}:${phase}:${meta.killedBefore}`, async () =>
+          summarizeProgression(await withReports(chosen)),
         );
-        return json(res, 200, data);
+        return json(res, 200, { ...data, ...meta });
       }
       return fail(res, 404, 'Unknown summary');
     }
@@ -1206,6 +1237,7 @@ export const createPullDesk = (options) => {
           noteUpdatedAt: settings.noteUpdatedAt || null,
           noteUpdatedBy: settings.noteUpdatedBy || null,
           avoidable: settings.avoidable,
+          killedBefore: Boolean(settings.killedBefore),
           channelId: settings.channelId || '',
           effectiveChannelId: channelFor(encounterId) || '',
         });
@@ -1218,6 +1250,13 @@ export const createPullDesk = (options) => {
         if (third === 'channel') return setChannel(req, res, encounterId);
         if (third === 'avoidable-toggle') return toggleAvoidable(req, res, encounterId);
         if (third === 'journal') return setJournalId(req, res, encounterId);
+        if (third === 'killed-before') {
+          // "We killed it before Bellhop tracked it": every pull is a reclear.
+          const body = await readBody(req, 1024);
+          bossSettings(encounterId).killedBefore = Boolean(body?.on);
+          await persist();
+          return json(res, 200, { killedBefore: bossSettings(encounterId).killedBefore });
+        }
       }
     }
 

@@ -63,7 +63,7 @@ from the reports it already has, so they need nothing extra from raiders.
   - *Avoidable damage*: each avoidable ability with damage taken, hits,
     raiders hit, pulls and deaths; click a row for its raiders. Progression
     has the same panel across all nights.
-- **Progression**: pick a boss. Boss health at the end of every pull, the
+- **Progression** (pulls up to and including the first kill per difficulty, all recorded history) and **Reclears** (everything after; or every pull, for a boss ticked as killed before we tracked it): pick a boss. Boss health at the end of every pull, the
   best so far, where each night starts and the first kill. Hover for the
   pull, click to open it, or switch to the table. Below: totals per night,
   wipe causes per night (a cause that fades out is a solved mechanic) and
