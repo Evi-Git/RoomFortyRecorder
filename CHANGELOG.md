@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.24] - Unreleased
+### Changed
+- **Progression and Reclears boss list:** every Mythic boss, plus only the lower-difficulty bosses you choose (starting with Coiled Altar and Ula'tek on Heroic). Editors change the list with **Choose bosses** next to the Boss dropdown.
+- **Import a whole tier** is now owner-only, both on the page and on the server (and not while viewing as a role). Pasting single reports works as before.
+
 ## [1.9.23] - Unreleased
 ### Added
 - **Import a whole tier from Warcraft Logs** (Analysis → Import from Warcraft Logs): enter the guild, realm and region once and press **Find our reports**. The server lists every report the guild posted, grouped by raid, with raids from the last 60 days ticked, and imports them in the background with a progress bar. Pulls already here are skipped, so it's safe to run again.

@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
 import { Ability, AbilityScope } from './AbilityCard';
 import ConsumablesPanel, { PrepSummary } from './Consumables';
+import { usePermissions } from './usePermissions';
 import { Button } from './components/Button/Button';
 import {
   guildKey,
@@ -159,6 +160,8 @@ const DIFFICULTY: Record<number, string> = {
 };
 
 const difficultyName = (id: number) => DIFFICULTY[id] ?? `Difficulty ${id}`;
+// Mythic and flex Mythic (Kith'ix).
+const isMythic = (id: number) => id === 16 || id === 233;
 
 const mmss = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
@@ -1643,6 +1646,10 @@ export const ProgressionView = ({
   onShowReclears?: () => void;
 }) => {
   const reclear = phase === 'reclear';
+  // Non-Mythic bosses to list (Mythic always shows); null = not chosen yet.
+  const [shownList, setShownList] = React.useState<string[] | null>(null);
+  const [allOptions, setAllOptions] = React.useState<BossOption[] | null>(null);
+  const [editingList, setEditingList] = React.useState(false);
   const [phaseInfo, setPhaseInfo] = React.useState<PhaseInfo | null>(null);
   const [phaseTick, setPhaseTick] = React.useState(0);
   const [options, setOptions] = React.useState<BossOption[] | null>(null);
@@ -1676,7 +1683,10 @@ export const ProgressionView = ({
 
   React.useEffect(() => {
     let cancelled = false;
-    call<{ nights: NightIndex[] }>({ action: 'nights' }).then((response) => {
+    Promise.all([
+      call<{ nights: NightIndex[] }>({ action: 'nights' }),
+      call<{ progressionShown: string[] | null }>({ action: 'config' }),
+    ]).then(([response, config]) => {
       if (cancelled) return;
       if (!response.ok) {
         setError(response.error);
@@ -1690,7 +1700,25 @@ export const ProgressionView = ({
           if (!seen.has(key)) seen.set(key, { ...b, lastNight: n.night });
         }),
       );
-      const list = [...seen.values()];
+      const everything = [...seen.values()];
+      const saved = config.ok ? config.data.progressionShown : null;
+      // Until someone picks, Coiled Altar and Ula'tek below Mythic.
+      const shown =
+        saved ??
+        everything
+          .filter(
+            (b) =>
+              !isMythic(b.difficultyId) &&
+              /coiled altar|ula.?tek/i.test(b.encounterName),
+          )
+          .map((b) => bossKey(b.encounterId, b.difficultyId));
+      setShownList(shown);
+      setAllOptions(everything);
+      const list = everything.filter(
+        (b) =>
+          isMythic(b.difficultyId) ||
+          shown.includes(bossKey(b.encounterId, b.difficultyId)),
+      );
       setOptions(list);
       setChoice((current) =>
         list.some((b) => bossKey(b.encounterId, b.difficultyId) === current)
@@ -1734,6 +1762,21 @@ export const ProgressionView = ({
       cancelled = true;
     };
   }, [choice, phase, phaseTick]);
+
+  const saveList = async (next: string[]) => {
+    setShownList(next);
+    if (allOptions) {
+      setOptions(
+        allOptions.filter(
+          (b) =>
+            isMythic(b.difficultyId) ||
+            next.includes(bossKey(b.encounterId, b.difficultyId)),
+        ),
+      );
+    }
+    const response = await call({ action: 'setProgressionList', shown: next });
+    if (!response.ok) setError(response.error);
+  };
 
   const setKilledBefore = async (on: boolean) => {
     const [encounterId] = choice.split(':').map(Number);
@@ -1795,6 +1838,15 @@ export const ProgressionView = ({
             ))}
           </select>
         </label>
+        {canEdit && allOptions && (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setEditingList((v) => !v)}
+          >
+            {editingList ? 'Done' : 'Choose bosses'}
+          </Button>
+        )}
         {phaseInfo && !loading && (
           <span className="text-sm text-foreground">
             {reclear
@@ -1835,6 +1887,40 @@ export const ProgressionView = ({
         )}
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
+
+      {editingList && allOptions && shownList && (
+        <div className="rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-1.5 max-w-[560px]">
+          <p className="text-xs text-foreground m-0">
+            Every Mythic boss is always listed. Tick the lower-difficulty bosses
+            to list too.
+          </p>
+          {allOptions
+            .filter((b) => !isMythic(b.difficultyId))
+            .map((b) => {
+              const key = bossKey(b.encounterId, b.difficultyId);
+              return (
+                <label
+                  key={key}
+                  className="flex items-center gap-x-2 text-sm cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={shownList.includes(key)}
+                    onChange={() =>
+                      saveList(
+                        shownList.includes(key)
+                          ? shownList.filter((k) => k !== key)
+                          : [...shownList, key],
+                      )
+                    }
+                    className="w-4 h-4 accent-[hsl(var(--brand))]"
+                  />
+                  {b.encounterName} · {difficultyName(b.difficultyId)}
+                </label>
+              );
+            })}
+        </div>
+      )}
 
       {!data && phaseInfo?.empty && !loading && (
         <p className="text-sm text-foreground max-w-[720px]">
@@ -2380,6 +2466,8 @@ const TierImport = ({ onImported }: { onImported: () => void }) => {
 };
 
 export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
+  // The whole-tier import is the owner's (the server checks too).
+  const permissions = usePermissions();
   const [open, setOpen] = React.useState(false);
   const [text, setText] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -2483,7 +2571,9 @@ export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
           ))}
         </ul>
       )}
-      <TierImport onImported={onImported} />
+      {permissions?.owner && !permissions.viewAs && (
+        <TierImport onImported={onImported} />
+      )}
     </div>
   );
 };
