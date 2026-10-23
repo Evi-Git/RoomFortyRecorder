@@ -130,6 +130,13 @@ export default class CloudClient implements StorageClient {
   private authHeader?: string;
 
   /**
+   * [RoomFortyRecorder] The owner's "view as role" (Admin page): sent with
+   * every guild request so the server answers as that role. Not saved, so a
+   * restart always comes back as yourself.
+   */
+  public static viewAsRole: string | null = null;
+
+  /**
    * The cloud API endpoint. This is used for authentication, retrieval and
    * manipulation of video state from the video database, and various
    * bits of object-store interaction. It is configured at build time so a fork
@@ -754,12 +761,15 @@ export default class CloudClient implements StorageClient {
     method: 'get' | 'post' | 'put' | 'patch' | 'delete',
     path: string,
     data?: unknown,
-    options: { contentType?: string; timeout?: number } = {},
+    options: { contentType?: string; timeout?: number; area?: string } = {},
   ): Promise<T> {
     const guild = encodeURIComponent(this.guild);
-    const url = `${CloudClient.api}/guild/${guild}/pulldesk${path}`;
+    const area = options.area ?? 'pulldesk';
+    const url = `${CloudClient.api}/guild/${guild}/${area}${path}`;
     const headers: Record<string, string> = {};
     if (this.authHeader) headers.Authorization = this.authHeader;
+    if (CloudClient.viewAsRole)
+      headers['X-View-As-Role'] = CloudClient.viewAsRole;
     if (options.contentType) headers['Content-Type'] = options.contentType;
 
     const res = await axios.request({

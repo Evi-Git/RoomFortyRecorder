@@ -47,6 +47,7 @@ export const createCoach = ({
   createShareLink,
   publicUrl,
   env,
+  can = null,
 }) => {
   const file = path.join(storage, 'coach.json');
   // Preview frames for sent clips: <storage>/coach-thumbs/<link id>.jpg
@@ -91,7 +92,9 @@ export const createCoach = ({
     return saveQueue;
   };
 
-  const isOfficer = async (req) => {
+  // `capability` is the permissions.mjs key; without it, the .env roles.
+  const isOfficer = async (req, capability) => {
+    if (can) return can(req, capability);
     if (!officerRoles.length) return true;
     const names = await memberRoleNames(req.cloudUserId);
     return Boolean(names?.some((name) => officerRoles.includes(name)));
@@ -200,7 +203,8 @@ export const createCoach = ({
     const [first, second] = rest;
 
     if (first === 'config' && req.method === 'GET') {
-      const officer = await isOfficer(req);
+      const officer = await isOfficer(req, 'clipSendAny');
+      const mapper = await isOfficer(req, 'clipChannels');
       const mine = data.channels[req.cloudUserId]?.channelId || '';
       let channels = [];
       let channelError = '';
@@ -219,18 +223,19 @@ export const createCoach = ({
       }));
       return json(res, 200, {
         officer,
+        canMapChannels: mapper,
         me: { discordId: req.cloudUserId, name: req.cloudUserName },
         myChannel: mine,
         channels,
         channelError,
         // Personal channels are labelled with their raider in the dropdown.
-        personal: officer ? personal : personal.filter((p) => p.discordId === req.cloudUserId),
-        members: officer ? await guildMembers() : [],
+        personal: officer || mapper ? personal : personal.filter((p) => p.discordId === req.cloudUserId),
+        members: mapper ? await guildMembers() : [],
       });
     }
 
     if (first === 'mapping' && req.method === 'PUT') {
-      if (!(await isOfficer(req))) return fail(res, 403, 'Only officers can edit personal channels');
+      if (!(await isOfficer(req, 'clipChannels'))) return fail(res, 403, 'Your Discord role cannot edit personal channels');
       const body = await readBody(req, 256 * 1024);
       if (!Array.isArray(body?.mapping)) return fail(res, 400, 'Expected { mapping: [...] }');
       const next = {};
@@ -248,9 +253,12 @@ export const createCoach = ({
       const body = await readBody(req, 1024 * 1024);
       const channelId = String(body?.channelId || '');
       if (!isSnowflake(channelId)) return fail(res, 400, 'Pick a channel');
-      const officer = await isOfficer(req);
+      const officer = await isOfficer(req, 'clipSendAny');
       if (!officer && data.channels[req.cloudUserId]?.channelId !== channelId) {
         return fail(res, 403, 'You can only send clips to your own channel');
+      }
+      if (!officer && can && !(await can(req, 'clipSendOwn'))) {
+        return fail(res, 403, 'Your Discord role cannot send clips');
       }
       const link = await createShareLink(String(body?.videoName || ''));
       if (!link) return fail(res, 404, 'That video is not in the guild cloud. Upload it first.');
@@ -319,7 +327,7 @@ export const createCoach = ({
     if (first === 'flags' && second) {
       const flag = data.flags.find((f) => f.id === second);
       if (!flag) return fail(res, 404, 'Flag not found');
-      if (flag.byId !== req.cloudUserId && !(await isOfficer(req))) {
+      if (flag.byId !== req.cloudUserId && !(await isOfficer(req, 'flagsModerate'))) {
         return fail(res, 403, 'Only the person who flagged it or an officer can change it');
       }
       if (req.method === 'PATCH') {

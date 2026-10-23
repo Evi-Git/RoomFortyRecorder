@@ -41,7 +41,7 @@ export const parseCookies = (header = '') =>
  * @param {(discordId: string) => Promise<string[]|null>} options.memberRoleNames
  * @param {object} options.env
  */
-export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken, memberRoleNames, env }) => {
+export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken, memberRoleNames, env, canUser = null }) => {
   const roles = String(env.GUILD_CLOUD_RECRUIT_ROLES ?? 'Officer')
     .split(',')
     .map((r) => r.trim().toLowerCase())
@@ -69,6 +69,7 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
 
   const isRecruiter = async (session) => {
     if (!session) return false;
+    if (canUser) return canUser(session.discordId, 'recruit');
     if (roles.length === 0) return true;
     const names = await memberRoleNames(session.discordId);
     return Array.isArray(names) && names.some((n) => roles.includes(String(n).toLowerCase()));

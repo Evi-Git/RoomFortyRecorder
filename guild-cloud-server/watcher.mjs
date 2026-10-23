@@ -92,7 +92,7 @@ export const buildProgress = (reports, encounterNames) => {
   return bosses;
 };
 
-export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, env, fetchImpl }) => {
+export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, env, fetchImpl, can = null }) => {
   const dir = path.join(storage, 'watcher');
   const file = (name) => path.join(dir, name);
   const officerRoles = String(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer')
@@ -130,6 +130,7 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
   const getSettings = async () => ({ ...DEFAULT_WATCHER_SETTINGS, ...(await readJson(file('settings.json'), {})) });
 
   const isOfficer = async (req) => {
+    if (can) return can(req, 'watcherManage');
     if (!officerRoles.length) return true;
     const names = await memberRoleNames(req.cloudUserId);
     return Boolean(names?.some((name) => officerRoles.includes(name)));

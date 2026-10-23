@@ -121,7 +121,18 @@ export type PullDeskRequest =
   | { action: 'flags'; days?: number }
   | { action: 'addFlag'; streamer: string; at: number; note?: string }
   | { action: 'editFlag'; id: string; note: string }
-  | { action: 'deleteFlag'; id: string };
+  | { action: 'deleteFlag'; id: string }
+  | { action: 'permissionsMe' }
+  | { action: 'permissions' }
+  | {
+      action: 'setPermissions';
+      grants: Record<string, string[]>;
+      columns: string[];
+    }
+  | { action: 'resetPermissions' }
+  | { action: 'setViewAs'; role: string | null }
+  | { action: 'settings' }
+  | { action: 'setSettings'; combatPotions: string[] };
 
 export type PullDeskResponse =
   | { ok: true; data: unknown }
@@ -515,6 +526,38 @@ export default class PullDesk {
           'delete',
           `/coach/flags/${id(request.id)}`,
         );
+      case 'permissionsMe':
+        return client.pullDeskRequest('get', '/me', undefined, {
+          area: 'permissions',
+        });
+      case 'permissions':
+        return client.pullDeskRequest('get', '', undefined, {
+          area: 'permissions',
+        });
+      case 'setPermissions':
+        return client.pullDeskRequest(
+          'put',
+          '',
+          { grants: request.grants, columns: request.columns },
+          { area: 'permissions' },
+        );
+      case 'resetPermissions':
+        return client.pullDeskRequest('post', '/reset', undefined, {
+          area: 'permissions',
+        });
+      case 'setViewAs':
+        CloudClient.viewAsRole = request.role
+          ? request.role.trim().toLowerCase()
+          : null;
+        return client.pullDeskRequest('get', '/me', undefined, {
+          area: 'permissions',
+        });
+      case 'settings':
+        return client.pullDeskRequest('get', '/settings');
+      case 'setSettings':
+        return client.pullDeskRequest('put', '/settings', {
+          combatPotions: request.combatPotions,
+        });
       default:
         throw new Error('Unknown pull desk request');
     }
