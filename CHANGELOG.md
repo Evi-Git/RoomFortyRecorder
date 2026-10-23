@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.27] - Unreleased
+### Fixed
+- Combat potions now include Patch 12.1's **Liquid Luster** (its buff, Lustrous Gleam, counts as a pre-pot) and **Alluring Nostrum**. After `update-server.cmd`, pulls are recounted in the background: those the server still has logs for, and imported ones through Warcraft Logs.
+
 ## [1.9.26] - Unreleased
 ### Added
 - **Imported pulls** (from Warcraft Logs) now fill the **Avoidable damage** and **Consumables & buffs** widgets. For each imported pull the server fetches:

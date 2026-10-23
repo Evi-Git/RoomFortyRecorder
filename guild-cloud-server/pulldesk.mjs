@@ -27,10 +27,10 @@ import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
-const WCL_EXTRAS_VERSION = 1;
+const WCL_EXTRAS_VERSION = 2;
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
-const PREP_VERSION = 1;
+const PREP_VERSION = 2;
 const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
@@ -171,6 +171,10 @@ export const createPullDesk = (options) => {
     'Potion of Recklessness',
     'Potion of Zealotry',
     'Draught of Rampant Abandon',
+    // Patch 12.1. Liquid Luster's buff is called Lustrous Gleam (a pre-pot).
+    'Liquid Luster',
+    'Lustrous Gleam',
+    'Alluring Nostrum',
   ];
   const DEFAULT_SETTINGS = { combatPotions: COMBAT_POTIONS };
   let index = { pulls: [], bosses: {}, settings: { ...DEFAULT_SETTINGS } };
