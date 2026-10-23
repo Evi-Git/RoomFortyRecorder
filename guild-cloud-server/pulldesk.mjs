@@ -18,7 +18,7 @@ import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
+import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
 import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
@@ -343,7 +343,7 @@ export const createPullDesk = (options) => {
         p.difficultyId === difficultyId &&
         Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
     );
-    if (pull?.hasLog) return json(res, 200, { pullId: pull.id, upload: false });
+    if (pull?.hasLog && pull.appMeters) return json(res, 200, { pullId: pull.id, upload: false });
     const who = String(req.cloudUserId || req.cloudUserName);
     if (pull && pull.backfillBy && pull.backfillBy !== who && Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) {
       return json(res, 200, { pullId: pull.id, upload: false, busy: true });
@@ -399,7 +399,8 @@ export const createPullDesk = (options) => {
           p.difficultyId === difficultyId &&
           Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
       );
-      if (pull?.hasLog) return;
+      // Has a log and the app's meters: nothing to send.
+      if (pull?.hasLog && pull.appMeters) return;
       // Another raider's app is sending it right now.
       if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
       // A live pull still in its claim window: the live upload will come.
@@ -621,12 +622,15 @@ export const createPullDesk = (options) => {
     report.createdAt = pull.createdAt;
     report.uploadedBy = pull.uploadedBy;
     report.noteUpdatedAt = settings.noteUpdatedAt || null;
+    // Meters only come from the app (worked out from every line); a log
+    // without them keeps any meters it had.
     if (report.meters) {
       await fsp.mkdir(path.dirname(metersFile(pull.id)), { recursive: true });
       await fsp.writeFile(metersFile(pull.id), JSON.stringify(report.meters));
       delete report.meters;
-      report.hasMeters = true;
+      pull.appMeters = true;
     }
+    report.hasMeters = Boolean(pull.appMeters);
     await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
 
     Object.assign(pull, {
@@ -1005,7 +1009,7 @@ export const createPullDesk = (options) => {
   };
 
   const uploadLog = async (req, res, pull) => {
-    if (pull.hasLog) return json(res, 200, { status: pull.status });
+    if (pull.hasLog && pull.appMeters) return json(res, 200, { status: pull.status });
 
     const gz = await readRawBody(req, MAX_LOG_BYTES);
     // Validate before storing: it must gunzip and contain an encounter.
@@ -1016,6 +1020,8 @@ export const createPullDesk = (options) => {
       return fail(res, 400, 'Upload is not a gzipped log');
     }
     if (!text.includes('ENCOUNTER_START')) return fail(res, 400, 'Log has no ENCOUNTER_START');
+    // A pull that already has a log only takes a new one that brings meters.
+    if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`)) return json(res, 200, { status: pull.status });
 
     await fsp.writeFile(logFile(pull.id), gz);
     pull.hasLog = true;
@@ -1392,6 +1398,15 @@ export const createPullDesk = (options) => {
       }
 
       if (third === 'meters' && req.method === 'GET') {
+        if (!pull.appMeters) {
+          return fail(
+            res,
+            404,
+            pull.source === 'wcl'
+              ? "Imported from Warcraft Logs: meters need a raider's app log."
+              : 'No meters yet: they come from the app (1.9.30 or newer). Raiders with "Send my pull logs" on re-send last week\'s pulls automatically.',
+          );
+        }
         try {
           const body = await fsp.readFile(metersFile(pull.id));
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': body.length });
@@ -1520,7 +1535,7 @@ export const createPullDesk = (options) => {
         if (third === 'avoidable-toggle') return toggleAvoidable(req, res, encounterId);
         if (third === 'journal') return setJournalId(req, res, encounterId);
         if (third === 'killed-before') {
-          // "We killed it before Bellhop tracked it": every pull is a reclear.
+          // "We killed it before the app tracked it": every pull is a reclear.
           const body = await readBody(req, 1024);
           bossSettings(encounterId).killedBefore = Boolean(body?.on);
           await persist();

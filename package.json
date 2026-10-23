@@ -80,14 +80,14 @@
     ],
     "nsis": {
       "oneClick": true,
-      "shortcutName": "Bellhop",
-      "uninstallDisplayName": "Bellhop",
+      "shortcutName": "Room Forty Toolkit",
+      "uninstallDisplayName": "Room Forty Toolkit",
       "include": "installer.nsh",
       "deleteAppDataOnUninstall": true
     },
     "win": {
       "icon": "assets/icon.png",
-      "artifactName": "Bellhop-Setup${version}.exe",
+      "artifactName": "RoomFortyToolkit-Setup${version}.exe",
       "target": [
         "nsis"
       ]

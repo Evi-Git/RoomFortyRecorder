@@ -205,7 +205,7 @@ const setupTray = () => {
     },
   ]);
 
-  tray.setToolTip('Bellhop');
+  tray.setToolTip('Room Forty Toolkit');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {
@@ -231,7 +231,7 @@ const createWindow = async () => {
     width: 1980 * 0.8,
     icon: getAssetPath('./icon/small-icon.png'),
     frame: false,
-    title: `Bellhop v${appVersion}`,
+    title: `Room Forty Toolkit v${appVersion}`,
     webPreferences: {
       sandbox: true, // Good security practice.
       preload: app.isPackaged
@@ -277,7 +277,7 @@ const createWindow = async () => {
     }
 
     // This shows the correct version on a release build, not during development.
-    send('updateVersionDisplay', `Bellhop v${appVersion}`);
+    send('updateVersionDisplay', `Room Forty Toolkit v${appVersion}`);
 
     const startMinimized = cfg.get<boolean>('startMinimized');
     if (!startMinimized) window.show();

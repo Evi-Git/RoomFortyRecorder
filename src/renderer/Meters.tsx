@@ -4,9 +4,11 @@ import { getSpecClass, getWoWClassColor } from './rendererutils';
 import AbilityName from './AbilityCard';
 
 /**
- * [RoomFortyRecorder] Meters for one pull, from the app's own combat log
- * (guild-cloud-server/meters.mjs): damage done, healing and damage taken
- * per raider, an over-time chart, and a raider's ability breakdown.
+ * [RoomFortyRecorder] Logs: meters for raid pulls, worked out by the app
+ * from every combat log line (src/parsing/PullMeters.ts) and stored by the
+ * guild server. Damage done, healing, damage taken and damage prevented
+ * per raider, with ability breakdowns, any slice of the fight (drag on the
+ * chart), and several pulls side by side.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -14,37 +16,72 @@ type Response<T> = { ok: true; data: T } | { ok: false; error: string };
 const call = <T,>(request: Record<string, unknown>) =>
   ipc.invoke('pullDesk', [request]) as Promise<Response<T>>;
 
-type Ability = {
+// [bucket, amount, hits, crits, casts, overheal]
+type Bucket = [number, number, number, number, number, number];
+type RawAbility = {
   spellId: number;
   name: string;
   total: number;
   hits: number;
   crits: number;
-  casts?: number;
+  casts: number;
   overheal?: number;
+  b: Bucket[];
 };
-type Row = {
+type RawRow = {
   name: string;
   specId: number;
   total: number;
-  perSecond: number;
   overheal?: number;
   absorbs?: number;
-  abilities: Ability[];
-  series: number[];
+  abilities: RawAbility[];
 };
 export type MetersData = {
+  v: 2;
   bucketSeconds: number;
-  damage: Row[];
-  healing: Row[];
-  taken: Row[];
+  duration: number;
+  damage: RawRow[];
+  healing: RawRow[];
+  taken: RawRow[];
+  mitigation: RawRow[];
 };
-type Kind = 'damage' | 'healing' | 'taken';
+type Kind = 'damage' | 'healing' | 'taken' | 'mitigation';
 
-const KINDS: { key: Kind; label: string; rate: string }[] = [
-  { key: 'damage', label: 'Damage done', rate: 'DPS' },
-  { key: 'healing', label: 'Healing', rate: 'HPS' },
-  { key: 'taken', label: 'Damage taken', rate: 'DTPS' },
+// A row or ability added up over a slice of the fight.
+type SliceAbility = {
+  spellId: number;
+  name: string;
+  total: number;
+  hits: number;
+  crits: number;
+  casts: number;
+  overheal: number;
+};
+type SliceRow = {
+  name: string;
+  specId: number;
+  total: number;
+  overheal: number;
+  abilities: SliceAbility[];
+  series: number[];
+};
+type Range = { from: number; to: number } | null; // buckets, `to` exclusive
+
+const KINDS: { key: Kind; label: string; rate: string; help: string }[] = [
+  { key: 'damage', label: 'Damage done', rate: 'DPS', help: '' },
+  {
+    key: 'healing',
+    label: 'Healing',
+    rate: 'HPS',
+    help: 'Effective healing; shields count for whoever cast them.',
+  },
+  { key: 'taken', label: 'Damage taken', rate: 'DTPS', help: '' },
+  {
+    key: 'mitigation',
+    label: 'Damage prevented',
+    rate: 'PPS',
+    help: 'An estimate of damage kept off raiders by cooldowns cast on them (Pain Suppression, Ironbark, Blessing of Sacrifice, Power Word: Barrier, Time Dilation, Zephyr, Anti-Magic Zone, Spirit Link). Shields are in Healing.',
+  },
 ];
 
 const BRAND = 'hsl(var(--brand))';
@@ -65,20 +102,95 @@ const mmss = (s: number) =>
 const classColor = (specId: number) =>
   getWoWClassColor(getSpecClass(specId)) || 'hsl(var(--foreground-lighter))';
 
+const bucketsOf = (data: MetersData) =>
+  Math.max(1, Math.ceil(data.duration / data.bucketSeconds));
+
+/** Seconds the slice covers (the last bucket can be short). */
+const sliceSeconds = (data: MetersData, range: Range) => {
+  const n = bucketsOf(data);
+  const from = range?.from ?? 0;
+  const to = range?.to ?? n;
+  return Math.max(
+    1,
+    Math.min(data.duration, to * data.bucketSeconds) -
+      from * data.bucketSeconds,
+  );
+};
+
+/** Rows for one kind, added up over a slice (all of it when null). */
+const sliceRows = (data: MetersData, kind: Kind, range: Range): SliceRow[] => {
+  const n = bucketsOf(data);
+  const from = range?.from ?? 0;
+  const to = range?.to ?? n;
+  return (data[kind] ?? [])
+    .map((row) => {
+      const series = new Array(n).fill(0);
+      const abilities = row.abilities
+        .map((a) => {
+          const s: SliceAbility = {
+            spellId: a.spellId,
+            name: a.name,
+            total: 0,
+            hits: 0,
+            crits: 0,
+            casts: 0,
+            overheal: 0,
+          };
+          a.b.forEach(([bucket, amount, hits, crits, casts, overheal]) => {
+            if (bucket < n) series[bucket] += amount;
+            if (bucket < from || bucket >= to) return;
+            s.total += amount;
+            s.hits += hits;
+            s.crits += crits;
+            s.casts += casts;
+            s.overheal += overheal;
+          });
+          return s;
+        })
+        .filter((a) => a.total > 0 || a.casts > 0)
+        .sort((x, y) => y.total - x.total);
+      return {
+        name: row.name,
+        specId: row.specId,
+        total: abilities.reduce((t, a) => t + a.total, 0),
+        overheal: abilities.reduce((t, a) => t + a.overheal, 0),
+        abilities,
+        series,
+      };
+    })
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total);
+};
+
+const sumSeries = (rows: SliceRow[], n: number) => {
+  const out = new Array(n).fill(0);
+  rows.forEach((r) =>
+    r.series.forEach((v, i) => {
+      out[i] += v;
+    }),
+  );
+  return out;
+};
+
 /**
- * Per-second rate over the pull, one line per series, with a hover readout.
- * Series values are totals per bucket; drawn as per-second rates.
+ * Per-second rate over the pull, one line per series. Hover for values;
+ * drag across it to pick a slice of the fight.
  */
 const OverTime = ({
   series,
   bucketSeconds,
   rateLabel,
+  range,
+  onRange,
 }: {
   series: { name: string; values: number[]; color: string; dashed?: boolean }[];
   bucketSeconds: number;
   rateLabel: string;
+  range?: Range;
+  onRange?: (range: Range) => void;
 }) => {
   const [hover, setHover] = React.useState<number | null>(null);
+  const [drag, setDrag] = React.useState<{ a: number; b: number } | null>(null);
   // Drawn at its real width so text stays 11px whatever the window size.
   const box = React.useRef<HTMLDivElement>(null);
   const [W, setW] = React.useState(640);
@@ -99,31 +211,66 @@ const OverTime = ({
   const count = Math.max(1, ...series.map((s) => s.values.length));
   const rates = series.map((s) => s.values.map((v) => v / bucketSeconds));
   const max = Math.max(1, ...rates.flat());
-  const x = (i: number) =>
-    left + (count <= 1 ? 0 : (i / (count - 1)) * (W - left - right));
+  const span = W - left - right;
+  // Bucket i spans [x(i), x(i + 1)); lines go through bucket middles.
+  const x = (i: number) => left + (i / count) * span;
+  const mid = (i: number) => x(i + 0.5);
   const y = (v: number) => top + (1 - v / max) * (H - top - bottom);
   const ticks = [0, 0.5, 1].map((f) => f * max);
   const duration = count * bucketSeconds;
 
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const box = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - box.left) / box.width) * W;
-    const i = Math.round(((px - left) / (W - left - right)) * (count - 1));
-    setHover(Math.min(count - 1, Math.max(0, i)));
+  const bucketAt = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * W;
+    return Math.min(
+      count - 1,
+      Math.max(0, Math.floor(((px - left) / span) * count)),
+    );
   };
 
+  const shown = drag
+    ? { from: Math.min(drag.a, drag.b), to: Math.max(drag.a, drag.b) + 1 }
+    : range;
+
   return (
-    <div className="relative" ref={box}>
+    <div className="relative select-none" ref={box}>
       <svg
         width={W}
         height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="block"
+        className={`block ${onRange ? 'cursor-crosshair' : ''}`}
         role="img"
-        aria-label={`${rateLabel} over the pull`}
-        onMouseMove={onMove}
+        aria-label={`${rateLabel} over the pull${onRange ? '; drag to pick a slice' : ''}`}
+        onMouseMove={(e) => {
+          const i = bucketAt(e);
+          setHover(i);
+          if (drag) setDrag({ ...drag, b: i });
+        }}
         onMouseLeave={() => setHover(null)}
+        onMouseDown={(e) => {
+          if (!onRange) return;
+          const i = bucketAt(e);
+          setDrag({ a: i, b: i });
+        }}
+        onMouseUp={() => {
+          if (!drag || !onRange) return;
+          const from = Math.min(drag.a, drag.b);
+          const to = Math.max(drag.a, drag.b) + 1;
+          setDrag(null);
+          // A click without dragging clears the slice.
+          onRange(to - from <= 1 && drag.a === drag.b ? null : { from, to });
+        }}
       >
+        {shown && (
+          <rect
+            x={x(shown.from)}
+            y={top}
+            width={Math.max(2, x(shown.to) - x(shown.from))}
+            height={H - top - bottom}
+            fill="hsl(var(--brand) / 0.12)"
+            stroke="hsl(var(--brand) / 0.5)"
+          />
+        )}
         {ticks.map((v) => (
           <g key={v}>
             <line
@@ -147,7 +294,7 @@ const OverTime = ({
         {[0, 0.5, 1].map((f) => (
           <text
             key={f}
-            x={left + f * (W - left - right)}
+            x={left + f * span}
             y={H - 8}
             textAnchor={f === 0 ? 'start' : f === 1 ? 'end' : 'middle'}
             fontSize="11"
@@ -164,26 +311,26 @@ const OverTime = ({
             strokeWidth="2"
             strokeDasharray={series[si].dashed ? '4 3' : undefined}
             strokeLinejoin="round"
-            points={values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}
+            points={values.map((v, i) => `${mid(i)},${y(v)}`).join(' ')}
           />
         ))}
-        {hover !== null && (
+        {hover !== null && !drag && (
           <line
-            x1={x(hover)}
-            x2={x(hover)}
+            x1={mid(hover)}
+            x2={mid(hover)}
             y1={top}
             y2={H - bottom}
             stroke="hsl(var(--foreground) / 0.5)"
           />
         )}
       </svg>
-      {hover !== null && (
+      {hover !== null && !drag && (
         <div
           className="absolute top-1 pointer-events-none rounded-md border border-card bg-background px-2 py-1 text-xs shadow-lg"
           style={{
-            left: `${(x(hover) / W) * 100}%`,
+            left: `${(mid(hover) / W) * 100}%`,
             transform:
-              x(hover) > W / 2
+              mid(hover) > W / 2
                 ? 'translateX(calc(-100% - 8px))'
                 : 'translateX(8px)',
           }}
@@ -211,10 +358,7 @@ const OverTime = ({
             <span key={s.name} className="inline-flex items-center gap-x-1.5">
               <span
                 className="inline-block w-3.5 h-0.5"
-                style={{
-                  background: s.color,
-                  opacity: s.dashed ? 0.7 : 1,
-                }}
+                style={{ background: s.color, opacity: s.dashed ? 0.7 : 1 }}
               />
               {s.name}
             </span>
@@ -225,37 +369,55 @@ const OverTime = ({
   );
 };
 
-/** Sum of several bucket series. */
-const sumSeries = (rows: Row[]) => {
-  const out: number[] = [];
-  rows.forEach((r) =>
-    r.series.forEach((v, i) => {
-      out[i] = (out[i] ?? 0) + v;
-    }),
-  );
-  return out;
-};
+const Bar = ({
+  value,
+  max,
+  color,
+  height = 12,
+}: {
+  value: number;
+  max: number;
+  color: string;
+  height?: number;
+}) => (
+  <span
+    className="rounded-r-[4px] shrink-0"
+    style={{
+      width: `${(value / Math.max(1, max)) * 80}%`,
+      minWidth: value ? 3 : 0,
+      height,
+      background: color,
+      opacity: 0.85,
+    }}
+  />
+);
 
 const Breakdown = ({
   row,
   kind,
   rows,
-  bucketSeconds,
+  data,
+  range,
+  onRange,
   encounterId,
   difficultyId,
   onBack,
 }: {
-  row: Row;
+  row: SliceRow;
   kind: Kind;
-  rows: Row[];
-  bucketSeconds: number;
+  rows: SliceRow[];
+  data: MetersData;
+  range: Range;
+  onRange: (r: Range) => void;
   encounterId?: number;
   difficultyId?: number;
   onBack: () => void;
 }) => {
   const meta = KINDS.find((k) => k.key === kind)!;
+  const seconds = sliceSeconds(data, range);
   const top = Math.max(1, ...row.abilities.map((a) => a.total));
-  const avg = sumSeries(rows).map((v) => v / Math.max(1, rows.length));
+  const n = bucketsOf(data);
+  const avg = sumSeries(rows, n).map((v) => v / Math.max(1, rows.length));
   return (
     <div className="flex flex-col gap-y-3">
       <div className="flex items-center gap-x-3 flex-wrap">
@@ -277,7 +439,7 @@ const Breakdown = ({
           <span className="flex flex-col">
             <span className="text-[11px] text-foreground">{meta.rate}</span>
             <span className="font-semibold tabular-nums text-foreground-lighter">
-              {compactNumber(row.perSecond)}
+              {compactNumber(row.total / seconds)}
             </span>
           </span>
           <span className="flex flex-col">
@@ -287,32 +449,24 @@ const Breakdown = ({
             </span>
           </span>
           {kind === 'healing' && (
-            <>
-              <span className="flex flex-col">
-                <span className="text-[11px] text-foreground">Overheal</span>
-                <span className="font-semibold tabular-nums text-foreground-lighter">
-                  {compactNumber(row.overheal ?? 0)}
-                </span>
+            <span className="flex flex-col">
+              <span className="text-[11px] text-foreground">Overheal</span>
+              <span className="font-semibold tabular-nums text-foreground-lighter">
+                {row.total + row.overheal
+                  ? `${Math.round((row.overheal / (row.total + row.overheal)) * 100)}%`
+                  : '–'}
               </span>
-              <span className="flex flex-col">
-                <span className="text-[11px] text-foreground">Absorbs</span>
-                <span className="font-semibold tabular-nums text-foreground-lighter">
-                  {compactNumber(row.absorbs ?? 0)}
-                </span>
-              </span>
-            </>
+            </span>
           )}
         </span>
       </div>
       <OverTime
-        bucketSeconds={bucketSeconds}
+        bucketSeconds={data.bucketSeconds}
         rateLabel={meta.rate}
+        range={range}
+        onRange={onRange}
         series={[
-          {
-            name: row.name,
-            values: row.series,
-            color: classColor(row.specId),
-          },
+          { name: row.name, values: row.series, color: classColor(row.specId) },
           {
             name: 'Raid average per raider',
             values: avg,
@@ -327,14 +481,16 @@ const Breakdown = ({
             <tr>
               <th className="px-2 py-1 text-left font-normal">Ability</th>
               <th className="px-2 py-1 text-left font-normal w-[38%]">
-                {kind === 'taken' ? 'Damage taken' : meta.label}
+                {meta.label}
               </th>
               <th className="px-2 py-1 text-right font-normal">{meta.rate}</th>
-              {kind !== 'taken' && (
+              {(kind === 'damage' || kind === 'healing') && (
                 <th className="px-2 py-1 text-right font-normal">Casts</th>
               )}
               <th className="px-2 py-1 text-right font-normal">Hits</th>
-              <th className="px-2 py-1 text-right font-normal">Crit</th>
+              {kind !== 'mitigation' && (
+                <th className="px-2 py-1 text-right font-normal">Crit</th>
+              )}
               {kind === 'healing' && (
                 <th className="px-2 py-1 text-right font-normal">Overheal</th>
               )}
@@ -342,73 +498,95 @@ const Breakdown = ({
             </tr>
           </thead>
           <tbody>
-            {row.abilities.map((a) => {
-              const duration = row.series.length * bucketSeconds;
-              return (
-                <tr
-                  key={a.spellId}
-                  className="border-b border-card/40 hover:bg-card/30"
-                >
-                  <td className="px-2 py-1 whitespace-nowrap">
-                    <AbilityName
-                      name={a.name}
-                      spellId={a.spellId > 1 ? a.spellId : null}
-                      encounterId={kind === 'taken' ? encounterId : undefined}
-                      difficultyId={difficultyId}
-                      className="text-foreground-lighter"
+            {row.abilities.map((a) => (
+              <tr
+                key={a.spellId}
+                className="border-b border-card/40 hover:bg-card/30"
+              >
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <AbilityName
+                    name={a.name}
+                    spellId={a.spellId > 1 ? a.spellId : null}
+                    encounterId={kind === 'taken' ? encounterId : undefined}
+                    difficultyId={difficultyId}
+                    className="text-foreground-lighter"
+                  />
+                </td>
+                <td className="px-2 py-1">
+                  <span className="flex items-center gap-x-2">
+                    <Bar
+                      value={a.total}
+                      max={top}
+                      color={classColor(row.specId)}
+                      height={10}
                     />
-                  </td>
-                  <td className="px-2 py-1">
-                    <span className="flex items-center gap-x-2">
-                      <span
-                        className="h-[10px] rounded-r-[4px]"
-                        style={{
-                          width: `${(a.total / top) * 80}%`,
-                          minWidth: 3,
-                          background: classColor(row.specId),
-                          opacity: 0.85,
-                        }}
-                      />
-                      <span className="text-xs tabular-nums text-foreground">
-                        {compactNumber(a.total)}
-                      </span>
+                    <span className="text-xs tabular-nums text-foreground">
+                      {compactNumber(a.total)}
                     </span>
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums">
-                    {compactNumber(duration ? a.total / duration : 0)}
-                  </td>
-                  {kind !== 'taken' && (
-                    <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                      {a.casts || '–'}
-                    </td>
-                  )}
+                  </span>
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums">
+                  {compactNumber(a.total / seconds)}
+                </td>
+                {(kind === 'damage' || kind === 'healing') && (
                   <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                    {a.hits}
+                    {a.casts || '–'}
                   </td>
+                )}
+                <td className="px-2 py-1 text-right tabular-nums text-foreground">
+                  {a.hits}
+                </td>
+                {kind !== 'mitigation' && (
                   <td className="px-2 py-1 text-right tabular-nums text-foreground">
                     {a.hits ? `${Math.round((a.crits / a.hits) * 100)}%` : '–'}
                   </td>
-                  {kind === 'healing' && (
-                    <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                      {a.overheal
-                        ? `${Math.round((a.overheal / (a.overheal + a.total)) * 100)}%`
-                        : '–'}
-                    </td>
-                  )}
+                )}
+                {kind === 'healing' && (
                   <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                    {row.total
-                      ? `${((a.total / row.total) * 100).toFixed(1)}%`
+                    {a.overheal
+                      ? `${Math.round((a.overheal / (a.overheal + a.total)) * 100)}%`
                       : '–'}
                   </td>
-                </tr>
-              );
-            })}
+                )}
+                <td className="px-2 py-1 text-right tabular-nums text-foreground">
+                  {row.total
+                    ? `${((a.total / row.total) * 100).toFixed(1)}%`
+                    : '–'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
     </div>
   );
 };
+
+const KindTabs = ({
+  kind,
+  setKind,
+}: {
+  kind: Kind;
+  setKind: (k: Kind) => void;
+}) => (
+  <div className="flex rounded-md border border-card overflow-hidden">
+    {KINDS.map((k) => (
+      <button
+        key={k.key}
+        type="button"
+        onClick={() => setKind(k.key)}
+        title={k.help || undefined}
+        className={`px-3 h-8 text-xs ${
+          kind === k.key
+            ? 'bg-brand text-background font-semibold'
+            : 'text-foreground-lighter hover:bg-card/50'
+        }`}
+      >
+        {k.label}
+      </button>
+    ))}
+  </div>
+);
 
 /** The meters for one pull. */
 const PullMeters = ({
@@ -425,6 +603,7 @@ const PullMeters = ({
   const [loadedId, setLoadedId] = React.useState('');
   const [kind, setKind] = React.useState<Kind>('damage');
   const [who, setWho] = React.useState<string | null>(null);
+  const [range, setRange] = React.useState<Range>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -447,142 +626,335 @@ const PullMeters = ({
   if (loadedId !== pullId) {
     return <p className="text-sm text-foreground">Loading meters…</p>;
   }
-  if (!data) {
+  if (!data || data.v !== 2) {
     return (
-      <p className="text-sm text-foreground">
-        {error || 'No meters for this pull.'}
+      <p className="text-sm text-foreground max-w-[720px]">
+        {error ||
+          'No meters for this pull yet: they come from the app (1.9.30 or newer).'}
       </p>
     );
   }
 
   const meta = KINDS.find((k) => k.key === kind)!;
-  const rows = data[kind];
+  const rows = sliceRows(data, kind, range);
+  const seconds = sliceSeconds(data, range);
   const selected = rows.find((r) => r.name === who) ?? null;
   const raidTotal = rows.reduce((n, r) => n + r.total, 0);
-  const raidRate = rows.reduce((n, r) => n + r.perSecond, 0);
   const max = Math.max(1, ...rows.map((r) => r.total));
+  const n = bucketsOf(data);
 
   return (
     <div className="flex flex-col gap-y-3">
       <div className="flex items-center gap-x-3 flex-wrap">
-        <div className="flex rounded-md border border-card overflow-hidden">
-          {KINDS.map((k) => (
-            <button
-              key={k.key}
-              type="button"
-              onClick={() => setKind(k.key)}
-              className={`px-3 h-8 text-xs ${
-                kind === k.key
-                  ? 'bg-brand text-background font-semibold'
-                  : 'text-foreground-lighter hover:bg-card/50'
-              }`}
-            >
-              {k.label}
-            </button>
-          ))}
-        </div>
+        <KindTabs kind={kind} setKind={setKind} />
         <span className="text-sm text-foreground">
           Raid {meta.rate}{' '}
           <span className="font-semibold text-foreground-lighter tabular-nums">
-            {compactNumber(raidRate)}
+            {compactNumber(raidTotal / seconds)}
           </span>{' '}
           · total {compactNumber(raidTotal)}
         </span>
+        <span className="ml-auto flex items-center gap-x-2 text-xs text-foreground">
+          {range ? (
+            <>
+              Slice {mmss(range.from * data.bucketSeconds)}–
+              {mmss(Math.min(data.duration, range.to * data.bucketSeconds))}
+              <button
+                type="button"
+                onClick={() => setRange(null)}
+                className="text-brand hover:underline"
+              >
+                Whole pull
+              </button>
+            </>
+          ) : (
+            'Drag across the chart to look at a slice of the fight'
+          )}
+        </span>
       </div>
+      {meta.help && <p className="text-xs text-foreground m-0">{meta.help}</p>}
 
       {selected ? (
         <Breakdown
           row={selected}
           kind={kind}
           rows={rows}
-          bucketSeconds={data.bucketSeconds}
+          data={data}
+          range={range}
+          onRange={setRange}
           encounterId={encounterId}
           difficultyId={difficultyId}
           onBack={() => setWho(null)}
         />
       ) : (
-        <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-4 items-start">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-foreground border-b border-card">
-                <tr>
-                  <th className="px-2 py-1 text-left font-normal">Raider</th>
-                  <th className="px-2 py-1 text-left font-normal w-[45%]">
-                    {meta.label}
-                  </th>
-                  <th className="px-2 py-1 text-right font-normal">
-                    {meta.rate}
-                  </th>
-                  <th className="px-2 py-1 text-right font-normal">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.name}
-                    className="border-b border-card/40 hover:bg-card/30"
-                  >
-                    <td className="px-2 py-1 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => setWho(r.name)}
-                        className="font-semibold hover:underline"
-                        style={{ color: classColor(r.specId) }}
-                        title="Show their abilities"
-                      >
-                        {r.name}
-                      </button>
-                    </td>
-                    <td className="px-2 py-1">
-                      <span className="flex items-center gap-x-2">
-                        <span
-                          className="h-[12px] rounded-r-[4px]"
-                          style={{
-                            width: `${(r.total / max) * 80}%`,
-                            minWidth: 3,
-                            background: classColor(r.specId),
-                            opacity: 0.85,
-                          }}
-                        />
-                        <span className="text-xs tabular-nums text-foreground">
-                          {compactNumber(r.total)}
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums font-semibold text-foreground-lighter">
-                      {compactNumber(r.perSecond)}
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                      {raidTotal
-                        ? `${((r.total / raidTotal) * 100).toFixed(1)}%`
-                        : '–'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <>
           <div className="rounded-md border border-card bg-background/40 p-3">
-            <h4 className="text-sm font-semibold text-foreground-lighter mb-1">
-              Raid {meta.rate} over time
-            </h4>
             <OverTime
               bucketSeconds={data.bucketSeconds}
               rateLabel={meta.rate}
-              series={[{ name: 'Raid', values: sumSeries(rows), color: BRAND }]}
+              range={range}
+              onRange={setRange}
+              series={[
+                { name: 'Raid', values: sumSeries(rows, n), color: BRAND },
+              ]}
             />
-            <p className="text-xs text-foreground mt-1">
-              {data.bucketSeconds}-second steps. Click a raider for their
-              abilities.
-            </p>
           </div>
-        </div>
+          {!rows.length ? (
+            <p className="text-sm text-foreground">Nothing in this slice.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-foreground border-b border-card">
+                  <tr>
+                    <th className="px-2 py-1 text-left font-normal">Raider</th>
+                    <th className="px-2 py-1 text-left font-normal w-[50%]">
+                      {meta.label}
+                    </th>
+                    <th className="px-2 py-1 text-right font-normal">
+                      {meta.rate}
+                    </th>
+                    <th className="px-2 py-1 text-right font-normal">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.name}
+                      className="border-b border-card/40 hover:bg-card/30"
+                    >
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => setWho(r.name)}
+                          className="font-semibold hover:underline"
+                          style={{ color: classColor(r.specId) }}
+                          title="Show their abilities"
+                        >
+                          {r.name}
+                        </button>
+                      </td>
+                      <td className="px-2 py-1">
+                        <span className="flex items-center gap-x-2">
+                          <Bar
+                            value={r.total}
+                            max={max}
+                            color={classColor(r.specId)}
+                          />
+                          <span className="text-xs tabular-nums text-foreground">
+                            {compactNumber(r.total)}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums font-semibold text-foreground-lighter">
+                        {compactNumber(r.total / seconds)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums text-foreground">
+                        {raidTotal
+                          ? `${((r.total / raidTotal) * 100).toFixed(1)}%`
+                          : '–'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 };
 
 export default PullMeters;
+
+/* ------------------------------------------------------------------ */
+/* Several pulls side by side                                          */
+/* ------------------------------------------------------------------ */
+
+type ComparePull = { id: string; label: string; result: string };
+
+/**
+ * Each raider's rate pull by pull for the chosen pulls of one boss, with
+ * their average and best; shading is each raider against their own best.
+ */
+const PullComparison = ({ pulls }: { pulls: ComparePull[] }) => {
+  const [kind, setKind] = React.useState<Kind>('damage');
+  const [loaded, setLoaded] = React.useState<Record<string, MetersData | null>>(
+    {},
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    pulls.forEach((p) => {
+      if (p.id in loaded) return;
+      call<MetersData>({ action: 'meters', id: p.id }).then((response) => {
+        if (cancelled) return;
+        setLoaded((prev) => ({
+          ...prev,
+          [p.id]: response.ok && response.data.v === 2 ? response.data : null,
+        }));
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `loaded` is checked, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulls]);
+
+  const meta = KINDS.find((k) => k.key === kind)!;
+  const ready = pulls.filter((p) => loaded[p.id]);
+  const waiting = pulls.filter((p) => !(p.id in loaded)).length;
+  const missing = pulls.filter((p) => p.id in loaded && !loaded[p.id]);
+
+  // name -> per pull rate
+  const byRaider = new Map<
+    string,
+    { specId: number; rates: (number | null)[] }
+  >();
+  ready.forEach((p, i) => {
+    const data = loaded[p.id] as MetersData;
+    const seconds = sliceSeconds(data, null);
+    sliceRows(data, kind, null).forEach((r) => {
+      const entry = byRaider.get(r.name) ?? {
+        specId: r.specId,
+        rates: new Array(ready.length).fill(null),
+      };
+      entry.rates[i] = r.total / seconds;
+      byRaider.set(r.name, entry);
+    });
+  });
+  const rows = [...byRaider.entries()]
+    .map(([name, v]) => {
+      const values = v.rates.filter((r): r is number => r !== null);
+      return {
+        name,
+        specId: v.specId,
+        rates: v.rates,
+        avg: values.reduce((n, r) => n + r, 0) / Math.max(1, values.length),
+        best: Math.max(0, ...values),
+      };
+    })
+    .sort((a, b) => b.avg - a.avg);
+  const raid = ready.map((p) => {
+    const data = loaded[p.id] as MetersData;
+    return (
+      sliceRows(data, kind, null).reduce((n, r) => n + r.total, 0) /
+      sliceSeconds(data, null)
+    );
+  });
+  const raidMax = Math.max(1, ...raid);
+
+  return (
+    <div className="flex flex-col gap-y-3">
+      <div className="flex items-center gap-x-3 flex-wrap">
+        <KindTabs kind={kind} setKind={setKind} />
+        <span className="text-sm text-foreground">
+          {ready.length} pulls side by side
+          {waiting ? ` · loading ${waiting}…` : ''}
+          {missing.length
+            ? ` · ${missing.length} without meters (${missing.map((p) => p.label).join(', ')})`
+            : ''}
+        </span>
+      </div>
+      {ready.length > 0 && (
+        <>
+          <div className="rounded-md border border-card bg-background/40 p-3">
+            <h4 className="text-sm font-semibold text-foreground-lighter mb-2">
+              Raid {meta.rate} per pull
+            </h4>
+            <div className="flex items-end gap-x-1.5 h-[120px]">
+              {ready.map((p, i) => (
+                <div
+                  key={p.id}
+                  className="flex-1 flex flex-col items-center justify-end h-full gap-y-1 min-w-0"
+                  title={`${p.label}: ${compactNumber(raid[i])} ${meta.rate}`}
+                >
+                  <span className="text-[10px] tabular-nums text-foreground">
+                    {compactNumber(raid[i])}
+                  </span>
+                  <div
+                    className="w-full max-w-[36px] rounded-t-[4px]"
+                    style={{
+                      height: `${(raid[i] / raidMax) * 80}%`,
+                      background: p.result === 'kill' ? '#4ade80' : BRAND,
+                    }}
+                  />
+                  <span className="text-[10px] text-foreground truncate max-w-full">
+                    {p.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="text-sm border-separate border-spacing-[2px]">
+              <thead className="text-xs text-foreground">
+                <tr>
+                  <th className="px-2 py-1 text-left font-normal">Raider</th>
+                  {ready.map((p) => (
+                    <th
+                      key={p.id}
+                      className="px-2 py-1 text-right font-normal whitespace-nowrap"
+                    >
+                      {p.label}
+                    </th>
+                  ))}
+                  <th className="px-2 py-1 text-right font-normal">Average</th>
+                  <th className="px-2 py-1 text-right font-normal">Best</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.name}>
+                    <td
+                      className="px-2 py-1 whitespace-nowrap font-semibold"
+                      style={{ color: classColor(r.specId) }}
+                    >
+                      {r.name}
+                    </td>
+                    {r.rates.map((rate, i) => (
+                      <td
+                        key={i}
+                        className="px-2 py-1 text-right tabular-nums rounded-[3px] min-w-[60px]"
+                        style={{
+                          background:
+                            rate && r.best
+                              ? `hsl(var(--brand) / ${Math.max(0.04, (rate / r.best - 0.6) * 0.9)})`
+                              : undefined,
+                          color: rate
+                            ? 'hsl(var(--foreground-lighter))'
+                            : 'hsl(var(--foreground) / 0.4)',
+                        }}
+                      >
+                        {rate ? compactNumber(rate) : '–'}
+                      </td>
+                    ))}
+                    <td className="px-2 py-1 text-right tabular-nums font-semibold text-foreground-lighter">
+                      {compactNumber(r.avg)}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums text-foreground">
+                      {compactNumber(r.best)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-foreground m-0">
+            {meta.rate} over each whole pull. Shading: each raider against their
+            own best here (darker is closer). A dash: not in that pull, or
+            nothing done.
+          </p>
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* The Logs page                                                       */
+/* ------------------------------------------------------------------ */
 
 type NightBoss = {
   encounterId: number;
@@ -616,8 +988,16 @@ const nightName = (night: string) =>
     day: 'numeric',
   });
 
+const pullResult = (p: NightPull) =>
+  p.result === 'kill'
+    ? 'Kill'
+    : p.bossPercent !== null
+      ? `${p.bossPercent}%`
+      : 'Wipe';
+
 /**
- * Logs tab: browse a night's pulls and see each one's meters.
+ * Logs: browse a night's pulls and their meters; tick several pulls of a
+ * boss to see them side by side.
  */
 export const LogsView = () => {
   const [nights, setNights] = React.useState<
@@ -629,6 +1009,7 @@ export const LogsView = () => {
   >(null);
   const [bossKey, setBossKey] = React.useState('');
   const [pullId, setPullId] = React.useState('');
+  const [picked, setPicked] = React.useState<string[]>([]);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -663,23 +1044,46 @@ export const LogsView = () => {
     };
   }, [night]);
 
-  if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
-  if (!nights) return <p className="text-sm text-foreground">Loading…</p>;
-  if (!nights.length)
-    return <p className="text-sm text-foreground">No pulls yet.</p>;
-
   const keyOf = (b: NightBoss) => `${b.encounterId}:${b.difficultyId}`;
   const shownBosses = bosses ?? [];
   const boss =
     shownBosses.find((b) => keyOf(b) === bossKey) ??
     [...shownBosses].sort((a, b) => b.pulls - a.pulls)[0];
-  const pulls = [...(boss?.pullsList ?? [])].sort(
-    (a, b) => b.pullNumber - a.pullNumber,
+  const pulls = React.useMemo(
+    () =>
+      [...(boss?.pullsList ?? [])].sort((a, b) => b.pullNumber - a.pullNumber),
+    [boss],
   );
-  const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  const comparing = React.useMemo(
+    () =>
+      pulls
+        .filter((p) => picked.includes(p.id))
+        .sort((a, b) => a.pullNumber - b.pullNumber)
+        .map((p) => ({
+          id: p.id,
+          label: `Pull ${p.pullNumber}`,
+          result: p.result,
+        })),
+    [pulls, picked],
+  );
 
+  if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
+  if (!nights) return <p className="text-sm text-foreground">Loading…</p>;
+  if (!nights.length) {
+    return <p className="text-sm text-foreground">No pulls yet.</p>;
+  }
+
+  const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
   const field =
     'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';
+  const reset = () => {
+    setPullId('');
+    setPicked([]);
+  };
+  const togglePick = (id: string) =>
+    setPicked((list) =>
+      list.includes(id) ? list.filter((x) => x !== id) : [...list, id],
+    );
 
   return (
     <div className="flex flex-col gap-y-4">
@@ -691,7 +1095,7 @@ export const LogsView = () => {
             value={night}
             onChange={(e) => {
               setNight(e.target.value);
-              setPullId('');
+              reset();
             }}
           >
             {nights.map((n) => (
@@ -710,7 +1114,7 @@ export const LogsView = () => {
               value={keyOf(boss)}
               onChange={(e) => {
                 setBossKey(e.target.value);
-                setPullId('');
+                reset();
               }}
             >
               {shownBosses.map((b) => (
@@ -721,47 +1125,84 @@ export const LogsView = () => {
             </select>
           </label>
         )}
+        {picked.length > 0 && (
+          <span className="flex items-center gap-x-2 text-sm text-foreground">
+            {picked.length} {picked.length === 1 ? 'pull' : 'pulls'} picked
+            <button
+              type="button"
+              className="text-brand hover:underline text-xs"
+              onClick={() => setPicked(pulls.map((p) => p.id))}
+            >
+              Pick all
+            </button>
+            <button
+              type="button"
+              className="text-brand hover:underline text-xs"
+              onClick={() => setPicked([])}
+            >
+              Clear
+            </button>
+          </span>
+        )}
       </div>
 
       {boss && (
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-4 items-start">
-          <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
-            {pulls.map((p) => {
-              const active = pull?.id === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPullId(p.id)}
-                  className={`flex items-center gap-x-2 px-3 py-2 text-sm text-left border-b border-card/40 ${
-                    active
-                      ? 'bg-brand/15 text-foreground-lighter'
-                      : 'hover:bg-card/30'
-                  }`}
-                >
-                  <span className="font-semibold tabular-nums w-14">
-                    Pull {p.pullNumber}
-                  </span>
-                  <span
-                    className={`tabular-nums ${
-                      p.result === 'kill' ? 'text-green-400' : 'text-foreground'
+        <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-4 items-start">
+          <div className="flex flex-col gap-y-1">
+            <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
+              {pulls.map((p) => {
+                const active = picked.length < 2 && pull?.id === p.id;
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-x-2 px-2 border-b border-card/40 ${
+                      active ? 'bg-brand/15' : 'hover:bg-card/30'
                     }`}
                   >
-                    {p.result === 'kill'
-                      ? 'Kill'
-                      : p.bossPercent !== null
-                        ? `${p.bossPercent}%`
-                        : 'Wipe'}
-                  </span>
-                  <span className="ml-auto text-xs text-foreground tabular-nums">
-                    {mmss(p.duration)}
-                  </span>
-                </button>
-              );
-            })}
+                    <input
+                      type="checkbox"
+                      aria-label={`Compare pull ${p.pullNumber}`}
+                      title="Tick two or more to compare"
+                      checked={picked.includes(p.id)}
+                      onChange={() => togglePick(p.id)}
+                      className="w-3.5 h-3.5 accent-[hsl(var(--brand))] cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPullId(p.id);
+                        setPicked([]);
+                      }}
+                      className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left"
+                    >
+                      <span className="font-semibold tabular-nums w-14 text-foreground-lighter">
+                        Pull {p.pullNumber}
+                      </span>
+                      <span
+                        className={`tabular-nums ${
+                          p.result === 'kill'
+                            ? 'text-green-400'
+                            : 'text-foreground'
+                        }`}
+                      >
+                        {pullResult(p)}
+                      </span>
+                      <span className="ml-auto text-xs text-foreground tabular-nums">
+                        {mmss(p.duration)}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-foreground m-0">
+              Tick two or more pulls to see them side by side.
+            </p>
           </div>
           <div className="min-w-0">
-            {pull ? (
+            {comparing.length >= 2 ? (
+              <PullComparison pulls={comparing} />
+            ) : pull ? (
               pull.source === 'wcl' ? (
                 <p className="text-sm text-foreground">
                   This pull was imported from Warcraft Logs, so there&apos;s no
@@ -784,3 +1225,18 @@ export const LogsView = () => {
     </div>
   );
 };
+
+/** The Logs page (its own item in the side menu, under Analysis). */
+export const LogsPage = () => (
+  <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
+    <div className="flex items-center gap-x-2 px-4 py-2 border-b border-card min-h-[52px]">
+      <span className="font-display text-lg font-bold">Logs</span>
+      <span className="text-xs text-foreground ml-2">
+        Damage, healing, damage taken and prevented, from our own combat logs.
+      </span>
+    </div>
+    <div className="flex-1 overflow-y-auto p-4">
+      <LogsView />
+    </div>
+  </div>
+);

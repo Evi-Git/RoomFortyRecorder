@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.30] - Unreleased
+### Changed
+- **The app is now called Room Forty Toolkit.** As with the last rename, only the name changes: settings, recordings, sign-in and updates carry on, and the old shortcuts are replaced.
+- **Logs** is its own page in the side menu, under Analysis.
+
+### Fixed
+- **Meters were badly wrong.** The log the app uploads is trimmed to keep it small: no healing, and one damage line per enemy per second. The meters were built from that trimmed log. The app now works the meters out itself from every line of the pull and sends them with the upload (a small extra line), so they match the full log.
+  - Pulls sent by older apps get no meters. Raiders with "Send my pull logs" on re-send last week's pulls from their saved combat logs automatically, so recent nights fill in.
+
+### Added
+- **Look at a slice of the fight:** drag across a meter's chart and every number recalculates for that window. "Whole pull" resets it.
+- **Several pulls side by side:** in Logs, tick two or more pulls of a boss to see each raider's DPS, HPS, damage taken or damage prevented pull by pull, with their average and best, and the raid's rate per pull.
+- **Damage prevented** (estimated): damage kept off raiders by cooldowns cast on them (Pain Suppression, Ironbark, Blessing of Sacrifice, Power Word: Barrier, Time Dilation, Zephyr, Anti-Magic Zone, Spirit Link Totem), credited to the caster. Shields already count as healing for whoever cast them.
+
 ## [1.9.29] - Unreleased
 ### Added
 - **Meters**, built from the combat log the app already sends: **Damage done**, **Healing** (effective, with overheal and absorbs) and **Damage taken** per raider, with a rate-over-time chart (5-second steps; hover for values). Click a raider for their abilities (total, per second, casts, hits, crit %, overheal, share) and their line against the raid average. Pets and guardians count toward their owner.
