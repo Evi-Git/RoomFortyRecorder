@@ -18,3 +18,4 @@ recruit-page.html
 .env.example
 update-server.ps1
 update-server.cmd
+permissions.mjs

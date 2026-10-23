@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.19] - Unreleased
+### Added
+- **Admin page** (owner only, under Settings): a table of what each Discord role can see and do. It covers seeing and editing Analysis, the top-guild watcher, watching live, sending clips to your own or any channel, editing personal channels, editing anyone's flags, and the recruiting page. You always have everything and aren't in the table. Add or hide role columns, Save, or reset to the .env defaults. Until you save, everything works exactly as before (the defaults come from the existing `*_ROLES` settings).
+- **View as role**: see the app as a role does (menus, buttons and what the server allows). A "Viewing as …" pill in the title bar has Exit. It lasts until you exit or restart.
+- **Combat potion list** editor on the Admin page.
+- Menu items a role can't use are hidden (Watch live, Analysis).
+
+### Server
+- New `GUILD_CLOUD_OWNER_IDS` (your Discord user ID) in the server `.env`, then run `update-server.cmd`. Discord: Settings → Advanced → Developer Mode, then right-click your name → Copy User ID.
+
 ## [1.9.18] - Unreleased
 ### Changed
 - **The app is now called Bellhop** (Room Forty's raid assistant). The new name shows on the window, title bar, tray, Start menu and desktop shortcuts, the installer and link pages. Nothing else changes: settings, recordings, sign-in and updates carry on as before, and the old "RoomFortyRecorder" shortcuts are replaced. A taskbar pin may keep its old label until you re-pin it.

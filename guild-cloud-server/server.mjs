@@ -17,6 +17,7 @@ import { createPullDesk } from './pulldesk.mjs';
 import { createCoach } from './coach.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
+import { createPermissions } from './permissions.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -103,7 +104,6 @@ const LIVE_VIEWER_ROLE_LABELS = (
   .split(',')
   .map((role) => role.trim())
   .filter(Boolean);
-const LIVE_VIEWER_ROLES = LIVE_VIEWER_ROLE_LABELS.map((role) => role.toLowerCase());
 // MediaMTX's local API, used to list who is live.
 const MEDIAMTX_API = (
   process.env.GUILD_CLOUD_MEDIAMTX_API || 'http://127.0.0.1:9997'
@@ -214,7 +214,7 @@ const fail = (res, status, message) => json(res, status, { error: message });
 
 const withCors = (headers = {}) => ({
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range, X-View-As-Role',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   ...headers,
 });
@@ -342,11 +342,29 @@ const memberRoleNames = async (discordId) => {
   }
 };
 
-const canWatchLive = async (session) => {
+// [RoomFortyRecorder] Who can do what, per Discord role (Admin page in the
+// app). See permissions.mjs. Defaults to the .env role lists.
+const permissions = createPermissions({
+  storage: STORAGE,
+  env: process.env,
+  memberRoleNames,
+  guildRoles: async () => {
+    const roles = await discordJson(
+      `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/roles`,
+      { headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` } },
+    );
+    return (Array.isArray(roles) ? roles : [])
+      .filter((role) => role.name !== '@everyone' && !role.managed)
+      .sort((a, b) => b.position - a.position)
+      .map((role) => ({ id: role.id, name: role.name, position: role.position, color: role.color || 0 }));
+  },
+});
+
+// `req` (an app request) honors the owner's "view as role".
+const canWatchLive = async (session, req = null) => {
   if (!session || !DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID) return false;
-  if (LIVE_VIEWER_ROLES.length === 0) return true;
-  const names = await memberRoleNames(session.discordId);
-  return Boolean(names?.some((name) => LIVE_VIEWER_ROLES.includes(name)));
+  if (req) return permissions.can(req, 'liveWatch');
+  return permissions.canUser(session.discordId, 'liveWatch');
 };
 
 // Online streams from MediaMTX, cached for 2 seconds.
@@ -1031,6 +1049,7 @@ const pullDesk = createPullDesk({
   memberRoleNames,
   botToken: DISCORD_BOT_TOKEN,
   env: process.env,
+  can: permissions.can,
 });
 
 // A public /link/<id> page for a video (Discord embeds it as a player).
@@ -1058,6 +1077,7 @@ const coach = createCoach({
     return video ? createShareLink(GUILD, video) : null;
   },
   env: process.env,
+  can: permissions.can,
 });
 
 // [RoomFortyRecorder] Top-guild watcher for the Progression view.
@@ -1068,6 +1088,7 @@ const watcher = createWatcher({
   fail,
   memberRoleNames,
   env: process.env,
+  can: permissions.can,
 });
 
 // [RoomFortyRecorder] Officer-only recruiting page (/recruit).
@@ -1079,6 +1100,7 @@ const recruit = createRecruit({
   sessionFromToken,
   memberRoleNames,
   env: process.env,
+  canUser: permissions.canUser,
 });
 
 const handleApi = async (req, res, url, parts) => {
@@ -1216,7 +1238,7 @@ const handleApi = async (req, res, url, parts) => {
     const session = { discordId: req.cloudUserId, userName: req.cloudUserName };
     const roles = LIVE_VIEWER_ROLE_LABELS.join(' or ');
 
-    if (!(await canWatchLive(session))) {
+    if (!(await canWatchLive(session, req))) {
       return json(res, 200, { allowed: false, roles, streams: [] });
     }
 
@@ -1262,6 +1284,10 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   const guild = parts[2];
+
+  if (parts[3] === 'permissions') {
+    return permissions.handle(req, res, parts.slice(4), { readBody, json, fail });
+  }
 
   if (parts[3] === 'pulldesk' && parts[4] === 'watcher') {
     return watcher.handle(req, res, parts.slice(5), url);

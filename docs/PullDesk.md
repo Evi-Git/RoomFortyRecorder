@@ -198,6 +198,26 @@ Who can edit notes, avoidable spells and channels in the app is set by
 Raider+ and Officer). Leave it unset rather than empty: an empty value lets
 everyone edit.
 
+## Admin page and permissions
+
+The owner (`GUILD_CLOUD_OWNER_IDS` in the server `.env`, Discord user IDs)
+gets an **Admin** item under Settings:
+
+- **Permissions by Discord role**: one row per capability (see Analysis,
+  edit Analysis, top-guild watcher, watch live, send clips to their own
+  channel or any channel, edit personal channels, edit anyone's flags,
+  recruiting page), one column per role. Someone with several roles gets
+  everything any of them allows. The owner always has everything. Saved to
+  `<storage>/permissions.json`. Until then each capability uses its old
+  `.env` role list (`GUILD_CLOUD_LIVE_VIEWER_ROLES`,
+  `GUILD_CLOUD_PULLDESK_EDITOR_ROLES`, `GUILD_CLOUD_COACH_OFFICER_ROLES`,
+  `GUILD_CLOUD_RECRUIT_ROLES`). Who can sign in at all stays
+  `GUILD_CLOUD_DISCORD_ALLOWED_ROLES`.
+- **View as role**: the app sends `X-View-As-Role` and the server answers
+  as that role (owner only; the Admin routes ignore it). A pill in the title
+  bar shows it, with Exit. A restart always comes back as yourself.
+- **Combat potions**: the names counted as combat potions.
+
 ## Per-boss settings (in the app)
 
 Open a pull for the boss, then **Boss settings**:

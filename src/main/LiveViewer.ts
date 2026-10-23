@@ -1,6 +1,7 @@
 import axios from 'axios';
 import ConfigService from 'config/ConfigService';
 import { cloudService } from './cloudService';
+import CloudClient from 'storage/CloudClient';
 
 /**
  * [RoomFortyRecorder] Watching guild live streams inside the app.
@@ -52,7 +53,12 @@ export default class LiveViewer {
 
     try {
       const res = await axios.get(`${cloudService.apiUrl}/live/streams`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(CloudClient.viewAsRole
+            ? { 'X-View-As-Role': CloudClient.viewAsRole }
+            : {}),
+        },
         timeout: 10000,
       });
 

@@ -91,6 +91,8 @@ const readRawBody = async (req, maxBytes) => {
  */
 export const createPullDesk = (options) => {
   const { readBody, json, fail, memberRoleNames, botToken, env } = options;
+  // Central permission check (permissions.mjs); without it, the .env roles.
+  const can = options.can || null;
   const dir = path.join(options.storage, 'pulldesk');
   const indexFile = path.join(dir, 'index.json');
   const reportFile = (id) => path.join(dir, 'reports', `${id}.json`);
@@ -201,7 +203,9 @@ export const createPullDesk = (options) => {
     return index.bosses[key];
   };
 
+  const canView = async (req) => (can ? can(req, 'analysisView') : true);
   const canEdit = async (req) => {
+    if (can) return can(req, 'analysisEdit');
     if (editorRoles.length === 0) return true;
     const names = await memberRoleNames(req.cloudUserId);
     return Boolean(names?.some((name) => editorRoles.includes(name)));
@@ -965,12 +969,19 @@ export const createPullDesk = (options) => {
 
     if (first === 'config' && req.method === 'GET') {
       return json(res, 200, {
+        canView: await canView(req),
         canEdit: await canEdit(req),
         trackedDifficulties: [...trackedDifficulties],
       });
     }
 
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
+
+    // Reading reports and summaries needs "See Analysis"; sending logs
+    // (claims, uploads, backfill) works for everyone signed in.
+    if ((req.method === 'GET' || first === 'journal') && !(await canView(req))) {
+      return fail(res, 403, 'Your Discord role cannot see Analysis');
+    }
 
     if (first === 'journal') return handleJournal(req, res, rest, url);
 
@@ -1042,6 +1053,7 @@ export const createPullDesk = (options) => {
       }
 
       if (third === 'reanalyze' && req.method === 'POST') {
+        if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
         if (!pull.hasLog) return fail(res, 409, 'This pull has no stored log');
         await runAnalysis(pull);
         await persist();

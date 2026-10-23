@@ -38,6 +38,7 @@ export type CoachChannel = { id: string; name: string; category: string };
 
 export type CoachConfig = {
   officer: boolean;
+  canMapChannels?: boolean;
   me: { discordId: string; name: string };
   myChannel: string;
   channels: CoachChannel[];
@@ -363,10 +364,10 @@ export const PersonalChannelsDialog = ({
     if (!config) {
       return <p className="text-sm text-foreground">{error || 'Loading…'}</p>;
     }
-    if (!config.officer) {
+    if (!(config.canMapChannels ?? config.officer)) {
       return (
         <p className="text-sm text-foreground">
-          Only officers can edit personal channels.
+          Your Discord role can&apos;t edit personal channels.
         </p>
       );
     }

@@ -8,6 +8,7 @@ import {
   MonitorCog,
   Play,
   Radio,
+  ShieldCheck,
   Square,
   Swords,
   Tv,
@@ -52,6 +53,7 @@ import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DiagnosticsDialog from './DiagnosticsDialog';
+import { allows, usePermissions } from './usePermissions';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -201,6 +203,18 @@ const SideMenu = (props: IProps) => {
       </Menu.Item>
     );
   };
+
+  // [RoomFortyRecorder] Who can see what (Admin page), from the server.
+  const permissions = usePermissions();
+
+  const renderAdminTab = () => (
+    <Menu.Item value={Pages.Admin}>
+      <Menu.Item.Icon>
+        <ShieldCheck size={18} />
+      </Menu.Item.Icon>
+      Admin
+    </Menu.Item>
+  );
 
   const renderSettingsTab = () => {
     return (
@@ -399,8 +413,8 @@ const SideMenu = (props: IProps) => {
           >
             <Menu.Label>Raid night</Menu.Label>
             {renderInstantReplayTab()}
-            {renderLiveTab()}
-            {renderPullDeskTab()}
+            {allows(permissions, 'liveWatch') && renderLiveTab()}
+            {allows(permissions, 'analysisView') && renderPullDeskTab()}
           </Menu>
         </>
 
@@ -421,7 +435,8 @@ const SideMenu = (props: IProps) => {
           className="mt-5"
           initialValue={
             appState.page === Pages.Settings ||
-            appState.page === Pages.SceneEditor
+            appState.page === Pages.SceneEditor ||
+            appState.page === Pages.Admin
               ? appState.page
               : false
           }
@@ -432,6 +447,7 @@ const SideMenu = (props: IProps) => {
           </Menu.Label>
           {renderSettingsTab()}
           {renderSceneTab()}
+          {permissions?.owner && renderAdminTab()}
         </Menu>
       </ScrollArea>
       <div className="mt-auto w-full">
