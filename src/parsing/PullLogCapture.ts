@@ -23,8 +23,9 @@ export type CapturedPull = {
   lineCount: number;
 };
 
-// Retail raid difficulties: LFR, Normal, Heroic, Mythic.
-const RAID_DIFFICULTIES = new Set([14, 15, 16, 17]);
+// Retail raid difficulties: Normal, Heroic, Mythic, LFR, and flex Mythic
+// (233: raids like Kith'ix whose Mythic takes 10-30 players).
+const RAID_DIFFICULTIES = new Set([14, 15, 16, 17, 233]);
 
 // The app's Test button fakes a Mythic "Hogger" kill with this encounter ID.
 const TEST_BUTTON_ENCOUNTER = 9999;

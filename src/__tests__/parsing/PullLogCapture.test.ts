@@ -99,3 +99,19 @@ test('filter samples damage to an enemy once a second', () => {
   expect(filter.keep(hit('17.5000'))).toBe(false);
   expect(filter.keep(hit('18.2000'))).toBe(true);
 });
+
+test("captures flex Mythic (difficulty 233, e.g. Kith'ix)", () => {
+  const pulls: CapturedPull[] = [];
+  const capturer = new PullLogCapture((pull) => pulls.push(pull));
+  const text = fs
+    .readFileSync(path.join(logs, 'beloren_boss_hp.txt'), 'utf8')
+    // The same pull, as if the raid's Mythic were flex (10-30 players).
+    .replace(/(ENCOUNTER_(?:START|END),3182,"[^"]*",)16,/g, '$1233,');
+  text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => capturer.onLine(line));
+  expect(pulls).toHaveLength(1);
+  expect(pulls[0].difficultyId).toBe(233);
+});
