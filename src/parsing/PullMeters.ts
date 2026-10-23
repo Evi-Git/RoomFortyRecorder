@@ -141,6 +141,17 @@ export type MeterRow = {
   abilities: MeterAbility[];
 };
 
+/** One spell's casts in the cast timeline: seconds into the pull. */
+export type CastTrack = { spellId: number; name: string; times: number[] };
+
+/** An aura's time up: [start, end] seconds into the pull. */
+export type AuraTrack = {
+  spellId: number;
+  name: string;
+  caster: string;
+  intervals: [number, number][];
+};
+
 export type PullMetersData = {
   v: 2;
   source: 'app';
@@ -150,7 +161,19 @@ export type PullMetersData = {
   healing: MeterRow[];
   taken: MeterRow[];
   mitigation: MeterRow[];
+  /** Cooldown-like casts (a few per pull) per raider, for the timeline. */
+  casts?: { name: string; specId: number; spells: CastTrack[] }[];
+  /** Cooldown buffs on each raider (from casts), and Bloodlust and co. */
+  buffs?: { name: string; specId: number; auras: AuraTrack[] }[];
+  raidBuffs?: AuraTrack[];
+  /** Debuffs the raid kept on the boss (the enemy that took most damage). */
+  bossDebuffs?: AuraTrack[];
 };
+
+// Bloodlust and its cousins (raid-wide haste).
+const LUST = new Set([2825, 32182, 80353, 264667, 390386, 466904, 444257]);
+// A spell cast at most this often in a pull counts as a cooldown.
+const MAX_COOLDOWN_CASTS = 8;
 
 export default class PullMeters {
   /** `startMs`: ENCOUNTER_START's time; `timeOf` reads a line's time. */
@@ -177,6 +200,30 @@ export default class PullMeters {
 
   // Damage-reduction buffs on raiders: target guid -> spellId -> caster guid.
   private reductions = new Map<string, Map<number, string>>();
+
+  // Every cast with its time: owner guid -> spellId -> { name, times }.
+  private castTimes = new Map<
+    string,
+    Map<number, { name: string; times: number[] }>
+  >();
+
+  // Auras on raiders and on enemies, applied by raiders:
+  // `${target}|${spellId}|${caster}` -> { open start or null, intervals }.
+  private auras = new Map<
+    string,
+    {
+      target: string;
+      spellId: number;
+      name: string;
+      caster: string;
+      debuff: boolean;
+      open: number | null;
+      intervals: [number, number][];
+    }
+  >();
+
+  // Damage the raid did to each enemy, to find the boss.
+  private enemyDamage = new Map<string, number>();
 
   /** Feed one raw combat log line from the pull. */
   public feed(line: string) {
@@ -219,10 +266,16 @@ export default class PullMeters {
       byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
       bySpell.set(spellId, byBucket);
       this.casts.set(who, bySpell);
+      const timed = this.castTimes.get(who) ?? new Map();
+      const entry = timed.get(spellId) ?? { name: args[10], times: [] };
+      if (entry.times.length < 200) entry.times.push(Math.round(t * 10) / 10);
+      timed.set(spellId, entry);
+      this.castTimes.set(who, timed);
       return;
     }
 
     if (event === 'SPELL_AURA_APPLIED' || event === 'SPELL_AURA_REMOVED') {
+      this.trackAura(event === 'SPELL_AURA_APPLIED', args, t);
       const spellId = int(args[9]);
       const dr = DAMAGE_REDUCTION[spellId];
       if (!dr || !dr.r || !isPlayer(args[5])) return;
@@ -248,6 +301,10 @@ export default class PullMeters {
       const by = this.ownerOf(args[1], args[advanced + 1]);
       if (by && !isFriendly(args[7])) {
         this.add('damage', by, bucket, spellId, spellName, amount, { crit });
+        this.enemyDamage.set(
+          args[5],
+          (this.enemyDamage.get(args[5]) ?? 0) + amount,
+        );
       }
       if (
         isPlayer(args[5]) &&
@@ -315,6 +372,39 @@ export default class PullMeters {
         absorb: true,
       });
     }
+  }
+
+  /** Buffs on raiders and debuffs on enemies, applied by a raider. */
+  private trackAura(applied: boolean, args: string[], t: number) {
+    const caster = this.ownerOf(args[1], null);
+    if (!caster) return;
+    const target = args[5];
+    const debuff = args[12] === 'DEBUFF';
+    // Buffs on raiders, or debuffs on enemies.
+    if (debuff ? isPlayer(target) || isFriendly(args[7]) : !isPlayer(target))
+      return;
+    const spellId = int(args[9]);
+    const key = `${target}|${spellId}|${caster}`;
+    const aura = this.auras.get(key) ?? {
+      target,
+      spellId,
+      name: args[10],
+      caster,
+      debuff,
+      open: null,
+      intervals: [],
+    };
+    const at = Math.round(t * 10) / 10;
+    if (applied) {
+      if (aura.open === null) aura.open = at;
+    } else if (aura.open !== null) {
+      aura.intervals.push([aura.open, at]);
+      aura.open = null;
+    } else if (!aura.intervals.length) {
+      // Removed before we saw it applied: up since before the pull.
+      aura.intervals.push([0, at]);
+    }
+    this.auras.set(key, aura);
   }
 
   private auraNames = new Map<number, string>([
@@ -385,6 +475,108 @@ export default class PullMeters {
     map.set(guid, unit);
   }
 
+  /** Cast timeline, cooldown buffs, Bloodlust and boss debuffs. */
+  private timelines(duration: number) {
+    const end = Math.round(duration * 10) / 10;
+    const nameOf = (guid: string) => this.names.get(guid) ?? '';
+    // Spells each raider cast only a few times: their cooldowns.
+    const cooldowns = new Map<string, Set<number>>();
+    const casts = [...this.castTimes.entries()]
+      .filter(([guid]) => this.names.has(guid))
+      .map(([guid, spells]) => {
+        const picked = [...spells.entries()].filter(
+          ([, s]) => s.times.length <= MAX_COOLDOWN_CASTS,
+        );
+        cooldowns.set(guid, new Set(picked.map(([id]) => id)));
+        return {
+          name: nameOf(guid),
+          specId: this.specs.get(guid) ?? 0,
+          spells: picked
+            .map(([spellId, s]) => ({ spellId, name: s.name, times: s.times }))
+            .sort((a, b) => a.times[0] - b.times[0]),
+        };
+      })
+      .filter((r) => r.spells.length)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Closed at the end of the pull, overlaps merged.
+    const closed = (a: {
+      open: number | null;
+      intervals: [number, number][];
+    }) => {
+      const all = (
+        a.open === null
+          ? a.intervals
+          : [...a.intervals, [a.open, end] as [number, number]]
+      )
+        .map(([x, y]) => [Math.max(0, x), Math.min(end, y)] as [number, number])
+        .sort((x, y) => x[0] - y[0]);
+      const merged: [number, number][] = [];
+      all.forEach(([x, y]) => {
+        const last = merged[merged.length - 1];
+        if (last && x <= last[1]) last[1] = Math.max(last[1], y);
+        else merged.push([x, y]);
+      });
+      return merged;
+    };
+
+    // Bloodlust and co: the first raider's copy is the raid's.
+    const lust = new Map<number, AuraTrack>();
+    const buffsBy = new Map<string, AuraTrack[]>();
+    let boss = '';
+    let most = 0;
+    this.enemyDamage.forEach((amount, guid) => {
+      if (amount > most) {
+        most = amount;
+        boss = guid;
+      }
+    });
+    const bossDebuffs: AuraTrack[] = [];
+    this.auras.forEach((a) => {
+      const intervals = closed(a).filter(([s, e]) => e > s);
+      if (!intervals.length) return;
+      const track = {
+        spellId: a.spellId,
+        name: a.name,
+        caster: nameOf(a.caster),
+        intervals,
+      };
+      if (a.debuff) {
+        if (a.target === boss) bossDebuffs.push(track);
+        return;
+      }
+      if (LUST.has(a.spellId)) {
+        if (!lust.has(a.spellId)) lust.set(a.spellId, track);
+        return;
+      }
+      // A cooldown the caster pressed (not a proc or heal-over-time), and
+      // not something up all pull (a stance, Battle Shout).
+      if (!cooldowns.get(a.caster)?.has(a.spellId) || !this.names.has(a.target))
+        return;
+      const up = intervals.reduce((n, [x, y]) => n + y - x, 0);
+      if (up >= end * 0.9) return;
+      const list = buffsBy.get(a.target) ?? [];
+      list.push(track);
+      buffsBy.set(a.target, list);
+    });
+    const uptime = (x: AuraTrack) =>
+      x.intervals.reduce((n, [s, e]) => n + e - s, 0);
+    return {
+      casts,
+      buffs: [...buffsBy.entries()]
+        .map(([guid, auras]) => ({
+          name: nameOf(guid),
+          specId: this.specs.get(guid) ?? 0,
+          auras: auras.sort((a, b) => a.intervals[0][0] - b.intervals[0][0]),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      raidBuffs: [...lust.values()],
+      bossDebuffs: bossDebuffs
+        .sort((a, b) => uptime(b) - uptime(a))
+        .slice(0, 40),
+    };
+  }
+
   /** The finished meters for the raiders in the pull. */
   public finish(duration: number): PullMetersData {
     const rows = (kind: Kind): MeterRow[] =>
@@ -438,6 +630,7 @@ export default class PullMeters {
       healing: rows('healing'),
       taken: rows('taken'),
       mitigation: rows('mitigation'),
+      ...this.timelines(duration),
     };
   }
 }

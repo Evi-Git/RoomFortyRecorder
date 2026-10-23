@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.31] - Unreleased
+### Added
+- **Casts** tab in Logs: a timeline of each raider's cooldowns, defensives and potions. Pick a raider for one row per spell.
+- **Buffs & debuffs** tab: Bloodlust windows, debuff uptime on the boss, and a raider's cooldown buffs once you pick them.
+- **Click to watch:** click a moment on any Logs chart or track to open the recording of that pull at that moment (yours if you have it, otherwise anyone's).
+- **Deaths and Bloodlust on the charts:** red dashed lines for deaths, shaded bands for lust.
+- **Logs → Trends:** how the raid and each raider did night by night on a boss, with averages and change.
+
+### Notes
+- Casts and buffs come from apps on 1.9.31, so pulls recorded by older versions show the meters but not these tabs.
+
 ## [1.9.30] - Unreleased
 ### Changed
 - **The app is now called Room Forty Toolkit.** As with the last rename, only the name changes: settings, recordings, sign-in and updates carry on, and the old shortcuts are replaced.

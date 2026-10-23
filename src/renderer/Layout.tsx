@@ -119,7 +119,13 @@ const Layout = (props: IProps) => {
       {page === Pages.InstantReplay && renderInstantReplay()}
       {page === Pages.Live && <LivePage />}
       {page === Pages.Admin && <AdminPage />}
-      {page === Pages.Logs && <LogsPage />}
+      {page === Pages.Logs && (
+        <LogsPage
+          videoState={videoState}
+          setAppState={setAppState}
+          persistentProgressRef={persistentProgressRef}
+        />
+      )}
       {page === Pages.PullDesk && (
         <PullDeskPage
           videoState={videoState}

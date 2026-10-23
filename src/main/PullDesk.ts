@@ -58,6 +58,7 @@ export type PullDeskRequest =
   | { action: 'list'; days?: number }
   | { action: 'report'; id: string }
   | { action: 'meters'; id: string }
+  | { action: 'metersTrends'; encounterId: number; difficultyId?: number }
   | { action: 'reanalyze'; id: string }
   | { action: 'boss'; encounterId: number }
   | { action: 'setNote'; encounterId: number; note: string }
@@ -393,6 +394,15 @@ export default class PullDesk {
         );
       case 'report':
         return client.pullDeskRequest('get', `/pulls/${id(request.id)}`);
+      case 'metersTrends':
+        return client.pullDeskRequest(
+          'get',
+          `/meters/trends?encounterId=${id(request.encounterId)}${
+            request.difficultyId ? `&difficulty=${request.difficultyId}` : ''
+          }`,
+          undefined,
+          { timeout: 120000 },
+        );
       case 'meters':
         return client.pullDeskRequest('get', `/pulls/${id(request.id)}/meters`);
       case 'reanalyze':

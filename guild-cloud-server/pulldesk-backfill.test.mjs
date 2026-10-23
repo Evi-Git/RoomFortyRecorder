@@ -132,3 +132,30 @@ test('pulls sent by older apps (no meters) are asked for again and replaced', as
   await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(withMeters));
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
 });
+
+test('meters reply carries the pull and its deaths; trends add up night by night', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
+  const meters = {
+    ...METERS,
+    damage: [{ name: 'Evi', specId: 65, total: 1720, abilities: [] }, { name: 'Mage', specId: 63, total: 3440, abilities: [] }],
+    healing: [{ name: 'Evi', specId: 65, total: 860, abilities: [] }],
+  };
+  const first = await call('POST', ['backfill'], pull);
+  await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(`${slice}ROOMFORTY_METERS ${JSON.stringify(meters)}\n`));
+  const got = await call('GET', ['pulls', first.body.pullId, 'meters']);
+  assert.equal(got.status, 200, JSON.stringify(got.body));
+  assert.equal(got.body.pull.startedAt, at);
+  assert.equal(got.body.pull.encounterId, Number(encounterId));
+  assert.ok(got.body.deaths.length > 0);
+  assert.ok(got.body.deaths[0].name);
+  assert.equal(got.body.damage[1].name, 'Mage');
+
+  const trends = await call('GET', ['meters', 'trends'], undefined, `?encounterId=${encounterId}&difficulty=${difficultyId}`);
+  assert.equal(trends.status, 200);
+  assert.deepEqual(trends.body.nights.map((n) => [n.night, n.pulls]), [['2026-10-21', 1]]);
+  assert.equal(trends.body.nights[0].raid.damage, 5160);
+  const evi = trends.body.raiders.find((r) => r.name === 'Evi');
+  assert.deepEqual(evi.nights['2026-10-21'], { seconds: 172, pulls: 1, damage: 1720, healing: 860 });
+});

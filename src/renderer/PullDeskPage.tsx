@@ -28,7 +28,7 @@ import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 import AbilityName from './AbilityCard';
 import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
-import PullMeters from './Meters';
+import PullMeters, { useRecordingWatch, WatchContext } from './Meters';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -409,6 +409,12 @@ const HpCurve = ({
 
 const PullDeskPage = (props: IProps) => {
   const { videoState, setAppState, persistentProgressRef } = props;
+  // Meters' "open a recording at this moment".
+  const recordingWatch = useRecordingWatch(
+    videoState,
+    setAppState,
+    persistentProgressRef,
+  );
 
   const [pulls, setPulls] = React.useState<PullSummary[]>([]);
   const [error, setError] = React.useState('');
@@ -1636,12 +1642,14 @@ const PullDeskPage = (props: IProps) => {
           </div>
           {section === 'deaths' && renderDeaths(r)}
           {section === 'meters' && (
-            <PullMeters
-              key={r.id}
-              pullId={r.id}
-              encounterId={r.encounterId}
-              difficultyId={r.difficultyId}
-            />
+            <WatchContext.Provider value={recordingWatch}>
+              <PullMeters
+                key={r.id}
+                pullId={r.id}
+                encounterId={r.encounterId}
+                difficultyId={r.difficultyId}
+              />
+            </WatchContext.Provider>
           )}
           {section === 'defensives' && renderDefensives(r)}
           {section === 'plan' && renderPlan(r)}
