@@ -603,7 +603,7 @@ export const analyzePull = (logText, options = {}) => {
         (d) => d.t >= deaths[i].t && d.t - deaths[i].t <= 2 && d.killingBlow?.spellName === spell,
       );
       if (spell && group.length >= 5) {
-        massDeath = { t: deaths[i].t, spellName: spell, count: group.length };
+        massDeath = { t: deaths[i].t, spellName: spell, spellId: deaths[i].killingBlow?.spellId ?? null, count: group.length };
       }
     }
 

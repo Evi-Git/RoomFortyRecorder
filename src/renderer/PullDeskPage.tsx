@@ -25,6 +25,8 @@ import {
   ProgressionView,
 } from './PullDeskSummary';
 import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
+import AbilityName from './AbilityCard';
+import JournalView from './PullDeskJournal';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -290,12 +292,17 @@ const loadSection = (): Section => {
   return 'deaths';
 };
 
-type View = 'pulls' | 'night' | 'progression';
+type View = 'pulls' | 'night' | 'progression' | 'journal';
 
 const loadView = (): View => {
   try {
     const saved = localStorage.getItem('rf-pulldesk-view');
-    if (saved === 'pulls' || saved === 'night' || saved === 'progression') {
+    if (
+      saved === 'pulls' ||
+      saved === 'night' ||
+      saved === 'progression' ||
+      saved === 'journal'
+    ) {
       return saved;
     }
   } catch {
@@ -957,7 +964,13 @@ const PullDeskPage = (props: IProps) => {
           <td className="py-1 pr-3">
             {kb ? (
               <>
-                {kb.spellName}
+                <AbilityName
+                  name={kb.spellName}
+                  spellId={kb.spellId}
+                  encounterId={report?.encounterId}
+                  difficultyId={report?.difficultyId}
+                  canEdit={canEdit}
+                />
                 <span className="text-foreground/50">
                   {sourceText(kb.source)}
                   {kb.amount > 0 && ` · ${compact(kb.amount)}`}
@@ -1081,7 +1094,15 @@ const PullDeskPage = (props: IProps) => {
             {segment.length} raiders
           </td>
           <td className="py-1 pr-3">
-            {first.killingBlow?.spellName}
+            {first.killingBlow && (
+              <AbilityName
+                name={first.killingBlow.spellName}
+                spellId={first.killingBlow.spellId}
+                encounterId={report?.encounterId}
+                difficultyId={report?.difficultyId}
+                canEdit={canEdit}
+              />
+            )}
             <span className="text-foreground/50">
               {sourceText(first.killingBlow?.source)}
             </span>
@@ -1617,6 +1638,7 @@ const PullDeskPage = (props: IProps) => {
               ['pulls', 'Pulls'],
               ['night', 'Night summary'],
               ['progression', 'Progression'],
+              ['journal', 'Journal'],
             ] as [View, string][]
           ).map(([key, label]) => (
             <button
@@ -1688,21 +1710,33 @@ const PullDeskPage = (props: IProps) => {
 
       {view !== 'pulls' && (
         <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-y-3">
-          <div className="flex flex-col gap-y-2 items-start">
-            <div className="flex gap-x-2">
-              <UploadFromLog
-                hints={bossPercentHints}
-                tracked={tracked}
-                onUploaded={reloadSummaries}
-              />
-              {canEdit && <ImportFromLogs onImported={reloadSummaries} />}
+          {view !== 'journal' && (
+            <div className="flex flex-col gap-y-2 items-start">
+              <div className="flex gap-x-2">
+                <UploadFromLog
+                  hints={bossPercentHints}
+                  tracked={tracked}
+                  onUploaded={reloadSummaries}
+                />
+                {canEdit && <ImportFromLogs onImported={reloadSummaries} />}
+              </div>
             </div>
-          </div>
-          {view === 'night' ? (
-            <NightSummaryView key={importTick} onOpenPull={openPull} />
-          ) : (
-            <ProgressionView key={importTick} onOpenPull={openPull} />
           )}
+          {view === 'night' && (
+            <NightSummaryView
+              key={importTick}
+              onOpenPull={openPull}
+              canEdit={canEdit}
+            />
+          )}
+          {view === 'progression' && (
+            <ProgressionView
+              key={importTick}
+              onOpenPull={openPull}
+              canEdit={canEdit}
+            />
+          )}
+          {view === 'journal' && <JournalView canEdit={canEdit} />}
         </div>
       )}
 

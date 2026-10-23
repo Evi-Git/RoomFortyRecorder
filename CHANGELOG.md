@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.15] - Unreleased
+### Added
+- **Ability cards:** hover (or tab to) any boss ability name in the Pull desk (wipe causes, a pull's killing blows, Progression causes) for its card: Blizzard's journal text, spell ID with a copy button, ability tags, how many pulls it ended / raiders it killed / early deaths on that boss and difficulty, and **Add to avoidable** for that boss (editors).
+- **Journal view** (Pull desk → Journal): the boss's Encounter Journal by stage, with a difficulty switch for the difficulties you've pulled, your raid's wipes and deaths on each ability, Heroic/Mythic-only abilities dimmed on lower difficulties (when Blizzard provides the tags), and an avoidable button per ability. **Also hit your raid** lists abilities from your logs the journal doesn't name (adds, sub-spells). If a boss isn't found by name, editors can paste its journal ID or link.
+- Text and icons come from Blizzard's free Game Data API, cached on the guild server (a few requests per boss per patch). Needs `GUILD_CLOUD_BLIZZARD_CLIENT_ID` and `GUILD_CLOUD_BLIZZARD_CLIENT_SECRET` in the server `.env`; run `update-server.cmd`.
+
 ## [1.9.14] - Unreleased
 ### Changed
 - Pull desk raider tables: the "Pots" and "Stones" columns are now "Health pots" and "Healthstones".

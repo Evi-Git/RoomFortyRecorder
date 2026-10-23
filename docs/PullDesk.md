@@ -87,6 +87,24 @@ Recruiting.md).
 Pulls the app saw but never got a log for also count in both views after
 10 minutes, with the result, boss % and length the app reported.
 
+### Journal view and ability cards
+
+- **Journal** (fourth view): pick a boss and difficulty. Blizzard's
+  Encounter Journal by stage, each ability with its text, spell ID, tags,
+  your raid's wipes and deaths to it on that difficulty, and (for editors)
+  **Add to avoidable**. Abilities from your logs that the journal doesn't
+  name are listed under **Also hit your raid**.
+- **Ability cards**: hover any underlined ability name (wipe causes, killing
+  blows, Progression causes) for the same text, the spell ID (copy button),
+  your raid's numbers and the avoidable button.
+- The avoidable list is per boss (all difficulties), as in Boss settings.
+- Setup: a free client at https://develop.battle.net (API Access → Create
+  Client). Put `GUILD_CLOUD_BLIZZARD_CLIENT_ID` and
+  `GUILD_CLOUD_BLIZZARD_CLIENT_SECRET` in the server `.env` and restart. The
+  server caches each boss's journal for a day and spells/icons for good.
+- If a boss isn't found by name, paste its journal encounter ID or a journal
+  link (e.g. one ending in `#encounter=2896`) in the Journal view.
+
 ### Top guilds (Progression)
 
 Officers add up to 3 guilds that log publicly on Warcraft Logs (name, realm,

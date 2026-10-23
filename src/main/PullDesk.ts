@@ -66,6 +66,23 @@ export type PullDeskRequest =
   | { action: 'night'; night: string }
   | { action: 'progression'; encounterId: number; difficultyId?: number }
   | { action: 'importWcl'; reports: string[] }
+  | { action: 'journalBoss'; encounterId: number; difficultyId?: number }
+  | {
+      action: 'journalSpell';
+      spellId: number;
+      encounterId?: number;
+      difficultyId?: number;
+      name?: string;
+    }
+  | { action: 'journalIcons'; ids: number[] }
+  | {
+      action: 'avoidableToggle';
+      encounterId: number;
+      spellId: number;
+      name?: string;
+      on: boolean;
+    }
+  | { action: 'setJournalId'; encounterId: number; journalId: string }
   | { action: 'logFiles' }
   | { action: 'scanLog'; file: string }
   | {
@@ -394,6 +411,49 @@ export default class PullDesk {
           }`,
           undefined,
           { timeout: 120000 },
+        );
+      case 'journalBoss':
+        return client.pullDeskRequest(
+          'get',
+          `/journal/boss/${id(request.encounterId)}${
+            request.difficultyId ? `?difficulty=${request.difficultyId}` : ''
+          }`,
+          undefined,
+          { timeout: 60000 },
+        );
+      case 'journalSpell': {
+        const params = new URLSearchParams();
+        if (request.encounterId) {
+          params.set('encounterId', String(request.encounterId));
+        }
+        if (request.difficultyId) {
+          params.set('difficulty', String(request.difficultyId));
+        }
+        if (request.name) params.set('name', request.name);
+        return client.pullDeskRequest(
+          'get',
+          `/journal/spell/${id(request.spellId)}?${params.toString()}`,
+        );
+      }
+      case 'journalIcons':
+        return client.pullDeskRequest(
+          'post',
+          '/journal/icons',
+          { ids: request.ids },
+          { timeout: 60000 },
+        );
+      case 'avoidableToggle':
+        return client.pullDeskRequest(
+          'put',
+          `/bosses/${id(request.encounterId)}/avoidable-toggle`,
+          { spellId: request.spellId, name: request.name, on: request.on },
+          { timeout: 120000 },
+        );
+      case 'setJournalId':
+        return client.pullDeskRequest(
+          'put',
+          `/bosses/${id(request.encounterId)}/journal`,
+          { journalId: request.journalId },
         );
       case 'logFiles':
         return this.backfill.listLogs();

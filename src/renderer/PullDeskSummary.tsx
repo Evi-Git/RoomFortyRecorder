@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
+import { Ability, AbilityScope } from './AbilityCard';
 import { Button } from './components/Button/Button';
 import {
   guildKey,
@@ -28,7 +29,7 @@ type Response<T> = { ok: true; data: T } | { ok: false; error: string };
 const call = <T,>(request: Record<string, unknown>) =>
   ipc.invoke('pullDesk', [request]) as Promise<Response<T>>;
 
-type Cause = { name: string; count: number };
+type Cause = { name: string; count: number; spellId?: number | null };
 
 type Raider = {
   name: string;
@@ -74,6 +75,7 @@ type BossNight = {
   causes: Cause[];
   raiders: Raider[];
   pullsList: PullRow[];
+  spellIds?: Record<string, number>;
 };
 
 type NightIndex = {
@@ -113,6 +115,7 @@ type Progression = {
   }[];
   firstKill: { pull: number; night: string } | null;
   causes: Cause[];
+  spellIds?: Record<string, number>;
   raiders: Raider[];
   trend: {
     name: string;
@@ -233,7 +236,9 @@ const CauseBars = ({
           className="grid grid-cols-[minmax(120px,40%)_1fr] items-center gap-x-3 text-sm"
           title={`${cause.name}: ${cause.count} ${cause.count === 1 ? 'pull' : 'pulls'}`}
         >
-          <span className="truncate text-foreground-lighter">{cause.name}</span>
+          <span className="truncate text-foreground-lighter">
+            <Ability name={cause.name} spellId={cause.spellId} />
+          </span>
           <span className="flex items-center gap-x-2">
             <span
               className="h-[14px] rounded-r-[4px]"
@@ -465,139 +470,153 @@ const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
 const BossNightCard = ({
   boss,
   onOpenPull,
+  canEdit,
 }: {
   boss: BossNight;
   onOpenPull: (id: string) => void;
+  canEdit: boolean;
 }) => {
   const [showPulls, setShowPulls] = React.useState(false);
 
   return (
-    <div className="flex flex-col gap-y-3">
-      <div className="flex items-baseline gap-x-2">
-        <h2 className="font-display text-xl text-foreground-lighter">
-          {boss.encounterName}
-        </h2>
-        <span className="text-sm text-foreground">
-          {difficultyName(boss.difficultyId)}
-        </span>
-        {boss.kills > 0 && (
-          <span className="flex items-center gap-x-1 text-sm text-green-400">
-            <Crown size={14} /> Killed
+    <AbilityScope
+      encounterId={boss.encounterId}
+      difficultyId={boss.difficultyId}
+      spellIds={boss.spellIds}
+      canEdit={canEdit}
+    >
+      <div className="flex flex-col gap-y-3">
+        <div className="flex items-baseline gap-x-2">
+          <h2 className="font-display text-xl text-foreground-lighter">
+            {boss.encounterName}
+          </h2>
+          <span className="text-sm text-foreground">
+            {difficultyName(boss.difficultyId)}
           </span>
-        )}
-      </div>
+          {boss.kills > 0 && (
+            <span className="flex items-center gap-x-1 text-sm text-green-400">
+              <Crown size={14} /> Killed
+            </span>
+          )}
+        </div>
 
-      <div className="flex flex-wrap gap-x-6 gap-y-2">
-        <Stat label="Pulls" value={boss.pulls} />
-        <Stat label="Kills" value={boss.kills} />
-        <Stat
-          label="Best"
-          value={boss.kills ? 'Kill' : pct(boss.bestPercent)}
-        />
-        <Stat label="Median wipe" value={pct(boss.medianPercent)} />
-        <Stat label="Time in combat" value={hours(boss.combatSeconds)} />
-        <Stat
-          label="Longest pull"
-          value={boss.longestPull ? mmss(boss.longestPull) : '–'}
-        />
-      </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <Stat label="Pulls" value={boss.pulls} />
+          <Stat label="Kills" value={boss.kills} />
+          <Stat
+            label="Best"
+            value={boss.kills ? 'Kill' : pct(boss.bestPercent)}
+          />
+          <Stat label="Median wipe" value={pct(boss.medianPercent)} />
+          <Stat label="Time in combat" value={hours(boss.combatSeconds)} />
+          <Stat
+            label="Longest pull"
+            value={boss.longestPull ? mmss(boss.longestPull) : '–'}
+          />
+        </div>
 
-      <div className="grid items-start grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
-        <Panel title="Why pulls ended">
-          <CauseBars causes={boss.causes} />
-          <p className="text-xs text-foreground mt-2">
-            A raid-wide mechanic if it killed many at once, else the first
-            death&apos;s killing blow.
-          </p>
-        </Panel>
-        <Panel title="Raiders">
-          <RaiderTable raiders={boss.raiders} />
-        </Panel>
-      </div>
+        <div className="grid items-start grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
+          <Panel title="Why pulls ended">
+            <CauseBars causes={boss.causes} />
+            <p className="text-xs text-foreground mt-2">
+              A raid-wide mechanic if it killed many at once, else the first
+              death&apos;s killing blow.
+            </p>
+          </Panel>
+          <Panel title="Raiders">
+            <RaiderTable raiders={boss.raiders} />
+          </Panel>
+        </div>
 
-      <Panel
-        title={`Pulls (${boss.pulls})`}
-        aside={
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => setShowPulls((v) => !v)}
-          >
-            {showPulls ? 'Hide' : 'Show'}
-          </Button>
-        }
-      >
-        {showPulls ? (
-          <table className="w-full text-sm">
-            <thead className="text-xs text-foreground border-b border-card">
-              <tr>
-                <th className="px-2 py-1 text-left font-normal">Pull</th>
-                <th className="px-2 py-1 text-left font-normal">Result</th>
-                <th className="px-2 py-1 text-right font-normal">Length</th>
-                <th className="px-2 py-1 text-right font-normal">Deaths</th>
-                <th className="px-2 py-1 text-left font-normal">Cause</th>
-                <th aria-label="Open" />
-              </tr>
-            </thead>
-            <tbody>
-              {boss.pullsList.map((p) => (
-                <tr
-                  key={p.id}
-                  className="border-b border-card/40 hover:bg-card/30"
-                >
-                  <td className="px-2 py-1 tabular-nums">{p.pullNumber}</td>
-                  <td className="px-2 py-1">
-                    {p.result === 'kill' ? (
-                      <span className="text-green-400">Kill</span>
-                    ) : (
-                      <span className="tabular-nums">{pct(p.bossPercent)}</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums">
-                    {mmss(p.duration)}
-                  </td>
-                  <td className="px-2 py-1 text-right tabular-nums">
-                    {p.deaths ?? '–'}
-                  </td>
-                  <td className="px-2 py-1 truncate max-w-[280px]">
-                    {p.cause ?? ''}
-                  </td>
-                  <td className="px-2 py-1 text-right">
-                    {p.source === 'wcl' ? (
-                      <span
-                        className="text-xs text-foreground/50"
-                        title="Imported from Warcraft Logs: no app report to open"
-                      >
-                        WCL
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-xs text-brand hover:underline"
-                        onClick={() => onOpenPull(p.id)}
-                      >
-                        Open
-                      </button>
-                    )}
-                  </td>
+        <Panel
+          title={`Pulls (${boss.pulls})`}
+          aside={
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setShowPulls((v) => !v)}
+            >
+              {showPulls ? 'Hide' : 'Show'}
+            </Button>
+          }
+        >
+          {showPulls ? (
+            <table className="w-full text-sm">
+              <thead className="text-xs text-foreground border-b border-card">
+                <tr>
+                  <th className="px-2 py-1 text-left font-normal">Pull</th>
+                  <th className="px-2 py-1 text-left font-normal">Result</th>
+                  <th className="px-2 py-1 text-right font-normal">Length</th>
+                  <th className="px-2 py-1 text-right font-normal">Deaths</th>
+                  <th className="px-2 py-1 text-left font-normal">Cause</th>
+                  <th aria-label="Open" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="text-sm text-foreground">
-            Every pull with its result and cause. Open one for its full report.
-          </p>
-        )}
-      </Panel>
-    </div>
+              </thead>
+              <tbody>
+                {boss.pullsList.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-card/40 hover:bg-card/30"
+                  >
+                    <td className="px-2 py-1 tabular-nums">{p.pullNumber}</td>
+                    <td className="px-2 py-1">
+                      {p.result === 'kill' ? (
+                        <span className="text-green-400">Kill</span>
+                      ) : (
+                        <span className="tabular-nums">
+                          {pct(p.bossPercent)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums">
+                      {mmss(p.duration)}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums">
+                      {p.deaths ?? '–'}
+                    </td>
+                    <td className="px-2 py-1 truncate max-w-[280px]">
+                      {p.cause ?? ''}
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      {p.source === 'wcl' ? (
+                        <span
+                          className="text-xs text-foreground/50"
+                          title="Imported from Warcraft Logs: no app report to open"
+                        >
+                          WCL
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-xs text-brand hover:underline"
+                          onClick={() => onOpenPull(p.id)}
+                        >
+                          Open
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-foreground">
+              Every pull with its result and cause. Open one for its full
+              report.
+            </p>
+          )}
+        </Panel>
+      </div>
+    </AbilityScope>
   );
 };
 
 export const NightSummaryView = ({
   onOpenPull,
+  canEdit = false,
 }: {
   onOpenPull: (id: string) => void;
+  canEdit?: boolean;
 }) => {
   const [nights, setNights] = React.useState<NightIndex[] | null>(null);
   const [night, setNight] = React.useState<string>('');
@@ -695,6 +714,7 @@ export const NightSummaryView = ({
             key={bossKey(boss.encounterId, boss.difficultyId)}
             boss={boss}
             onOpenPull={onOpenPull}
+            canEdit={canEdit}
           />
         ))}
         {!bosses && <p className="text-sm text-foreground">Loading…</p>}
@@ -1212,7 +1232,7 @@ const CauseTrend = ({ data }: { data: Progression }) => {
           {top.map((name) => (
             <tr key={name}>
               <td className="px-2 py-1 whitespace-nowrap max-w-[260px] truncate">
-                {name}
+                <Ability name={name} />
               </td>
               {nights.map((n) => {
                 const count = n.causes.find((c) => c.name === name)?.count ?? 0;
@@ -1265,8 +1285,10 @@ const loadBossChoice = () => {
 
 export const ProgressionView = ({
   onOpenPull,
+  canEdit = false,
 }: {
   onOpenPull: (id: string) => void;
+  canEdit?: boolean;
 }) => {
   const [options, setOptions] = React.useState<BossOption[] | null>(null);
   const [choice, setChoice] = React.useState<string>(loadBossChoice);
@@ -1413,104 +1435,225 @@ export const ProgressionView = ({
       </div>
 
       {data && (
-        <div
-          className={`flex flex-col gap-y-4 transition-opacity ${
-            loading ? 'opacity-50' : ''
-          }`}
+        <AbilityScope
+          encounterId={data.encounterId}
+          difficultyId={data.difficultyId}
+          spellIds={data.spellIds}
+          canEdit={canEdit}
         >
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Stat label="Pulls" value={data.pulls} />
-            <Stat label="Nights" value={data.nights.length} />
-            <Stat
-              label={data.firstKill ? 'First kill' : 'Best wipe'}
-              value={
-                data.firstKill
-                  ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
-                  : pct(Number.isFinite(bestWipe) ? bestWipe : null)
-              }
-            />
-            <Stat label="Kills" value={data.kills} />
-            <Stat
-              label="Time in combat"
-              value={hours(
-                data.nights.reduce((s, n) => s + n.combatSeconds, 0),
-              )}
-            />
-            <Stat label="Wipes" value={wipes} />
-          </div>
-
-          <Panel
-            title="Boss health by pull"
-            aside={
-              <>
-                {watchedGuilds.length > 0 && !asTable && (
-                  <select
-                    className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
-                    value={compareKey}
-                    onChange={(e) => setCompareKey(e.target.value)}
-                    aria-label="Compare with a watched guild"
-                  >
-                    <option value="">Compare with…</option>
-                    {watchedGuilds.map((g) => (
-                      <option key={guildKey(g)} value={guildKey(g)}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  className="gap-x-1"
-                  onClick={() => setAsTable((v) => !v)}
-                >
-                  {asTable ? <LineChart size={14} /> : <Table2 size={14} />}
-                  {asTable ? 'Chart' : 'Table'}
-                </Button>
-              </>
-            }
+          <div
+            className={`flex flex-col gap-y-4 transition-opacity ${
+              loading ? 'opacity-50' : ''
+            }`}
           >
-            {asTable ? (
-              <div className="max-h-[300px] overflow-y-auto">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <Stat label="Pulls" value={data.pulls} />
+              <Stat label="Nights" value={data.nights.length} />
+              <Stat
+                label={data.firstKill ? 'First kill' : 'Best wipe'}
+                value={
+                  data.firstKill
+                    ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
+                    : pct(Number.isFinite(bestWipe) ? bestWipe : null)
+                }
+              />
+              <Stat label="Kills" value={data.kills} />
+              <Stat
+                label="Time in combat"
+                value={hours(
+                  data.nights.reduce((s, n) => s + n.combatSeconds, 0),
+                )}
+              />
+              <Stat label="Wipes" value={wipes} />
+            </div>
+
+            <Panel
+              title="Boss health by pull"
+              aside={
+                <>
+                  {watchedGuilds.length > 0 && !asTable && (
+                    <select
+                      className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
+                      value={compareKey}
+                      onChange={(e) => setCompareKey(e.target.value)}
+                      aria-label="Compare with a watched guild"
+                    >
+                      <option value="">Compare with…</option>
+                      {watchedGuilds.map((g) => (
+                        <option key={guildKey(g)} value={guildKey(g)}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    className="gap-x-1"
+                    onClick={() => setAsTable((v) => !v)}
+                  >
+                    {asTable ? <LineChart size={14} /> : <Table2 size={14} />}
+                    {asTable ? 'Chart' : 'Table'}
+                  </Button>
+                </>
+              }
+            >
+              {asTable ? (
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs text-foreground border-b border-card sticky top-0 bg-background-higher">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-normal">
+                          Pull
+                        </th>
+                        <th className="px-2 py-1 text-left font-normal">
+                          Night
+                        </th>
+                        <th className="px-2 py-1 text-right font-normal">
+                          Boss health
+                        </th>
+                        <th aria-label="Open" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.series.map((p) => (
+                        <tr key={p.id} className="border-b border-card/40">
+                          <td className="px-2 py-1 tabular-nums">{p.n}</td>
+                          <td className="px-2 py-1">{nightLabel(p.night)}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">
+                            {p.kill ? (
+                              <span className="text-green-400">Kill</span>
+                            ) : (
+                              pct(p.percent)
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-right">
+                            {p.source === 'wcl' ? (
+                              <span
+                                className="text-xs text-foreground/50"
+                                title="Imported from Warcraft Logs: no app report to open"
+                              >
+                                WCL
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs text-brand hover:underline"
+                                onClick={() => onOpenPull(p.id)}
+                              >
+                                Open
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <>
+                  <ProgressionChart
+                    data={data}
+                    onOpenPull={onOpenPull}
+                    compare={compare}
+                  />
+                  {compareKey && !compare && (
+                    <p className="text-xs text-foreground mt-1">
+                      {compareGuild?.name ?? 'That guild'} has no logged Mythic
+                      pulls on this boss.
+                    </p>
+                  )}
+                </>
+              )}
+            </Panel>
+
+            <Panel title="Top guilds">
+              {watcher ? (
+                <div className="flex flex-col gap-y-4">
+                  {watchedGuilds.length > 0 && (
+                    <WatcherTable
+                      state={watcher}
+                      encounterId={data.encounterId}
+                      encounterName={data.encounterName}
+                      home={{
+                        pulls: data.pulls,
+                        nights: data.nights.length,
+                        kill: data.firstKill?.pull ?? null,
+                        best:
+                          bestWipe !== null && Number.isFinite(bestWipe)
+                            ? bestWipe
+                            : null,
+                      }}
+                    />
+                  )}
+                  <WatcherSettings
+                    key={JSON.stringify(watcher.settings)}
+                    state={watcher}
+                    onChange={() => setWatcherTick((t) => t + 1)}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-foreground">Loading…</p>
+              )}
+            </Panel>
+
+            <Panel title="Night by night">
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-xs text-foreground border-b border-card sticky top-0 bg-background-higher">
+                  <thead className="text-xs text-foreground border-b border-card">
                     <tr>
-                      <th className="px-2 py-1 text-left font-normal">Pull</th>
                       <th className="px-2 py-1 text-left font-normal">Night</th>
                       <th className="px-2 py-1 text-right font-normal">
-                        Boss health
+                        Pulls
                       </th>
-                      <th aria-label="Open" />
+                      <th className="px-2 py-1 text-right font-normal">
+                        Kills
+                      </th>
+                      <th className="px-2 py-1 text-right font-normal">Best</th>
+                      <th className="px-2 py-1 text-right font-normal">
+                        Median wipe
+                      </th>
+                      <th className="px-2 py-1 text-right font-normal">
+                        In combat
+                      </th>
+                      <th className="px-2 py-1 text-left font-normal">
+                        Top cause
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.series.map((p) => (
-                      <tr key={p.id} className="border-b border-card/40">
-                        <td className="px-2 py-1 tabular-nums">{p.n}</td>
-                        <td className="px-2 py-1">{nightLabel(p.night)}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {p.kill ? (
-                            <span className="text-green-400">Kill</span>
-                          ) : (
-                            pct(p.percent)
-                          )}
+                    {[...data.nights].reverse().map((n) => (
+                      <tr key={n.night} className="border-b border-card/40">
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {nightLabel(n.night)}
                         </td>
-                        <td className="px-2 py-1 text-right">
-                          {p.source === 'wcl' ? (
-                            <span
-                              className="text-xs text-foreground/50"
-                              title="Imported from Warcraft Logs: no app report to open"
-                            >
-                              WCL
-                            </span>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {n.pulls}
+                        </td>
+                        <td
+                          className={`px-2 py-1 text-right tabular-nums ${
+                            n.kills ? 'text-green-400' : 'text-foreground/50'
+                          }`}
+                        >
+                          {n.kills}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {n.kills ? 'Kill' : pct(n.bestPercent)}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {pct(n.medianPercent)}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {hours(n.combatSeconds)}
+                        </td>
+                        <td className="px-2 py-1 truncate max-w-[280px]">
+                          {n.topCause ? (
+                            <>
+                              <Ability name={n.topCause.name} /> (
+                              {n.topCause.count})
+                            </>
                           ) : (
-                            <button
-                              type="button"
-                              className="text-xs text-brand hover:underline"
-                              onClick={() => onOpenPull(p.id)}
-                            >
-                              Open
-                            </button>
+                            '–'
                           )}
                         </td>
                       </tr>
@@ -1518,123 +1661,22 @@ export const ProgressionView = ({
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <>
-                <ProgressionChart
-                  data={data}
-                  onOpenPull={onOpenPull}
-                  compare={compare}
-                />
-                {compareKey && !compare && (
-                  <p className="text-xs text-foreground mt-1">
-                    {compareGuild?.name ?? 'That guild'} has no logged Mythic
-                    pulls on this boss.
-                  </p>
-                )}
-              </>
-            )}
-          </Panel>
-
-          <Panel title="Top guilds">
-            {watcher ? (
-              <div className="flex flex-col gap-y-4">
-                {watchedGuilds.length > 0 && (
-                  <WatcherTable
-                    state={watcher}
-                    encounterId={data.encounterId}
-                    encounterName={data.encounterName}
-                    home={{
-                      pulls: data.pulls,
-                      nights: data.nights.length,
-                      kill: data.firstKill?.pull ?? null,
-                      best:
-                        bestWipe !== null && Number.isFinite(bestWipe)
-                          ? bestWipe
-                          : null,
-                    }}
-                  />
-                )}
-                <WatcherSettings
-                  key={JSON.stringify(watcher.settings)}
-                  state={watcher}
-                  onChange={() => setWatcherTick((t) => t + 1)}
-                />
-              </div>
-            ) : (
-              <p className="text-sm text-foreground">Loading…</p>
-            )}
-          </Panel>
-
-          <Panel title="Night by night">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-foreground border-b border-card">
-                  <tr>
-                    <th className="px-2 py-1 text-left font-normal">Night</th>
-                    <th className="px-2 py-1 text-right font-normal">Pulls</th>
-                    <th className="px-2 py-1 text-right font-normal">Kills</th>
-                    <th className="px-2 py-1 text-right font-normal">Best</th>
-                    <th className="px-2 py-1 text-right font-normal">
-                      Median wipe
-                    </th>
-                    <th className="px-2 py-1 text-right font-normal">
-                      In combat
-                    </th>
-                    <th className="px-2 py-1 text-left font-normal">
-                      Top cause
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...data.nights].reverse().map((n) => (
-                    <tr key={n.night} className="border-b border-card/40">
-                      <td className="px-2 py-1 whitespace-nowrap">
-                        {nightLabel(n.night)}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {n.pulls}
-                      </td>
-                      <td
-                        className={`px-2 py-1 text-right tabular-nums ${
-                          n.kills ? 'text-green-400' : 'text-foreground/50'
-                        }`}
-                      >
-                        {n.kills}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {n.kills ? 'Kill' : pct(n.bestPercent)}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {pct(n.medianPercent)}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {hours(n.combatSeconds)}
-                      </td>
-                      <td className="px-2 py-1 truncate max-w-[280px]">
-                        {n.topCause
-                          ? `${n.topCause.name} (${n.topCause.count})`
-                          : '–'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-
-          <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
-            <Panel title="Wipe causes over time">
-              <CauseTrend data={data} />
             </Panel>
-            <Panel title="Early deaths by night">
-              <RaiderTrend data={data} />
+
+            <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
+              <Panel title="Wipe causes over time">
+                <CauseTrend data={data} />
+              </Panel>
+              <Panel title="Early deaths by night">
+                <RaiderTrend data={data} />
+              </Panel>
+            </div>
+
+            <Panel title="Raiders, all nights">
+              <RaiderTable raiders={data.raiders} />
             </Panel>
           </div>
-
-          <Panel title="Raiders, all nights">
-            <RaiderTable raiders={data.raiders} />
-          </Panel>
-        </div>
+        </AbilityScope>
       )}
     </div>
   );
