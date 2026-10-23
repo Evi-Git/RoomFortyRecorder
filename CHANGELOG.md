@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.18] - Unreleased
+### Changed
+- **The app is now called Bellhop** (Room Forty's raid assistant). The new name shows on the window, title bar, tray, Start menu and desktop shortcuts, the installer and link pages. Nothing else changes: settings, recordings, sign-in and updates carry on as before, and the old "RoomFortyRecorder" shortcuts are replaced. A taskbar pin may keep its old label until you re-pin it.
+
 ## [1.9.17] - Unreleased
 ### Added
 - **Avoidable damage** in Night summary and Progression: one row per avoidable ability with damage taken, hits, raiders hit, pulls and deaths it caused. Click a row to see who got hit.

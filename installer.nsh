@@ -7,7 +7,7 @@
     ${If} $1 != '0' 
       ${If} $1 != '3010' # The MSI "need to reboot" return code.
         ${If} $1 != '1638' # The MSI "already installed" return code.
-          MessageBox MB_OK|MB_ICONEXCLAMATION 'WARNING: RoomFortyRecorder was unable to install the latest Visual C++ Redistributable package from Microsoft.'
+          MessageBox MB_OK|MB_ICONEXCLAMATION 'WARNING: Bellhop was unable to install the latest Visual C++ Redistributable package from Microsoft.'
         ${EndIf}
       ${EndIf}
     ${EndIf}
@@ -17,8 +17,13 @@
     # ${EndIf}
 
   ${Else}
-      MessageBox MB_OK|MB_ICONEXCLAMATION 'WARNING: RoomFortyRecorder was unable to download the latest Visual C++ Redistributable package from Microsoft.'
+      MessageBox MB_OK|MB_ICONEXCLAMATION 'WARNING: Bellhop was unable to download the latest Visual C++ Redistributable package from Microsoft.'
   ${EndIf}
+
+  # Bellhop was called RoomFortyRecorder: drop the old-name shortcuts (the
+  # new ones point at the same app).
+  Delete "$DESKTOP\RoomFortyRecorder.lnk"
+  Delete "$SMPROGRAMS\RoomFortyRecorder.lnk"
 
   FileOpen $0 "$INSTDIR\installername" w
   FileWrite $0 $EXEFILE

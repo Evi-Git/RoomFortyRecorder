@@ -45,9 +45,9 @@ export default function RendererTitleBar() {
       <KeyholeMark size={18} className="text-brand mr-2" />
       <div className="text-sm">
         <span className="font-display font-semibold text-foreground-lighter">
-          Room Forty
+          Bellhop
         </span>{' '}
-        <span className="font-sans text-foreground">Recorder</span>
+        <span className="font-sans text-foreground">· Room Forty</span>
       </div>
       <div id="title-bar-btns" className="ml-auto absolute right-0 top-0">
         <TitleBarButton id="min-btn" onClick={clickedHide}>

@@ -587,7 +587,7 @@ export default class CloudClient implements StorageClient {
         const error = url.searchParams.get('error');
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(
-          '<!doctype html><title>RoomFortyRecorder</title>' +
+          '<!doctype html><title>Bellhop</title>' +
             '<p>Discord sign-in complete. You can close this window.</p>',
         );
 
