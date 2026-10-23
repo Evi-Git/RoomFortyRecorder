@@ -28,6 +28,7 @@ import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 import AbilityName from './AbilityCard';
 import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
+import PullMeters, { LogsView } from './Meters';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -278,7 +279,13 @@ const KIND_STYLE: Record<DefensiveKind, string> = {
 const timeLabel = (seconds: number) =>
   seconds < 0 ? `-${mmss(-seconds)}` : mmss(seconds);
 
-type Section = 'deaths' | 'defensives' | 'plan' | 'avoidable' | 'consumables';
+type Section =
+  | 'deaths'
+  | 'meters'
+  | 'defensives'
+  | 'plan'
+  | 'avoidable'
+  | 'consumables';
 
 const loadSection = (): Section => {
   try {
@@ -288,7 +295,8 @@ const loadSection = (): Section => {
       saved === 'defensives' ||
       saved === 'plan' ||
       saved === 'avoidable' ||
-      saved === 'consumables'
+      saved === 'consumables' ||
+      saved === 'meters'
     ) {
       return saved;
     }
@@ -300,6 +308,7 @@ const loadSection = (): Section => {
 
 type View =
   | 'pulls'
+  | 'logs'
   | 'night'
   | 'progression'
   | 'reclears'
@@ -314,6 +323,7 @@ const loadView = (): View => {
       saved === 'night' ||
       saved === 'progression' ||
       saved === 'reclears' ||
+      saved === 'logs' ||
       saved === 'compare' ||
       saved === 'journal'
     ) {
@@ -1599,6 +1609,7 @@ const PullDeskPage = (props: IProps) => {
         <div>
           <div className="flex items-end gap-x-1 border-b border-card mb-3">
             {sectionTab('deaths', 'Deaths', String(r.deaths.length))}
+            {sectionTab('meters', 'Meters', '')}
             {sectionTab(
               'defensives',
               'Defensives',
@@ -1626,6 +1637,14 @@ const PullDeskPage = (props: IProps) => {
             {sectionTab('consumables', 'Consumables & buffs', '')}
           </div>
           {section === 'deaths' && renderDeaths(r)}
+          {section === 'meters' && (
+            <PullMeters
+              key={r.id}
+              pullId={r.id}
+              encounterId={r.encounterId}
+              difficultyId={r.difficultyId}
+            />
+          )}
           {section === 'defensives' && renderDefensives(r)}
           {section === 'plan' && renderPlan(r)}
           {section === 'avoidable' && renderAvoidable(r)}
@@ -1657,6 +1676,7 @@ const PullDeskPage = (props: IProps) => {
               ['night', 'Night summary'],
               ['progression', 'Progression'],
               ['reclears', 'Reclears'],
+              ['logs', 'Logs'],
               ['compare', 'Compare'],
               ['journal', 'Journal'],
             ] as [View, string][]
@@ -1776,6 +1796,7 @@ const PullDeskPage = (props: IProps) => {
               onShowReclears={() => changeView('progression')}
             />
           )}
+          {view === 'logs' && <LogsView />}
           {view === 'journal' && <JournalView canEdit={canEdit} />}
         </div>
       )}

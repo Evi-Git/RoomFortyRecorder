@@ -6,6 +6,7 @@
 
 import { availabilityAt, defensiveFor } from './pulldesk-defensives.mjs';
 import { rawPrep } from './consumables.mjs';
+import { createMeters } from './meters.mjs';
 
 // ---- Log line parsing -------------------------------------------------------
 
@@ -336,6 +337,8 @@ export const analyzePull = (logText, options = {}) => {
   const avoidableHits = new Map(); // name -> { hits, damage, bySpell }
   // Gear and auras at the pull, per raider (consumables.mjs).
   const prep = new Map(); // guid -> rawPrep
+  // Damage done, healing and damage taken per raider (meters.mjs).
+  const meters = createMeters();
 
   const seconds = (entry) => (entry.ms - start.ms) / 1000;
 
@@ -397,6 +400,11 @@ export const analyzePull = (logText, options = {}) => {
 
     notePlayer(args[1], args[2]);
     notePlayer(args[5], args[6]);
+    try {
+      meters.feed(entry, t);
+    } catch {
+      // One odd line shouldn't sink the meters.
+    }
     // Aura names (a pre-pot's buff fading names the potion).
     if (event.startsWith('SPELL_AURA_') && args[9] && args[10]) {
       const auraId = Number(args[9]);
@@ -784,6 +792,13 @@ export const analyzePull = (logText, options = {}) => {
     spellNames: Object.fromEntries(
       [...avoidable].map((id) => [id, spellNames.get(id) || null]),
     ),
+    meters: (() => {
+      // Spec per raider, for class colours in the app.
+      const spec = new Map(roster.map((r) => [r.name, r.specId]));
+      const m = meters.finish(duration, inPull);
+      ['damage', 'healing', 'taken'].forEach((k) => m[k].forEach((row) => Object.assign(row, { specId: spec.get(row.name) || 0 })));
+      return m;
+    })(),
     // Raw gear and auras at the pull; named by consumables.buildPrep.
     prepRaw: {
       players: [...prep.entries()]

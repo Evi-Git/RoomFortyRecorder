@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.29] - Unreleased
+### Added
+- **Meters**, built from the combat log the app already sends: **Damage done**, **Healing** (effective, with overheal and absorbs) and **Damage taken** per raider, with a rate-over-time chart (5-second steps; hover for values). Click a raider for their abilities (total, per second, casts, hits, crit %, overheal, share) and their line against the raid average. Pets and guardians count toward their owner.
+  - In a pull's report: the new **Meters** section.
+  - **Logs tab** in Analysis: pick a night, a boss and a pull to browse their meters.
+- Pulls the server still has logs for are rechecked once in the background to add meters. Pulls imported from Warcraft Logs don't have meters yet.
+
 ## [1.9.28] - Unreleased
 ### Changed
 - **Compare tab** in Analysis: the top-guild watcher moved here from Progression. Pick a boss to see your progression chart against a watched guild, the top guilds table, and the watcher's settings.

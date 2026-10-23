@@ -57,6 +57,7 @@ export type PullDeskRequest =
   | { action: 'config' }
   | { action: 'list'; days?: number }
   | { action: 'report'; id: string }
+  | { action: 'meters'; id: string }
   | { action: 'reanalyze'; id: string }
   | { action: 'boss'; encounterId: number }
   | { action: 'setNote'; encounterId: number; note: string }
@@ -392,6 +393,8 @@ export default class PullDesk {
         );
       case 'report':
         return client.pullDeskRequest('get', `/pulls/${id(request.id)}`);
+      case 'meters':
+        return client.pullDeskRequest('get', `/pulls/${id(request.id)}/meters`);
       case 'reanalyze':
         return client.pullDeskRequest(
           'post',
