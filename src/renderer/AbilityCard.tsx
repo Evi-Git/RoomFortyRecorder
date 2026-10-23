@@ -37,6 +37,36 @@ export type AbilityCardData = {
 
 const cache = new Map<string, AbilityCardData>();
 
+// Icon images: Blizzard's image server first, Wowhead's as a fallback.
+const ICON_URLS = [
+  (icon: string) =>
+    `https://render.worldofwarcraft.com/us/icons/56/${icon}.jpg`,
+  (icon: string) => `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg`,
+];
+
+/** A spell icon by its name (e.g. "ability_creature_poison_02"). */
+export const GameIcon = ({
+  icon,
+  className,
+}: {
+  icon: string | null | undefined;
+  className: string;
+}) => {
+  const [attempt, setAttempt] = React.useState(0);
+  if (!icon || attempt >= ICON_URLS.length) {
+    return <span className={`${className} border border-card bg-card/50`} />;
+  }
+  return (
+    <img
+      src={ICON_URLS[attempt](icon)}
+      alt=""
+      draggable={false}
+      onError={() => setAttempt((a) => a + 1)}
+      className={className}
+    />
+  );
+};
+
 const DIFFICULTY: Record<number, string> = {
   14: 'Normal',
   15: 'Heroic',
@@ -201,15 +231,10 @@ const AbilityName = (props: Props) => {
           }}
         >
           <div className="flex items-center gap-x-3">
-            {data?.icon ? (
-              <img
-                src={data.icon}
-                alt=""
-                className="w-10 h-10 rounded border border-brand/60"
-              />
-            ) : (
-              <span className="w-10 h-10 rounded border border-card bg-card/60" />
-            )}
+            <GameIcon
+              icon={data?.icon}
+              className="w-10 h-10 rounded border border-brand/60 shrink-0"
+            />
             <div className="flex flex-col min-w-0">
               <span className="font-semibold text-foreground-lighter truncate">
                 {data?.name ?? abilityName(name)}
@@ -251,20 +276,14 @@ const AbilityName = (props: Props) => {
           {!data && !error && (
             <p className="text-xs text-foreground">Loading…</p>
           )}
-          {data && !data.configured && (
-            <p className="text-xs text-foreground">
-              Ability text needs the Blizzard API keys on the guild server (see
-              docs/PullDesk.md).
-            </p>
-          )}
           {data?.text && (
             <p className="m-0 text-[13px] leading-relaxed text-foreground-lighter/90 whitespace-pre-line max-h-48 overflow-y-auto">
               {data.text}
             </p>
           )}
-          {data && data.configured && !data.text && (
+          {data && !data.text && (
             <p className="text-xs text-foreground">
-              No journal text for this spell.
+              No tooltip text for this spell yet.
             </p>
           )}
 

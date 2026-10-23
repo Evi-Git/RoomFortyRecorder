@@ -77,6 +77,55 @@ const tagsOf = (section) => {
   ];
 };
 
+/** Wowhead tooltip HTML -> the description, as plain text. */
+export const tooltipText = (html) => {
+  if (typeof html !== 'string' || !html) return '';
+  // The description sits in <div class="q"> blocks; else take everything
+  // after the header table (name, range, cast time).
+  const blocks = [...html.matchAll(/<div class="q[^"]*"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1]);
+  const body = blocks.length ? blocks.join('<br>') : html.replace(/^[\s\S]*?<\/table>/, '');
+  return body
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    // 1250110 -> 1,250,110
+    .replace(/\b\d{5,}\b/g, (n) => Number(n).toLocaleString('en-US'))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+/**
+ * The journal lists an ability once per difficulty version (the web API
+ * doesn't say which), so the same heading can appear 2-3 times in a row.
+ * Merge siblings with the same title and spell: keep each distinct line of
+ * text once, and merge their abilities the same way.
+ */
+export const mergeVariants = (nodes) => {
+  const out = [];
+  nodes.forEach((node) => {
+    const same = out.find((o) => o.title === node.title && o.spellId === node.spellId);
+    if (!same) {
+      out.push({ ...node, children: mergeVariants(node.children) });
+      return;
+    }
+    const lines = same.text ? same.text.split('\n') : [];
+    (node.text ? node.text.split('\n') : []).forEach((line) => {
+      if (!lines.includes(line)) lines.push(line);
+    });
+    same.text = lines.join('\n');
+    same.tags = [...new Set([...same.tags, ...node.tags])];
+    same.children = mergeVariants([...same.children, ...node.children]);
+  });
+  return out;
+};
+
 /** One journal encounter from the API -> what the app shows. */
 export const journalFromApi = (encounter) => {
   const spells = {};
@@ -103,7 +152,7 @@ export const journalFromApi = (encounter) => {
     description: cleanText(encounter.description),
     instance: encounter.instance?.name || null,
     modes: (encounter.modes || []).map((m) => m.type || m.name).filter(Boolean),
-    sections: walk(encounter.sections || []),
+    sections: mergeVariants(walk(encounter.sections || [])),
     spells,
   };
 };
@@ -250,8 +299,16 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     }
   };
 
-  // Spells, kept in memory and saved one write at a time.
-  let spellCache = null;
+  // ---- Spell text and icons: Wowhead ---------------------------------------
+  //
+  // Blizzard's spell endpoints answer "not found" for boss spells referenced
+  // by the journal (a known gap), and the journal itself carries no ability
+  // text. So each spell's tooltip comes from Wowhead's tooltip API, the one
+  // its tooltip widget uses: once per spell per difficulty, cached for good
+  // and shared by the whole guild, a few requests at a time.
+
+  const wowheadBase = env.GUILD_CLOUD_WOWHEAD_TOOLTIP || 'https://nether.wowhead.com/tooltip/spell';
+  let spellCache = null; // "id:difficulty" -> { id, name, text, icon } | { missing: true }
   let spellSave = Promise.resolve();
   const spellsLoaded = async () => {
     spellCache ??= await readJson('spells.json', {});
@@ -262,44 +319,95 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     return spellSave;
   };
 
-  /** A spell's name, description and icon (cached for good). */
-  const spell = async (spellId) => {
-    const id = Number(spellId);
-    if (!Number.isInteger(id) || id <= 0) return null;
-    const cache = await spellsLoaded();
-    if (cache[id]) return cache[id];
-    const [data, media] = await Promise.all([
-      api(`/data/wow/spell/${id}`).catch(() => null),
-      api(`/data/wow/media/spell/${id}`).catch(() => null),
-    ]);
-    const icon = (media?.assets || []).find((a) => a.key === 'icon')?.value || null;
-    const value = { id, name: data?.name || null, text: cleanText(data?.description), icon };
-    if (data || media) {
-      cache[id] = value;
-      await saveSpells();
-    }
-    return value;
+  // At most WOWHEAD_PARALLEL requests at once, WOWHEAD_GAP_MS apart.
+  const WOWHEAD_PARALLEL = 3;
+  const WOWHEAD_GAP_MS = 150;
+  let active = 0;
+  const waiting = [];
+  const slot = async () => {
+    if (active >= WOWHEAD_PARALLEL) await new Promise((r) => waiting.push(r));
+    active += 1;
+  };
+  const release = () => {
+    setTimeout(() => {
+      active -= 1;
+      waiting.shift()?.();
+    }, WOWHEAD_GAP_MS);
   };
 
-  /** Icons for many spells at once (journal view), a few requests at a time. */
-  const icons = async (spellIds) => {
-    const ids = [...new Set(spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 200);
+  const inFlight = new Map();
+  const fetchSpell = async (id, difficultyId) => {
+    await slot();
+    try {
+      const url = `${wowheadBase}/${id}?dataEnv=1&locale=0${difficultyId ? `&dd=${difficultyId}` : ''}`;
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(10000) });
+      if (response.status === 404) return { missing: true };
+      if (!response.ok) return null; // try again another time
+      const body = await response.json();
+      return {
+        id,
+        name: typeof body.name === 'string' ? body.name : null,
+        text: tooltipText(body.tooltip),
+        icon: typeof body.icon === 'string' && /^[a-z0-9_-]+$/i.test(body.icon) ? body.icon.toLowerCase() : null,
+      };
+    } catch {
+      return null;
+    } finally {
+      release();
+    }
+  };
+
+  /** A spell's name, tooltip text (for that difficulty) and icon name. */
+  const spell = async (spellId, difficultyId = null) => {
+    const id = Number(spellId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    const dd = Number(difficultyId) || 0;
+    const key = `${id}:${dd}`;
+    const cache = await spellsLoaded();
+    if (cache[key]) return cache[key].missing ? null : cache[key];
+    if (!inFlight.has(key)) {
+      inFlight.set(
+        key,
+        fetchSpell(id, dd).then(async (value) => {
+          inFlight.delete(key);
+          if (value) {
+            cache[key] = value;
+            await saveSpells();
+          }
+          return value && !value.missing ? value : null;
+        }),
+      );
+    }
+    return inFlight.get(key);
+  };
+
+  /**
+   * Many spells for one difficulty (the Journal view). Returns what's ready
+   * and fetches at most `budget` more per call, so the view fills in over a
+   * few calls instead of waiting on a whole raid's worth.
+   */
+  const spells = async (spellIds, difficultyId = null, budget = 24) => {
+    const ids = [...new Set(spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 400);
+    const dd = Number(difficultyId) || 0;
+    const cache = await spellsLoaded();
     const out = {};
-    const queue = [...ids];
-    const worker = async () => {
-      while (queue.length) {
-        const id = queue.shift();
-        // eslint-disable-next-line no-await-in-loop
-        const s = await spell(id).catch(() => null);
-        if (s?.icon) out[id] = s.icon;
-      }
-    };
-    await Promise.all([worker(), worker(), worker(), worker()]);
-    return out;
+    const todo = [];
+    ids.forEach((id) => {
+      const hit = cache[`${id}:${dd}`];
+      if (hit) {
+        if (!hit.missing) out[id] = hit;
+      } else todo.push(id);
+    });
+    const batch = todo.slice(0, budget);
+    const fetched = await Promise.all(batch.map((id) => spell(id, dd)));
+    batch.forEach((id, i) => {
+      if (fetched[i]) out[id] = fetched[i];
+    });
+    return { spells: out, pending: todo.length - batch.length };
   };
 
   /** The untouched API answer, for checking what Blizzard sends. */
   const raw = (journalId) => readJson(`raw-${Number(journalId)}.json`, null);
 
-  return { configured, encounter, spell, icons, raw };
+  return { configured, encounter, spell, spells, raw };
 };

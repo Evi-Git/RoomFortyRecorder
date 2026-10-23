@@ -98,6 +98,14 @@ Pulls the app saw but never got a log for also count in both views after
   blows, Progression causes) for the same text, the spell ID (copy button),
   your raid's numbers and the avoidable button.
 - The avoidable list is per boss (all difficulties), as in Boss settings.
+- Where the data comes from: the stages, overview and ability list from
+  Blizzard's Encounter Journal (free API); ability text and icon names from
+  Wowhead's tooltips for the difficulty shown, because Blizzard's API has no
+  text for abilities and its spell endpoints don't answer for boss spells.
+  The guild server asks Wowhead once per spell per difficulty and keeps the
+  answer (`<storage>/journal/spells.json`); icon images load from Blizzard's
+  image server. The journal lists some abilities once per difficulty without
+  saying which, so those copies are merged.
 - Setup: a free client at https://develop.battle.net (API Access → Create
   Client). Put `GUILD_CLOUD_BLIZZARD_CLIENT_ID` and
   `GUILD_CLOUD_BLIZZARD_CLIENT_SECRET` in the server `.env` and restart. The

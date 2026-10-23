@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.16] - Unreleased
+### Fixed
+- **Journal and ability cards: text and icons.** Blizzard's journal gives no text for abilities (in game it's the spell's tooltip) and its spell endpoints don't answer for boss spells, so text and icons were missing (Kith'ix looked empty). Ability text and icon names now come from Wowhead's tooltips for the difficulty you're viewing (Normal, Heroic, Mythic, flex Mythic), fetched once per spell by the guild server and cached for good; icon images load from Blizzard's image server. The Journal view fills them in over a few seconds on a boss's first visit.
+- Abilities the journal lists once per difficulty (repeated "Damage Dealers", "Venomous Hulk"...) are merged into one, with every distinct line and ability kept.
+- The stage list stays in view while scrolling and scrolls to a stage on click; headings with no spell (an add's name) are labels instead of empty boxes.
+
 ## [1.9.15] - Unreleased
 ### Added
 - **Ability cards:** hover (or tab to) any boss ability name in the Pull desk (wipe causes, a pull's killing blows, Progression causes) for its card: Blizzard's journal text, spell ID with a copy button, ability tags, how many pulls it ended / raiders it killed / early deaths on that boss and difficulty, and **Add to avoidable** for that boss (editors).

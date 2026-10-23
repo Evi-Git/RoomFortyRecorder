@@ -6,6 +6,7 @@ import {
   Ability,
   AbilityScope,
   clearAbilityCards,
+  GameIcon,
   tagLabel,
 } from './AbilityCard';
 
@@ -98,12 +99,23 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
   const [choice, setChoice] = React.useState(loadChoice);
   const [difficulty, setDifficulty] = React.useState<number | null>(null);
   const [data, setData] = React.useState<BossJournal | null>(null);
-  const [icons, setIcons] = React.useState<Record<string, string>>({});
+  // Tooltip text and icon names per spell, for the difficulty shown.
+  const [spellInfo, setSpellInfo] = React.useState<
+    Record<string, { name: string | null; text: string; icon: string | null }>
+  >({});
   const [avoidable, setAvoidable] = React.useState<number[]>([]);
   const [busy, setBusy] = React.useState<number | null>(null);
   const [error, setError] = React.useState('');
   const [journalInput, setJournalInput] = React.useState('');
   const [tick, setTick] = React.useState(0);
+  const [activeStage, setActiveStage] = React.useState('');
+
+  const jumpTo = (id: string) => {
+    setActiveStage(id);
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // Bosses the guild has pulled, newest first, with their difficulties.
   React.useEffect(() => {
@@ -179,14 +191,28 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
         ...flatten(response.data.journal?.sections ?? []).map((s) => s.spellId),
         ...response.data.stats.map((s) => s.spellId),
       ].filter((id): id is number => Boolean(id));
-      if (ids.length && response.data.configured) {
-        call<{ icons: Record<string, string> }>({
-          action: 'journalIcons',
-          ids,
-        }).then((r) => {
-          if (!cancelled && r.ok) setIcons(r.data.icons);
-        });
-      }
+      setSpellInfo({});
+      // The server returns what it has and fetches a batch more each call,
+      // so text and icons fill in over a few calls on a boss's first visit.
+      const fill = async () => {
+        for (let round = 0; round < 25 && ids.length; round += 1) {
+          const r = await call<{
+            spells: Record<
+              string,
+              { name: string | null; text: string; icon: string | null }
+            >;
+            pending: number;
+          }>({
+            action: 'journalSpells',
+            ids,
+            difficultyId: shownDifficulty ?? undefined,
+          });
+          if (cancelled || !r.ok) return;
+          setSpellInfo((current) => ({ ...current, ...r.data.spells }));
+          if (!r.data.pending) return;
+        }
+      };
+      fill();
     });
     return () => {
       cancelled = true;
@@ -234,18 +260,16 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
     data?.stats.find((s) => spellId && s.spellId === spellId) ??
     data?.stats.find((s) => norm(s.name) === norm(name));
 
-  const icon = (spellId: number | null, size: string) =>
-    spellId && icons[spellId] ? (
-      <img
-        src={icons[spellId]}
-        alt=""
-        className={`${size} rounded border border-card shrink-0`}
-      />
-    ) : (
-      <span
-        className={`${size} rounded border border-card bg-card/50 shrink-0`}
-      />
-    );
+  const icon = (spellId: number | null, size: string) => (
+    <GameIcon
+      icon={spellId ? spellInfo[spellId]?.icon : null}
+      className={`${size} rounded border border-card shrink-0`}
+    />
+  );
+
+  // The journal's own text (headings, overviews) or the spell's tooltip.
+  const textOf = (s: Section) =>
+    s.text || (s.spellId ? (spellInfo[s.spellId]?.text ?? '') : '');
 
   const avoidButton = (spellId: number, name: string) => {
     const on = avoidable.includes(spellId);
@@ -284,6 +308,25 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
   const renderAbility = (s: Section): React.ReactNode => {
     const stat = s.spellId || s.text ? statFor(s.spellId, s.title) : undefined;
     const dim = notThisDifficulty(s);
+    // A heading with nothing of its own (an add's name, a role list): a
+    // label over its abilities, not an empty card.
+    if (!s.spellId && !s.text) {
+      return (
+        <div
+          key={s.id}
+          className={`flex flex-col gap-y-2 ${s.depth > 1 ? 'ml-6' : ''} ${
+            dim ? 'opacity-50' : ''
+          }`}
+        >
+          <span className="mt-1 text-sm font-semibold text-foreground-lighter">
+            {s.title}
+          </span>
+          <div className="flex flex-col gap-y-2 border-l border-card pl-3">
+            {s.children.map(renderAbility)}
+          </div>
+        </div>
+      );
+    }
     return (
       <div
         key={s.id}
@@ -291,8 +334,14 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
           dim ? 'opacity-50' : ''
         }`}
       >
-        <article className="grid grid-cols-[32px_minmax(0,1fr)_auto] gap-x-3 rounded-md border border-card p-3">
-          {icon(s.spellId, 'w-8 h-8')}
+        <article
+          className={`grid ${
+            s.spellId
+              ? 'grid-cols-[32px_minmax(0,1fr)_auto]'
+              : 'grid-cols-[minmax(0,1fr)_auto]'
+          } gap-x-3 rounded-md border border-card p-3`}
+        >
+          {s.spellId ? icon(s.spellId, 'w-8 h-8') : null}
           <div className="flex flex-col gap-y-1 min-w-0">
             <div className="flex items-center gap-x-2 flex-wrap">
               <span className="font-semibold text-foreground-lighter">
@@ -312,9 +361,9 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
                 </span>
               ))}
             </div>
-            {s.text && (
+            {textOf(s) && (
               <p className="m-0 text-[13px] leading-relaxed text-foreground-lighter/85 whitespace-pre-line">
-                {s.text}
+                {textOf(s)}
               </p>
             )}
           </div>
@@ -474,23 +523,37 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
       >
         {journal && (
           <div className="grid grid-cols-1 lg:grid-cols-[200px_minmax(0,1fr)] gap-6">
-            <nav aria-label="Stages" className="flex flex-col gap-y-1 text-sm">
+            {/* Stays in view while the stages scroll past. */}
+            <nav
+              aria-label="Stages"
+              className="flex flex-col gap-y-1 text-sm self-start lg:sticky lg:top-0 lg:max-h-[calc(100vh-200px)] lg:overflow-y-auto"
+            >
               {journal.sections.map((s) => (
-                <a
+                <button
+                  type="button"
                   key={s.id}
-                  href={`#journal-${s.id}`}
-                  className="px-2 py-1.5 rounded hover:bg-card/60 text-foreground-lighter no-underline"
+                  onClick={() => jumpTo(`journal-${s.id}`)}
+                  className={`text-left px-2 py-1.5 rounded hover:bg-card/60 ${
+                    activeStage === `journal-${s.id}`
+                      ? 'bg-card text-foreground-lighter'
+                      : 'text-foreground-lighter/90'
+                  }`}
                 >
                   {s.title}
-                </a>
+                </button>
               ))}
               {extra.length > 0 && (
-                <a
-                  href="#journal-extra"
-                  className="px-2 py-1.5 rounded hover:bg-card/60 text-foreground no-underline"
+                <button
+                  type="button"
+                  onClick={() => jumpTo('journal-extra')}
+                  className={`text-left px-2 py-1.5 rounded hover:bg-card/60 ${
+                    activeStage === 'journal-extra'
+                      ? 'bg-card text-foreground-lighter'
+                      : 'text-foreground'
+                  }`}
                 >
                   Also hit your raid
-                </a>
+                </button>
               )}
             </nav>
             <div className="flex flex-col gap-y-6 min-w-0">
@@ -558,10 +621,12 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
 
       {journal && (
         <p className="m-0 text-xs text-foreground">
-          Ability text: Blizzard&apos;s Encounter Journal. Wipes and deaths:
-          your pull logs on{' '}
-          {shownDifficulty ? DIFFICULTY[shownDifficulty] : 'this'} difficulty.
-          The avoidable list is per boss.
+          Stages and overview: Blizzard&apos;s Encounter Journal. Ability text
+          and icons: Wowhead tooltips for{' '}
+          {shownDifficulty ? DIFFICULTY[shownDifficulty] : 'this'} difficulty,
+          cached on the guild server. The journal lists some abilities once per
+          difficulty without saying which; those copies are merged. Wipes and
+          deaths: your pull logs. The avoidable list is per boss.
         </p>
       )}
     </div>

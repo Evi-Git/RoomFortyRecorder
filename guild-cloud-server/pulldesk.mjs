@@ -823,7 +823,7 @@ export const createPullDesk = (options) => {
     index.pulls.find((p) => p.encounterId === encounterId)?.encounterName || null;
 
   // Journal routes: /journal/boss/:encounterId, /journal/spell/:spellId,
-  // /journal/icons, /journal/raw/:journalId.
+  // /journal/spells, /journal/raw/:journalId.
   const handleJournal = async (req, res, rest, url) => {
     const [, kind, idText] = rest;
     const q = (k) => url?.searchParams.get(k);
@@ -874,7 +874,8 @@ export const createPullDesk = (options) => {
             (wantedName ? abilities.find((a) => norm(a.title) === norm(wantedName)) : null) ||
             null;
         }
-        if (journal.configured) info = await journal.spell(section?.spellId || spellId);
+        // Tooltip text for this difficulty (Wowhead; works without Blizzard keys).
+        info = await journal.spell(spellId, difficultyId);
       } catch (e) {
         error = e.message;
       }
@@ -888,9 +889,10 @@ export const createPullDesk = (options) => {
         configured: journal.configured,
         spellId,
         name: section?.title || info?.name || wantedName || null,
+        // An icon name, e.g. "ability_creature_poison_02".
         icon: info?.icon || null,
-        text: section?.text || info?.text || '',
-        source: section ? 'journal' : info?.text ? 'spell' : null,
+        text: info?.text || section?.text || '',
+        source: info?.text ? 'tooltip' : section?.text ? 'journal' : null,
         tags: section?.tags || [],
         stats: stat,
         avoidable: avoidable.some((a) => a.id === spellId),
@@ -898,11 +900,12 @@ export const createPullDesk = (options) => {
       });
     }
 
-    if (kind === 'icons' && req.method === 'POST') {
-      const body = await readBody(req, 16 * 1024);
-      if (!journal.configured) return json(res, 200, { icons: {} });
+    // Tooltip text and icons for many spells (the Journal view). Returns
+    // what's ready; `pending` > 0 means call again for the rest.
+    if (kind === 'spells' && req.method === 'POST') {
+      const body = await readBody(req, 32 * 1024);
       const ids = Array.isArray(body?.ids) ? body.ids : [];
-      return json(res, 200, { icons: await journal.icons(ids) });
+      return json(res, 200, await journal.spells(ids, Number(body?.difficulty) || null));
     }
 
     if (kind === 'raw' && /^\d+$/.test(idText || '') && req.method === 'GET') {

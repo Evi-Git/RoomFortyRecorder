@@ -74,7 +74,7 @@ export type PullDeskRequest =
       difficultyId?: number;
       name?: string;
     }
-  | { action: 'journalIcons'; ids: number[] }
+  | { action: 'journalSpells'; ids: number[]; difficultyId?: number }
   | {
       action: 'avoidableToggle';
       encounterId: number;
@@ -435,11 +435,11 @@ export default class PullDesk {
           `/journal/spell/${id(request.spellId)}?${params.toString()}`,
         );
       }
-      case 'journalIcons':
+      case 'journalSpells':
         return client.pullDeskRequest(
           'post',
-          '/journal/icons',
-          { ids: request.ids },
+          '/journal/spells',
+          { ids: request.ids, difficulty: request.difficultyId },
           { timeout: 60000 },
         );
       case 'avoidableToggle':
