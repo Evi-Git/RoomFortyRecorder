@@ -19,3 +19,4 @@ recruit-page.html
 update-server.ps1
 update-server.cmd
 permissions.mjs
+consumables.mjs

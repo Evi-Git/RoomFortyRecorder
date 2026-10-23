@@ -23,6 +23,11 @@ import { abilityStats, summarizeNight, summarizeProgression } from './pulldesk-s
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
+import { buildPrep, RAID_BUFFS } from './consumables.mjs';
+
+// Bump to recheck old pulls (with logs still kept) for new report fields.
+const PREP_VERSION = 1;
+const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
@@ -133,7 +138,15 @@ export const createPullDesk = (options) => {
   const discordApi = env.GUILD_CLOUD_PULLDESK_DISCORD_API || 'https://discord.com/api/v10';
 
   // Guild-wide analysis settings (editable by the owner in the admin view).
-  const DEFAULT_SETTINGS = { combatPotions: ["Light's Potential"] };
+    // Midnight's combat potions, by spell name (every quality and the
+  // cauldron version share it). Kept in code; a saved list adds to it.
+  const COMBAT_POTIONS = [
+    "Light's Potential",
+    'Potion of Recklessness',
+    'Potion of Zealotry',
+    'Draught of Rampant Abandon',
+  ];
+  const DEFAULT_SETTINGS = { combatPotions: COMBAT_POTIONS };
   let index = { pulls: [], bosses: {}, settings: { ...DEFAULT_SETTINGS } };
   let saveQueue = Promise.resolve();
   let loaded = null;
@@ -148,13 +161,19 @@ export const createPullDesk = (options) => {
         bosses: parsed.bosses && typeof parsed.bosses === 'object' ? parsed.bosses : {},
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}) },
       };
+      index.settings.combatPotions = [
+        ...new Set([...COMBAT_POTIONS, ...(Array.isArray(index.settings.combatPotions) ? index.settings.combatPotions : [])]),
+      ];
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
   };
 
   const ready = () => {
-    loaded ??= load();
+    loaded ??= load().then(() => {
+      const n = recheckForPrep();
+      if (n) console.info(`[pulldesk] Rechecking ${n} pulls for consumables`);
+    });
     return loaded;
   };
 
@@ -446,6 +465,15 @@ export const createPullDesk = (options) => {
       combatPotions: index.settings.combatPotions,
     });
 
+    // Name what raiders had at the pull (food, flask, runes...): aura names
+    // and tooltips from Wowhead, cached on the server for good.
+    try {
+      report.prep = await namePrep(report);
+    } catch (error) {
+      console.warn('[pulldesk] Consumables lookup failed', error.message);
+      report.prep = buildPrep(report, (id) => auraInfo(report, {}, id), index.settings.combatPotions);
+    }
+
     // The app knows encounter-specific progress (phases, rebirths) that a
     // plain "lowest boss HP" can't see, so its number wins.
     if (Number.isFinite(pull.appBossPercent) && report.result !== 'kill') {
@@ -475,6 +503,7 @@ export const createPullDesk = (options) => {
     Object.assign(pull, {
       status: 'ready',
       error: null,
+      prepVersion: PREP_VERSION,
       result: report.result,
       duration: report.duration,
       bossPercent: report.bossPercent,
@@ -512,6 +541,42 @@ export const createPullDesk = (options) => {
   // After an avoidable or potion change: recheck the older pulls too (those
   // with a log still kept), one at a time in the background.
   let backgroundQueue = Promise.resolve();
+  const auraInfo = (report, looked, id) => {
+    if (looked[id]) return looked[id];
+    const name = report.prepRaw?.auraNames?.[id];
+    return name ? { name, text: '' } : null;
+  };
+
+  const namePrep = async (report) => {
+    const ids = [
+      ...new Set((report.prepRaw?.players || []).flatMap((p) => p.auras.map(([, id]) => id))),
+    ].filter((id) => !KNOWN_AURAS.has(id));
+    // Wowhead tooltips (no Blizzard keys needed, but tests run without
+    // either, so only when the journal is set up).
+    const looked = journal.configured && ids.length ? (await journal.spells(ids, 0, ids.length)).spells : {};
+    return buildPrep(report, (id) => auraInfo(report, looked, id), index.settings.combatPotions);
+  };
+
+  // Pulls analyzed before consumables existed, with their logs still kept.
+  const recheckForPrep = () => {
+    const pulls = index.pulls.filter(
+      (pull) => pull.status === 'ready' && pull.hasLog && pull.source !== 'wcl' && (pull.prepVersion || 0) < PREP_VERSION,
+    );
+    if (!pulls.length) return 0;
+    backgroundQueue = backgroundQueue.then(async () => {
+      for (const pull of pulls) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await runAnalysis(pull);
+        } catch {
+          pull.prepVersion = PREP_VERSION; // log gone: don't retry forever
+        }
+      }
+      await persist();
+    });
+    return pulls.length;
+  };
+
   const reanalyzeOlder = (filter) => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const pulls = index.pulls.filter(

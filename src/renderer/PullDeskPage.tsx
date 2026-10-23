@@ -27,6 +27,7 @@ import {
 import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 import AbilityName from './AbilityCard';
 import JournalView from './PullDeskJournal';
+import ConsumablesPanel, { Prep } from './Consumables';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -113,6 +114,7 @@ type Defensives = {
 };
 
 type Report = {
+  prep?: Prep | null;
   id: string;
   encounterId: number;
   encounterName: string;
@@ -276,7 +278,7 @@ const KIND_STYLE: Record<DefensiveKind, string> = {
 const timeLabel = (seconds: number) =>
   seconds < 0 ? `-${mmss(-seconds)}` : mmss(seconds);
 
-type Section = 'deaths' | 'defensives' | 'plan' | 'avoidable';
+type Section = 'deaths' | 'defensives' | 'plan' | 'avoidable' | 'consumables';
 
 const loadSection = (): Section => {
   try {
@@ -285,7 +287,8 @@ const loadSection = (): Section => {
       saved === 'deaths' ||
       saved === 'defensives' ||
       saved === 'plan' ||
-      saved === 'avoidable'
+      saved === 'avoidable' ||
+      saved === 'consumables'
     ) {
       return saved;
     }
@@ -1612,11 +1615,15 @@ const PullDeskPage = (props: IProps) => {
               'Avoidable hits',
               String(r.avoidable.length),
             )}
+            {sectionTab('consumables', 'Consumables & buffs', '')}
           </div>
           {section === 'deaths' && renderDeaths(r)}
           {section === 'defensives' && renderDefensives(r)}
           {section === 'plan' && renderPlan(r)}
           {section === 'avoidable' && renderAvoidable(r)}
+          {section === 'consumables' && (
+            <ConsumablesPanel prep={r.prep ?? null} scope="This pull" />
+          )}
         </div>
       </div>
     );

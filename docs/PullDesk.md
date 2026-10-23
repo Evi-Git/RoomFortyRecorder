@@ -33,6 +33,18 @@ Each report has:
 The report is split into tabs (Deaths, Defensives, Cooldown plan, Avoidable
 hits), and long sections are grouped per raider in rows you can open.
 
+## Consumables & buffs
+
+From each raider's COMBATANT_INFO line at the pull (advanced combat
+logging): gear (enchants, gems, weapon oil) and every aura with its
+caster. `guild-cloud-server/consumables.mjs` names the auras with Wowhead's
+tooltip (cached in `<storage>/journal/spells.json`): "Well Fed" = food,
+Flask/Phial or "through death" = flask, "Augment Rune"/"...Augmentation" =
+augment rune, "Vantus Rune: ..." = vantus, a combat potion's name = pre-pot.
+Raid buffs are known spell IDs. Combat potions possible per pull = 1 + one
+per full 5 minutes. Enchant slots: head, shoulders, chest, legs, boots,
+rings, weapon; gem slots: head, neck, wrist, belt, rings.
+
 ## Night summary and Progression
 
 The buttons at the top of the page switch between **Pulls** (the reports
