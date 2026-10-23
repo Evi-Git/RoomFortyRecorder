@@ -772,7 +772,7 @@ export const AvoidablePanel = ({
           </table>
           <p className="text-xs text-foreground mt-2">
             Counts every spell ID an avoidable ability hits as (by name). Open a
-            row to see who got hit; untick someone to leave them out of that
+            row to see who got hit; switch someone off to leave them out of that
             ability&apos;s totals (they move to the bottom).
           </p>
         </div>
