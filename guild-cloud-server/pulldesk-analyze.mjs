@@ -102,6 +102,7 @@ const DIFFICULTIES = {
   15: 'Heroic',
   16: 'Mythic',
   17: 'LFR',
+  233: 'Mythic', // flex Mythic (Kith'ix)
 };
 
 // "Psiethyr-TwistingNether-EU" -> "Psiethyr"

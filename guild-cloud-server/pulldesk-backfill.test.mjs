@@ -98,3 +98,13 @@ test('automatic backfill: check finds only missing pulls; one raider at a time',
   await call('PUT', ['pulls', taken.body.pullId, 'log'], zlib.gzipSync(slice), '', '2');
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls }, '', '2')).body.missing, [1]);
 });
+
+test('flex Mythic (difficulty 233, e.g. Kith\'ix) is tracked as Mythic', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T21:22:00');
+  const kithix = { encounterId: 3500, difficultyId: 233, startedAt: at };
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [kithix] })).body.missing, [0]);
+  const taken = await call('POST', ['backfill'], { ...kithix, encounterName: "Kith'ix", duration: 61 });
+  assert.equal(taken.body.upload, true);
+  assert.equal(taken.body.skip, undefined);
+});

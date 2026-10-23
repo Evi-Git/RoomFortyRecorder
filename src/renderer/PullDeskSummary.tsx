@@ -128,6 +128,7 @@ const DIFFICULTY: Record<number, string> = {
   14: 'Normal',
   15: 'Heroic',
   16: 'Mythic',
+  233: 'Mythic', // flex Mythic (Kith'ix)
   17: 'LFR',
 };
 
@@ -1799,6 +1800,7 @@ const DIFFICULTY_KEYS: Record<number, string> = {
   15: 'heroic',
   16: 'mythic',
   17: 'lfr',
+  233: 'mythic',
 };
 
 const fileSize = (bytes: number) =>

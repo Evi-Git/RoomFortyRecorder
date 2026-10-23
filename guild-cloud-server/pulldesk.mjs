@@ -45,7 +45,9 @@ const BACKFILL_LOCK_MS = 5 * 60 * 1000;
 const MAX_BACKFILL_CHECK = 500;
 const MAX_NOTE_CHARS = 100 * 1024;
 
-const DIFFICULTY_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr' };
+// 233 is flex Mythic (raids like Kith'ix whose Mythic takes 10-30 players):
+// tracked and labelled as Mythic.
+const DIFFICULTY_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr', 233: 'mythic' };
 
 const parseChannelMap = (value) => {
   const map = {};

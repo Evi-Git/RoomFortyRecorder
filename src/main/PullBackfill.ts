@@ -24,7 +24,8 @@ import CloudClient from 'storage/CloudClient';
 
 const gzip = promisify(zlib.gzip);
 
-const RAID_DIFFICULTIES = new Set([14, 15, 16, 17]);
+// Same as PullLogCapture: 233 is flex Mythic (Kith'ix).
+const RAID_DIFFICULTIES = new Set([14, 15, 16, 17, 233]);
 const TEST_BUTTON_ENCOUNTER = 9999;
 // A recording and a pull in the log agree on the start within this.
 const HINT_MATCH_MS = 2 * 60 * 1000;
@@ -35,7 +36,13 @@ const AUTO_QUIET_MS = 20 * 60 * 1000;
 // A pull in the file and one the server knows are the same within this.
 const SAME_PULL_MS = 2000;
 
-type Done = Record<string, string>; // file name -> "size:mtime" checked
+type Done = Record<string, string>; // file name -> "v:size:mtime" checked
+
+// Bump to check every recent file again after the capture rules change
+// (2: flex Mythic pulls were skipped before).
+const DONE_VERSION = 2;
+const doneKey = (f: LogFile) =>
+  `${DONE_VERSION}:${f.size}:${Math.round(f.modified)}`;
 
 export type LogFile = { name: string; size: number; modified: number };
 
@@ -376,9 +383,7 @@ export default class PullBackfill {
         now - f.modified < AUTO_MAX_AGE_MS && now - f.modified > AUTO_QUIET_MS,
     );
     const done = await this.readDone();
-    const todo = files.filter(
-      (f) => done[f.name] !== `${f.size}:${Math.round(f.modified)}`,
-    );
+    const todo = files.filter((f) => done[f.name] !== doneKey(f));
     if (!todo.length) return;
 
     this.status = {
@@ -433,7 +438,7 @@ export default class PullBackfill {
         }
         // Checked; look again only if the file changes (or a pull failed).
         if (complete) {
-          done[f.name] = `${f.size}:${Math.round(f.modified)}`;
+          done[f.name] = doneKey(f);
           await this.writeDone(done);
         }
       }
