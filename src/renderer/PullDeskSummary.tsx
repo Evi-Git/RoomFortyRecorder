@@ -1765,11 +1765,14 @@ export const ProgressionView = ({
   canEdit = false,
   phase = 'progression',
   onShowReclears,
+  compareMode = false,
 }: {
   onOpenPull: (id: string) => void;
   canEdit?: boolean;
   phase?: 'progression' | 'reclear';
   onShowReclears?: () => void;
+  // The Compare tab: progression vs the watched top guilds only.
+  compareMode?: boolean;
 }) => {
   const reclear = phase === 'reclear';
   // Non-Mythic bosses to list (Mythic always shows); null = not chosen yet.
@@ -2147,7 +2150,7 @@ export const ProgressionView = ({
               title="Boss health by pull"
               aside={
                 <>
-                  {watchedGuilds.length > 0 && !asTable && !reclear && (
+                  {watchedGuilds.length > 0 && !asTable && compareMode && (
                     <select
                       className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
                       value={compareKey}
@@ -2243,7 +2246,7 @@ export const ProgressionView = ({
               )}
             </Panel>
 
-            {!reclear && (
+            {compareMode && (
               <Panel title="Top guilds">
                 {watcher ? (
                   <div className="flex flex-col gap-y-4">
@@ -2275,109 +2278,119 @@ export const ProgressionView = ({
               </Panel>
             )}
 
-            <Panel title="Night by night">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-foreground border-b border-card">
-                    <tr>
-                      <th className="px-2 py-1 text-left font-normal">Night</th>
-                      <th className="px-2 py-1 text-right font-normal">
-                        Pulls
-                      </th>
-                      <th className="px-2 py-1 text-right font-normal">
-                        Kills
-                      </th>
-                      <th className="px-2 py-1 text-right font-normal">Best</th>
-                      <th className="px-2 py-1 text-right font-normal">
-                        Median wipe
-                      </th>
-                      <th className="px-2 py-1 text-right font-normal">
-                        In combat
-                      </th>
-                      <th className="px-2 py-1 text-left font-normal">
-                        Top cause
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...data.nights].reverse().map((n) => (
-                      <tr key={n.night} className="border-b border-card/40">
-                        <td className="px-2 py-1 whitespace-nowrap">
-                          {nightLabel(n.night)}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {n.pulls}
-                        </td>
-                        <td
-                          className={`px-2 py-1 text-right tabular-nums ${
-                            n.kills ? 'text-green-400' : 'text-foreground/50'
-                          }`}
-                        >
-                          {n.kills}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {n.kills ? 'Kill' : pct(n.bestPercent)}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {pct(n.medianPercent)}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {hours(n.combatSeconds)}
-                        </td>
-                        <td className="px-2 py-1 truncate max-w-[280px]">
-                          {n.topCause ? (
-                            <>
-                              <Ability name={n.topCause.name} /> (
-                              {n.topCause.count})
-                            </>
-                          ) : (
-                            '–'
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
+            {!compareMode && (
+              <>
+                <Panel title="Night by night">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-xs text-foreground border-b border-card">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-normal">
+                            Night
+                          </th>
+                          <th className="px-2 py-1 text-right font-normal">
+                            Pulls
+                          </th>
+                          <th className="px-2 py-1 text-right font-normal">
+                            Kills
+                          </th>
+                          <th className="px-2 py-1 text-right font-normal">
+                            Best
+                          </th>
+                          <th className="px-2 py-1 text-right font-normal">
+                            Median wipe
+                          </th>
+                          <th className="px-2 py-1 text-right font-normal">
+                            In combat
+                          </th>
+                          <th className="px-2 py-1 text-left font-normal">
+                            Top cause
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...data.nights].reverse().map((n) => (
+                          <tr key={n.night} className="border-b border-card/40">
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {nightLabel(n.night)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {n.pulls}
+                            </td>
+                            <td
+                              className={`px-2 py-1 text-right tabular-nums ${
+                                n.kills
+                                  ? 'text-green-400'
+                                  : 'text-foreground/50'
+                              }`}
+                            >
+                              {n.kills}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {n.kills ? 'Kill' : pct(n.bestPercent)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {pct(n.medianPercent)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {hours(n.combatSeconds)}
+                            </td>
+                            <td className="px-2 py-1 truncate max-w-[280px]">
+                              {n.topCause ? (
+                                <>
+                                  <Ability name={n.topCause.name} /> (
+                                  {n.topCause.count})
+                                </>
+                              ) : (
+                                '–'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
 
-            <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
-              <Panel title="Wipe causes over time">
-                <CauseTrend
-                  data={data}
-                  excluded={filter.causes}
-                  options={phaseInfo?.causeOptions ?? []}
-                  onToggle={toggleCause}
-                />
-              </Panel>
-              <Panel title="Early deaths by night">
-                <RaiderTrend
-                  data={data}
+                <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
+                  <Panel title="Wipe causes over time">
+                    <CauseTrend
+                      data={data}
+                      excluded={filter.causes}
+                      options={phaseInfo?.causeOptions ?? []}
+                      onToggle={toggleCause}
+                    />
+                  </Panel>
+                  <Panel title="Early deaths by night">
+                    <RaiderTrend
+                      data={data}
+                      leftOut={leftOut}
+                      onToggle={toggleRaider}
+                    />
+                  </Panel>
+                </div>
+
+                <AvoidablePanel
+                  key={`${data.encounterId}:${data.difficultyId}`}
+                  rows={data.avoidable}
                   leftOut={leftOut}
-                  onToggle={toggleRaider}
                 />
-              </Panel>
-            </div>
 
-            <AvoidablePanel
-              key={`${data.encounterId}:${data.difficultyId}`}
-              rows={data.avoidable}
-              leftOut={leftOut}
-            />
+                {data.consumables !== undefined && (
+                  <Panel title="Consumables & buffs">
+                    <ConsumablesPanel
+                      summary={data.consumables}
+                      scope={`All nights · ${data.pulls} pulls`}
+                      leftOut={leftOut}
+                    />
+                  </Panel>
+                )}
 
-            {data.consumables !== undefined && (
-              <Panel title="Consumables & buffs">
-                <ConsumablesPanel
-                  summary={data.consumables}
-                  scope={`All nights · ${data.pulls} pulls`}
-                  leftOut={leftOut}
-                />
-              </Panel>
+                <Panel title="Raiders, all nights">
+                  <RaiderTable raiders={data.raiders} leftOut={leftOut} />
+                </Panel>
+              </>
             )}
-
-            <Panel title="Raiders, all nights">
-              <RaiderTable raiders={data.raiders} leftOut={leftOut} />
-            </Panel>
           </div>
         </AbilityScope>
       )}

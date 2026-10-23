@@ -339,7 +339,9 @@ const CategoryPage = (props: IProps) => {
     };
 
     return (
-      <div className="max-w-[500px] min-w-[500px] h-full bg-background-higher flex flex-col mx-2 gap-y-2">
+      // [RoomFortyRecorder] Narrower on smaller windows so the player and
+      // its controls keep their room (the page used to overflow).
+      <div className="w-[clamp(320px,32vw,500px)] shrink-0 h-full bg-background-higher flex flex-col mx-2 gap-y-2">
         <div className="flex items-start">
           <Button
             onClick={() =>
@@ -438,18 +440,20 @@ const CategoryPage = (props: IProps) => {
           bottom: <GripHorizontal />,
         }}
       >
-        <div className="flex h-full w-full">
-          <VideoPlayer
-            ref={videoPlayerRef}
-            instantReplay={null}
-            key={videosToPlay.map((rv) => rv.videoName + rv.cloud).join(', ')}
-            videos={videosToPlay}
-            filteredState={filteredState}
-            persistentProgressRef={persistentProgressRef}
-            config={config}
-            appState={appState}
-            setAppState={setAppState}
-          />
+        <div className="flex h-full w-full min-w-0">
+          <div className="flex-1 min-w-0 h-full">
+            <VideoPlayer
+              ref={videoPlayerRef}
+              instantReplay={null}
+              key={videosToPlay.map((rv) => rv.videoName + rv.cloud).join(', ')}
+              videos={videosToPlay}
+              filteredState={filteredState}
+              persistentProgressRef={persistentProgressRef}
+              config={config}
+              appState={appState}
+              setAppState={setAppState}
+            />
+          </div>
 
           {chatOpen &&
             renderDrawerOpen(selectedVideoAppVersion, selectedVideoEncoder)}
@@ -800,7 +804,7 @@ const CategoryPage = (props: IProps) => {
 
   const renderVideoPage = () => {
     return (
-      <div className="flex flex-col h-full w-full bg-background-higher pt-[32px]">
+      <div className="flex flex-col h-full w-full min-w-0 bg-background-higher pt-[32px]">
         {getVideoPlayer()}
         {getVideoSelection()}
       </div>

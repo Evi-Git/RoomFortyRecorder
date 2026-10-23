@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.28] - Unreleased
+### Changed
+- **Compare tab** in Analysis: the top-guild watcher moved here from Progression. Pick a boss to see your progression chart against a watched guild, the top guilds table, and the watcher's settings.
+
+### Fixed
+- Recordings: opening the viewpoints drawer (top-right of the player) no longer pushes the page past the window's edge. The drawer narrows on smaller windows and the player's buttons scroll sideways if they run out of room.
+
 ## [1.9.27] - Unreleased
 ### Fixed
 - Combat potions now include Patch 12.1's **Liquid Luster** (its buff, Lustrous Gleam, counts as a pre-pot) and **Alluring Nostrum**. After `update-server.cmd`, pulls are recounted in the background: those the server still has logs for, and imported ones through Warcraft Logs.
