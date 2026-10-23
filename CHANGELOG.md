@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.25] - Unreleased
+### Changed
+- **Switches** replace the checkboxes in Avoidable damage.
+- **Progression and Reclears filters:**
+  - In **Wipe causes over time**, switch a cause off to leave the pulls it ended out of every widget (boss health, stats, early deaths, avoidable damage, consumables, raiders). Use it for fluke wipes like Venom Rupture.
+  - In **Early deaths by night**, switch a raider off to leave them out of the raider-based widgets (early deaths, avoidable damage, consumables, raiders).
+  - What's left out is shown at the top with **Include everything**, and it's remembered per boss.
+- **Wipe causes over time** shows the top 8 causes, with "Show all" for the rest.
+- **The boss list** is in the order bosses were first killed; bosses not yet killed come last.
+- **Killed before we tracked it** is removed now that past logs can be imported. The server ignores the old setting.
+
 ## [1.9.24] - Unreleased
 ### Changed
 - **Progression and Reclears boss list:** every Mythic boss, plus only the lower-difficulty bosses you choose (starting with Coiled Altar and Ula'tek on Heroic). Editors change the list with **Choose bosses** next to the Boss dropdown.
