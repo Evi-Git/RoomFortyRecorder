@@ -78,7 +78,8 @@ type DefensiveKind =
   | 'external'
   | 'raid'
   | 'potion'
-  | 'healthstone';
+  | 'healthstone'
+  | 'combatPotion';
 
 type Available = {
   ability: string;
@@ -258,6 +259,7 @@ const KIND_LABEL: Record<DefensiveKind, string> = {
   raid: 'Raid',
   potion: 'Potion',
   healthstone: 'Healthstone',
+  combatPotion: 'Combat potion',
 };
 
 const KIND_STYLE: Record<DefensiveKind, string> = {
@@ -267,6 +269,7 @@ const KIND_STYLE: Record<DefensiveKind, string> = {
   raid: 'text-brand-soft',
   potion: 'text-red-300',
   healthstone: 'text-emerald-300',
+  combatPotion: 'text-amber-300',
 };
 
 // Pre-pull uses have negative times.
@@ -1630,7 +1633,7 @@ const PullDeskPage = (props: IProps) => {
       <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
         <span className="flex items-center gap-x-2 font-bold mr-2">
           <ClipboardList size={18} className="text-brand" />
-          <span className="font-display text-lg">Pull desk</span>
+          <span className="font-display text-lg">Analysis</span>
         </span>
         <div className="flex rounded-md border border-card overflow-hidden mr-2">
           {(

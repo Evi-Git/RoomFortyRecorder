@@ -53,12 +53,21 @@ const spellIdsOf = (pulls) => {
 export const abilityStats = (pulls) => {
   const stats = {};
   const entry = (name, spellId) => {
-    stats[name] ??= { name, spellId: spellId || null, wipes: 0, deaths: 0, earlyDeaths: 0 };
-    if (!stats[name].spellId && spellId) stats[name].spellId = spellId;
-    return stats[name];
+    stats[name] ??= { name, spellId: spellId || null, spellIds: [], wipes: 0, deaths: 0, earlyDeaths: 0, hits: 0, damage: 0 };
+    const e = stats[name];
+    if (!e.spellId && spellId) e.spellId = spellId;
+    if (spellId && !e.spellIds.includes(spellId)) e.spellIds.push(spellId);
+    return e;
   };
   pulls.forEach(({ summary, report }) => {
     if (!report) return;
+    // Every enemy spell that hit the raid, with the IDs it hit as.
+    (report.damageTaken || []).forEach((d) => {
+      if (!d.spellName) return;
+      const e = entry(d.spellName, d.spellId);
+      e.hits += d.hits || 0;
+      e.damage += d.damage || 0;
+    });
     (report.deaths || []).forEach((d, i) => {
       const kb = d.killingBlow;
       if (!kb?.spellName) return;
@@ -73,6 +82,60 @@ export const abilityStats = (pulls) => {
     }
   });
   return Object.values(stats).sort((a, b) => b.wipes - a.wipes || b.deaths - a.deaths);
+};
+
+/**
+ * Avoidable damage over these pulls, per ability (by name: one ability can
+ * hit as several spell IDs): hits, damage, raiders hit, deaths to it, and
+ * each raider's share.
+ */
+export const avoidableOf = (pulls) => {
+  const byName = new Map();
+  const ability = (name) => {
+    if (!byName.has(name)) {
+      byName.set(name, { name, spellIds: [], hits: 0, damage: 0, deaths: 0, pulls: 0, raiders: new Map() });
+    }
+    return byName.get(name);
+  };
+  const raider = (a, name) => {
+    if (!a.raiders.has(name)) a.raiders.set(name, { name, hits: 0, damage: 0, deaths: 0 });
+    return a.raiders.get(name);
+  };
+  pulls.forEach(({ report }) => {
+    if (!report) return;
+    const seen = new Set();
+    (report.avoidable || []).forEach((row) => {
+      (row.spells || []).forEach((sp) => {
+        const name = sp.spellName || `Spell ${sp.spellId}`;
+        const a = ability(name);
+        if (!a.spellIds.includes(sp.spellId)) a.spellIds.push(sp.spellId);
+        a.hits += sp.hits || 0;
+        a.damage += sp.damage || 0;
+        seen.add(name);
+        const r = raider(a, row.name);
+        r.hits += sp.hits || 0;
+        r.damage += sp.damage || 0;
+      });
+    });
+    seen.forEach((name) => {
+      ability(name).pulls += 1;
+    });
+    // Deaths to an avoidable ability (only names that are avoidable here).
+    (report.deaths || []).forEach((d) => {
+      const name = d.killingBlow?.spellName;
+      if (!name || !byName.has(name)) return;
+      const a = byName.get(name);
+      a.deaths += 1;
+      raider(a, d.name).deaths += 1;
+    });
+  });
+  return [...byName.values()]
+    .map((a) => ({
+      ...a,
+      raiders: [...a.raiders.values()].sort((x, y) => y.hits - x.hits || y.deaths - x.deaths),
+      raidersHit: [...a.raiders.values()].filter((r) => r.hits > 0).length,
+    }))
+    .sort((x, y) => y.hits - x.hits);
 };
 
 const countBy = (items) => {
@@ -115,6 +178,7 @@ export const summarizePulls = (pulls) => {
         defensives: 0,
         potions: 0,
         healthstones: 0,
+        combatPotions: 0,
         earlyDeathCauses: {},
       });
     }
@@ -155,6 +219,7 @@ export const summarizePulls = (pulls) => {
       r.defensives += (p.personal || 0) + (p.external || 0);
       r.potions += p.potions || 0;
       r.healthstones += p.healthstones || 0;
+      r.combatPotions += p.combatPotions || 0;
     });
   });
 
@@ -172,12 +237,14 @@ export const summarizePulls = (pulls) => {
   }));
 
   const spellIds = spellIdsOf(ordered);
+  const avoidable = avoidableOf(ordered);
   return {
     encounterId: first.encounterId,
     encounterName: first.encounterName,
     difficultyId: first.difficultyId,
     // Ability name -> spell ID, so the app can show a card for any name.
     spellIds,
+    avoidable,
     pulls: ordered.length,
     kills,
     bestPercent: kills ? 0 : percents.length ? Math.min(...percents) : null,
@@ -275,6 +342,7 @@ export const summarizeProgression = (pulls) => {
     firstKill: firstKill ? { pull: firstKill.n, night: firstKill.night } : null,
     causes: all.causes,
     spellIds: all.spellIds,
+    avoidable: all.avoidable,
     raiders: all.raiders,
     trend: Object.values(trend),
   };

@@ -49,6 +49,10 @@ type Stat = {
   wipes: number;
   deaths: number;
   earlyDeaths: number;
+  // Every spell ID it hit or killed as (casts and hits can differ).
+  spellIds?: number[];
+  hits?: number;
+  damage?: number;
 };
 
 type BossJournal = {
@@ -305,6 +309,10 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
       (s.tags.includes('heroic') &&
         (shownDifficulty === 14 || shownDifficulty === 17)));
 
+  // Spell IDs it hit the raid as, other than the journal's own.
+  const hitsAs = (s: Section, stat: Stat | undefined) =>
+    (stat?.spellIds ?? []).filter((id) => id !== s.spellId).slice(0, 6);
+
   const renderAbility = (s: Section): React.ReactNode => {
     const stat = s.spellId || s.text ? statFor(s.spellId, s.title) : undefined;
     const dim = notThisDifficulty(s);
@@ -360,6 +368,14 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
                   {tagLabel(tag)}
                 </span>
               ))}
+              {hitsAs(s, stat).length > 0 && (
+                <span
+                  className="text-[11px] px-1.5 py-0.5 rounded border border-dashed border-card text-foreground"
+                  title="The spell IDs that actually hit your raid. Avoidable matches by name, so all of them count."
+                >
+                  Hits as {hitsAs(s, stat).join(', ')}
+                </span>
+              )}
             </div>
             {textOf(s) && (
               <p className="m-0 text-[13px] leading-relaxed text-foreground-lighter/85 whitespace-pre-line">

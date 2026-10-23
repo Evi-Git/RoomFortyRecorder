@@ -1,7 +1,8 @@
-# Pull desk
+# Analysis (formerly Pull desk)
 
 Shortly after every tracked raid pull, the guild server builds a report from
-one raider's combat log. The report is on the **Pull desk** page in the app.
+one raider's combat log. The report is on the **Analysis** page in the app.
+(The code and server routes still use the old name, `pulldesk`.)
 Posting a summary of every pull to Discord is optional and off by default
 (`GUILD_CLOUD_PULLDESK_POST_PULLS=true` turns it on).
 
@@ -15,11 +16,15 @@ Each report has:
 - **Cooldown plan**: every assignment in the boss's note checked against what
   the raider actually cast: on time, late, early, missed, or dead before
   their timing.
-- **Avoidable hits**: hits per raider from a per-boss list of spell IDs.
+- **Avoidable hits**: hits per raider from a per-boss list of abilities.
+  An ability matches by spell ID *or name*, so every ID it hits as counts
+  (casts and hits often differ, e.g. Venom Roar hits as two IDs, one magic
+  and one physical).
   Open a raider to see each hit moment per spell; click one to watch their
   recording just before it (ticks within 5 s count as one moment).
 - **Defensives**: every raider's personal and external defensives, raid
-  cooldowns, health potions and healthstones, matched by ability name (the
+  cooldowns, health potions, healthstones and combat potions (Light's
+  Potential and any others on the server's list, every quality), matched by ability name (the
   same lists as the guild's Warcraft Logs queries). Each death also shows
   what that raider still had ready, from the last use and the ability's base
   cooldown (talents can shorten cooldowns, so treat it as an estimate). The
@@ -43,6 +48,9 @@ from the reports it already has, so they need nothing extra from raiders.
   - *Early deaths*: the first 2 deaths of each pull, the same rule as the
     recruiting page; later deaths are usually the wipe. Hover a raider's
     number to see what killed them. Click any column to sort.
+  - *Avoidable damage*: each avoidable ability with damage taken, hits,
+    raiders hit, pulls and deaths; click a row for its raiders. Progression
+    has the same panel across all nights.
 - **Progression**: pick a boss. Boss health at the end of every pull, the
   best so far, where each night starts and the first kill. Hover for the
   pull, click to open it, or switch to the table. Below: totals per night,
@@ -199,8 +207,10 @@ Open a pull for the boss, then **Boss settings**:
   (`time:90;tag:Name;spellid:31821;`) lines are both read. Lines timed by
   phase (`{time:0:30,p2}`) are skipped for now. Saving re-checks the last 24
   hours of pulls for that boss.
-- **Avoidable spells**: spell IDs, comma-separated. Saving re-checks recent
-  pulls too.
+- **Avoidable spells**: spell IDs, comma-separated (or add them from an
+  ability's hover card or the Journal, which also records the name so every
+  spell ID it hits as counts). Saving re-checks recent pulls now and older
+  ones in the background.
 - **Discord channel**: the channel ID for this boss's reports. Empty uses
   the server default.
 

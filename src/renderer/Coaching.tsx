@@ -203,7 +203,7 @@ export const SendClipDialog = (props: SendClipProps) => {
           {config.officer
             ? error ||
               'The bot cannot see any text channels. Check its permissions in Discord.'
-            : 'You don’t have a personal channel yet. Ask an officer to add you under Pull desk → Personal channels.'}
+            : 'You don’t have a personal channel yet. Ask an officer to add you under Analysis → Personal channels.'}
         </p>
       );
     }
@@ -533,7 +533,7 @@ export const FlagBar = ({
   if (!flags.length) {
     return (
       <span className="text-xs text-foreground">
-        Press B (or Flag) to mark a moment; it shows up in the Pull desk report
+        Press B (or Flag) to mark a moment; it shows up in the Analysis report
         for that pull.
       </span>
     );

@@ -46,7 +46,19 @@ type Raider = {
   defensives: number;
   potions: number;
   healthstones: number;
+  combatPotions?: number;
   earlyDeathCauses: Record<string, number>;
+};
+
+type AvoidableRow = {
+  name: string;
+  spellIds: number[];
+  hits: number;
+  damage: number;
+  deaths: number;
+  pulls: number;
+  raidersHit: number;
+  raiders: { name: string; hits: number; damage: number; deaths: number }[];
 };
 
 type PullRow = {
@@ -76,6 +88,7 @@ type BossNight = {
   raiders: Raider[];
   pullsList: PullRow[];
   spellIds?: Record<string, number>;
+  avoidable?: AvoidableRow[];
 };
 
 type NightIndex = {
@@ -116,6 +129,7 @@ type Progression = {
   firstKill: { pull: number; night: string } | null;
   causes: Cause[];
   spellIds?: Record<string, number>;
+  avoidable?: AvoidableRow[];
   raiders: Raider[];
   trend: {
     name: string;
@@ -267,7 +281,8 @@ type SortKey =
   | 'avoidableHits'
   | 'defensives'
   | 'potions'
-  | 'healthstones';
+  | 'healthstones'
+  | 'combatPotions';
 
 const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
   { key: 'name', label: 'Raider', title: 'Raider' },
@@ -301,10 +316,16 @@ const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
   },
   { key: 'potions', label: 'Health pots', title: 'Health potions used' },
   { key: 'healthstones', label: 'Healthstones', title: 'Healthstones used' },
+  {
+    key: 'combatPotions',
+    label: 'Combat pots',
+    title: "Combat potions used (e.g. Light's Potential, any quality)",
+  },
 ];
 
 const sortValue = (r: Raider, key: SortKey) => {
   if (key === 'rate') return r.pulls ? r.earlyDeaths / r.pulls : 0;
+  if (key === 'combatPotions') return r.combatPotions ?? 0;
   return r[key];
 };
 
@@ -450,6 +471,7 @@ const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
                 {cell(r.defensives)}
                 {cell(r.potions)}
                 {cell(r.healthstones)}
+                {cell(r.combatPotions ?? 0)}
               </tr>
             ))}
           </tbody>
@@ -460,6 +482,156 @@ const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
         the wipe. Hover a raider&apos;s early deaths to see what killed them.
       </p>
     </div>
+  );
+};
+
+const compact = (n: number) =>
+  n >= 1e9
+    ? `${(n / 1e9).toFixed(1)}B`
+    : n >= 1e6
+      ? `${(n / 1e6).toFixed(1)}M`
+      : n >= 1e3
+        ? `${Math.round(n / 1e3)}K`
+        : String(n);
+
+/**
+ * Avoidable damage, compiled: one row per avoidable ability (every spell ID
+ * it hits as), with who got hit; click a row for its raiders.
+ */
+const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
+  const [open, setOpen] = React.useState<string | null>(null);
+  if (!rows) return null;
+  const max = Math.max(1, ...rows.map((r) => r.damage));
+  return (
+    <Panel title="Avoidable damage">
+      {!rows.length ? (
+        <p className="text-sm text-foreground">
+          No avoidable hits. Mark abilities as avoidable from their hover card
+          or the Journal.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-foreground border-b border-card">
+              <tr>
+                <th className="px-2 py-1 font-normal text-left">Ability</th>
+                <th className="px-2 py-1 font-normal text-left w-[30%]">
+                  Damage taken
+                </th>
+                <th className="px-2 py-1 font-normal text-right">Hits</th>
+                <th
+                  className="px-2 py-1 font-normal text-right"
+                  title="Raiders it hit at least once"
+                >
+                  Raiders hit
+                </th>
+                <th
+                  className="px-2 py-1 font-normal text-right"
+                  title="Pulls it hit someone in"
+                >
+                  Pulls
+                </th>
+                <th
+                  className="px-2 py-1 font-normal text-right"
+                  title="Raiders it killed"
+                >
+                  Deaths
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const expanded = open === row.name;
+                return (
+                  <React.Fragment key={row.name}>
+                    <tr
+                      className="border-b border-card/40 hover:bg-card/30 cursor-pointer"
+                      onClick={() => setOpen(expanded ? null : row.name)}
+                    >
+                      <td className="px-2 py-1 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-x-1">
+                          {expanded ? (
+                            <ChevronUp size={12} />
+                          ) : (
+                            <ChevronDown size={12} />
+                          )}
+                          <Ability
+                            name={row.name}
+                            spellId={row.spellIds[0]}
+                            className="text-foreground-lighter"
+                          />
+                        </span>
+                      </td>
+                      <td className="px-2 py-1">
+                        <span className="flex items-center gap-x-2">
+                          <span
+                            className="h-[12px] rounded-r-[4px]"
+                            style={{
+                              width: `${(row.damage / max) * 80}%`,
+                              minWidth: 4,
+                              background: BRAND,
+                            }}
+                          />
+                          <span className="tabular-nums text-foreground">
+                            {compact(row.damage)}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {row.hits}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {row.raidersHit}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {row.pulls}
+                      </td>
+                      <td
+                        className={`px-2 py-1 text-right tabular-nums ${
+                          row.deaths ? 'text-red-400' : 'text-foreground/50'
+                        }`}
+                      >
+                        {row.deaths}
+                      </td>
+                    </tr>
+                    {expanded &&
+                      row.raiders.map((r) => (
+                        <tr
+                          key={`${row.name}:${r.name}`}
+                          className="border-b border-card/20 text-xs"
+                        >
+                          <td className="pl-8 pr-2 py-0.5 text-foreground-lighter">
+                            {r.name}
+                          </td>
+                          <td className="px-2 py-0.5 tabular-nums text-foreground">
+                            {compact(r.damage)}
+                          </td>
+                          <td className="px-2 py-0.5 text-right tabular-nums">
+                            {r.hits}
+                          </td>
+                          <td />
+                          <td />
+                          <td
+                            className={`px-2 py-0.5 text-right tabular-nums ${
+                              r.deaths ? 'text-red-400' : 'text-foreground/50'
+                            }`}
+                          >
+                            {r.deaths}
+                          </td>
+                        </tr>
+                      ))}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-xs text-foreground mt-2">
+            Counts every spell ID an avoidable ability hits as (by name). Click
+            a row to see who got hit.
+          </p>
+        </div>
+      )}
+    </Panel>
   );
 };
 
@@ -527,6 +699,8 @@ const BossNightCard = ({
             <RaiderTable raiders={boss.raiders} />
           </Panel>
         </div>
+
+        <AvoidablePanel rows={boss.avoidable} />
 
         <Panel
           title={`Pulls (${boss.pulls})`}
@@ -1671,6 +1845,8 @@ export const ProgressionView = ({
                 <RaiderTrend data={data} />
               </Panel>
             </div>
+
+            <AvoidablePanel rows={data.avoidable} />
 
             <Panel title="Raiders, all nights">
               <RaiderTable raiders={data.raiders} />

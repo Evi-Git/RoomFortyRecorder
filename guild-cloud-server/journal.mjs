@@ -261,6 +261,13 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     return hits.length ? Math.max(...hits.map((d) => Number(d.id))) : null;
   };
 
+  // A saved journal, rebuilt from Blizzard's raw answer so changes to how
+  // it's shown (merging difficulty copies, text cleanup) apply right away.
+  const stored = async (id) => {
+    const rawCopy = await readJson(`raw-${id}.json`, null);
+    return rawCopy ? journalFromApi(rawCopy) : readJson(`encounter-${id}.json`, null);
+  };
+
   /**
    * The journal for a boss. `journalId` (set by an officer) wins; otherwise
    * it's found by the boss's name. Returns null if Blizzard has none.
@@ -271,7 +278,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     const entry = index[key];
     const fresh = entry && Date.now() - entry.at < (entry.id ? JOURNAL_TTL : NOT_FOUND_TTL);
     if (entry && fresh && !refresh) {
-      return entry.id ? readJson(`encounter-${entry.id}.json`, null) : null;
+      return entry.id ? stored(entry.id) : null;
     }
     try {
       const id = journalId || (await findEncounterId(name));
@@ -294,7 +301,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
       return journal;
     } catch (error) {
       // Keep showing the cached copy if Blizzard is down.
-      if (entry?.id) return readJson(`encounter-${entry.id}.json`, null);
+      if (entry?.id) return stored(entry.id);
       throw error;
     }
   };

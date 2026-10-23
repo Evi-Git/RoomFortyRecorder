@@ -83,6 +83,8 @@ export const parseLine = (raw) => {
 
 // ---- Helpers ------------------------------------------------------------------
 
+const normName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // Avoidable hits: a hit within this many seconds of the previous one is the
 // same moment (standing in it, ticking), so it gets one Watch button. At most
 // AVOIDABLE_MAX_TIMES moments are kept per raider per spell.
@@ -291,10 +293,31 @@ const PRIEST_DEATH_AURAS = new Set([27827, 211319]);
 
 /**
  * @param {string} logText  filtered log slice, ENCOUNTER_START..ENCOUNTER_END
- * @param {{ note?: string, avoidable?: number[] }} options
+ * @param {{
+ *   note?: string,
+ *   avoidable?: (number | { id: number, name?: string | null })[],
+ *   combatPotions?: string[],
+ * }} options
  */
 export const analyzePull = (logText, options = {}) => {
-  const avoidable = new Set((options.avoidable || []).map(Number));
+  // Avoidable spells by ID, and by name: a boss ability often hits with
+  // other spell IDs than the one the journal lists (Venom Roar is cast as
+  // 1302884 but hits as 1302914 and 1302917), so the name catches them all.
+  const avoidable = new Set(
+    (options.avoidable || []).map((a) => Number(typeof a === 'object' ? a?.id : a)).filter(Boolean),
+  );
+  const avoidableNames = new Set(
+    (options.avoidable || [])
+      .map((a) => (typeof a === 'object' && a?.name ? normName(a.name) : ''))
+      .filter(Boolean),
+  );
+  const isAvoidable = (spellId, spellName) =>
+    avoidable.has(spellId) || (avoidableNames.size > 0 && avoidableNames.has(normName(spellName)));
+  // Combat potions by spell name: every crafted rank and cauldron version
+  // of a potion casts the same spell.
+  const combatPotions = new Set((options.combatPotions || []).map(normName).filter(Boolean));
+  // Damage players took from enemies, per spell: for "hits as" IDs and totals.
+  const damageTaken = new Map();
 
   let start = null;
   let end = null;
@@ -384,7 +407,14 @@ export const analyzePull = (logText, options = {}) => {
         if (list.length > HIT_HISTORY) list.shift();
         recentHits.set(hit.destGuid, list);
 
-        if (avoidable.has(hit.spellId) && !isPlayerGuid(hit.sourceGuid)) {
+        if (!isPlayerGuid(hit.sourceGuid)) {
+          const taken = damageTaken.get(hit.spellId) || { spellId: hit.spellId, spellName: hit.spellName, hits: 0, damage: 0 };
+          taken.hits += 1;
+          taken.damage += hit.amount;
+          damageTaken.set(hit.spellId, taken);
+        }
+
+        if (isAvoidable(hit.spellId, hit.spellName) && !isPlayerGuid(hit.sourceGuid)) {
           const name = shortName(hit.destName);
           const stats = avoidableHits.get(name) || { hits: 0, damage: 0, bySpell: {}, spells: {} };
           stats.hits += 1;
@@ -445,7 +475,11 @@ export const analyzePull = (logText, options = {}) => {
       const list = casts.get(name) || [];
       list.push({ t, spellId });
       casts.set(name, list);
-      const entry = defensiveFor(args[10]);
+      const entry =
+        defensiveFor(args[10]) ||
+        (combatPotions.has(normName(args[10]))
+          ? { name: args[10], kind: 'combatPotion', cd: 300, baseline: [] }
+          : null);
       if (entry) {
         // Channels (Tranquility, Divine Hymn) log a cast per tick: keep the
         // first of a burst.
@@ -573,6 +607,7 @@ export const analyzePull = (logText, options = {}) => {
           raid: count(['raid']),
           potions: count(['potion']),
           healthstones: count(['healthstone']),
+          combatPotions: count(['combatPotion']),
           uses,
         };
       }),
@@ -728,6 +763,10 @@ export const analyzePull = (logText, options = {}) => {
       summary: planSummary,
     },
     avoidable: avoidableList,
+    // Enemy damage on players by spell, biggest first.
+    damageTaken: [...damageTaken.values()]
+      .sort((a, b) => b.damage - a.damage)
+      .slice(0, 200),
     defensives,
     spellNames: Object.fromEntries(
       [...avoidable].map((id) => [id, spellNames.get(id) || null]),

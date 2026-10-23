@@ -314,7 +314,7 @@ const SideMenu = (props: IProps) => {
         <Menu.Item.Icon>
           <ClipboardList size={18} />
         </Menu.Item.Icon>
-        <span>Pull desk</span>
+        <span>Analysis</span>
       </span>
     </Menu.Item>
   );

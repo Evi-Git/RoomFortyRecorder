@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.17] - Unreleased
+### Added
+- **Avoidable damage** in Night summary and Progression: one row per avoidable ability with damage taken, hits, raiders hit, pulls and deaths it caused. Click a row to see who got hit.
+- **Combat potions**: a "Combat pots" column in the raider tables, and combat potion uses in a pull's Defensives tab. Matched by name, so every quality and the cauldron version count. The list starts with Light's Potential and is stored on the server (an editor for it comes with the admin dashboard).
+- The Journal and ability cards show **Hits as**: the spell IDs that actually hit your raid when they differ from the journal's (e.g. Venom Roar is 1302884 in the journal but hits as 1302914 and 1302917).
+
+### Changed
+- **Avoidable abilities match by name as well as ID**, so an ability counts under every spell ID it hits as. Adding Venom Roar from the journal now counts both its magic and physical hits. Pulls older than a day are rechecked in the background when the list changes.
+- The Pull desk is now called **Analysis**.
+
+### Fixed
+- Journal abilities no longer show twice when the server had the boss saved from an older version. It now rebuilds its saved copy, with no need to clear anything.
+
+Run `update-server.cmd` after publishing.
+
 ## [1.9.16] - Unreleased
 ### Fixed
 - **Journal and ability cards: text and icons.** Blizzard's journal gives no text for abilities (in game it's the spell's tooltip) and its spell endpoints don't answer for boss spells, so text and icons were missing (Kith'ix looked empty). Ability text and icon names now come from Wowhead's tooltips for the difficulty you're viewing (Normal, Heroic, Mythic, flex Mythic), fetched once per spell by the guild server and cached for good; icon images load from Blizzard's image server. The Journal view fills them in over a few seconds on a boss's first visit.
