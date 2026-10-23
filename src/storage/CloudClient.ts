@@ -761,7 +761,12 @@ export default class CloudClient implements StorageClient {
     method: 'get' | 'post' | 'put' | 'patch' | 'delete',
     path: string,
     data?: unknown,
-    options: { contentType?: string; timeout?: number; area?: string } = {},
+    options: {
+      contentType?: string;
+      timeout?: number;
+      area?: string;
+      responseType?: 'json' | 'arraybuffer';
+    } = {},
   ): Promise<T> {
     const guild = encodeURIComponent(this.guild);
     const area = options.area ?? 'pulldesk';
@@ -778,7 +783,10 @@ export default class CloudClient implements StorageClient {
       data,
       headers,
       timeout: options.timeout ?? 30000,
-      maxBodyLength: 64 * 1024 * 1024,
+      // Full pull logs (Logs page) run to tens of MB gzipped.
+      maxBodyLength: 160 * 1024 * 1024,
+      maxContentLength: 160 * 1024 * 1024,
+      responseType: options.responseType ?? 'json',
     });
 
     return res.data as T;

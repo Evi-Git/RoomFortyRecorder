@@ -16,6 +16,8 @@ import {
   WatchHint,
 } from './LogsTimeline';
 import LogsTrends from './LogsTrends';
+import LogsExplorer, { Watch } from './logs/LogsExplorer';
+import type { PullMeta } from './logs/store';
 
 /**
  * [RoomFortyRecorder] Logs: meters for raid pulls, worked out by the app
@@ -1194,6 +1196,8 @@ type NightPull = {
   bossPercent: number | null;
   duration: number;
   source?: 'app' | 'wcl';
+  hasFull?: boolean;
+  startedAt?: number | null;
 };
 
 const DIFF: Record<number, string> = {
@@ -1223,6 +1227,7 @@ const pullResult = (p: NightPull) =>
  * boss to see them side by side.
  */
 export const LogsView = () => {
+  const watcher = React.useContext(WatchContext);
   const [nights, setNights] = React.useState<
     { night: string; bosses: NightBoss[] }[] | null
   >(null);
@@ -1297,6 +1302,29 @@ export const LogsView = () => {
   }
 
   const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  const metaOf = (p: NightPull): PullMeta => ({
+    id: p.id,
+    label: `Pull ${p.pullNumber}`,
+    encounterId: boss?.encounterId ?? 0,
+    difficultyId: boss?.difficultyId ?? 0,
+    startedAt: p.startedAt ?? 0,
+    result: p.result,
+  });
+  const shown: PullMeta[] =
+    comparing.length >= 2
+      ? pulls
+          .filter((p) => picked.includes(p.id))
+          .sort((a, b) => a.pullNumber - b.pullNumber)
+          .map(metaOf)
+      : pull && pull.source !== 'wcl'
+        ? [metaOf(pull)]
+        : [];
+  const watch: Watch | null = watcher
+    ? {
+        can: shown.some((m) => watcher.has(m, null)),
+        open: (m, name, seconds) => watcher.open(m, name, seconds),
+      }
+    : null;
   const field =
     'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';
   const reset = () => {
@@ -1419,26 +1447,48 @@ export const LogsView = () => {
               })}
             </div>
             <p className="text-[11px] text-foreground m-0">
-              Tick two or more pulls to see them side by side.
+              Tick two or more pulls to add them up.
             </p>
           </div>
           <div className="min-w-0">
-            {comparing.length >= 2 ? (
-              <PullComparison pulls={comparing} />
-            ) : pull ? (
-              pull.source === 'wcl' ? (
-                <p className="text-sm text-foreground">
-                  This pull was imported from Warcraft Logs, so there&apos;s no
-                  log here to build meters from.
-                </p>
-              ) : (
-                <PullMeters
-                  key={pull.id}
-                  pullId={pull.id}
-                  encounterId={boss.encounterId}
-                  difficultyId={boss.difficultyId}
-                />
-              )
+            {shown.length ? (
+              <LogsExplorer
+                metas={shown}
+                watch={watch}
+                fallback={(missing) =>
+                  missing.length >= 2 ? (
+                    <div className="flex flex-col gap-y-3">
+                      <p className="text-xs text-foreground m-0 max-w-[760px]">
+                        These pulls&apos; full logs haven&apos;t been sent yet
+                        (apps on 1.9.32 send them, and re-send last week&apos;s
+                        pulls on their own), so here are their meters.
+                      </p>
+                      <PullComparison pulls={comparing} />
+                    </div>
+                  ) : pull?.source === 'wcl' ? (
+                    <p className="text-sm text-foreground">
+                      This pull was imported from Warcraft Logs, so there&apos;s
+                      no combat log here.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-y-3">
+                      <p className="text-xs text-foreground m-0 max-w-[760px]">
+                        This pull&apos;s full log hasn&apos;t been sent yet
+                        (apps on 1.9.32 send it, and re-send last week&apos;s
+                        pulls on their own), so here are its meters.
+                      </p>
+                      {pull && (
+                        <PullMeters
+                          key={pull.id}
+                          pullId={pull.id}
+                          encounterId={boss.encounterId}
+                          difficultyId={boss.difficultyId}
+                        />
+                      )}
+                    </div>
+                  )
+                }
+              />
             ) : (
               <p className="text-sm text-foreground">No pulls.</p>
             )}

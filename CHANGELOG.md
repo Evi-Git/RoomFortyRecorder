@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.32] - Unreleased
+### Added
+- **Logs now works like Warcraft Logs.** Pick a pull, or tick several to add them up, then choose:
+  - **Tables, Timelines, Events or Queries** (top right), and **Friendlies or Enemies**.
+  - **Tabs:** Summary, Damage Done, Damage Taken, Healing, Damage Prevented, Buffs, Debuffs, Interrupts, Dispels, Resources and Casts.
+  - **Filters:** an enemy, an ability, pets on their own rows, done by source or by ability, ignoring events after the first few deaths, and a filter expression (e.g. `ability.name ~ "venom" and target.name = "Dwarfix"`).
+  - **Click a raider** for their abilities: casts, average cast, hits, average hit, crit %, uptime, miss % and DPS. Hover an ability to see who it came from and who it hit. The chart stacks their abilities.
+  - **Buffs** are grouped into raid cooldowns, externals, personal cooldowns, raid buffs, consumables and other, each with its uptime drawn across the fight. **Debuffs** show what enemies put on the raid, or the raid's debuffs on any enemy.
+  - **Events** lists every event behind the tab. **Queries** has ready-made questions (big hits, raiders below 20%, defensives pressed, potions, Bloodlust, boss casts) and saved ones of your own.
+  - Several pulls are added up on one timeline, with a **Pull by pull** table underneath.
+- **Trends:** a whole-raid section (raid DPS and totals per night). Progression nights count every pull up to the first kill; after that only kills count, so later weeks compare like with like.
+- Apps send each pull's full combat log (about 10 MB gzipped) for the Logs page, and re-send last week's pulls on their own.
+
+### Fixed
+- **Damage taken was far too low.** Once a boss hit a hunter or warlock pet, the app treated the boss as that raider's pet and stopped counting its damage on the raid. Hits that shields soaked completely are now counted too.
+- **Damage prevented was empty** for the same reason. It now also covers personal defensives (Obsidian Scales, Icebound Fortitude, Survival of the Fittest and others), and credits Anti-Magic Zone and Power Word: Barrier to whoever cast them.
+
+### Notes
+- Pulls from before 1.9.32 show their old meters until a raider's app re-sends them (pulls up to a week old, from saved combat logs).
+
 ## [1.9.31] - Unreleased
 ### Added
 - **Casts** tab in Logs: a timeline of each raider's cooldowns, defensives and potions. Pick a raider for one row per spell.

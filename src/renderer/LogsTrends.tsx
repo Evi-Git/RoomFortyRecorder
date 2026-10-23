@@ -2,8 +2,10 @@ import React from 'react';
 import { getSpecClass, getWoWClassColor } from './rendererutils';
 
 /**
- * [RoomFortyRecorder] Logs → Trends: each raider's DPS, HPS, damage taken
- * or damage prevented night by night on one boss, from the stored meters.
+ * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
+ * damage taken or damage prevented night by night on one boss, from the
+ * stored meters. Progression nights count every pull up to the first kill;
+ * after that only kills count, so weeks compare like with like.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -25,6 +27,8 @@ type NightTotals = {
   kills: number;
   seconds: number;
   raid: Partial<Record<Kind, number>>;
+  /** Pulls up to the first kill, or (after it) kills only. */
+  phase?: 'progression' | 'kills';
 };
 type RaiderNight = { seconds: number; pulls: number } & Partial<
   Record<Kind, number>
@@ -52,11 +56,13 @@ const DIFF: Record<number, string> = {
 };
 
 const compact = (n: number) =>
-  n >= 1e6
-    ? `${(n / 1e6).toFixed(2)}M`
-    : n >= 1e3
-      ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}K`
-      : String(Math.round(n));
+  n >= 1e9
+    ? `${(n / 1e9).toFixed(2)}B`
+    : n >= 1e6
+      ? `${(n / 1e6).toFixed(2)}M`
+      : n >= 1e3
+        ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}K`
+        : String(Math.round(n));
 
 const shortNight = (night: string) =>
   new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
@@ -405,7 +411,83 @@ export const LogsTrends = () => {
         <>
           <div className="rounded-md border border-card bg-background/40 p-3">
             <h4 className="text-sm font-semibold text-foreground-lighter mb-1">
-              {meta.rate} by night
+              Whole raid: {meta.rate} by night
+            </h4>
+            <TrendChart
+              nights={nights}
+              rate={meta.rate}
+              series={[
+                {
+                  name: `Raid ${meta.rate}`,
+                  values: data.nights.map((n) =>
+                    n.seconds ? (n.raid[kind] ?? 0) / n.seconds : null,
+                  ),
+                  color: BRAND,
+                },
+              ]}
+            />
+            <div className="overflow-x-auto mt-2">
+              <table className="text-sm border-separate border-spacing-[2px]">
+                <tbody>
+                  {(
+                    [
+                      [
+                        'Counted',
+                        (n: NightTotals) =>
+                          n.phase === 'kills' ? 'Kills' : 'Progression',
+                      ],
+                      [
+                        'Pulls',
+                        (n: NightTotals) =>
+                          `${n.pulls}${n.kills ? ` (${n.kills} kill${n.kills > 1 ? 's' : ''})` : ''}`,
+                      ],
+                      [
+                        'Fight time',
+                        (n: NightTotals) =>
+                          `${Math.floor(n.seconds / 60)}:${String(Math.round(n.seconds % 60)).padStart(2, '0')}`,
+                      ],
+                      [
+                        `Raid ${meta.rate}`,
+                        (n: NightTotals) =>
+                          n.seconds
+                            ? compact((n.raid[kind] ?? 0) / n.seconds)
+                            : '–',
+                      ],
+                      ['Total', (n: NightTotals) => compact(n.raid[kind] ?? 0)],
+                    ] as [string, (n: NightTotals) => string][]
+                  ).map(([label, value]) => (
+                    <tr key={label}>
+                      <td className="px-2 py-0.5 text-xs text-foreground whitespace-nowrap">
+                        {label}
+                      </td>
+                      {data.nights.map((n) => (
+                        <td
+                          key={n.night}
+                          className="px-2 py-0.5 text-right tabular-nums text-foreground-lighter min-w-[72px] whitespace-nowrap"
+                        >
+                          {value(n)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td />
+                    {data.nights.map((n) => (
+                      <td
+                        key={n.night}
+                        className="px-2 text-right text-[10px] text-foreground"
+                      >
+                        {shortNight(n.night)}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="rounded-md border border-card bg-background/40 p-3">
+            <h4 className="text-sm font-semibold text-foreground-lighter mb-1">
+              Per raider: {meta.rate} by night
             </h4>
             <TrendChart nights={nights} series={series} rate={meta.rate} />
             <p className="text-xs text-foreground mt-1 mb-0">
@@ -424,7 +506,9 @@ export const LogsTrends = () => {
                     >
                       <div>{shortNight(n.night)}</div>
                       <div className="text-[10px]">
-                        {n.pulls} pulls{n.kills ? ' · kill' : ''}
+                        {n.phase === 'kills'
+                          ? `${n.kills} kill${n.kills > 1 ? 's' : ''}`
+                          : `${n.pulls} pulls${n.kills ? ' · kill' : ''}`}
                       </div>
                     </th>
                   ))}
@@ -505,9 +589,11 @@ export const LogsTrends = () => {
             </table>
           </div>
           <p className="text-xs text-foreground m-0">
-            {meta.rate} over all of each night&apos;s pulls on this boss.
-            Shading: each raider against their own best night. Change: their
-            last night against their first
+            Progression nights count every pull up to and including the first
+            kill; after that only kills count, so later weeks compare like with
+            like. {meta.rate} over the counted pulls&apos; fight time. Shading:
+            each raider against their own best night. Change: their last night
+            against their first
             {kind === 'taken' ? ' (less damage taken is green)' : ''}.
           </p>
         </>

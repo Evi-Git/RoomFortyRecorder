@@ -1,0 +1,1111 @@
+import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
+import { F, K, PullStore, Unit } from './store';
+
+/**
+ * [RoomFortyRecorder] Logs page: tables worked out from one or more pulls'
+ * event stores, with the page's filters. Several pulls add up (laid end to
+ * end on one timeline, like Warcraft Logs' "multiple fights").
+ */
+
+export type Side = 'friendly' | 'enemy';
+
+export type Filters = {
+  /** Seconds on the combined timeline; null = everything. */
+  range: [number, number] | null;
+  side: Side;
+  /** List pets on their own rows (else they count for their owner). */
+  pets: boolean;
+  /** Enemy (by name) hit, or for damage taken, the enemy hitting. */
+  enemy: string | null;
+  /** Ability (spell id). */
+  ability: number | null;
+  /** Stop counting each pull after this many raider deaths (0 = off). */
+  deathCutoff: number;
+  /** Extra condition from the filter expression. */
+  expr: ((p: PullStore, i: number) => boolean) | null;
+};
+
+export const DEFAULT_FILTERS: Filters = {
+  range: null,
+  side: 'friendly',
+  pets: false,
+  enemy: null,
+  ability: null,
+  deathCutoff: 0,
+  expr: null,
+};
+
+export type Ctx = {
+  pulls: PullStore[];
+  offsets: number[];
+  total: number;
+  filters: Filters;
+};
+
+export const makeCtx = (pulls: PullStore[], filters: Filters): Ctx => {
+  const offsets: number[] = [];
+  let total = 0;
+  pulls.forEach((p) => {
+    offsets.push(total);
+    total += p.duration;
+  });
+  return { pulls, offsets, total, filters };
+};
+
+/** Seconds the current view covers (the slice, deaths cut-off applied). */
+export const viewSeconds = (ctx: Ctx) => {
+  let sum = 0;
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    sum += Math.max(0, to - from);
+  });
+  return Math.max(1, sum);
+};
+
+/** The [from, to) seconds of pull `pi` (its own clock) in view. */
+export const window_ = (ctx: Ctx, pi: number): [number, number] => {
+  const p = ctx.pulls[pi];
+  const off = ctx.offsets[pi];
+  let from = 0;
+  let to = p.duration;
+  if (ctx.filters.range) {
+    from = Math.max(from, ctx.filters.range[0] - off);
+    to = Math.min(to, ctx.filters.range[1] - off);
+  }
+  const cut = ctx.filters.deathCutoff;
+  if (cut > 0 && p.deaths.length >= cut) to = Math.min(to, p.deaths[cut - 1].t);
+  return [from, Math.max(from, to)];
+};
+
+/** Calls `fn` for each event in view, with its time on the combined timeline. */
+export const scan = (
+  ctx: Ctx,
+  fn: (p: PullStore, i: number, at: number, pi: number) => void,
+  opts: { kinds?: number[]; ignoreExpr?: boolean } = {},
+) => {
+  const wanted = opts.kinds ? new Set(opts.kinds) : null;
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    const off = ctx.offsets[pi];
+    const { expr } = ctx.filters;
+    for (let i = 0; i < p.n; i += 1) {
+      const t = p.t[i];
+      if (t < from) continue;
+      if (t > to) break;
+      if (wanted && !wanted.has(p.k[i])) continue;
+      if (expr && !opts.ignoreExpr && !expr(p, i)) continue;
+      fn(p, i, off + t, pi);
+    }
+  });
+};
+
+/* ------------------------------------------------------------------ */
+/* Who a row is                                                        */
+/* ------------------------------------------------------------------ */
+
+export type RowRef = {
+  key: string;
+  name: string;
+  specId: number;
+  player: boolean;
+  pet: boolean;
+};
+
+/** The row a unit's actions go to: the raider (or pet), or the enemy by name. */
+export const rowOf = (
+  p: PullStore,
+  unit: number,
+  pets: boolean,
+): RowRef | null => {
+  if (unit < 0) return null;
+  const u: Unit = p.units[unit];
+  const root = p.units[u.root];
+  if (root.player) {
+    if (pets && unit !== u.root) {
+      return {
+        key: `pet:${root.name}:${u.name}`,
+        name: `${u.name} (${root.name})`,
+        specId: root.specId,
+        player: false,
+        pet: true,
+      };
+    }
+    return {
+      key: root.guid,
+      name: root.name,
+      specId: root.specId,
+      player: true,
+      pet: false,
+    };
+  }
+  return {
+    key: `npc:${root.name}`,
+    name: root.name || 'Unknown',
+    specId: 0,
+    player: false,
+    pet: false,
+  };
+};
+
+const isRaiderSide = (p: PullStore, unit: number) =>
+  unit >= 0 && p.units[p.units[unit].root].raider;
+const isEnemy = (p: PullStore, unit: number) =>
+  unit >= 0 && !p.units[unit].friendly && !p.units[p.units[unit].root].raider;
+
+/* ------------------------------------------------------------------ */
+/* Damage done, healing, damage taken                                  */
+/* ------------------------------------------------------------------ */
+
+export type Meter = 'damage' | 'healing' | 'taken';
+
+export type AbilityRow = {
+  key: string;
+  spellId: number;
+  name: string;
+  /** Pet or guardian that did it, if not the raider. */
+  by: string;
+  total: number;
+  hits: number;
+  crits: number;
+  ticks: number;
+  casts: number;
+  misses: number;
+  overheal: number;
+  absorbed: number;
+  mitigated: number;
+  /** Debuff uptime on targets (DoTs), seconds. */
+  uptime: number;
+};
+
+export type MeterRow = RowRef & {
+  total: number;
+  /** Of total: done by pets. */
+  pets: number;
+  overheal: number;
+  mitigated: number;
+  /** Seconds active (casting or hitting). */
+  active: number;
+  abilities: Map<string, AbilityRow>;
+  series: Float64Array;
+};
+
+const SERIES_STEP = 1; // seconds per chart point
+
+const newAbility = (
+  key: string,
+  spellId: number,
+  name: string,
+  by: string,
+): AbilityRow => ({
+  key,
+  spellId,
+  name,
+  by,
+  total: 0,
+  hits: 0,
+  crits: 0,
+  ticks: 0,
+  casts: 0,
+  misses: 0,
+  overheal: 0,
+  absorbed: 0,
+  mitigated: 0,
+  uptime: 0,
+});
+
+/** Does event i belong in this meter, and whose row (by unit) is it. */
+const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
+  const { side, enemy, ability } = ctx.filters;
+  const kind = p.k[i];
+  if (ability !== null && p.spells[p.sp[i]]?.id !== ability) return -1;
+  const s = p.s[i];
+  const d = p.d[i];
+  if (meter === 'damage') {
+    if (kind !== K.DMG) return -1;
+    if (side === 'friendly') {
+      if (!isRaiderSide(p, s) || !isEnemy(p, d)) return -1;
+      if (enemy && p.units[d].name !== enemy) return -1;
+    } else {
+      if (!isEnemy(p, s) || !isRaiderSide(p, d)) return -1;
+      if (enemy && p.units[s].name !== enemy) return -1;
+    }
+    return s;
+  }
+  if (meter === 'healing') {
+    if (kind !== K.HEAL && kind !== K.ABSORB) return -1;
+    if (side === 'friendly' ? !isRaiderSide(p, s) : !isEnemy(p, s)) return -1;
+    if (kind === K.HEAL && side === 'friendly' && !p.units[d]?.friendly)
+      return -1;
+    if (enemy && p.units[d]?.name !== enemy) return -1;
+    return s;
+  }
+  // Taken: by who was hit.
+  if (kind !== K.DMG) return -1;
+  if (side === 'friendly') {
+    if (d < 0 || !p.units[d].raider) return -1;
+  } else if (!isEnemy(p, d)) return -1;
+  if (enemy && p.units[s]?.name !== enemy) return -1;
+  return d;
+};
+
+/** Raiders' (or enemies') rows for one meter. */
+export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
+  const rows = new Map<string, MeterRow>();
+  const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
+  const pets = ctx.filters.pets && meter !== 'taken';
+  // Active time: merged [t, t + 1.5] windows per row.
+  const activity = new Map<
+    string,
+    { start: number; end: number; sum: number }
+  >();
+  const touch = (key: string, at: number) => {
+    const a = activity.get(key);
+    if (!a) {
+      activity.set(key, { start: at, end: at + 1.5, sum: 0 });
+    } else if (at > a.end) {
+      a.sum += a.end - a.start;
+      a.start = at;
+      a.end = at + 1.5;
+    } else a.end = Math.max(a.end, at + 1.5);
+  };
+
+  scan(
+    ctx,
+    (p, i, at) => {
+      const unit = meterUnit(ctx, p, i, meter);
+      if (unit < 0) return;
+      const ref = rowOf(p, unit, pets);
+      if (!ref) return;
+      let row = rows.get(ref.key);
+      if (!row) {
+        row = {
+          ...ref,
+          total: 0,
+          pets: 0,
+          overheal: 0,
+          mitigated: 0,
+          active: 0,
+          abilities: new Map(),
+          series: new Float64Array(points),
+        };
+        rows.set(ref.key, row);
+      }
+      const kind = p.k[i];
+      const amount =
+        kind === K.DMG
+          ? p.a[i] + p.b[i]
+          : kind === K.HEAL
+            ? p.a[i] + p.b[i]
+            : p.a[i];
+      const spell = p.spells[p.sp[i]];
+      const fromPet =
+        meter !== 'taken' && unit !== p.units[unit].root && !pets
+          ? p.units[unit].name
+          : '';
+      const aKey = `${spell?.id ?? 0}|${fromPet}`;
+      let ab = row.abilities.get(aKey);
+      if (!ab) {
+        ab = newAbility(aKey, spell?.id ?? 0, spell?.name ?? '?', fromPet);
+        row.abilities.set(aKey, ab);
+      }
+      ab.total += amount;
+      ab.hits += 1;
+      if (p.f[i] & F.CRIT) ab.crits += 1;
+      if (p.f[i] & F.TICK) ab.ticks += 1;
+      if (kind === K.DMG) {
+        ab.absorbed += p.b[i];
+        const mit = p.x[i] > amount ? p.x[i] - amount : 0;
+        ab.mitigated += mit;
+        row.mitigated += mit;
+      }
+      if (kind === K.HEAL) {
+        ab.overheal += p.x[i];
+        row.overheal += p.x[i];
+      }
+      row.total += amount;
+      if (fromPet) row.pets += amount;
+      const pt = Math.min(points - 1, Math.floor(at / SERIES_STEP));
+      row.series[pt] += amount;
+      if (meter !== 'taken' && unit === p.units[unit].root) touch(ref.key, at);
+    },
+    { kinds: [K.DMG, K.HEAL, K.ABSORB] },
+  );
+
+  // Casts and misses per ability (for damage and healing).
+  if (meter !== 'taken') {
+    scan(
+      ctx,
+      (p, i, at) => {
+        const unit = p.s[i];
+        const want =
+          ctx.filters.side === 'friendly'
+            ? isRaiderSide(p, unit)
+            : isEnemy(p, unit);
+        if (!want) return;
+        const ref = rowOf(p, unit, pets);
+        const row = ref && rows.get(ref.key);
+        if (!row) return;
+        const spell = p.spells[p.sp[i]];
+        if (ctx.filters.ability !== null && spell?.id !== ctx.filters.ability)
+          return;
+        const fromPet =
+          unit !== p.units[unit].root && !pets ? p.units[unit].name : '';
+        const ab = row.abilities.get(`${spell?.id ?? 0}|${fromPet}`);
+        if (p.k[i] === K.CAST) {
+          if (unit === p.units[unit].root) touch(row.key, at);
+          if (ab) ab.casts += 1;
+        } else if (ab && meter === 'damage') ab.misses += 1;
+      },
+      { kinds: [K.CAST, K.MISS] },
+    );
+  }
+
+  // DoT uptime: the ability's debuff on the enemies it hit.
+  if (meter === 'damage' && ctx.filters.side === 'friendly') {
+    const uptime = auraUptimeBy(ctx, true);
+    rows.forEach((row) => {
+      row.abilities.forEach((ab) => {
+        if (!ab.ticks) return;
+        ab.uptime = uptime.get(`${row.key}|${ab.spellId}`) ?? 0;
+      });
+    });
+  }
+
+  activity.forEach((a, key) => {
+    const row = rows.get(key);
+    if (row) row.active = a.sum + (a.end - a.start);
+  });
+
+  return [...rows.values()]
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total);
+};
+
+/** Seconds a raider's debuff (by spell) was up on any enemy in view. */
+const auraUptimeBy = (ctx: Ctx, debuffs: boolean) => {
+  const spans = new Map<string, [number, number][]>();
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    const off = ctx.offsets[pi];
+    p.auras.forEach((a) => {
+      if (a.debuff !== debuffs || a.src < 0 || !isEnemy(p, a.dst)) return;
+      const ref = rowOf(p, a.src, false);
+      if (!ref) return;
+      const s = Math.max(from, a.start);
+      const e = Math.min(to, a.end);
+      if (e <= s) return;
+      const key = `${ref.key}|${p.spells[a.spell]?.id}`;
+      const list = spans.get(key) ?? [];
+      list.push([off + s, off + e]);
+      spans.set(key, list);
+    });
+  });
+  const out = new Map<string, number>();
+  spans.forEach((list, key) => out.set(key, unionLength(list)));
+  return out;
+};
+
+export const mergeSpans = (list: [number, number][]) => {
+  const sorted = [...list].sort((x, y) => x[0] - y[0]);
+  const merged: [number, number][] = [];
+  sorted.forEach(([s, e]) => {
+    const last = merged[merged.length - 1];
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+    else merged.push([s, e]);
+  });
+  return merged;
+};
+
+export const unionLength = (list: [number, number][]) =>
+  mergeSpans(list).reduce((n, [s, e]) => n + e - s, 0);
+
+/** Damage/healing broken down by ability across all rows (Done by ability). */
+export const byAbility = (rows: MeterRow[]) => {
+  const out = new Map<
+    string,
+    AbilityRow & {
+      users: Map<string, { name: string; specId: number; total: number }>;
+    }
+  >();
+  rows.forEach((row) => {
+    row.abilities.forEach((ab) => {
+      const key = `${ab.spellId}`;
+      let agg = out.get(key);
+      if (!agg) {
+        agg = { ...newAbility(key, ab.spellId, ab.name, ''), users: new Map() };
+        out.set(key, agg);
+      }
+      agg.total += ab.total;
+      agg.hits += ab.hits;
+      agg.crits += ab.crits;
+      agg.ticks += ab.ticks;
+      agg.casts += ab.casts;
+      agg.misses += ab.misses;
+      agg.overheal += ab.overheal;
+      agg.absorbed += ab.absorbed;
+      agg.mitigated += ab.mitigated;
+      const u = agg.users.get(row.key) ?? {
+        name: row.name,
+        specId: row.specId,
+        total: 0,
+      };
+      u.total += ab.total;
+      agg.users.set(row.key, u);
+    });
+  });
+  return [...out.values()].sort((a, b) => b.total - a.total);
+};
+
+/** For one row's ability: amounts by target (or by source for taken). */
+export const abilitySplit = (
+  ctx: Ctx,
+  meter: Meter,
+  rowKey: string,
+  spellId: number,
+) => {
+  const sources = new Map<string, number>();
+  const targets = new Map<string, number>();
+  const pets = ctx.filters.pets && meter !== 'taken';
+  scan(
+    ctx,
+    (p, i) => {
+      const unit = meterUnit(ctx, p, i, meter);
+      if (unit < 0) return;
+      if (p.spells[p.sp[i]]?.id !== spellId) return;
+      const ref = rowOf(p, unit, pets);
+      if (!ref || (rowKey && ref.key !== rowKey)) return;
+      const amount = p.a[i] + (p.k[i] === K.ABSORB ? 0 : p.b[i]);
+      const src = p.units[p.s[i]]?.name ?? '?';
+      const dst = p.units[p.d[i]]?.name ?? '?';
+      sources.set(src, (sources.get(src) ?? 0) + amount);
+      targets.set(dst, (targets.get(dst) ?? 0) + amount);
+    },
+    { kinds: [K.DMG, K.HEAL, K.ABSORB] },
+  );
+  const sorted = (m: Map<string, number>) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  return { sources: sorted(sources), targets: sorted(targets) };
+};
+
+/** One row's amounts per ability over time, for the stacked chart. */
+export const abilitySeries = (
+  ctx: Ctx,
+  meter: Meter,
+  rowKey: string,
+  top = 8,
+) => {
+  const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
+  const by = new Map<
+    number,
+    { name: string; values: Float64Array; total: number }
+  >();
+  const pets = ctx.filters.pets && meter !== 'taken';
+  scan(
+    ctx,
+    (p, i, at) => {
+      const unit = meterUnit(ctx, p, i, meter);
+      if (unit < 0) return;
+      const ref = rowOf(p, unit, pets);
+      if (!ref || ref.key !== rowKey) return;
+      const spell = p.spells[p.sp[i]];
+      const id = spell?.id ?? 0;
+      let entry = by.get(id);
+      if (!entry) {
+        entry = {
+          name: spell?.name ?? '?',
+          values: new Float64Array(points),
+          total: 0,
+        };
+        by.set(id, entry);
+      }
+      const amount = p.a[i] + (p.k[i] === K.ABSORB ? 0 : p.b[i]);
+      entry.values[Math.min(points - 1, Math.floor(at / SERIES_STEP))] +=
+        amount;
+      entry.total += amount;
+    },
+    { kinds: [K.DMG, K.HEAL, K.ABSORB] },
+  );
+  const list = [...by.values()].sort((a, b) => b.total - a.total);
+  const shown = list.slice(0, top);
+  const rest = list.slice(top);
+  if (rest.length) {
+    const values = new Float64Array(points);
+    rest.forEach((r) =>
+      r.values.forEach((v, i) => {
+        values[i] += v;
+      }),
+    );
+    shown.push({
+      name: 'Other',
+      values,
+      total: rest.reduce((n, r) => n + r.total, 0),
+    });
+  }
+  return shown;
+};
+
+/** Enemy names in view (for the enemy picker), most hit first. */
+export const enemyNames = (ctx: Ctx) => {
+  const totals = new Map<string, number>();
+  ctx.pulls.forEach((p) => {
+    for (let i = 0; i < p.n; i += 1) {
+      if (p.k[i] !== K.DMG) continue;
+      const d = p.d[i];
+      const s = p.s[i];
+      if (isEnemy(p, d) && isRaiderSide(p, s)) {
+        const name = p.units[d].name;
+        totals.set(name, (totals.get(name) ?? 0) + p.a[i] + p.b[i]);
+      } else if (isEnemy(p, s) && d >= 0 && p.units[d].raider) {
+        const name = p.units[s].name;
+        totals.set(name, (totals.get(name) ?? 0) + 1);
+      }
+    }
+  });
+  return [...totals.entries()]
+    .filter(([name]) => name)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+};
+
+/** Abilities in a meter (for the ability picker). */
+export const abilityNames = (rows: MeterRow[]) => {
+  const totals = new Map<number, { name: string; total: number }>();
+  rows.forEach((r) =>
+    r.abilities.forEach((a) => {
+      const e = totals.get(a.spellId) ?? { name: a.name, total: 0 };
+      e.total += a.total;
+      totals.set(a.spellId, e);
+    }),
+  );
+  return [...totals.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([id, e]) => ({ id, name: e.name }));
+};
+
+/* ------------------------------------------------------------------ */
+/* Buffs and debuffs                                                   */
+/* ------------------------------------------------------------------ */
+
+export type AuraCategory =
+  | 'raid'
+  | 'raidbuff'
+  | 'external'
+  | 'personal'
+  | 'consumable'
+  | 'mechanic'
+  | 'yours'
+  | 'other';
+
+export type AuraRow = {
+  spellId: number;
+  name: string;
+  category: AuraCategory;
+  /** Times it went on. */
+  count: number;
+  /** Seconds up (on anyone, or the picked raider), combined timeline. */
+  uptime: number;
+  spans: [number, number][];
+  /** Who put it on (raider names), with counts. */
+  sources: [string, number][];
+  /** Who had it (for debuffs on raiders). */
+  targets: number;
+};
+
+const CONSUMABLE =
+  /flask|phial|well fed|augment|^rune of|potion|light's potential|feast|\bfood\b|\boil\b|vantus|healthstone|\bdrink\b|nourish/i;
+
+/**
+ * Buffs on raiders (`debuffs` false), debuffs on raiders, or the raid's
+ * debuffs on an enemy (side 'enemy'). `who` narrows to one raider.
+ */
+export const auraRows = (
+  ctx: Ctx,
+  opts: { debuffs: boolean; who: string | null; enemy: string | null },
+): AuraRow[] => {
+  const onEnemy = ctx.filters.side === 'enemy';
+  type Agg = {
+    spellId: number;
+    name: string;
+    count: number;
+    spans: [number, number][];
+    sources: Map<string, number>;
+    targets: Set<string>;
+    selfCast: number;
+    otherCast: number;
+    // Raiders one caster gave it to within a second: raid-wide cooldowns.
+    bursts: Map<string, Set<number>>;
+    maxBurst: number;
+    casters: Set<string>;
+    fromEnemy: number;
+  };
+  const aggs = new Map<number, Agg>();
+  // Spells each raider cast, and how often.
+  const castCounts = new Map<string, number>();
+  scan(
+    ctx,
+    (p, i) => {
+      const ref = rowOf(p, p.s[i], false);
+      if (!ref?.player) return;
+      const key = `${ref.key}|${p.spells[p.sp[i]]?.id}`;
+      // Also by name: a cast and its buff often have different IDs.
+      const byName = `${ref.key}|${p.spells[p.sp[i]]?.name}`;
+      castCounts.set(byName, (castCounts.get(byName) ?? 0) + 1);
+      // ref.key is the raider's guid.
+      castCounts.set(key, (castCounts.get(key) ?? 0) + 1);
+    },
+    { kinds: [K.CAST], ignoreExpr: true },
+  );
+
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    const off = ctx.offsets[pi];
+    const bossName = p.boss >= 0 ? p.units[p.boss].name : '';
+    p.auras.forEach((a) => {
+      if (a.debuff !== opts.debuffs) return;
+      const target = a.dst >= 0 ? p.units[a.dst] : null;
+      if (!target) return;
+      if (onEnemy) {
+        if (!isEnemy(p, a.dst)) return;
+        const want = opts.enemy ?? bossName;
+        if (want && target.name !== want) return;
+        if (a.src < 0 || !isRaiderSide(p, a.src)) return;
+      } else {
+        if (!target.raider) return;
+        if (opts.who && target.guid !== opts.who) return;
+      }
+      const s = Math.max(from, a.start);
+      const e = Math.min(to, a.end);
+      if (e <= s && !(a.start >= from && a.start <= to)) return;
+      const spell = p.spells[a.spell];
+      if (!spell) return;
+      if (ctx.filters.ability !== null && spell.id !== ctx.filters.ability)
+        return;
+      let agg = aggs.get(spell.id);
+      if (!agg) {
+        agg = {
+          spellId: spell.id,
+          name: spell.name,
+          count: 0,
+          spans: [],
+          sources: new Map(),
+          targets: new Set(),
+          selfCast: 0,
+          otherCast: 0,
+          bursts: new Map(),
+          maxBurst: 0,
+          casters: new Set(),
+          fromEnemy: 0,
+        };
+        aggs.set(spell.id, agg);
+      }
+      if (a.start >= from) agg.count += 1;
+      if (e > s) agg.spans.push([off + s, off + e]);
+      const caster = a.src >= 0 ? rowOf(p, a.src, false) : null;
+      const casterName = caster?.player ? caster.name : caster?.name || '';
+      if (casterName)
+        agg.sources.set(casterName, (agg.sources.get(casterName) ?? 0) + 1);
+      agg.targets.add(target.name);
+      if (caster && caster.key === target.guid) agg.selfCast += 1;
+      else agg.otherCast += 1;
+      if (caster?.player) agg.casters.add(caster.key);
+      if (!caster || !caster.player) agg.fromEnemy += 1;
+      if (caster?.player && a.start > 0) {
+        const burst = `${pi}|${caster.key}|${Math.round(a.start)}`;
+        const set = agg.bursts.get(burst) ?? new Set<number>();
+        set.add(a.dst);
+        agg.bursts.set(burst, set);
+        agg.maxBurst = Math.max(agg.maxBurst, set.size);
+      }
+    });
+  });
+
+  const seconds = viewSeconds(ctx);
+  return [...aggs.values()]
+    .map((agg) => {
+      const spans = mergeSpans(agg.spans);
+      const uptime = spans.reduce((n, [s, e]) => n + e - s, 0);
+      // Up nearly all the time (on whoever had it at all).
+      const steady = uptime >= seconds * 0.85;
+      let category: AuraCategory = 'other';
+      if (onEnemy) category = 'yours';
+      else if (opts.debuffs)
+        // Boss mechanics (put on by enemies) vs the rest.
+        category = agg.fromEnemy > agg.casters.size ? 'mechanic' : 'other';
+      else if (CONSUMABLE.test(agg.name)) category = 'consumable';
+      else if (steady && agg.targets.size >= 5 && agg.casters.size)
+        category = 'raidbuff';
+      else if (agg.maxBurst >= 4) {
+        // Pressed for the raid now and then (not a HoT or a proc).
+        const pressed = [...agg.casters].some((guid) => {
+          const casts =
+            castCounts.get(`${guid}|${agg.spellId}`) ??
+            castCounts.get(`${guid}|${agg.name}`) ??
+            0;
+          return casts > 0 && casts <= Math.max(3, (seconds / 60) * 1.5);
+        });
+        if (pressed) category = 'raid';
+      } else if (!steady) {
+        // A cooldown: a spell its caster pressed now and then.
+        const pressed = [...agg.casters].some((guid) => {
+          const casts =
+            castCounts.get(`${guid}|${agg.spellId}`) ??
+            castCounts.get(`${guid}|${agg.name}`) ??
+            0;
+          return casts > 0 && casts <= Math.max(3, (seconds / 60) * 3);
+        });
+        if (pressed)
+          category = agg.otherCast > agg.selfCast ? 'external' : 'personal';
+      }
+      return {
+        spellId: agg.spellId,
+        name: agg.name,
+        category,
+        count: agg.count,
+        uptime,
+        spans,
+        sources: [...agg.sources.entries()].sort((a, b) => b[1] - a[1]),
+        targets: agg.targets.size,
+      };
+    })
+    .sort((a, b) => b.uptime - a.uptime);
+};
+
+/* ------------------------------------------------------------------ */
+/* Interrupts, dispels, casts, resources, deaths                       */
+/* ------------------------------------------------------------------ */
+
+export type CountRow = {
+  spellId: number;
+  name: string;
+  total: number;
+  by: [RowRef, number][];
+};
+
+/** Interrupts (by interrupted spell) or dispels (by removed aura). */
+export const countRows = (
+  ctx: Ctx,
+  kind: 'interrupt' | 'dispel',
+): CountRow[] => {
+  const rows = new Map<
+    number,
+    { name: string; total: number; by: Map<string, [RowRef, number]> }
+  >();
+  scan(
+    ctx,
+    (p, i) => {
+      const ref = rowOf(p, p.s[i], false);
+      if (!ref) return;
+      const friendly = isRaiderSide(p, p.s[i]);
+      if ((ctx.filters.side === 'friendly') !== friendly) return;
+      const what = p.spells[p.aux[i]];
+      if (!what) return;
+      const entry = rows.get(what.id) ?? {
+        name: what.name,
+        total: 0,
+        by: new Map(),
+      };
+      entry.total += 1;
+      const by = entry.by.get(ref.key) ?? [ref, 0];
+      by[1] += 1;
+      entry.by.set(ref.key, by);
+      rows.set(what.id, entry);
+    },
+    { kinds: [kind === 'interrupt' ? K.INTERRUPT : K.DISPEL] },
+  );
+  return [...rows.entries()]
+    .map(([spellId, e]) => ({
+      spellId,
+      name: e.name,
+      total: e.total,
+      by: [...e.by.values()].sort((a, b) => b[1] - a[1]),
+    }))
+    .sort((a, b) => b.total - a.total);
+};
+
+export type CastRow = RowRef & {
+  total: number;
+  spells: { spellId: number; name: string; count: number; times: number[] }[];
+};
+
+/** Casts per raider (or enemy) and spell, with times on the combined timeline. */
+export const castRows = (ctx: Ctx): CastRow[] => {
+  const rows = new Map<
+    string,
+    CastRow & { map: Map<number, CastRow['spells'][number]> }
+  >();
+  scan(
+    ctx,
+    (p, i, at) => {
+      const s = p.s[i];
+      const friendly = isRaiderSide(p, s);
+      if ((ctx.filters.side === 'friendly') !== friendly) return;
+      if (!friendly && !isEnemy(p, s)) return;
+      const ref = rowOf(p, s, ctx.filters.pets);
+      if (!ref) return;
+      const spell = p.spells[p.sp[i]];
+      if (!spell) return;
+      if (ctx.filters.ability !== null && spell.id !== ctx.filters.ability)
+        return;
+      let row = rows.get(ref.key);
+      if (!row) {
+        row = { ...ref, total: 0, spells: [], map: new Map() };
+        rows.set(ref.key, row);
+      }
+      let entry = row.map.get(spell.id);
+      if (!entry) {
+        entry = { spellId: spell.id, name: spell.name, count: 0, times: [] };
+        row.map.set(spell.id, entry);
+      }
+      entry.count += 1;
+      entry.times.push(at);
+      row.total += 1;
+    },
+    { kinds: [K.CAST] },
+  );
+  return [...rows.values()]
+    .map(({ map, ...row }) => ({
+      ...row,
+      spells: [...map.values()].sort((a, b) => b.count - a.count),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export type ResourceRow = RowRef & {
+  /** power type -> gained, wasted, by ability */
+  types: Map<
+    number,
+    { gained: number; wasted: number; abilities: Map<string, [number, number]> }
+  >;
+};
+
+export const resourceRows = (ctx: Ctx): ResourceRow[] => {
+  const rows = new Map<string, ResourceRow>();
+  scan(
+    ctx,
+    (p, i) => {
+      const d = p.d[i];
+      if (d < 0 || !p.units[d].raider) return;
+      const ref = rowOf(p, d, false);
+      if (!ref) return;
+      let row = rows.get(ref.key);
+      if (!row) {
+        row = { ...ref, types: new Map() };
+        rows.set(ref.key, row);
+      }
+      const type = p.aux[i];
+      const entry = row.types.get(type) ?? {
+        gained: 0,
+        wasted: 0,
+        abilities: new Map(),
+      };
+      entry.gained += p.a[i];
+      entry.wasted += p.x[i];
+      const name = p.spells[p.sp[i]]?.name ?? '?';
+      const ab = entry.abilities.get(name) ?? [0, 0];
+      ab[0] += p.a[i];
+      ab[1] += p.x[i];
+      entry.abilities.set(name, ab);
+      row.types.set(type, entry);
+    },
+    { kinds: [K.ENERGIZE] },
+  );
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
+
+/** A raider's power (as % of max) over the combined timeline. */
+export const powerSeries = (ctx: Ctx, guid: string) => {
+  const out: { t: number; pct: number; type: number }[] = [];
+  ctx.pulls.forEach((p, pi) => {
+    const unit = p.units.findIndex((u) => u.guid === guid);
+    const list = unit >= 0 ? p.power.get(unit) : undefined;
+    if (!list) return;
+    const [from, to] = window_(ctx, pi);
+    list.forEach(([t, cur, max, type]) => {
+      if (t < from || t > to || !max) return;
+      out.push({ t: ctx.offsets[pi] + t, pct: (cur / max) * 100, type });
+    });
+  });
+  return out;
+};
+
+export type DeathRow = {
+  at: number;
+  pull: string;
+  name: string;
+  specId: number;
+  spell: string;
+  source: string;
+  amount: number;
+};
+
+export const deathRows = (ctx: Ctx): DeathRow[] => {
+  const out: DeathRow[] = [];
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    p.deaths.forEach((d) => {
+      if (d.t < from || d.t > to + 0.01) return;
+      const u = p.units[d.unit];
+      out.push({
+        at: ctx.offsets[pi] + d.t,
+        pull: p.label,
+        name: u.name,
+        specId: u.specId,
+        spell: d.spell >= 0 ? (p.spells[d.spell]?.name ?? '') : '',
+        source: d.src >= 0 ? (p.units[d.src]?.name ?? '') : '',
+        amount: d.amount,
+      });
+    });
+  });
+  return out;
+};
+
+/** Raiders in the pulls (for composition). */
+export const raiders = (ctx: Ctx) => {
+  const out = new Map<string, { name: string; specId: number }>();
+  ctx.pulls.forEach((p) =>
+    p.units.forEach((u) => {
+      if (u.raider && u.player)
+        out.set(u.guid, { name: u.name, specId: u.specId });
+    }),
+  );
+  return [...out.entries()]
+    .map(([guid, u]) => ({ guid, ...u }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+/** Bloodlust and co. windows on the combined timeline. */
+const LUST = new Set([2825, 32182, 80353, 264667, 390386, 466904, 444257]);
+export const lustBands = (ctx: Ctx) => {
+  const out: [number, number][] = [];
+  ctx.pulls.forEach((p, pi) => {
+    const seen = new Set<number>();
+    p.auras.forEach((a) => {
+      const id = p.spells[a.spell]?.id;
+      if (!LUST.has(id) || seen.has(Math.round(a.start))) return;
+      if (a.dst < 0 || !p.units[a.dst].raider) return;
+      seen.add(Math.round(a.start));
+      out.push([ctx.offsets[pi] + a.start, ctx.offsets[pi] + a.end]);
+    });
+  });
+  // Lust handed over between spells a moment apart is one window.
+  return mergeSpans(out.map(([s, e]) => [s, e + 2] as [number, number])).map(
+    ([s, e]) => [s, e - 2] as [number, number],
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Damage prevented (estimate)                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Damage kept off raiders by damage-reduction cooldowns, credited to whoever
+ * cast them (personal ones to the wearer): taken x r / (1 - r) while up.
+ * Shields are in Healing. An estimate: talents and stacking change it.
+ */
+export const preventedRows = (ctx: Ctx): MeterRow[] => {
+  const rows = new Map<string, MeterRow>();
+  const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    const off = ctx.offsets[pi];
+    // Who cast each "sourceless" cooldown last, by time.
+    const castsOf = new Map<number, [number, number][]>();
+    for (let i = 0; i < p.n; i += 1) {
+      if (p.k[i] !== K.CAST) continue;
+      const id = p.spells[p.sp[i]]?.id;
+      if (!id) continue;
+      const list = castsOf.get(id) ?? [];
+      list.push([p.t[i], p.s[i]]);
+      castsOf.set(id, list);
+    }
+    type Span = {
+      start: number;
+      end: number;
+      r: number;
+      magicOnly: boolean;
+      caster: number;
+      spellId: number;
+      name: string;
+    };
+    const spans = new Map<number, Span[]>();
+    p.auras.forEach((a) => {
+      const spell = p.spells[a.spell];
+      const dr = spell ? DAMAGE_REDUCTION[spell.id] : undefined;
+      if (!dr || a.dst < 0 || !p.units[a.dst].raider) return;
+      let caster = -1;
+      if (dr.personal) caster = a.dst;
+      else if (a.src >= 0 && p.units[p.units[a.src].root].raider)
+        caster = p.units[a.src].root;
+      else if (dr.castId) {
+        const list = castsOf.get(dr.castId) ?? [];
+        for (let j = list.length - 1; j >= 0; j -= 1) {
+          if (list[j][0] <= a.start + 0.5) {
+            caster = p.units[list[j][1]].root;
+            break;
+          }
+        }
+      }
+      if (caster < 0) return;
+      const list = spans.get(a.dst) ?? [];
+      list.push({
+        start: a.start,
+        end: a.end,
+        r: dr.r,
+        magicOnly: Boolean(dr.magicOnly),
+        caster,
+        spellId: spell.id,
+        name: dr.name,
+      });
+      spans.set(a.dst, list);
+    });
+    if (!spans.size) return;
+    for (let i = 0; i < p.n; i += 1) {
+      const t = p.t[i];
+      if (t < from) continue;
+      if (t > to) break;
+      if (p.k[i] !== K.DMG) continue;
+      const list = spans.get(p.d[i]);
+      if (!list) continue;
+      if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
+      const amount = p.a[i] + p.b[i];
+      const school = p.spells[p.sp[i]]?.school ?? 1;
+      list.forEach((span) => {
+        if (t < span.start || t >= span.end) return;
+        if (span.magicOnly && school === 1) return;
+        if (
+          ctx.filters.ability !== null &&
+          span.spellId !== ctx.filters.ability
+        )
+          return;
+        const ref = rowOf(p, span.caster, false);
+        if (!ref) return;
+        const prevented = (amount * span.r) / (1 - span.r);
+        let row = rows.get(ref.key);
+        if (!row) {
+          row = {
+            ...ref,
+            total: 0,
+            pets: 0,
+            overheal: 0,
+            mitigated: 0,
+            active: 0,
+            abilities: new Map(),
+            series: new Float64Array(points),
+          };
+          rows.set(ref.key, row);
+        }
+        const key = `${span.spellId}|`;
+        const ab =
+          row.abilities.get(key) ??
+          newAbility(key, span.spellId, span.name, '');
+        ab.total += prevented;
+        ab.hits += 1;
+        row.abilities.set(key, ab);
+        row.total += prevented;
+        row.series[Math.min(points - 1, Math.floor((off + t) / SERIES_STEP))] +=
+          prevented;
+      });
+    }
+  });
+  return [...rows.values()].sort((a, b) => b.total - a.total);
+};
