@@ -10,6 +10,30 @@ import PullLogCapture, {
 import { leadingFields } from 'parsing/PullLogFilter';
 import CloudClient from 'storage/CloudClient';
 
+/** Sends every line of the pull (gzipped) for the Logs page. */
+export const uploadFullLog = async (
+  client: CloudClient,
+  pullId: string,
+  pull: CapturedPull,
+) => {
+  const full = await pull.full;
+  if (!full) return;
+  console.info(
+    `[PullBackfill] Sending pull ${pullId}'s full log:`,
+    `${(full.length / 1e6).toFixed(1)} MB gzipped`,
+  );
+  try {
+    await client.pullDeskRequest(
+      'put',
+      `/pulls/${encodeURIComponent(pullId)}/full`,
+      full,
+      { contentType: 'application/gzip', timeout: 600000 },
+    );
+  } catch (error) {
+    console.warn('[PullBackfill] Full log upload failed', String(error));
+  }
+};
+
 /**
  * [RoomFortyRecorder] Pull desk backfill: send pulls from saved combat log
  * files that the live capture didn't (the app was closed, signed out, or
@@ -41,7 +65,7 @@ type Done = Record<string, string>; // file name -> "v:size:mtime" checked
 // Bump to check every recent file again after the capture rules change
 // (2: flex Mythic pulls were skipped before).
 // 3: re-send last week's pulls with the app's meters (1.9.30).
-const DONE_VERSION = 3;
+const DONE_VERSION = 4;
 const doneKey = (f: LogFile) =>
   `${DONE_VERSION}:${f.size}:${Math.round(f.modified)}`;
 
@@ -282,6 +306,7 @@ export default class PullBackfill {
         body,
         { contentType: 'application/gzip', timeout: 180000 },
       );
+      await uploadFullLog(client, claim.pullId, pull);
       this.status.uploaded += 1;
     } catch (error) {
       console.warn('[PullBackfill] Pull failed', String(error));

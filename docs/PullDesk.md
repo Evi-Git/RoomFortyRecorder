@@ -188,6 +188,14 @@ cost few points.
    minute.
 3. The server analyzes the log and saves the report (and posts to Discord if
    `GUILD_CLOUD_PULLDESK_POST_PULLS` is on).
+4. From 1.9.32 the same app also sends the pull's **full** combat log
+   (every line, gzipped: about 10 MB for a 5-minute Mythic pull) for the
+   **Logs** page. The server stores it under `full/` and serves it to the
+   app, which reads it on your PC: Tables, Timelines, Events and Queries,
+   with every filter. Full logs are pruned with the other logs after
+   `GUILD_CLOUD_PULLDESK_LOG_DAYS` (30 by default), so expect roughly
+   200-300 MB of disk per raid night until then. The app caches the logs
+   you open (up to 1.5 GB) in its settings folder.
 
 Raiders can turn **Send my pull logs** off on the Pull desk page. Pulls are
 only captured on retail raid difficulties, and the server only reports on

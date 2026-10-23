@@ -33,8 +33,7 @@ const setup = async () => {
     wcl: { configured: false },
   });
   await desk.ready();
-  const call = async (method, rest, body, query = '', who = '1') => {
-    const res = {};
+  const call = async (method, rest, body, query = '', who = '1', res = {}) => {
     const req = body instanceof Buffer ? Object.assign(Readable.from([body]), { method }) : { method, body };
     Object.assign(req, { cloudUserId: who, cloudUserName: who === '1' ? 'Evi' : `Raider${who}` });
     await desk.handle(req, res, rest, new URL(`http://x/${query}`));
@@ -44,8 +43,10 @@ const setup = async () => {
 };
 
 // What 1.9.30+ apps send: the filtered log plus the app's meters line.
-const METERS = { v: 2, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
+const METERS = { v: 3, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
 const withMeters = `${slice}ROOMFORTY_METERS ${JSON.stringify(METERS)}\n`;
+// 1.9.32+ apps also send every line of the pull.
+const FULL = zlib.gzipSync(slice);
 
 test('backfill a pull from a saved log, then skip it the second time', async () => {
   const { call } = await setup();
@@ -59,6 +60,10 @@ test('backfill a pull from a saved log, then skip it the second time', async () 
   const uploaded = await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(withMeters));
   assert.equal(uploaded.status, 200, JSON.stringify(uploaded.body));
   assert.equal(uploaded.body.status, 'ready');
+  // Still wanted until the full log arrives.
+  assert.equal((await call('POST', ['backfill'], pull)).body.upload, true);
+  const full = await call('PUT', ['pulls', first.body.pullId, 'full'], FULL);
+  assert.equal(full.body.status, 'stored');
 
   const again = await call('POST', ['backfill'], { ...pull, startedAt: startedAt + 2000 });
   assert.equal(again.body.upload, false);
@@ -98,8 +103,9 @@ test('automatic backfill: check finds only missing pulls; one raider at a time',
   assert.equal(busy.body.upload, false);
   assert.equal(busy.body.busy, true);
 
-  // Once the log lands, nobody needs it.
+  // Once the logs land, nobody needs it.
   await call('PUT', ['pulls', taken.body.pullId, 'log'], zlib.gzipSync(withMeters), '', '2');
+  await call('PUT', ['pulls', taken.body.pullId, 'full'], FULL, '', '2');
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls }, '', '2')).body.missing, [1]);
 });
 
@@ -130,7 +136,39 @@ test('pulls sent by older apps (no meters) are asked for again and replaced', as
   assert.equal((await call('GET', ['pulls', first.body.pullId, 'meters'])).status, 404);
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, [0]);
   await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(withMeters));
+  await call('PUT', ['pulls', first.body.pullId, 'full'], FULL);
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
+});
+
+test('meters from before 1.9.32 (v2) are asked for again and replaced; the full log is served', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
+  const first = await call('POST', ['backfill'], pull);
+  const id = first.body.pullId;
+  const v2 = `${slice}ROOMFORTY_METERS ${JSON.stringify({ ...METERS, v: 2 })}\n`;
+  await call('PUT', ['pulls', id, 'log'], zlib.gzipSync(v2));
+  await call('PUT', ['pulls', id, 'full'], FULL);
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, [0]);
+  await call('PUT', ['pulls', id, 'log'], zlib.gzipSync(withMeters));
+  assert.equal((await call('GET', ['pulls', id, 'meters'])).body.v, 3);
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
+  // Not gzip: refused.
+  assert.equal((await call('PUT', ['pulls', id, 'full'], Buffer.from('hello world, not gzip at all'))).status, 400);
+  // Served back as stored.
+  const chunks = [];
+  const res = new (await import('node:stream')).Writable({
+    write(chunk, _enc, done) {
+      chunks.push(chunk);
+      done();
+    },
+  });
+  res.writeHead = (status, headers) => Object.assign(res, { status, headers });
+  const finished = new Promise((resolve) => res.on('finish', resolve));
+  await call('GET', ['pulls', id, 'full'], undefined, '', '1', res);
+  await finished;
+  assert.equal(res.status, 200);
+  assert.ok(Buffer.concat(chunks).equals(FULL));
 });
 
 test('meters reply carries the pull and its deaths; trends add up night by night', async () => {
@@ -158,4 +196,29 @@ test('meters reply carries the pull and its deaths; trends add up night by night
   assert.equal(trends.body.nights[0].raid.damage, 5160);
   const evi = trends.body.raiders.find((r) => r.name === 'Evi');
   assert.deepEqual(evi.nights['2026-10-21'], { seconds: 172, pulls: 1, damage: 1720, healing: 860 });
+});
+
+test('trends: progression nights count every pull to the first kill, later nights only kills', async () => {
+  const { call } = await setup();
+  const killSlice = slice.replace(/(ENCOUNTER_END,\d+,"[^"]*",\d+,\d+,)0,/, '$11,');
+  assert.notEqual(killSlice, slice);
+  const meters = { ...METERS, damage: [{ name: 'Evi', specId: 65, total: 1720, abilities: [] }] };
+  const send = async (when, text) => {
+    const startedAt = Date.parse(when);
+    const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt, duration: 172, result: false };
+    const claim = await call('POST', ['backfill'], pull);
+    await call('PUT', ['pulls', claim.body.pullId, 'log'], zlib.gzipSync(`${text}ROOMFORTY_METERS ${JSON.stringify(meters)}\n`));
+  };
+  await send('2026-10-14T20:05:00', slice); // wipe
+  await send('2026-10-14T20:30:00', killSlice); // first kill
+  await send('2026-10-21T20:05:00', slice); // wipe after: left out
+  await send('2026-10-21T20:30:00', killSlice); // kill: counted
+  const trends = await call('GET', ['meters', 'trends'], undefined, `?encounterId=${encounterId}&difficulty=${difficultyId}`);
+  assert.deepEqual(
+    trends.body.nights.map((n) => [n.night, n.pulls, n.kills, n.phase]),
+    [
+      ['2026-10-14', 2, 1, 'progression'],
+      ['2026-10-21', 1, 1, 'kills'],
+    ],
+  );
 });

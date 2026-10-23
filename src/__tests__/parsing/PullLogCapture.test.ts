@@ -1,4 +1,5 @@
 import fs from 'fs';
+import zlib from 'zlib';
 import path from 'path';
 import PullLogCapture, { CapturedPull } from '../../parsing/PullLogCapture';
 import { METERS_LINE_PREFIX } from '../../parsing/PullMeters';
@@ -83,6 +84,42 @@ test('captures a Mythic pull and shrinks it', () => {
 
   // 40 MB raw; the upload should be a small fraction of that.
   expect(pull.log.length).toBeLessThan(6 * 1024 * 1024);
+});
+
+test('keeps every line of the pull, gzipped, for the Logs page', async () => {
+  const [pull] = capture('beloren_boss_hp.txt');
+  const full = await pull.full;
+  expect(full).not.toBeNull();
+  const lines = zlib
+    .gunzipSync(full as Buffer)
+    .toString('utf8')
+    .trim()
+    .split('\n');
+  expect(lines[0]).toContain('  ENCOUNTER_START,');
+  expect(lines[lines.length - 1]).toContain('  ENCOUNTER_END,');
+  // Heals are dropped from the report's log, but not from this one.
+  expect(lines.some((l) => l.includes('  SPELL_HEAL,'))).toBe(true);
+  expect((full as Buffer).length).toBeLessThan(8 * 1024 * 1024);
+});
+
+test('damage taken counts bosses that also hit pets, and soaked hits', () => {
+  const [pull] = capture('beloren_boss_hp.txt');
+  const last = pull.log.trim().split('\n').pop() as string;
+  const meters = JSON.parse(last.slice(METERS_LINE_PREFIX.length));
+  expect(meters.v).toBe(3);
+  const taken = meters.taken.reduce(
+    (n: number, r: { total: number }) => n + r.total,
+    0,
+  );
+  const healing = meters.healing.reduce(
+    (n: number, r: { total: number }) => n + r.total,
+    0,
+  );
+  // What the raid took is in line with what it healed (a wipe: more).
+  expect(taken).toBeGreaterThan(healing * 0.8);
+  expect(
+    meters.taken.every((r: { mitigated?: number }) => (r.mitigated ?? 0) >= 0),
+  ).toBe(true);
 });
 
 test('ignores dungeon encounters', () => {

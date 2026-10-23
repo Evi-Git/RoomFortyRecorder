@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { app } from 'electron';
@@ -6,7 +7,7 @@ import axios from 'axios';
 import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
-import PullBackfill, { BossPercentHint } from './PullBackfill';
+import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
 import { makeCoachClip } from './CoachClip';
 import { RendererVideo } from './types';
 import { send } from './main';
@@ -66,6 +67,7 @@ export type PullDeskRequest =
   | { action: 'setChannel'; encounterId: number; channelId: string }
   | { action: 'nights' }
   | { action: 'night'; night: string }
+  | { action: 'fullLog'; id: string }
   | {
       action: 'progression';
       encounterId: number;
@@ -301,6 +303,77 @@ export default class PullDesk {
 
     console.info('[PullDesk] Pull report', result.status);
     send('pullDeskUpdated');
+    await uploadFullLog(client, claim.pullId as string, pull);
+  }
+
+  /**
+   * A pull's full combat log (gzipped), for the Logs page: from the cache
+   * in userData, else downloaded from the guild server and cached.
+   */
+  private async fullLog(client: CloudClient, pullId: string) {
+    if (!/^[\w-]{1,80}$/.test(pullId)) throw new Error('Bad pull id');
+    const dir = path.join(app.getPath('userData'), 'pull-logs');
+    const file = path.join(dir, `${pullId}.log.gz`);
+    try {
+      const cached = await fs.promises.readFile(file);
+      // Touch it so the cache keeps what's in use.
+      fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
+      return { bytes: new Uint8Array(cached) };
+    } catch {
+      // Not cached yet.
+    }
+    let data: ArrayBuffer;
+    try {
+      data = await client.pullDeskRequest<ArrayBuffer>(
+        'get',
+        `/pulls/${encodeURIComponent(pullId)}/full`,
+        undefined,
+        { responseType: 'arraybuffer', timeout: 600000 },
+      );
+    } catch (error) {
+      // Errors come back as bytes too: turn them into the usual JSON.
+      const response = axios.isAxiosError(error) ? error.response : undefined;
+      if (response && response.data instanceof ArrayBuffer) {
+        try {
+          response.data = JSON.parse(Buffer.from(response.data).toString());
+        } catch {
+          // Leave it.
+        }
+      }
+      throw error;
+    }
+    const bytes = Buffer.from(data);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(file, bytes);
+    await this.pruneLogCache(dir);
+    return { bytes: new Uint8Array(bytes) };
+  }
+
+  /** Keeps the newest cached full logs under 1.5 GB. */
+  private async pruneLogCache(dir: string) {
+    const LIMIT = 1.5 * 1024 * 1024 * 1024;
+    const names = await fs.promises.readdir(dir).catch(() => [] as string[]);
+    const files = (
+      await Promise.all(
+        names.map(async (name) => {
+          const stat = await fs.promises
+            .stat(path.join(dir, name))
+            .catch(() => null);
+          return stat ? { name, size: stat.size, at: stat.mtimeMs } : null;
+        }),
+      )
+    )
+      .filter((f): f is { name: string; size: number; at: number } =>
+        Boolean(f),
+      )
+      .sort((a, b) => b.at - a.at);
+    let total = 0;
+    for (const f of files) {
+      total += f.size;
+      if (total > LIMIT) {
+        await fs.promises.unlink(path.join(dir, f.name)).catch(() => {});
+      }
+    }
   }
 
   /** Renderer requests from the Pull desk page. */
@@ -405,6 +478,8 @@ export default class PullDesk {
         );
       case 'meters':
         return client.pullDeskRequest('get', `/pulls/${id(request.id)}/meters`);
+      case 'fullLog':
+        return this.fullLog(client, request.id);
       case 'reanalyze':
         return client.pullDeskRequest(
           'post',

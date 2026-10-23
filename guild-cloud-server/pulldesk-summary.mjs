@@ -243,6 +243,8 @@ export const summarizePulls = (pulls) => {
     deaths: report?.deaths?.length ?? summary.deaths ?? null,
     cause: wipeCause(summary, report),
     source: summary.source || 'app',
+    hasFull: Boolean(summary.hasFull),
+    startedAt: summary.startedAt ?? null,
   }));
 
   const spellIds = spellIdsOf(ordered);

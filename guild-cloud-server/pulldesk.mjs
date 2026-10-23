@@ -15,6 +15,7 @@
 //                      can be recomputed after a note or avoidable list change
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -35,6 +36,11 @@ const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
+// A pull's full combat log (every line, gzipped) for the app's Logs page.
+const MAX_FULL_BYTES = 150 * 1024 * 1024;
+// Meters the app works out (src/parsing/PullMeters.ts): 3 counts every hit
+// in damage taken (1.9.32). Older ones are re-requested.
+const METERS_VERSION = 3;
 const CLAIM_MATCH_SECONDS = 120; // claims this close together are one pull
 const CLAIM_DURATION_SLACK = 3; // seconds of disagreement on pull length
 const CLAIM_STALE_MS = 60 * 1000; // a chosen uploader that never uploaded
@@ -130,6 +136,10 @@ export const createPullDesk = (options) => {
   // Meters live in their own file: summaries read many reports, and the
   // meters are the bulk of one.
   const metersFile = (id) => path.join(dir, 'meters', `${id}.json`);
+  const fullFile = (id) => path.join(dir, 'full', `${id}.log.gz`);
+  // Everything the app can send for a pull is here.
+  const complete = (pull) =>
+    Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
@@ -290,6 +300,7 @@ export const createPullDesk = (options) => {
     avoidableHits: pull.avoidableHits ?? null,
     error: pull.error || null,
     source: pull.source || 'app',
+    hasFull: Boolean(pull.hasFull),
   });
 
   // Pulls the summaries count: analyzed ones, imported ones, and claims that
@@ -343,7 +354,7 @@ export const createPullDesk = (options) => {
         p.difficultyId === difficultyId &&
         Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
     );
-    if (pull?.hasLog && pull.appMeters) return json(res, 200, { pullId: pull.id, upload: false });
+    if (complete(pull)) return json(res, 200, { pullId: pull.id, upload: false });
     const who = String(req.cloudUserId || req.cloudUserName);
     if (pull && pull.backfillBy && pull.backfillBy !== who && Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) {
       return json(res, 200, { pullId: pull.id, upload: false, busy: true });
@@ -399,8 +410,8 @@ export const createPullDesk = (options) => {
           p.difficultyId === difficultyId &&
           Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
       );
-      // Has a log and the app's meters: nothing to send.
-      if (pull?.hasLog && pull.appMeters) return;
+      // Has a log, current meters and the full log: nothing to send.
+      if (complete(pull)) return;
       // Another raider's app is sending it right now.
       if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
       // A live pull still in its claim window: the live upload will come.
@@ -627,6 +638,7 @@ export const createPullDesk = (options) => {
     if (report.meters) {
       await fsp.mkdir(path.dirname(metersFile(pull.id)), { recursive: true });
       await fsp.writeFile(metersFile(pull.id), JSON.stringify(report.meters));
+      pull.metersV = Number(report.meters.v) || 2;
       delete report.meters;
       pull.appMeters = true;
     }
@@ -788,7 +800,7 @@ export const createPullDesk = (options) => {
    * Night by night: each raider's total and time in pulls per meter, and the
    * raid's, from the stored meters. The app turns these into rates.
    */
-  const metersTrends = async (pulls) => {
+  const metersTrends = async (pulls, progressionIds = new Set()) => {
     const KINDS = ['damage', 'healing', 'taken', 'mitigation'];
     const nights = new Map(); // night -> { pulls, seconds, raid: {kind: total} }
     const raiders = new Map(); // name -> { specId, nights: { night: { seconds, pulls, kind: total } } }
@@ -802,7 +814,16 @@ export const createPullDesk = (options) => {
       }
       const seconds = Number(meters.duration) || pull.duration || 0;
       if (!seconds) continue;
-      const night = nights.get(pull.night) || { night: pull.night, pulls: 0, kills: 0, seconds: 0, raid: {} };
+      const night = nights.get(pull.night) || {
+        night: pull.night,
+        pulls: 0,
+        kills: 0,
+        seconds: 0,
+        raid: {},
+        // 'progression' (up to the first kill) or 'kills' (kills only after).
+        phase: 'kills',
+      };
+      if (progressionIds.has(pull.id)) night.phase = 'progression';
       night.pulls += 1;
       if (pull.result === 'kill') night.kills += 1;
       night.seconds += seconds;
@@ -943,10 +964,12 @@ export const createPullDesk = (options) => {
   const pruneLogs = async () => {
     if (!(logRetentionDays > 0)) return;
     const cutoff = Date.now() - logRetentionDays * 24 * 60 * 60 * 1000;
-    const old = index.pulls.filter((pull) => pull.createdAt < cutoff && pull.hasLog);
+    const old = index.pulls.filter((pull) => pull.createdAt < cutoff && (pull.hasLog || pull.hasFull));
     for (const pull of old) {
       await fsp.unlink(logFile(pull.id)).catch(() => {});
+      await fsp.unlink(fullFile(pull.id)).catch(() => {});
       pull.hasLog = false;
+      pull.hasFull = false;
     }
     if (old.length > 0) await persist();
   };
@@ -1055,7 +1078,9 @@ export const createPullDesk = (options) => {
   };
 
   const uploadLog = async (req, res, pull) => {
-    if (pull.hasLog && pull.appMeters) return json(res, 200, { status: pull.status });
+    if (pull.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION) {
+      return json(res, 200, { status: pull.status });
+    }
 
     const gz = await readRawBody(req, MAX_LOG_BYTES);
     // Validate before storing: it must gunzip and contain an encounter.
@@ -1363,10 +1388,15 @@ export const createPullDesk = (options) => {
     if (first === 'meters' && second === 'trends' && req.method === 'GET') {
       const encounterId = Number(url?.searchParams.get('encounterId'));
       const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
-      const pulls = countedPulls().filter(
-        (p) => p.appMeters && p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
+      // Progression (first pull through the first kill), then only kills,
+      // so later weeks compare like with like.
+      const all = countedPulls().filter(
+        (p) => p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
       );
-      const data = await cached(`trends:${encounterId}:${difficultyId}`, () => metersTrends(pulls));
+      const { progression, reclear } = splitAtFirstKill(all, false);
+      const progressionIds = new Set(progression.map((p) => p.id));
+      const pulls = [...progression, ...reclear.filter((p) => p.result === 'kill')].filter((p) => p.appMeters);
+      const data = await cached(`trends2:${encounterId}:${difficultyId}`, () => metersTrends(pulls, progressionIds));
       return json(res, 200, data);
     }
 
@@ -1444,6 +1474,49 @@ export const createPullDesk = (options) => {
           if (error.status === 413) return fail(res, 413, 'Log upload too large');
           throw error;
         }
+      }
+
+      // The full combat log of the pull (every line), for the Logs page.
+      if (third === 'full' && req.method === 'PUT') {
+        let gz;
+        try {
+          gz = await readRawBody(req, MAX_FULL_BYTES);
+        } catch (error) {
+          if (error.status === 413) return fail(res, 413, 'Full log too large');
+          throw error;
+        }
+        if (gz.length < 20 || gz[0] !== 0x1f || gz[1] !== 0x8b) return fail(res, 400, 'Upload is not a gzipped log');
+        if (pull.hasFull && (pull.fullBytes || 0) >= gz.length) return json(res, 200, { status: 'kept' });
+        await fsp.mkdir(path.dirname(fullFile(pull.id)), { recursive: true });
+        const temp = `${fullFile(pull.id)}.tmp`;
+        await fsp.writeFile(temp, gz);
+        await fsp.rename(temp, fullFile(pull.id));
+        pull.hasFull = true;
+        pull.fullBytes = gz.length;
+        await persist();
+        return json(res, 200, { status: 'stored' });
+      }
+      if (third === 'full' && req.method === 'GET') {
+        if (!pull.hasFull) {
+          return fail(
+            res,
+            404,
+            pull.source === 'wcl'
+              ? 'Imported from Warcraft Logs: there is no combat log for this pull.'
+              : "This pull's full log hasn't been sent yet. Apps on 1.9.32 send it, and re-send last week's pulls on their own.",
+          );
+        }
+        let stat;
+        try {
+          stat = await fsp.stat(fullFile(pull.id));
+        } catch {
+          pull.hasFull = false;
+          await persist();
+          return fail(res, 404, "This pull's full log is gone");
+        }
+        res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': stat.size });
+        fs.createReadStream(fullFile(pull.id)).pipe(res);
+        return undefined;
       }
 
       if (third === 'reanalyze' && req.method === 'POST') {
