@@ -6,6 +6,7 @@ import {
   Ability,
   AbilityScope,
   clearAbilityCards,
+  GameIcon,
   tagLabel,
 } from './AbilityCard';
 
@@ -98,7 +99,10 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
   const [choice, setChoice] = React.useState(loadChoice);
   const [difficulty, setDifficulty] = React.useState<number | null>(null);
   const [data, setData] = React.useState<BossJournal | null>(null);
-  const [icons, setIcons] = React.useState<Record<string, string>>({});
+  // Tooltip text and icon names per spell, for the difficulty shown.
+  const [spellInfo, setSpellInfo] = React.useState<
+    Record<string, { name: string | null; text: string; icon: string | null }>
+  >({});
   const [avoidable, setAvoidable] = React.useState<number[]>([]);
   const [busy, setBusy] = React.useState<number | null>(null);
   const [error, setError] = React.useState('');
@@ -187,14 +191,28 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
         ...flatten(response.data.journal?.sections ?? []).map((s) => s.spellId),
         ...response.data.stats.map((s) => s.spellId),
       ].filter((id): id is number => Boolean(id));
-      if (ids.length && response.data.configured) {
-        call<{ icons: Record<string, string> }>({
-          action: 'journalIcons',
-          ids,
-        }).then((r) => {
-          if (!cancelled && r.ok) setIcons(r.data.icons);
-        });
-      }
+      setSpellInfo({});
+      // The server returns what it has and fetches a batch more each call,
+      // so text and icons fill in over a few calls on a boss's first visit.
+      const fill = async () => {
+        for (let round = 0; round < 25 && ids.length; round += 1) {
+          const r = await call<{
+            spells: Record<
+              string,
+              { name: string | null; text: string; icon: string | null }
+            >;
+            pending: number;
+          }>({
+            action: 'journalSpells',
+            ids,
+            difficultyId: shownDifficulty ?? undefined,
+          });
+          if (cancelled || !r.ok) return;
+          setSpellInfo((current) => ({ ...current, ...r.data.spells }));
+          if (!r.data.pending) return;
+        }
+      };
+      fill();
     });
     return () => {
       cancelled = true;
@@ -242,18 +260,16 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
     data?.stats.find((s) => spellId && s.spellId === spellId) ??
     data?.stats.find((s) => norm(s.name) === norm(name));
 
-  const icon = (spellId: number | null, size: string) =>
-    spellId && icons[spellId] ? (
-      <img
-        src={icons[spellId]}
-        alt=""
-        className={`${size} rounded border border-card shrink-0`}
-      />
-    ) : (
-      <span
-        className={`${size} rounded border border-card bg-card/50 shrink-0`}
-      />
-    );
+  const icon = (spellId: number | null, size: string) => (
+    <GameIcon
+      icon={spellId ? spellInfo[spellId]?.icon : null}
+      className={`${size} rounded border border-card shrink-0`}
+    />
+  );
+
+  // The journal's own text (headings, overviews) or the spell's tooltip.
+  const textOf = (s: Section) =>
+    s.text || (s.spellId ? (spellInfo[s.spellId]?.text ?? '') : '');
 
   const avoidButton = (spellId: number, name: string) => {
     const on = avoidable.includes(spellId);
@@ -345,9 +361,9 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
                 </span>
               ))}
             </div>
-            {s.text && (
+            {textOf(s) && (
               <p className="m-0 text-[13px] leading-relaxed text-foreground-lighter/85 whitespace-pre-line">
-                {s.text}
+                {textOf(s)}
               </p>
             )}
           </div>
@@ -605,10 +621,12 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
 
       {journal && (
         <p className="m-0 text-xs text-foreground">
-          Ability text: Blizzard&apos;s Encounter Journal. Wipes and deaths:
-          your pull logs on{' '}
-          {shownDifficulty ? DIFFICULTY[shownDifficulty] : 'this'} difficulty.
-          The avoidable list is per boss.
+          Stages and overview: Blizzard&apos;s Encounter Journal. Ability text
+          and icons: Wowhead tooltips for{' '}
+          {shownDifficulty ? DIFFICULTY[shownDifficulty] : 'this'} difficulty,
+          cached on the guild server. The journal lists some abilities once per
+          difficulty without saying which; those copies are merged. Wipes and
+          deaths: your pull logs. The avoidable list is per boss.
         </p>
       )}
     </div>
