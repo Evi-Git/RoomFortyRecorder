@@ -30,6 +30,51 @@ export const wipeCause = (summary, report) => {
   return (summary.duration || report.duration || 0) < 20 ? 'Reset' : 'No deaths';
 };
 
+const RAID_WIDE = ' (raid-wide)';
+
+/** Spell IDs by ability name, from killing blows and raid-wide wipes. */
+const spellIdsOf = (pulls) => {
+  const ids = {};
+  pulls.forEach(({ report }) => {
+    (report?.deaths || []).forEach((d) => {
+      const kb = d.killingBlow;
+      if (kb?.spellName && kb.spellId && !ids[kb.spellName]) ids[kb.spellName] = kb.spellId;
+    });
+    const mass = report?.wipe?.massDeath;
+    if (mass?.spellName && mass.spellId && !ids[mass.spellName]) ids[mass.spellName] = mass.spellId;
+  });
+  return ids;
+};
+
+/**
+ * Per ability (by name): how many pulls it ended, how many raiders it
+ * killed, and how many of those were early deaths. For the Journal view.
+ */
+export const abilityStats = (pulls) => {
+  const stats = {};
+  const entry = (name, spellId) => {
+    stats[name] ??= { name, spellId: spellId || null, wipes: 0, deaths: 0, earlyDeaths: 0 };
+    if (!stats[name].spellId && spellId) stats[name].spellId = spellId;
+    return stats[name];
+  };
+  pulls.forEach(({ summary, report }) => {
+    if (!report) return;
+    (report.deaths || []).forEach((d, i) => {
+      const kb = d.killingBlow;
+      if (!kb?.spellName) return;
+      const e = entry(kb.spellName, kb.spellId);
+      e.deaths += 1;
+      if (i < EARLY_DEATHS) e.earlyDeaths += 1;
+    });
+    const cause = wipeCause(summary, report);
+    if (cause && cause !== 'Reset' && cause !== 'No deaths' && cause !== 'Unknown' && cause !== 'Not analyzed') {
+      const name = cause.endsWith(RAID_WIDE) ? cause.slice(0, -RAID_WIDE.length) : cause;
+      entry(name, report.wipe?.massDeath?.spellId).wipes += 1;
+    }
+  });
+  return Object.values(stats).sort((a, b) => b.wipes - a.wipes || b.deaths - a.deaths);
+};
+
 const countBy = (items) => {
   const counts = new Map();
   items.filter(Boolean).forEach((item) => counts.set(item, (counts.get(item) || 0) + 1));
@@ -126,10 +171,13 @@ export const summarizePulls = (pulls) => {
     source: summary.source || 'app',
   }));
 
+  const spellIds = spellIdsOf(ordered);
   return {
     encounterId: first.encounterId,
     encounterName: first.encounterName,
     difficultyId: first.difficultyId,
+    // Ability name -> spell ID, so the app can show a card for any name.
+    spellIds,
     pulls: ordered.length,
     kills,
     bestPercent: kills ? 0 : percents.length ? Math.min(...percents) : null,
@@ -138,7 +186,10 @@ export const summarizePulls = (pulls) => {
     longestPull: durations.length ? round1(Math.max(...durations)) : null,
     firstPullAt: ordered[0]?.summary.startedAt || null,
     lastPullAt: ordered.at(-1)?.summary.startedAt || null,
-    causes: countBy(pullsList.map((p) => p.cause)),
+    causes: countBy(pullsList.map((p) => p.cause)).map((c) => ({
+      ...c,
+      spellId: spellIds[c.name.endsWith(RAID_WIDE) ? c.name.slice(0, -RAID_WIDE.length) : c.name] ?? null,
+    })),
     raiders: [...raiders.values()]
       .filter((r) => r.pulls > 0)
       .sort((a, b) => b.earlyDeaths - a.earlyDeaths || a.name.localeCompare(b.name)),
@@ -223,6 +274,7 @@ export const summarizeProgression = (pulls) => {
     series,
     firstKill: firstKill ? { pull: firstKill.n, night: firstKill.night } : null,
     causes: all.causes,
+    spellIds: all.spellIds,
     raiders: all.raiders,
     trend: Object.values(trend),
   };

@@ -19,7 +19,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
-import { summarizeNight, summarizeProgression } from './pulldesk-summary.mjs';
+import { abilityStats, summarizeNight, summarizeProgression } from './pulldesk-summary.mjs';
+import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
 
@@ -94,6 +95,9 @@ export const createPullDesk = (options) => {
   const indexFile = path.join(dir, 'index.json');
   const reportFile = (id) => path.join(dir, 'reports', `${id}.json`);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
+
+  // Blizzard's Encounter Journal, for the Journal view and ability cards.
+  const journal = options.journal || createJournal({ storage: options.storage, env });
 
   // Warcraft Logs, for importing pulls the app didn't capture.
   const wcl = options.wcl ||
@@ -781,6 +785,135 @@ export const createPullDesk = (options) => {
     return json(res, 200, { reanalyzed, avoidable: settings.avoidable });
   };
 
+  // One ability on or off a boss's avoidable list (the Journal view and
+  // ability cards).
+  const toggleAvoidable = async (req, res, encounterId) => {
+    const body = await readBody(req, 4 * 1024);
+    const id = Number(body.spellId);
+    if (!Number.isInteger(id) || id <= 0) return fail(res, 400, 'Invalid spell ID');
+    const settings = bossSettings(encounterId);
+    const without = settings.avoidable.filter((spell) => spell.id !== id);
+    settings.avoidable = body.on
+      ? [...without, { id, name: typeof body.name === 'string' ? body.name.slice(0, 100) : null }]
+      : without;
+    await persist();
+    const reanalyzed = await reanalyzeRecent(encounterId);
+    return json(res, 200, { reanalyzed, avoidable: settings.avoidable });
+  };
+
+  const setJournalId = async (req, res, encounterId) => {
+    const body = await readBody(req, 4 * 1024);
+    const raw = String(body.journalId ?? '').trim();
+    // Accept a journal link too (".../#encounter=2896" or ".../journal-encounter/2896").
+    const journalId = Number((/(\d+)\s*$/.exec(raw) || [])[1]) || null;
+    bossSettings(encounterId).journalId = journalId;
+    await persist();
+    return json(res, 200, { journalId });
+  };
+
+  // Pulls on one boss (and difficulty) with their reports, for ability stats.
+  const bossStats = async (encounterId, difficultyId) => {
+    const pulls = countedPulls().filter(
+      (p) => p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
+    );
+    return cached(`abilities:${encounterId}:${difficultyId}`, async () => abilityStats(await withReports(pulls)));
+  };
+
+  const bossName = (encounterId) =>
+    index.pulls.find((p) => p.encounterId === encounterId)?.encounterName || null;
+
+  // Journal routes: /journal/boss/:encounterId, /journal/spell/:spellId,
+  // /journal/icons, /journal/raw/:journalId.
+  const handleJournal = async (req, res, rest, url) => {
+    const [, kind, idText] = rest;
+    const q = (k) => url?.searchParams.get(k);
+
+    if (kind === 'boss' && /^\d+$/.test(idText || '') && req.method === 'GET') {
+      const encounterId = Number(idText);
+      const difficultyId = Number(q('difficulty')) || null;
+      const settings = bossSettings(encounterId);
+      const name = bossName(encounterId) || q('name');
+      let data = null;
+      let error = '';
+      if (journal.configured && name) {
+        try {
+          data = await journal.encounter({ name, journalId: settings.journalId || null, refresh: q('refresh') === '1' });
+        } catch (e) {
+          error = e.message;
+        }
+      }
+      return json(res, 200, {
+        configured: journal.configured,
+        encounterId,
+        encounterName: name,
+        journalId: settings.journalId || data?.journalId || null,
+        journal: data,
+        error,
+        stats: await bossStats(encounterId, difficultyId),
+        avoidable: settings.avoidable,
+      });
+    }
+
+    if (kind === 'spell' && /^\d+$/.test(idText || '') && req.method === 'GET') {
+      const spellId = Number(idText);
+      const encounterId = Number(q('encounterId')) || null;
+      const difficultyId = Number(q('difficulty')) || null;
+      const wantedName = q('name') || '';
+      let section = null;
+      let info = null;
+      let error = '';
+      try {
+        if (journal.configured && encounterId) {
+          const name = bossName(encounterId);
+          const j = name
+            ? await journal.encounter({ name, journalId: bossSettings(encounterId).journalId || null })
+            : null;
+          const abilities = journalAbilities(j);
+          section =
+            abilities.find((a) => a.spellId === spellId) ||
+            (wantedName ? abilities.find((a) => norm(a.title) === norm(wantedName)) : null) ||
+            null;
+        }
+        if (journal.configured) info = await journal.spell(section?.spellId || spellId);
+      } catch (e) {
+        error = e.message;
+      }
+      const stats = encounterId ? await bossStats(encounterId, difficultyId) : [];
+      const stat =
+        stats.find((s) => s.spellId === spellId) ||
+        (wantedName ? stats.find((s) => norm(s.name) === norm(wantedName)) : null) ||
+        null;
+      const avoidable = encounterId ? bossSettings(encounterId).avoidable : [];
+      return json(res, 200, {
+        configured: journal.configured,
+        spellId,
+        name: section?.title || info?.name || wantedName || null,
+        icon: info?.icon || null,
+        text: section?.text || info?.text || '',
+        source: section ? 'journal' : info?.text ? 'spell' : null,
+        tags: section?.tags || [],
+        stats: stat,
+        avoidable: avoidable.some((a) => a.id === spellId),
+        error,
+      });
+    }
+
+    if (kind === 'icons' && req.method === 'POST') {
+      const body = await readBody(req, 16 * 1024);
+      if (!journal.configured) return json(res, 200, { icons: {} });
+      const ids = Array.isArray(body?.ids) ? body.ids : [];
+      return json(res, 200, { icons: await journal.icons(ids) });
+    }
+
+    if (kind === 'raw' && /^\d+$/.test(idText || '') && req.method === 'GET') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const raw = await journal.raw(idText);
+      return raw ? json(res, 200, raw) : fail(res, 404, 'Not fetched yet');
+    }
+
+    return fail(res, 404, 'Unknown journal route');
+  };
+
   const setChannel = async (req, res, encounterId) => {
     const body = await readBody(req, 4 * 1024);
     const channelId = String(body.channelId ?? '').trim();
@@ -806,6 +939,8 @@ export const createPullDesk = (options) => {
     }
 
     if (first === 'claim' && req.method === 'POST') return claim(req, res);
+
+    if (first === 'journal') return handleJournal(req, res, rest, url);
 
     if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
     if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
@@ -937,6 +1072,8 @@ export const createPullDesk = (options) => {
         if (third === 'note') return setNote(req, res, encounterId);
         if (third === 'avoidable') return setAvoidable(req, res, encounterId);
         if (third === 'channel') return setChannel(req, res, encounterId);
+        if (third === 'avoidable-toggle') return toggleAvoidable(req, res, encounterId);
+        if (third === 'journal') return setJournalId(req, res, encounterId);
       }
     }
 
