@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.23] - Unreleased
+### Added
+- **Import a whole tier from Warcraft Logs** (Analysis → Import from Warcraft Logs): enter the guild, realm and region once and press **Find our reports**. The server lists every report the guild posted, grouped by raid, with raids from the last 60 days ticked, and imports them in the background with a progress bar. Pulls already here are skipped, so it's safe to run again.
+- Warcraft Logs calls flex Mythic plain Mythic, so imported Mythic pulls of a boss the app has as flex Mythic (Kith'ix) join those pulls.
+
 ## [1.9.22] - Unreleased
 ### Changed
 - **Night summary:** one boss at a time. A Boss dropdown next to Night picks which boss's widgets to show (it starts on the boss pulled most that night).

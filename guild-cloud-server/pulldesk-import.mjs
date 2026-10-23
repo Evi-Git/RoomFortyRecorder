@@ -7,8 +7,9 @@
 // avoidable hits and defensives need the app's own log, so they're empty.
 
 // Warcraft Logs difficulty -> game difficulty ID.
-const WCL_TO_GAME = { 1: 17, 3: 14, 4: 15, 5: 16 };
-const GAME_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr' };
+// 233 = flex Mythic (Kith'ix), in case Warcraft Logs passes it through.
+const WCL_TO_GAME = { 1: 17, 3: 14, 4: 15, 5: 16, 233: 233 };
+const GAME_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr', 233: 'mythic' };
 
 /** "https://www.warcraftlogs.com/reports/AbC123xyz#fight=3" -> "AbC123xyz". */
 export const reportCode = (value) => {
