@@ -30,7 +30,7 @@ import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 const WCL_EXTRAS_VERSION = 2;
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
-const PREP_VERSION = 2;
+const PREP_VERSION = 3;
 const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
@@ -127,6 +127,9 @@ export const createPullDesk = (options) => {
   const dir = path.join(options.storage, 'pulldesk');
   const indexFile = path.join(dir, 'index.json');
   const reportFile = (id) => path.join(dir, 'reports', `${id}.json`);
+  // Meters live in their own file: summaries read many reports, and the
+  // meters are the bulk of one.
+  const metersFile = (id) => path.join(dir, 'meters', `${id}.json`);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
@@ -618,6 +621,12 @@ export const createPullDesk = (options) => {
     report.createdAt = pull.createdAt;
     report.uploadedBy = pull.uploadedBy;
     report.noteUpdatedAt = settings.noteUpdatedAt || null;
+    if (report.meters) {
+      await fsp.mkdir(path.dirname(metersFile(pull.id)), { recursive: true });
+      await fsp.writeFile(metersFile(pull.id), JSON.stringify(report.meters));
+      delete report.meters;
+      report.hasMeters = true;
+    }
     await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
 
     Object.assign(pull, {
@@ -1380,6 +1389,16 @@ export const createPullDesk = (options) => {
         await runAnalysis(pull);
         await persist();
         return json(res, 200, summaryOf(pull));
+      }
+
+      if (third === 'meters' && req.method === 'GET') {
+        try {
+          const body = await fsp.readFile(metersFile(pull.id));
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': body.length });
+          return res.end(body);
+        } catch {
+          return fail(res, 404, pull.source === 'wcl' ? 'Meters need the app\'s own log; this pull was imported from Warcraft Logs' : 'No meters for this pull yet');
+        }
       }
 
       if (!third && req.method === 'GET') {

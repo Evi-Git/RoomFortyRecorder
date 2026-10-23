@@ -140,3 +140,24 @@ test('combat potions by name are counted per raider, not as defensives', () => {
   // Not listed as something that was "ready" at a death.
   report.deaths.forEach((d) => (d.available || []).forEach((a) => assert.notEqual(a.kind, 'combatPotion')));
 });
+
+test('meters: damage, healing (overheal, absorbs) and damage taken per raider', () => {
+  const report = analyzePull(slice(), {});
+  const m = report.meters;
+  assert.equal(m.bucketSeconds, 5);
+  assert.ok(m.damage.length >= 15);
+  assert.ok(m.healing.length >= 4);
+  assert.ok(m.taken.length >= 15);
+  const top = m.damage[0];
+  // The over-time buckets add up to the total, and cover the pull.
+  assert.equal(top.series.reduce((n, v) => n + v, 0), top.total);
+  assert.equal(top.series.length, Math.ceil(report.duration / 5));
+  assert.equal(top.abilities.reduce((n, a) => n + a.total, 0) <= top.total, true);
+  // Pets count toward their owner (warlock imps cast Fel Firebolt).
+  assert.ok(m.damage.some((p) => p.abilities.some((a) => a.name === 'Fel Firebolt' && a.casts > 0)));
+  assert.ok(m.healing.some((p) => (p.absorbs || 0) > 0));
+  assert.ok(m.healing.every((p) => p.total >= 0));
+  // Only the pull's raiders.
+  const roster = new Set(report.roster.map((r) => r.name));
+  assert.ok([...m.damage, ...m.healing, ...m.taken].every((p) => roster.has(p.name)));
+});
