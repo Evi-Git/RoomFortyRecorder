@@ -23,6 +23,7 @@ import { abilityStats, summarizeNight, summarizeProgression } from './pulldesk-s
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
+import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS } from './consumables.mjs';
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
@@ -416,6 +417,12 @@ export const createPullDesk = (options) => {
       let skipped = 0;
       let filled = 0;
       for (const item of fetched.pulls) {
+        // Warcraft Logs calls flex Mythic plain Mythic: keep it with the
+        // app's own pulls of that boss (difficulty 233).
+        if (item.difficultyId === 16 && index.pulls.some((p) => p.encounterId === item.encounterId && p.difficultyId === 233)) {
+          item.difficultyId = 233;
+          item.report.difficultyId = 233;
+        }
         const same = index.pulls.find(
           (p) =>
             p.encounterId === item.encounterId &&
@@ -473,6 +480,82 @@ export const createPullDesk = (options) => {
     index.pulls.sort((a, b) => a.createdAt - b.createdAt);
     await persist();
     return results;
+  };
+
+  // ---- Whole-tier import from Warcraft Logs ----------------------------------
+
+  // The guild's reports on Warcraft Logs, grouped by raid zone.
+  const guildReportsByZone = async ({ name, realm, region, months }) => {
+    if (!wcl.configured) {
+      throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
+    }
+    const slugs = [...new Set([serverSlug(realm), String(realm || '').toLowerCase().replace(/\s+/g, '-')].filter(Boolean))];
+    let guildId = null;
+    for (const slug of slugs) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const data = await wcl.query(
+          `query($name: String!, $slug: String!, $region: String!) {
+            guildData { guild(name: $name, serverSlug: $slug, serverRegion: $region) { id } } }`,
+          { name, slug, region: String(region || 'us').toUpperCase() },
+        );
+        guildId = data.guildData?.guild?.id || null;
+      } catch {
+        guildId = null;
+      }
+      if (guildId) break;
+    }
+    if (!guildId) {
+      throw Object.assign(new Error(`${name}-${realm} (${String(region).toUpperCase()}) isn't on Warcraft Logs. Check the realm and region.`), { status: 404 });
+    }
+    const since = Date.now() - Math.min(Math.max(Number(months) || 4, 1), 12) * 30 * 86400000;
+    const zones = new Map();
+    for (let page = 1; page <= 40; page += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const data = await wcl.query(
+        `query($guild: Int!, $start: Float!, $page: Int!) {
+          reportData { reports(guildID: $guild, startTime: $start, limit: 100, page: $page) {
+            has_more_pages data { code title startTime zone { id name } } } } }`,
+        { guild: guildId, start: since, page },
+      );
+      const result = data.reportData?.reports;
+      (result?.data || []).forEach((r) => {
+        if (!r.zone?.id) return;
+        const z = zones.get(r.zone.id) || { zoneId: r.zone.id, zoneName: r.zone.name, codes: [], first: r.startTime, last: r.startTime };
+        z.codes.push(r.code);
+        z.first = Math.min(z.first, r.startTime);
+        z.last = Math.max(z.last, r.startTime);
+        zones.set(r.zone.id, z);
+      });
+      if (!result?.has_more_pages) break;
+    }
+    return [...zones.values()].sort((a, b) => b.last - a.last);
+  };
+
+  // One import at a time, in the background; the app polls its progress.
+  let tierJob = { running: false, total: 0, done: 0, added: 0, skipped: 0, errors: [], finishedAt: null };
+  const startTierImport = (codes) => {
+    if (tierJob.running) return false;
+    tierJob = { running: true, total: codes.length, done: 0, added: 0, skipped: 0, errors: [], finishedAt: null, startedAt: Date.now() };
+    backgroundQueue = backgroundQueue.then(async () => {
+      for (let i = 0; i < codes.length; i += 5) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const results = await importReports(codes.slice(i, i + 5));
+          results.forEach((r) => {
+            if (r.error) tierJob.errors.push(`${r.code}: ${r.error}`);
+            tierJob.added += (r.added || 0) + (r.filled || 0);
+            tierJob.skipped += r.skipped || 0;
+          });
+        } catch (error) {
+          tierJob.errors.push(error.message);
+        }
+        tierJob.done = Math.min(codes.length, i + 5);
+      }
+      tierJob.running = false;
+      tierJob.finishedAt = Date.now();
+    });
+    return true;
   };
 
   // ---- Analysis -------------------------------------------------------------
@@ -1110,7 +1193,40 @@ export const createPullDesk = (options) => {
     if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
     if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
 
-    if (first === 'import' && req.method === 'POST') {
+    if (first === 'import' && second === 'guild' && req.method === 'GET') {
+      return json(res, 200, {
+        guild: index.settings.wclGuild || { name: env.GUILD_CLOUD_GUILD || 'Room Forty', realm: '', region: 'us' },
+        job: tierJob,
+      });
+    }
+    if (first === 'import' && second === 'guild' && third === 'scan' && req.method === 'POST') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const body = await readBody(req, 4 * 1024);
+      const guild = {
+        name: String(body?.name || '').trim().slice(0, 60),
+        realm: String(body?.realm || '').trim().slice(0, 60),
+        region: ['us', 'eu', 'kr', 'tw', 'cn'].includes(String(body?.region).toLowerCase()) ? String(body.region).toLowerCase() : 'us',
+      };
+      if (!guild.name || !guild.realm) return fail(res, 400, 'Enter the guild name and realm');
+      try {
+        const zones = await guildReportsByZone({ ...guild, months: body?.months });
+        index.settings.wclGuild = guild;
+        await persist();
+        return json(res, 200, { guild, zones });
+      } catch (error) {
+        return fail(res, error.status || 502, error.message);
+      }
+    }
+    if (first === 'import' && second === 'tier' && req.method === 'POST') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const body = await readBody(req, 256 * 1024);
+      const codes = [...new Set((Array.isArray(body?.codes) ? body.codes : []).map(reportCode).filter(Boolean))].slice(0, 500);
+      if (!codes.length) return fail(res, 400, 'No reports picked');
+      if (!startTierImport(codes)) return fail(res, 409, 'An import is already running');
+      return json(res, 200, { job: tierJob });
+    }
+
+    if (first === 'import' && !second && req.method === 'POST') {
       if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 64 * 1024);
       const codes = [...new Set((Array.isArray(body?.reports) ? body.reports : []).map(reportCode).filter(Boolean))];

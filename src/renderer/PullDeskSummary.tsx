@@ -2133,6 +2133,252 @@ type ImportResult = {
  * early deaths); the cooldown plan, avoidable hits and defensives need the
  * app's own log.
  */
+type TierZone = {
+  zoneId: number;
+  zoneName: string;
+  codes: string[];
+  first: number;
+  last: number;
+};
+type TierJob = {
+  running: boolean;
+  total: number;
+  done: number;
+  added: number;
+  skipped: number;
+  errors: string[];
+  finishedAt: number | null;
+};
+type WclGuild = { name: string; realm: string; region: string };
+
+const shortDate = (at: number) =>
+  new Date(at).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+
+/**
+ * Import every report the guild has on Warcraft Logs for chosen raid zones
+ * (a whole tier), in the background. Pulls already here are skipped.
+ */
+const TierImport = ({ onImported }: { onImported: () => void }) => {
+  const [guild, setGuild] = React.useState<WclGuild | null>(null);
+  const [job, setJob] = React.useState<TierJob | null>(null);
+  const [zones, setZones] = React.useState<TierZone[] | null>(null);
+  const [picked, setPicked] = React.useState<number[]>([]);
+  const [months, setMonths] = React.useState(4);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [poll, setPoll] = React.useState(0);
+  const wasRunning = React.useRef(false);
+  const importedRef = React.useRef(onImported);
+  React.useEffect(() => {
+    importedRef.current = onImported;
+  }, [onImported]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    call<{ guild: WclGuild; job: TierJob }>({ action: 'importGuild' }).then(
+      (response) => {
+        if (cancelled || !response.ok) return;
+        setGuild((current) => current ?? response.data.guild);
+        setJob(response.data.job);
+        if (response.data.job.running) {
+          wasRunning.current = true;
+          timer = setTimeout(() => setPoll((n) => n + 1), 3000);
+        } else if (wasRunning.current) {
+          wasRunning.current = false;
+          if (response.data.job.added > 0) importedRef.current();
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [poll]);
+
+  const scan = async () => {
+    if (!guild) return;
+    setBusy(true);
+    setError('');
+    const response = await call<{ zones: TierZone[] }>({
+      action: 'importScan',
+      ...guild,
+      months,
+    });
+    setBusy(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setZones(response.data.zones);
+    // Pre-pick zones raided in the last 60 days: the current tier.
+    const recent = Date.now() - 60 * 86400000;
+    setPicked(
+      response.data.zones.filter((z) => z.last >= recent).map((z) => z.zoneId),
+    );
+  };
+
+  const start = async () => {
+    const codes = (zones ?? [])
+      .filter((z) => picked.includes(z.zoneId))
+      .flatMap((z) => z.codes);
+    setBusy(true);
+    setError('');
+    const response = await call<{ job: TierJob }>({
+      action: 'importTier',
+      codes,
+    });
+    setBusy(false);
+    if (!response.ok) {
+      setError(response.error);
+      return;
+    }
+    setJob(response.data.job);
+    setPoll((n) => n + 1);
+  };
+
+  const field =
+    'h-8 rounded-md bg-card px-2 text-sm text-foreground-lighter border border-background';
+  const pickedReports = (zones ?? [])
+    .filter((z) => picked.includes(z.zoneId))
+    .reduce((n, z) => n + z.codes.length, 0);
+
+  return (
+    <div className="flex flex-col gap-y-2 border-t border-card pt-3 mt-1">
+      <h4 className="text-sm font-semibold text-foreground-lighter">
+        Import a whole tier
+      </h4>
+      <p className="text-xs text-foreground m-0">
+        Finds every report your guild posted on Warcraft Logs, grouped by raid,
+        and imports the raids you pick. It runs on the server, so you can leave
+        this page.
+      </p>
+      {guild && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            aria-label="Guild name"
+            className={`${field} w-40`}
+            value={guild.name}
+            onChange={(e) => setGuild({ ...guild, name: e.target.value })}
+            placeholder="Guild"
+          />
+          <input
+            aria-label="Realm"
+            className={`${field} w-40`}
+            value={guild.realm}
+            onChange={(e) => setGuild({ ...guild, realm: e.target.value })}
+            placeholder="Realm"
+          />
+          <select
+            aria-label="Region"
+            className={field}
+            value={guild.region}
+            onChange={(e) => setGuild({ ...guild, region: e.target.value })}
+          >
+            {['us', 'eu', 'kr', 'tw'].map((r) => (
+              <option key={r} value={r}>
+                {r.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="How far back"
+            className={field}
+            value={months}
+            onChange={(e) => setMonths(Number(e.target.value))}
+          >
+            {[2, 4, 6, 12].map((m) => (
+              <option key={m} value={m}>
+                Last {m} months
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={scan}
+            disabled={busy || !guild.name.trim() || !guild.realm.trim()}
+          >
+            {busy && !zones ? 'Looking…' : 'Find our reports'}
+          </Button>
+        </div>
+      )}
+      {zones && zones.length === 0 && (
+        <p className="text-sm text-foreground">
+          No reports in that time. Check the realm, or look further back.
+        </p>
+      )}
+      {zones && zones.length > 0 && (
+        <div className="flex flex-col gap-y-1">
+          {zones.map((z) => (
+            <label
+              key={z.zoneId}
+              className="flex items-center gap-x-2 text-sm cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={picked.includes(z.zoneId)}
+                onChange={() =>
+                  setPicked((list) =>
+                    list.includes(z.zoneId)
+                      ? list.filter((id) => id !== z.zoneId)
+                      : [...list, z.zoneId],
+                  )
+                }
+                className="w-4 h-4 accent-[hsl(var(--brand))]"
+              />
+              <span className="text-foreground-lighter">{z.zoneName}</span>
+              <span className="text-xs text-foreground">
+                {z.codes.length} {z.codes.length === 1 ? 'report' : 'reports'} ·{' '}
+                {shortDate(z.first)} – {shortDate(z.last)}
+              </span>
+            </label>
+          ))}
+          <div>
+            <Button
+              size="sm"
+              onClick={start}
+              disabled={busy || !pickedReports || Boolean(job?.running)}
+            >
+              Import {pickedReports}{' '}
+              {pickedReports === 1 ? 'report' : 'reports'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {job && (job.running || job.finishedAt) && (
+        <div className="flex flex-col gap-y-1">
+          <div className="h-1.5 rounded bg-card overflow-hidden max-w-[420px]">
+            <div
+              className="h-1.5 bg-brand"
+              style={{
+                width: `${job.total ? (job.done / job.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <span className="text-xs text-foreground">
+            {job.running
+              ? `Importing… ${job.done} of ${job.total} reports · ${job.added} pulls added so far`
+              : `Done: ${job.added} pulls added, ${job.skipped} already here, from ${job.total} reports.`}
+            {job.errors.length ? ` ${job.errors.length} reports failed.` : ''}
+          </span>
+          {!job.running && job.errors.length > 0 && (
+            <ul className="text-xs text-red-400 m-0 pl-4">
+              {job.errors.slice(0, 5).map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+    </div>
+  );
+};
+
 export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
   const [open, setOpen] = React.useState(false);
   const [text, setText] = React.useState('');
@@ -2237,6 +2483,7 @@ export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
           ))}
         </ul>
       )}
+      <TierImport onImported={onImported} />
     </div>
   );
 };

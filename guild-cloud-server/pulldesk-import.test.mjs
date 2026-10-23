@@ -111,3 +111,64 @@ test('import adds pulls to the summaries, skips duplicates, fills stale claims',
 
   assert.equal((await call('POST', ['import'], { reports: ['nope'] })).status, 400);
 });
+
+test('whole-tier import: find the guild, group reports by zone, import in the background', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'pd-tier-'));
+  const fakeWcl = {
+    configured: true,
+    query: async (text, vars) => {
+      if (text.includes('guildData')) return { guildData: { guild: vars.slug === 'area-52' ? { id: 77 } : null } };
+      if (text.includes('reports(guildID')) {
+        return { reportData: { reports: { has_more_pages: false, data: [
+          { code: 'aBcD1234EfGh5678', title: 'Kithix progress', startTime: T0, zone: { id: 46, name: 'The Unbinding' } },
+          { code: 'zzzz1234EfGh5678', title: 'Old tier', startTime: T0 - 1000, zone: { id: 40, name: 'Old Raid' } },
+        ] } } };
+      }
+      if (text.includes('playerDetails')) return { reportData: { report: { playerDetails: wclReport.playerDetails } } };
+      if (text.includes('events(')) return { reportData: { report: { events: { data: deathEvents, nextPageTimestamp: null } } } };
+      return { reportData: { report: wclReport } };
+    },
+  };
+  const desk = createPullDesk({
+    storage,
+    readBody: async (req) => req.body || {},
+    json: (res, status, body) => Object.assign(res, { status, body }),
+    fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
+    memberRoleNames: async () => ['officer'],
+    botToken: '',
+    env: {},
+    wcl: fakeWcl,
+  });
+  await desk.ready();
+  const call = async (method, rest, body) => {
+    const res = {};
+    await desk.handle({ method, body, cloudUserId: '1', cloudUserName: 'Evi' }, res, rest, new URL('http://x/'));
+    return res;
+  };
+  // The app already saw Kith'ix as flex Mythic (233).
+  await call('POST', ['claim'], { encounterId: KITHIX, difficultyId: 233, duration: 61, encounterName: "Kith'ix", startedAt: T0 + 10 * 86400000 });
+
+  const missing = await call('POST', ['import', 'guild', 'scan'], { name: 'Room Forty', realm: 'Nowhere', region: 'us' });
+  assert.equal(missing.status, 404);
+  const scan = await call('POST', ['import', 'guild', 'scan'], { name: 'Room Forty', realm: 'Area 52', region: 'us' });
+  assert.equal(scan.status, 200, JSON.stringify(scan.body));
+  assert.deepEqual(scan.body.zones.map((z) => z.zoneName), ['The Unbinding', 'Old Raid']);
+  assert.equal((await call('GET', ['import', 'guild'])).body.guild.realm, 'Area 52');
+
+  const start = await call('POST', ['import', 'tier'], { codes: scan.body.zones[0].codes });
+  assert.equal(start.status, 200);
+  assert.equal((await call('POST', ['import', 'tier'], { codes: ['aBcD1234EfGh5678'] })).status, 409);
+  for (let i = 0; i < 50 && (await call('GET', ['import', 'guild'])).body.job.running; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  const job = (await call('GET', ['import', 'guild'])).body.job;
+  assert.equal(job.done, 1);
+  assert.equal(job.added, 3);
+  // Mythic from Warcraft Logs joined the app's flex Mythic pulls.
+  const prog = await call('GET', ['summary', 'boss', String(KITHIX)], undefined);
+  const res = {};
+  await desk.handle({ method: 'GET', cloudUserId: '1' }, res, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233'));
+  assert.equal(res.body.counts.progression, 3);
+  assert.ok(prog.status === 200);
+});

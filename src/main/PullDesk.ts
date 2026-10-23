@@ -72,6 +72,15 @@ export type PullDeskRequest =
     }
   | { action: 'setKilledBefore'; encounterId: number; on: boolean }
   | { action: 'importWcl'; reports: string[] }
+  | { action: 'importGuild' }
+  | {
+      action: 'importScan';
+      name: string;
+      realm: string;
+      region: string;
+      months: number;
+    }
+  | { action: 'importTier'; codes: string[] }
   | { action: 'journalBoss'; encounterId: number; difficultyId?: number }
   | {
       action: 'journalSpell';
@@ -532,6 +541,24 @@ export default class PullDesk {
           'delete',
           `/coach/flags/${id(request.id)}`,
         );
+      case 'importGuild':
+        return client.pullDeskRequest('get', '/import/guild');
+      case 'importScan':
+        return client.pullDeskRequest(
+          'post',
+          '/import/guild/scan',
+          {
+            name: request.name,
+            realm: request.realm,
+            region: request.region,
+            months: request.months,
+          },
+          { timeout: 180000 },
+        );
+      case 'importTier':
+        return client.pullDeskRequest('post', '/import/tier', {
+          codes: request.codes,
+        });
       case 'setKilledBefore':
         return client.pullDeskRequest(
           'put',
