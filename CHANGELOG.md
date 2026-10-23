@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.26] - Unreleased
+### Added
+- **Imported pulls** (from Warcraft Logs) now fill the **Avoidable damage** and **Consumables & buffs** widgets. For each imported pull the server fetches:
+  - gear and buffs at the pull (food, flask, augment rune, weapon oil, vantus, enchants, and raid buffs with who brought them)
+  - hits from the boss's avoidable abilities, matched by spell ID or name
+  - combat potion casts
+- This runs in the background after `update-server.cmd` for pulls already imported, after each new import, and again for a boss when its avoidable list changes.
+
 ## [1.9.25] - Unreleased
 ### Changed
 - **Switches** replace the checkboxes in Avoidable damage.

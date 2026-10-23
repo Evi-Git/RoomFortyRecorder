@@ -21,10 +21,13 @@ import zlib from 'node:zlib';
 import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
 import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
-import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
+import { fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
-import { buildPrep, RAID_BUFFS } from './consumables.mjs';
+import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
+
+// Bump to refetch extras (consumables, avoidable hits) for imported pulls.
+const WCL_EXTRAS_VERSION = 1;
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
 const PREP_VERSION = 1;
@@ -196,6 +199,8 @@ export const createPullDesk = (options) => {
     loaded ??= load().then(() => {
       const n = recheckForPrep();
       if (n) console.info(`[pulldesk] Rechecking ${n} pulls for consumables`);
+      const w = queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
+      if (w) console.info(`[pulldesk] Fetching consumables and avoidable hits for ${w} imported pulls`);
     });
     return loaded;
   };
@@ -483,6 +488,8 @@ export const createPullDesk = (options) => {
     });
     index.pulls.sort((a, b) => a.createdAt - b.createdAt);
     await persist();
+    // Then consumables and avoidable hits for the new ones.
+    queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
     return results;
   };
 
@@ -664,6 +671,80 @@ export const createPullDesk = (options) => {
     // either, so only when the journal is set up).
     const looked = journal.configured && ids.length ? (await journal.spells(ids, 0, ids.length)).spells : {};
     return buildPrep(report, (id) => auraInfo(report, looked, id), index.settings.combatPotions);
+  };
+
+  /**
+   * Imported pulls get consumables, avoidable hits and potion counts from
+   * Warcraft Logs (one report at a time, in the background).
+   */
+  const fetchWclExtras = async (pulls) => {
+    const byReport = new Map();
+    for (const pull of pulls) {
+      let report;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        report = JSON.parse(await fsp.readFile(reportFile(pull.id), 'utf8'));
+      } catch {
+        continue;
+      }
+      if (!report.wclReport || !report.wclFight) continue;
+      const list = byReport.get(report.wclReport) || [];
+      list.push({ pull, report });
+      byReport.set(report.wclReport, list);
+    }
+    for (const [code, items] of byReport) {
+      const avoid = [...new Set(items.map((i) => i.pull.encounterId))].flatMap((id) => bossSettings(id).avoidable);
+      let extras;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        extras = await fetchReportExtras(wcl, code, items.map((i) => i.report.wclFight), {
+          abilityIds: avoid.map((a) => a.id),
+          abilityNames: avoid.map((a) => a.name).filter(Boolean),
+          potionNames: index.settings.combatPotions,
+        });
+      } catch (error) {
+        console.warn(`[pulldesk] Warcraft Logs extras for ${code} failed`, error.message);
+        continue;
+      }
+      for (const { pull, report } of items) {
+        const x = extras.get(report.wclFight);
+        if (!x) continue;
+        report.prepRaw = {
+          players: x.players.map((p) => ({ guid: p.guid, name: p.name, specId: p.specId, ...rawPrep(p.args) })),
+          auraNames: x.auraNames,
+          sourceNames: x.sourceNames,
+        };
+        report.combatPotionsUsed = x.potions;
+        report.avoidable = x.avoidable;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          report.prep = await namePrep(report);
+        } catch {
+          report.prep = buildPrep(report, (id) => auraInfo(report, {}, id), index.settings.combatPotions);
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
+        pull.wclExtras = WCL_EXTRAS_VERSION;
+      }
+    }
+  };
+
+  // `onlyMissing`: skip pulls that got their extras while this waited.
+  const queueWclExtras = (filter = () => true, onlyMissing = false) => {
+    if (!wcl.configured) return 0;
+    const pulls = index.pulls.filter((pull) => pull.source === 'wcl' && pull.status === 'ready' && filter(pull));
+    if (!pulls.length) return 0;
+    backgroundQueue = backgroundQueue.then(async () => {
+      const todo = onlyMissing ? pulls.filter((p) => (p.wclExtras || 0) < WCL_EXTRAS_VERSION) : pulls;
+      if (!todo.length) return;
+      try {
+        await fetchWclExtras(todo);
+      } catch (error) {
+        console.warn('[pulldesk] Warcraft Logs extras failed', error.message);
+      }
+      await persist();
+    });
+    return pulls.length;
   };
 
   // Pulls analyzed before consumables existed, with their logs still kept.
@@ -988,7 +1069,8 @@ export const createPullDesk = (options) => {
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
     const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
-    return json(res, 200, { reanalyzed, older, avoidable: settings.avoidable });
+    const imported = queueWclExtras((pull) => pull.encounterId === encounterId);
+    return json(res, 200, { reanalyzed, older, imported, avoidable: settings.avoidable });
   };
 
   // One ability on or off a boss's avoidable list (the Journal view and
@@ -1008,7 +1090,8 @@ export const createPullDesk = (options) => {
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
     const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
-    return json(res, 200, { reanalyzed, older, avoidable: settings.avoidable });
+    const imported = queueWclExtras((pull) => pull.encounterId === encounterId);
+    return json(res, 200, { reanalyzed, older, imported, avoidable: settings.avoidable });
   };
 
   const setJournalId = async (req, res, encounterId) => {

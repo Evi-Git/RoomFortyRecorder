@@ -106,12 +106,17 @@ export const buildPrep = (report, infoOf, combatPotions = []) => {
   const raw = report.prepRaw;
   if (!raw || !raw.players?.length) return null;
   const potionNames = new Set(combatPotions.map(normName));
-  const nameOfGuid = new Map(raw.players.map((p) => [p.guid, p.name]));
+  const nameOfGuid = new Map([
+    ...Object.entries(raw.sourceNames || {}),
+    ...raw.players.map((p) => [p.guid, p.name]),
+  ]);
   const duration = Number(report.duration) || 0;
   const possible = 1 + Math.floor(duration / 300);
   const usedInCombat = new Map(
     (report.defensives?.players || []).map((p) => [p.name, p.combatPotions || 0]),
   );
+  // Imported pulls: potion casts counted from Warcraft Logs.
+  Object.entries(report.combatPotionsUsed || {}).forEach(([name, n]) => usedInCombat.set(name, n));
 
   const players = raw.players.map((p) => {
     const found = { food: null, flask: null, augment: null, vantus: null, potion: null };
