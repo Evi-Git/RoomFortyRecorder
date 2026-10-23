@@ -246,6 +246,10 @@ export const createPullDesk = (options) => {
   };
 
   const canView = async (req) => (can ? can(req, 'analysisView') : true);
+  // Owner-only tools (whole-tier import). Without the permissions module
+  // (tests), editors.
+  const ownerOnly = async (req) =>
+    options.isOwner ? options.isOwner(req.cloudUserId) && !req.headers?.['x-view-as-role'] : canEdit(req);
   const canEdit = async (req) => {
     if (can) return can(req, 'analysisEdit');
     if (editorRoles.length === 0) return true;
@@ -1149,7 +1153,10 @@ export const createPullDesk = (options) => {
       return json(res, 200, {
         canView: await canView(req),
         canEdit: await canEdit(req),
+        owner: await ownerOnly(req),
         trackedDifficulties: [...trackedDifficulties],
+        // Non-Mythic bosses shown in Progression / Reclears (null: not set).
+        progressionShown: Array.isArray(index.settings.progressionShown) ? index.settings.progressionShown : null,
       });
     }
 
@@ -1193,6 +1200,23 @@ export const createPullDesk = (options) => {
     if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
     if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
 
+    if (first === 'progression-list' && req.method === 'PUT') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      const body = await readBody(req, 16 * 1024);
+      const list = Array.isArray(body?.shown) ? body.shown : [];
+      index.settings.progressionShown = [
+        ...new Set(list.map(String).filter((k) => /^\d+:\d+$/.test(k))),
+      ].slice(0, 200);
+      await persist();
+      return json(res, 200, { progressionShown: index.settings.progressionShown });
+    }
+
+    if (first === 'import' && second === 'guild' && !(await ownerOnly(req))) {
+      return fail(res, 403, 'Only the owner can import a whole tier');
+    }
+    if (first === 'import' && second === 'tier' && !(await ownerOnly(req))) {
+      return fail(res, 403, 'Only the owner can import a whole tier');
+    }
     if (first === 'import' && second === 'guild' && req.method === 'GET') {
       return json(res, 200, {
         guild: index.settings.wclGuild || { name: env.GUILD_CLOUD_GUILD || 'Room Forty', realm: '', region: 'us' },

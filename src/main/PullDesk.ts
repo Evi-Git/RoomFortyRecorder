@@ -81,6 +81,7 @@ export type PullDeskRequest =
       months: number;
     }
   | { action: 'importTier'; codes: string[] }
+  | { action: 'setProgressionList'; shown: string[] }
   | { action: 'journalBoss'; encounterId: number; difficultyId?: number }
   | {
       action: 'journalSpell';
@@ -541,6 +542,10 @@ export default class PullDesk {
           'delete',
           `/coach/flags/${id(request.id)}`,
         );
+      case 'setProgressionList':
+        return client.pullDeskRequest('put', '/progression-list', {
+          shown: request.shown,
+        });
       case 'importGuild':
         return client.pullDeskRequest('get', '/import/guild');
       case 'importScan':

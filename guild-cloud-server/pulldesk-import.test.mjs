@@ -172,3 +172,32 @@ test('whole-tier import: find the guild, group reports by zone, import in the ba
   assert.equal(res.body.counts.progression, 3);
   assert.ok(prog.status === 200);
 });
+
+test('whole-tier import is owner-only; the Progression list setting saves', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'pd-owner-'));
+  const desk = createPullDesk({
+    storage,
+    readBody: async (req) => req.body || {},
+    json: (res, status, body) => Object.assign(res, { status, body }),
+    fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
+    memberRoleNames: async () => ['officer'],
+    botToken: '',
+    env: {},
+    wcl: { configured: true, query: async () => ({}) },
+    isOwner: (id) => id === '99',
+  });
+  await desk.ready();
+  const call = async (who, method, rest, body, headers = {}) => {
+    const res = {};
+    await desk.handle({ method, body, headers, cloudUserId: who, cloudUserName: who }, res, rest, new URL('http://x/'));
+    return res;
+  };
+  assert.equal((await call('1', 'GET', ['import', 'guild'])).status, 403);
+  assert.equal((await call('1', 'POST', ['import', 'tier'], { codes: ['aBcD1234EfGh5678'] })).status, 403);
+  assert.equal((await call('99', 'GET', ['import', 'guild'])).status, 200);
+  assert.equal((await call('99', 'GET', ['import', 'guild'], undefined, { 'x-view-as-role': 'trial' })).status, 403);
+  assert.equal((await call('99', 'GET', ['config'])).body.owner, true);
+  assert.equal((await call('1', 'GET', ['config'])).body.progressionShown, null);
+  await call('1', 'PUT', ['progression-list'], { shown: ['3180:15', 'bad', '3180:15'] });
+  assert.deepEqual((await call('1', 'GET', ['config'])).body.progressionShown, ['3180:15']);
+});

@@ -1050,6 +1050,7 @@ const pullDesk = createPullDesk({
   botToken: DISCORD_BOT_TOKEN,
   env: process.env,
   can: permissions.can,
+  isOwner: permissions.isOwner,
 });
 
 // A public /link/<id> page for a video (Discord embeds it as a player).
