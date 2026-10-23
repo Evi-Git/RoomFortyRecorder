@@ -1435,7 +1435,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
 
   const renderControls = () => {
     return (
-      <div className="w-full h-10 flex flex-row justify-center items-center bg-background-dark-gradient-to border border-background-dark-gradient-to px-1 py-2 rounded-br-sm">
+      // [RoomFortyRecorder] Scrolls sideways instead of widening the page
+      // when the window is narrow (e.g. with the viewpoints drawer open).
+      <div
+        className="w-full min-w-0 h-10 flex flex-row justify-start items-center overflow-x-auto overflow-y-hidden bg-background-dark-gradient-to border border-background-dark-gradient-to px-1 py-2 rounded-br-sm [&>*]:shrink-0"
+        style={{ scrollbarWidth: 'none' }}
+      >
         {renderPlayPause()}
         {renderVolumeButton()}
         {renderVolumeSlider()}
@@ -1642,7 +1647,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   return (
-    <div id="player-and-controls" className="w-full h-full flex flex-col">
+    <div
+      id="player-and-controls"
+      className="w-full min-w-0 h-full flex flex-col"
+    >
       <div className="flex-1 min-h-0">
         <div className="w-full h-full relative">
           <div className={playerDivClass}>{srcs.map(renderPlayer)}</div>
