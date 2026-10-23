@@ -4,7 +4,7 @@ import { getSpecClass, getWoWClassColor } from './rendererutils';
 /**
  * [RoomFortyRecorder] Consumables & buffs: what raiders had at each pull
  * (food, flask, augment rune, weapon oil, vantus, pre-pot), combat potions
- * used of those possible, raid buffs, and missing enchants or gems. Built
+ * used of those possible, raid buffs, and missing enchants. Built
  * by the guild server from the combat log (guild-cloud-server/consumables.mjs).
  *
  * Night summary and Progression show the raid grid (rates over pulls); a
@@ -83,11 +83,6 @@ const CHECKS: { key: Check; label: string; help: string }[] = [
     help: 'An oil or stone on the main-hand weapon',
   },
   { key: 'vantus', label: 'Vantus', help: 'The boss’s vantus rune' },
-  {
-    key: 'prepot',
-    label: 'Pre-pot',
-    help: 'A combat potion active at the pull',
-  },
 ];
 
 const GOOD = '#5CC48A';
@@ -270,18 +265,6 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
             note: e.ok ? 'Enchanted' : 'Missing',
           }))}
       />
-      <GearStrip
-        title="Gems"
-        items={r.gems
-          .filter((g) => g.equipped)
-          .map((g) => ({
-            slot: g.slot,
-            state: g.count ? 'ok' : 'none',
-            note: g.count
-              ? `${g.count} gem${g.count > 1 ? 's' : ''}`
-              : 'No gem',
-          }))}
-      />
       <section className="flex flex-col gap-y-2">
         <h4 className="text-sm font-semibold text-brand">Consumables</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
@@ -363,7 +346,6 @@ const RaidGrid = ({
     if (key === 'name') return 0;
     if (key === 'pots') return pctOf(r.potsUsed, r.potsPossible);
     if (key === 'enchants') return -r.enchantsMissing;
-    if (key === 'gems') return -r.gemsMissing;
     return pctOf(r[key as Check], r.pulls);
   };
   const rows = [...data.raiders].sort(
@@ -401,7 +383,7 @@ const RaidGrid = ({
 
   return (
     <div className="flex flex-col gap-y-3">
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-2">
         {tiles.map((tile) => {
           const tn = tone(tile.pct);
           return (
@@ -443,7 +425,6 @@ const RaidGrid = ({
               {CHECKS.map((c) => header(c.key, c.label, c.help))}
               {header('pots', 'Combat pots', 'Used of possible')}
               {header('enchants', 'Enchants', 'Slots missing an enchant')}
-              {header('gems', 'Gems', 'Gem slots with no gem')}
             </tr>
           </thead>
           <tbody>
@@ -493,9 +474,6 @@ const RaidGrid = ({
                       r.enchantsMissing ? `${r.enchantsMissing} missing` : 'All'
                     }
                   />
-                </td>
-                <td className="px-1.5 py-1 text-xs text-foreground tabular-nums">
-                  {r.gemsMissing ? `${r.gemsMissing} without` : '–'}
                 </td>
               </tr>
             ))}
