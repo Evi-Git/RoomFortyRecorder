@@ -294,8 +294,8 @@ const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
     label: 'Defensives',
     title: 'Personal and external defensives used',
   },
-  { key: 'potions', label: 'Pots', title: 'Health potions' },
-  { key: 'healthstones', label: 'Stones', title: 'Healthstones' },
+  { key: 'potions', label: 'Health pots', title: 'Health potions used' },
+  { key: 'healthstones', label: 'Healthstones', title: 'Healthstones used' },
 ];
 
 const sortValue = (r: Raider, key: SortKey) => {

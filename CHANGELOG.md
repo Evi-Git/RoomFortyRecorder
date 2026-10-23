@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.14] - Unreleased
+### Changed
+- Pull desk raider tables: the "Pots" and "Stones" columns are now "Health pots" and "Healthstones".
+
 ## [1.9.13] - Unreleased
 ### Fixed
 - **Flex Mythic raids (Kith'ix)** now count in the Pull desk. WoW gives flex Mythic (10-30 players) its own difficulty ID (233), which the Pull desk didn't know, so those pulls were never captured, refused by the server and skipped by the combat log scan. They're now tracked and shown as Mythic.
