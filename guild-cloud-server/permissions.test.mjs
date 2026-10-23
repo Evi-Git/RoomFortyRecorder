@@ -17,6 +17,7 @@ const setup = async (env = {}) => {
       { id: 'a', name: 'Officer', position: 3, color: 0 },
       { id: 'b', name: 'Raider', position: 2, color: 0 },
       { id: 'c', name: 'Trial', position: 1, color: 0 },
+      { id: 'd', name: 'Evi', position: 9, color: 0 },
     ],
   });
   const res = () => ({});
@@ -62,9 +63,17 @@ test('only the owner reads and saves the table; saved grants apply', async () =>
   assert.equal((await call('1', 'GET', [])).status, 403);
   const table = await call('99999', 'GET', []);
   assert.equal(table.status, 200);
+  // The owner is "99999" here; as "Evi", their own role is left out.
+  const asEvi = await perms.handle(
+    { method: 'GET', headers: {}, cloudUserId: '99999', cloudUserName: 'Evi' },
+    {},
+    [],
+    { readBody: async () => ({}), json: (r, status, body) => Object.assign(r, { status, body }), fail: () => {} },
+  );
+  assert.ok(!asEvi.body.roles.some((r) => r.name === 'Evi'));
   assert.ok(table.body.columns.includes('trial'));
   assert.ok(table.body.columns.includes(EVERYONE));
-  assert.equal(table.body.roles.length, 3);
+  assert.equal(table.body.roles.length, 4);
   const grants = Object.fromEntries(table.body.capabilities.map((c) => [c.key, c.grants]));
   grants.liveWatch = ['Trial', 'raider+', 'officer'];
   const put = await call('99999', 'PUT', [], { grants, columns: ['officer', 'raider', 'trial', 'trial'] });

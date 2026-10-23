@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.20] - Unreleased
+### Changed
+- **Avoidable damage:** each raider row has a damage bar and the exact damage taken. A switch next to each raider leaves them out of that ability's totals (e.g. a tank soaking it on purpose); totals, raiders hit and pulls update, and anyone left out moves to the bottom, faded. "Include everyone" resets it.
+- The Combat pots column and the Admin page's potion list are removed; a consumables and buffs view is coming instead.
+- Admin: your own personal role (the one named like you) isn't a column; the "You" column covers it.
+
+### Fixed
+- An ability card showed "Add to avoidable" for an ability already added from the Journal under its other spell ID (Venom Roar). Cards now match by name, and turning it off from either removes it.
+
 ## [1.9.19] - Unreleased
 ### Added
 - **Admin page** (owner only, under Settings): a table of what each Discord role can see and do. It covers seeing and editing Analysis, the top-guild watcher, watching live, sending clips to your own or any channel, editing personal channels, editing anyone's flags, and the recruiting page. You always have everything and aren't in the table. Add or hide role columns, Save, or reset to the .env defaults. Until you save, everything works exactly as before (the defaults come from the existing `*_ROLES` settings).

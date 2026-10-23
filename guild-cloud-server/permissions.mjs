@@ -234,6 +234,10 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
     } catch (error) {
       roleError = error.message;
     }
+    // The owner's own role (named like them, e.g. "Evi") isn't a column:
+    // the "You" column already covers it.
+    const personal = String(req.cloudUserName ?? '').trim().toLowerCase();
+    roleList = roleList.filter((r) => r.name.toLowerCase() !== personal);
     const roleNames = roleList.map((r) => r.name.toLowerCase());
 
     if (!first && req.method === 'GET') {
@@ -246,7 +250,7 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
           defaults,
           grants: grantsFor(key),
         })),
-        columns: columnsOf(roleNames),
+        columns: columnsOf(roleNames).filter((c) => c !== personal),
         roles: roleList,
         roleError,
         customized: Boolean(saved),

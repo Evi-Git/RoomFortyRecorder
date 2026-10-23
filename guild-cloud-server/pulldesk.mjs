@@ -824,10 +824,13 @@ export const createPullDesk = (options) => {
     const id = Number(body.spellId);
     if (!Number.isInteger(id) || id <= 0) return fail(res, 400, 'Invalid spell ID');
     const settings = bossSettings(encounterId);
-    const without = settings.avoidable.filter((spell) => spell.id !== id);
-    settings.avoidable = body.on
-      ? [...without, { id, name: typeof body.name === 'string' ? body.name.slice(0, 100) : null }]
-      : without;
+    const name = typeof body.name === 'string' ? body.name.slice(0, 100) : null;
+    // Off removes the ability under any of its IDs (the journal's cast ID
+    // and the IDs it hits as share a name).
+    const same = (spell) =>
+      spell.id === id || (!body.on && name && spell.name && norm(spell.name) === norm(name));
+    const without = settings.avoidable.filter((spell) => !same(spell));
+    settings.avoidable = body.on ? [...without, { id, name }] : without;
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
     const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
@@ -918,6 +921,7 @@ export const createPullDesk = (options) => {
         (wantedName ? stats.find((s) => norm(s.name) === norm(wantedName)) : null) ||
         null;
       const avoidable = encounterId ? bossSettings(encounterId).avoidable : [];
+      const cardNames = [section?.title, info?.name, wantedName].filter(Boolean).map(norm);
       return json(res, 200, {
         configured: journal.configured,
         spellId,
@@ -928,7 +932,11 @@ export const createPullDesk = (options) => {
         source: info?.text ? 'tooltip' : section?.text ? 'journal' : null,
         tags: section?.tags || [],
         stats: stat,
-        avoidable: avoidable.some((a) => a.id === spellId),
+        // On the list by this ID, or by name (added from the journal under
+        // its cast ID while this card is for an ID it hits as).
+        avoidable: avoidable.some(
+          (a) => a.id === spellId || (a.name && cardNames.includes(norm(a.name))),
+        ),
         error,
       });
     }

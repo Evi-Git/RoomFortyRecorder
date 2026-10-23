@@ -125,7 +125,7 @@ test('avoidable section: per ability (all its spell IDs), raiders, deaths', () =
   assert.equal(roar.pulls, 2);
   assert.equal(roar.raidersHit, 2);
   assert.equal(roar.deaths, 1);
-  assert.deepEqual(roar.raiders[0], { name: 'Mage', hits: 4, damage: 400, deaths: 1 });
+  assert.deepEqual(roar.raiders[0], { name: 'Mage', hits: 4, damage: 400, deaths: 1, pulls: [0, 1] });
   // Crush isn't avoidable: not in the section.
   assert.equal(boss.avoidable.length, 1);
   assert.equal(summarizeProgression(pulls).avoidable[0].hits, 5);

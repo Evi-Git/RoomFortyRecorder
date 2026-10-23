@@ -98,12 +98,17 @@ export const avoidableOf = (pulls) => {
     return byName.get(name);
   };
   const raider = (a, name) => {
-    if (!a.raiders.has(name)) a.raiders.set(name, { name, hits: 0, damage: 0, deaths: 0 });
+    // `pulls`: which pulls (by index) they were hit in, so the app can
+    // recount pulls when some raiders are left out.
+    if (!a.raiders.has(name)) a.raiders.set(name, { name, hits: 0, damage: 0, deaths: 0, pulls: [] });
     return a.raiders.get(name);
   };
-  pulls.forEach(({ report }) => {
+  pulls.forEach(({ report }, index) => {
     if (!report) return;
     const seen = new Set();
+    const mark = (r) => {
+      if (r.pulls[r.pulls.length - 1] !== index) r.pulls.push(index);
+    };
     (report.avoidable || []).forEach((row) => {
       (row.spells || []).forEach((sp) => {
         const name = sp.spellName || `Spell ${sp.spellId}`;
@@ -115,6 +120,7 @@ export const avoidableOf = (pulls) => {
         const r = raider(a, row.name);
         r.hits += sp.hits || 0;
         r.damage += sp.damage || 0;
+        mark(r);
       });
     });
     seen.forEach((name) => {
@@ -126,7 +132,9 @@ export const avoidableOf = (pulls) => {
       if (!name || !byName.has(name)) return;
       const a = byName.get(name);
       a.deaths += 1;
-      raider(a, d.name).deaths += 1;
+      const r = raider(a, d.name);
+      r.deaths += 1;
+      mark(r);
     });
   });
   return [...byName.values()]
