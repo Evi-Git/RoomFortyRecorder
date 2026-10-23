@@ -46,7 +46,6 @@ type Raider = {
   defensives: number;
   potions: number;
   healthstones: number;
-  combatPotions?: number;
   earlyDeathCauses: Record<string, number>;
 };
 
@@ -58,7 +57,14 @@ type AvoidableRow = {
   deaths: number;
   pulls: number;
   raidersHit: number;
-  raiders: { name: string; hits: number; damage: number; deaths: number }[];
+  raiders: {
+    name: string;
+    hits: number;
+    damage: number;
+    deaths: number;
+    // Indexes of the pulls they were hit in (newer servers).
+    pulls?: number[];
+  }[];
 };
 
 type PullRow = {
@@ -281,8 +287,7 @@ type SortKey =
   | 'avoidableHits'
   | 'defensives'
   | 'potions'
-  | 'healthstones'
-  | 'combatPotions';
+  | 'healthstones';
 
 const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
   { key: 'name', label: 'Raider', title: 'Raider' },
@@ -316,16 +321,10 @@ const RAIDER_COLUMNS: { key: SortKey; label: string; title: string }[] = [
   },
   { key: 'potions', label: 'Health pots', title: 'Health potions used' },
   { key: 'healthstones', label: 'Healthstones', title: 'Healthstones used' },
-  {
-    key: 'combatPotions',
-    label: 'Combat pots',
-    title: "Combat potions used (e.g. Light's Potential, any quality)",
-  },
 ];
 
 const sortValue = (r: Raider, key: SortKey) => {
   if (key === 'rate') return r.pulls ? r.earlyDeaths / r.pulls : 0;
-  if (key === 'combatPotions') return r.combatPotions ?? 0;
   return r[key];
 };
 
@@ -471,7 +470,6 @@ const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
                 {cell(r.defensives)}
                 {cell(r.potions)}
                 {cell(r.healthstones)}
-                {cell(r.combatPotions ?? 0)}
               </tr>
             ))}
           </tbody>
@@ -494,16 +492,163 @@ const compact = (n: number) =>
         ? `${Math.round(n / 1e3)}K`
         : String(n);
 
+type AvoidableRaider = AvoidableRow['raiders'][number];
+
+/** One ability's totals from the raiders still included. */
+const avoidableTotals = (row: AvoidableRow, out: Set<string> | undefined) => {
+  if (!out || out.size === 0) return row;
+  const kept = row.raiders.filter((r) => !out.has(r.name));
+  const pulls = new Set(kept.flatMap((r) => r.pulls ?? []));
+  return {
+    ...row,
+    hits: kept.reduce((n, r) => n + r.hits, 0),
+    damage: kept.reduce((n, r) => n + r.damage, 0),
+    deaths: kept.reduce((n, r) => n + r.deaths, 0),
+    raidersHit: kept.filter((r) => r.hits > 0).length,
+    pulls: pulls.size,
+  };
+};
+
+const Bar = ({
+  value,
+  max,
+  height,
+  muted,
+}: {
+  value: number;
+  max: number;
+  height: number;
+  muted?: boolean;
+}) => (
+  <span
+    className="rounded-r-[4px] shrink-0"
+    style={{
+      width: `${(value / Math.max(1, max)) * 70}%`,
+      minWidth: value ? 4 : 0,
+      height,
+      background: BRAND,
+      opacity: muted ? 0.55 : 1,
+    }}
+  />
+);
+
 /**
  * Avoidable damage, compiled: one row per avoidable ability (every spell ID
- * it hits as), with who got hit; click a row for its raiders.
+ * it hits as); open a row for its raiders. Each raider can be left out of
+ * that ability's totals (e.g. the tank soaking it on purpose).
  */
-const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
+export const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
   const [open, setOpen] = React.useState<string | null>(null);
+  // Ability name -> raiders left out of its totals.
+  const [excluded, setExcluded] = React.useState<Record<string, string[]>>({});
   if (!rows) return null;
-  const max = Math.max(1, ...rows.map((r) => r.damage));
+
+  const outOf = (name: string) =>
+    excluded[name]?.length ? new Set(excluded[name]) : undefined;
+  const shown = rows
+    .map((row) => ({ row, totals: avoidableTotals(row, outOf(row.name)) }))
+    .sort((a, b) => b.totals.damage - a.totals.damage);
+  const max = Math.max(1, ...shown.map((s) => s.totals.damage));
+  const leftOut = Object.values(excluded).reduce((n, l) => n + l.length, 0);
+
+  const toggleRaider = (ability: string, raider: string) =>
+    setExcluded((prev) => {
+      const list = prev[ability] ?? [];
+      return {
+        ...prev,
+        [ability]: list.includes(raider)
+          ? list.filter((r) => r !== raider)
+          : [...list, raider],
+      };
+    });
+
+  const numberCell = (value: number, muted: boolean, red = false) => (
+    <td
+      className={`px-2 py-1 text-right tabular-nums ${
+        red && value ? 'text-red-400' : value ? '' : 'text-foreground/50'
+      } ${muted ? 'opacity-40' : ''}`}
+    >
+      {value}
+    </td>
+  );
+
+  const raiderRows = (row: AvoidableRow) => {
+    const out = outOf(row.name);
+    const ordered = [...row.raiders].sort(
+      (a, b) =>
+        Number(out?.has(a.name) ?? false) - Number(out?.has(b.name) ?? false) ||
+        b.damage - a.damage ||
+        b.hits - a.hits,
+    );
+    const top = Math.max(1, ...row.raiders.map((r) => r.damage));
+    return ordered.map((r: AvoidableRaider) => {
+      const off = Boolean(out?.has(r.name));
+      return (
+        <tr
+          key={`${row.name}:${r.name}`}
+          className="border-b border-card/20 text-xs"
+        >
+          <td className="pl-6 pr-2 py-0.5">
+            <label
+              className={`inline-flex items-center gap-x-2 cursor-pointer ${
+                off ? 'opacity-40' : ''
+              }`}
+              title={
+                off
+                  ? 'Left out of this ability’s totals. Click to include.'
+                  : 'Counted. Click to leave out of this ability’s totals.'
+              }
+            >
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!off}
+                onChange={() => toggleRaider(row.name, r.name)}
+                className="w-3.5 h-3.5 accent-[hsl(var(--brand))] cursor-pointer"
+              />
+              <span className="text-foreground-lighter">{r.name}</span>
+            </label>
+          </td>
+          <td className={`px-2 py-0.5 ${off ? 'opacity-40' : ''}`}>
+            <span className="flex items-center gap-x-2">
+              <Bar value={r.damage} max={top} height={8} muted />
+              <span
+                className="tabular-nums text-foreground"
+                title={`${r.damage.toLocaleString()} damage`}
+              >
+                {r.damage.toLocaleString()}
+              </span>
+            </span>
+          </td>
+          {numberCell(r.hits, off)}
+          <td />
+          <td
+            className={`px-2 py-0.5 text-right tabular-nums text-foreground ${
+              off ? 'opacity-40' : ''
+            }`}
+          >
+            {r.pulls?.length ?? ''}
+          </td>
+          {numberCell(r.deaths, off, true)}
+        </tr>
+      );
+    });
+  };
+
   return (
-    <Panel title="Avoidable damage">
+    <Panel
+      title="Avoidable damage"
+      aside={
+        leftOut > 0 ? (
+          <>
+            <span className="text-xs text-foreground">{leftOut} left out</span>
+            <Button size="xs" variant="ghost" onClick={() => setExcluded({})}>
+              Include everyone
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
       {!rows.length ? (
         <p className="text-sm text-foreground">
           No avoidable hits. Mark abilities as avoidable from their hover card
@@ -515,7 +660,7 @@ const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
             <thead className="text-xs text-foreground border-b border-card">
               <tr>
                 <th className="px-2 py-1 font-normal text-left">Ability</th>
-                <th className="px-2 py-1 font-normal text-left w-[30%]">
+                <th className="px-2 py-1 font-normal text-left w-[34%]">
                   Damage taken
                 </th>
                 <th className="px-2 py-1 font-normal text-right">Hits</th>
@@ -540,8 +685,9 @@ const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {shown.map(({ row, totals }) => {
                 const expanded = open === row.name;
+                const out = excluded[row.name]?.length ?? 0;
                 return (
                   <React.Fragment key={row.name}>
                     <tr
@@ -560,74 +706,39 @@ const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
                             spellId={row.spellIds[0]}
                             className="text-foreground-lighter"
                           />
+                          {out > 0 && (
+                            <span className="ml-1 text-[11px] text-foreground">
+                              ({out} left out)
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="px-2 py-1">
                         <span className="flex items-center gap-x-2">
+                          <Bar value={totals.damage} max={max} height={12} />
                           <span
-                            className="h-[12px] rounded-r-[4px]"
-                            style={{
-                              width: `${(row.damage / max) * 80}%`,
-                              minWidth: 4,
-                              background: BRAND,
-                            }}
-                          />
-                          <span className="tabular-nums text-foreground">
-                            {compact(row.damage)}
+                            className="tabular-nums text-foreground"
+                            title={`${totals.damage.toLocaleString()} damage`}
+                          >
+                            {compact(totals.damage)}
                           </span>
                         </span>
                       </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {row.hits}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {row.raidersHit}
-                      </td>
-                      <td className="px-2 py-1 text-right tabular-nums">
-                        {row.pulls}
-                      </td>
-                      <td
-                        className={`px-2 py-1 text-right tabular-nums ${
-                          row.deaths ? 'text-red-400' : 'text-foreground/50'
-                        }`}
-                      >
-                        {row.deaths}
-                      </td>
+                      {numberCell(totals.hits, false)}
+                      {numberCell(totals.raidersHit, false)}
+                      {numberCell(totals.pulls, false)}
+                      {numberCell(totals.deaths, false, true)}
                     </tr>
-                    {expanded &&
-                      row.raiders.map((r) => (
-                        <tr
-                          key={`${row.name}:${r.name}`}
-                          className="border-b border-card/20 text-xs"
-                        >
-                          <td className="pl-8 pr-2 py-0.5 text-foreground-lighter">
-                            {r.name}
-                          </td>
-                          <td className="px-2 py-0.5 tabular-nums text-foreground">
-                            {compact(r.damage)}
-                          </td>
-                          <td className="px-2 py-0.5 text-right tabular-nums">
-                            {r.hits}
-                          </td>
-                          <td />
-                          <td />
-                          <td
-                            className={`px-2 py-0.5 text-right tabular-nums ${
-                              r.deaths ? 'text-red-400' : 'text-foreground/50'
-                            }`}
-                          >
-                            {r.deaths}
-                          </td>
-                        </tr>
-                      ))}
+                    {expanded && raiderRows(row)}
                   </React.Fragment>
                 );
               })}
             </tbody>
           </table>
           <p className="text-xs text-foreground mt-2">
-            Counts every spell ID an avoidable ability hits as (by name). Click
-            a row to see who got hit.
+            Counts every spell ID an avoidable ability hits as (by name). Open a
+            row to see who got hit; untick someone to leave them out of that
+            ability&apos;s totals (they move to the bottom).
           </p>
         </div>
       )}
@@ -700,7 +811,10 @@ const BossNightCard = ({
           </Panel>
         </div>
 
-        <AvoidablePanel rows={boss.avoidable} />
+        <AvoidablePanel
+          key={`${boss.encounterId}:${boss.difficultyId}`}
+          rows={boss.avoidable}
+        />
 
         <Panel
           title={`Pulls (${boss.pulls})`}
@@ -1846,7 +1960,10 @@ export const ProgressionView = ({
               </Panel>
             </div>
 
-            <AvoidablePanel rows={data.avoidable} />
+            <AvoidablePanel
+              key={`${data.encounterId}:${data.difficultyId}`}
+              rows={data.avoidable}
+            />
 
             <Panel title="Raiders, all nights">
               <RaiderTable raiders={data.raiders} />

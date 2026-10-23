@@ -1,7 +1,6 @@
 import React from 'react';
 import { Check, Eye, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { Button } from './components/Button/Button';
-import { Textarea } from './components/TextArea/textarea';
 import {
   refreshPermissions,
   setViewAs,
@@ -10,8 +9,8 @@ import {
 
 /**
  * [RoomFortyRecorder] Admin page, for the owner only (GUILD_CLOUD_OWNER_IDS
- * on the guild server): who can see and do what per Discord role, "view as"
- * a role, and the combat potion list.
+ * on the guild server): who can see and do what per Discord role, and
+ * "view as" a role.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -75,8 +74,6 @@ const AdminPage = () => {
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState('');
   const [viewRole, setViewRole] = React.useState('');
-  const [potions, setPotions] = React.useState<string | null>(null);
-  const [potionsSaved, setPotionsSaved] = React.useState('');
   const [tick, setTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -97,15 +94,6 @@ const AdminPage = () => {
       setColumns(response.data.columns);
       setDirty(false);
     });
-    call<{ combatPotions: string[] }>({ action: 'settings' }).then(
-      (response) => {
-        if (!cancelled && response.ok) {
-          const text = (response.data.combatPotions ?? []).join('\n');
-          setPotions(text);
-          setPotionsSaved(text);
-        }
-      },
-    );
     return () => {
       cancelled = true;
     };
@@ -176,29 +164,6 @@ const AdminPage = () => {
   const startViewAs = async (role: string | null) => {
     const response = await setViewAs(role);
     if (!response.ok) setError(response.error);
-  };
-
-  const savePotions = async () => {
-    const list = (potions ?? '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    setBusy(true);
-    const response = await call<{ settings: { combatPotions: string[] } }>({
-      action: 'setSettings',
-      combatPotions: list,
-    });
-    setBusy(false);
-    if (!response.ok) {
-      setError(response.error);
-      return;
-    }
-    const text = response.data.settings.combatPotions.join('\n');
-    setPotions(text);
-    setPotionsSaved(text);
-    setNotice(
-      'Combat potions saved. Pulls are being rechecked in the background.',
-    );
   };
 
   if (permissions && !permissions.owner) {
@@ -457,35 +422,6 @@ const AdminPage = () => {
             can sign in at all is still set by GUILD_CLOUD_DISCORD_ALLOWED_ROLES
             on the server.
           </p>
-        </Card>
-
-        <Card title="Combat potions">
-          <p className="text-sm text-foreground m-0">
-            Counted per raider (the &ldquo;Combat pots&rdquo; column) and shown
-            in a pull&apos;s Defensives. One name per line, as it appears in the
-            combat log; every quality and the cauldron version share the name.
-          </p>
-          {potions === null ? (
-            <p className="text-sm text-foreground">Loading…</p>
-          ) : (
-            <>
-              <Textarea
-                value={potions}
-                rows={4}
-                onChange={(e) => setPotions(e.target.value)}
-                className="max-w-[420px] font-mono text-sm"
-              />
-              <div>
-                <Button
-                  size="sm"
-                  disabled={busy || potions === potionsSaved}
-                  onClick={savePotions}
-                >
-                  Save potions
-                </Button>
-              </div>
-            </>
-          )}
         </Card>
       </div>
     </div>

@@ -188,7 +188,11 @@ test('pull desk journal routes: boss view, ability card, avoidable toggle, journ
   const on = await call('PUT', ['bosses', '3500', 'avoidable-toggle'], { spellId: 1250001, name: 'Digestive Juices', on: true });
   assert.deepEqual(on.body.avoidable, [{ id: 1250001, name: 'Digestive Juices' }]);
   assert.equal((await call('GET', ['journal', 'spell', '1250001'], undefined, '?encounterId=3500')).body.avoidable, true);
-  const off = await call('PUT', ['bosses', '3500', 'avoidable-toggle'], { spellId: 1250001, on: false });
+  // A card for another ID the ability hits as (same name) shows it as on the
+  // list, and turning it off there removes the journal's entry.
+  const hitCard = await call('GET', ['journal', 'spell', '1250999'], undefined, '?encounterId=3500&name=Digestive%20Juices');
+  assert.equal(hitCard.body.avoidable, true);
+  const off = await call('PUT', ['bosses', '3500', 'avoidable-toggle'], { spellId: 1250999, name: 'Digestive Juices', on: false });
   assert.deepEqual(off.body.avoidable, []);
 
   const set = await call('PUT', ['bosses', '3500', 'journal'], { journalId: 'https://wowjournal.example/#encounter=2896' });
