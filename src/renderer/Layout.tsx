@@ -15,6 +15,7 @@ import CategoryPage from './CategoryPage';
 import InstantReplay from './InstantReplay';
 import LivePage from './LivePage';
 import AdminPage from './AdminPage';
+import { LogsPage } from './Meters';
 import PullDeskPage from './PullDeskPage';
 
 interface IProps {
@@ -118,6 +119,7 @@ const Layout = (props: IProps) => {
       {page === Pages.InstantReplay && renderInstantReplay()}
       {page === Pages.Live && <LivePage />}
       {page === Pages.Admin && <AdminPage />}
+      {page === Pages.Logs && <LogsPage />}
       {page === Pages.PullDesk && (
         <PullDeskPage
           videoState={videoState}

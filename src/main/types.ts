@@ -352,6 +352,7 @@ enum Pages {
   'Live',
   'PullDesk',
   'Admin',
+  'Logs',
 }
 
 /**

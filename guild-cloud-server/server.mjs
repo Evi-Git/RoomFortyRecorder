@@ -1554,7 +1554,7 @@ const handleLink = async (res, id, startAt) => {
   if (!(await r2Exists(link.key))) return text(res, 404, 'Video not found');
 
   const video = state.videos.find((entry) => entry.videoKey === link.key);
-  const title = video?.videoName || 'Bellhop video';
+  const title = video?.videoName || 'Room Forty Toolkit video';
   // ?t=151 starts the page's player at 2:31 (sent coaching clips use it).
   const start = Math.floor(Number(startAt));
   const source = `/link/${encodeURIComponent(id)}/video${

@@ -43,6 +43,10 @@ const setup = async () => {
   return { call };
 };
 
+// What 1.9.30+ apps send: the filtered log plus the app's meters line.
+const METERS = { v: 2, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
+const withMeters = `${slice}ROOMFORTY_METERS ${JSON.stringify(METERS)}\n`;
+
 test('backfill a pull from a saved log, then skip it the second time', async () => {
   const { call } = await setup();
   const startedAt = Date.parse('2026-10-21T20:05:00');
@@ -52,7 +56,7 @@ test('backfill a pull from a saved log, then skip it the second time', async () 
   assert.equal(first.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.upload, true);
 
-  const uploaded = await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(slice));
+  const uploaded = await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(withMeters));
   assert.equal(uploaded.status, 200, JSON.stringify(uploaded.body));
   assert.equal(uploaded.body.status, 'ready');
 
@@ -95,7 +99,7 @@ test('automatic backfill: check finds only missing pulls; one raider at a time',
   assert.equal(busy.body.busy, true);
 
   // Once the log lands, nobody needs it.
-  await call('PUT', ['pulls', taken.body.pullId, 'log'], zlib.gzipSync(slice), '', '2');
+  await call('PUT', ['pulls', taken.body.pullId, 'log'], zlib.gzipSync(withMeters), '', '2');
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls }, '', '2')).body.missing, [1]);
 });
 
@@ -107,4 +111,24 @@ test('flex Mythic (difficulty 233, e.g. Kith\'ix) is tracked as Mythic', async (
   const taken = await call('POST', ['backfill'], { ...kithix, encounterName: "Kith'ix", duration: 61 });
   assert.equal(taken.body.upload, true);
   assert.equal(taken.body.skip, undefined);
+});
+
+test('pulls sent by older apps (no meters) are asked for again and replaced', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
+  const first = await call('POST', ['backfill'], pull);
+  await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(slice));
+  // Still wanted: it has a log but no meters.
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, [0]);
+  assert.equal((await call('GET', ['pulls', first.body.pullId, 'meters'])).status, 404);
+  const again = await call('POST', ['backfill'], pull);
+  assert.equal(again.body.upload, true);
+  assert.equal(again.body.pullId, first.body.pullId);
+  // Another meter-less log doesn't replace it; one with meters does.
+  await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(slice));
+  assert.equal((await call('GET', ['pulls', first.body.pullId, 'meters'])).status, 404);
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, [0]);
+  await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(withMeters));
+  assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
 });

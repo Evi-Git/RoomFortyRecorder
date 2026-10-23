@@ -1,4 +1,5 @@
 import PullLogFilter, { leadingFields } from './PullLogFilter';
+import PullMeters, { METERS_LINE_PREFIX } from './PullMeters';
 
 /**
  * [RoomFortyRecorder] Pull desk: collects one raid pull's combat log lines,
@@ -59,6 +60,8 @@ export default class PullLogCapture {
     difficultyId: number;
     startedAt: number;
     filter: PullLogFilter;
+    // Damage, healing... from every line, not just the kept ones.
+    meters: PullMeters;
     lines: string[];
     bytes: number;
   } | null = null;
@@ -84,6 +87,12 @@ export default class PullLogCapture {
 
     const pull = this.current;
     if (!pull) return;
+
+    try {
+      pull.meters.feed(line);
+    } catch {
+      // One odd line shouldn't lose the pull.
+    }
 
     if (pull.filter.keep(line)) {
       pull.lines.push(line);
@@ -115,6 +124,7 @@ export default class PullLogCapture {
       difficultyId: difficulty,
       startedAt: logLineEpochMs(line),
       filter: new PullLogFilter(),
+      meters: new PullMeters(logLineEpochMs(line), logLineEpochMs),
       lines: [line],
       bytes: line.length + 1,
     };
@@ -131,14 +141,23 @@ export default class PullLogCapture {
     const measured = Number(fightMs) / 1000;
     const fallback = (logLineEpochMs(line) - pull.startedAt) / 1000;
 
+    const duration = measured > 0 ? measured : Math.max(0, fallback);
+    // The meters ride along as one extra line at the end of the log.
+    let metersLine = '';
+    try {
+      metersLine = `${METERS_LINE_PREFIX}${JSON.stringify(pull.meters.finish(duration))}\n`;
+    } catch (error) {
+      console.warn('[PullLogCapture] Meters failed', String(error));
+    }
+
     this.onPull({
       encounterId: pull.encounterId,
       encounterName: pull.encounterName,
       difficultyId: pull.difficultyId,
       startedAt: pull.startedAt,
-      duration: measured > 0 ? measured : Math.max(0, fallback),
+      duration,
       result: success === '1',
-      log: `${pull.lines.join('\n')}\n`,
+      log: `${pull.lines.join('\n')}\n${metersLine}`,
       lineCount: pull.lines.length,
     });
   }

@@ -63,7 +63,7 @@ jobs:
         run: |
           version=$(node -p "require('./release/app/package.json').version")
           tag="v$version"
-          exe="release/build/Bellhop-Setup${version}.exe"
+          exe="release/build/RoomFortyToolkit-Setup${version}.exe"
           for f in "$exe" "$exe.blockmap" release/build/latest.yml; do
             if [ ! -f "$f" ]; then
               echo "::error::Missing $f after packaging."
@@ -80,7 +80,7 @@ jobs:
           else
             gh release create "$tag" "$exe" "$exe.blockmap" release/build/latest.yml \
               --draft --title "$version" --target "${{ github.sha }}" \
-              --notes "Bellhop $version. See CHANGELOG.md." -R "${{ github.repository }}"
+              --notes "Room Forty Toolkit $version. See CHANGELOG.md." -R "${{ github.repository }}"
           fi
           echo "Draft $tag is ready with the installer, blockmap and latest.yml."
 

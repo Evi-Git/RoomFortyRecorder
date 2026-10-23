@@ -28,7 +28,7 @@ import { coachCall, Flag, PersonalChannelsDialog } from './Coaching';
 import AbilityName from './AbilityCard';
 import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
-import PullMeters, { LogsView } from './Meters';
+import PullMeters from './Meters';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -308,7 +308,6 @@ const loadSection = (): Section => {
 
 type View =
   | 'pulls'
-  | 'logs'
   | 'night'
   | 'progression'
   | 'reclears'
@@ -323,7 +322,6 @@ const loadView = (): View => {
       saved === 'night' ||
       saved === 'progression' ||
       saved === 'reclears' ||
-      saved === 'logs' ||
       saved === 'compare' ||
       saved === 'journal'
     ) {
@@ -1676,7 +1674,6 @@ const PullDeskPage = (props: IProps) => {
               ['night', 'Night summary'],
               ['progression', 'Progression'],
               ['reclears', 'Reclears'],
-              ['logs', 'Logs'],
               ['compare', 'Compare'],
               ['journal', 'Journal'],
             ] as [View, string][]
@@ -1796,7 +1793,6 @@ const PullDeskPage = (props: IProps) => {
               onShowReclears={() => changeView('progression')}
             />
           )}
-          {view === 'logs' && <LogsView />}
           {view === 'journal' && <JournalView canEdit={canEdit} />}
         </div>
       )}

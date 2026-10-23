@@ -8,6 +8,7 @@ import {
   MonitorCog,
   Play,
   Radio,
+  ScrollText,
   ShieldCheck,
   Square,
   Swords,
@@ -207,6 +208,18 @@ const SideMenu = (props: IProps) => {
   // [RoomFortyRecorder] Who can see what (Admin page), from the server.
   const permissions = usePermissions();
 
+  // [RoomFortyRecorder] Meters from our own logs (Warcraft Logs-style).
+  const renderLogsTab = () => (
+    <Menu.Item value={Pages.Logs}>
+      <span className="inline-flex items-center w-full">
+        <Menu.Item.Icon>
+          <ScrollText size={18} />
+        </Menu.Item.Icon>
+        <span>Logs</span>
+      </span>
+    </Menu.Item>
+  );
+
   const renderAdminTab = () => (
     <Menu.Item value={Pages.Admin}>
       <Menu.Item.Icon>
@@ -405,7 +418,8 @@ const SideMenu = (props: IProps) => {
             initialValue={
               appState.page === Pages.InstantReplay ||
               appState.page === Pages.Live ||
-              appState.page === Pages.PullDesk
+              appState.page === Pages.PullDesk ||
+              appState.page === Pages.Logs
                 ? appState.page
                 : false
             }
@@ -415,6 +429,7 @@ const SideMenu = (props: IProps) => {
             {renderInstantReplayTab()}
             {allows(permissions, 'liveWatch') && renderLiveTab()}
             {allows(permissions, 'analysisView') && renderPullDeskTab()}
+            {allows(permissions, 'analysisView') && renderLogsTab()}
           </Menu>
         </>
 

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import PullLogCapture, { CapturedPull } from '../../parsing/PullLogCapture';
+import { METERS_LINE_PREFIX } from '../../parsing/PullMeters';
 import PullLogFilter, { leadingFields } from '../../parsing/PullLogFilter';
 
 /**
@@ -49,7 +50,30 @@ test('captures a Mythic pull and shrinks it', () => {
 
   const lines = pull.log.trim().split('\n');
   expect(lines[0]).toContain('  ENCOUNTER_START,');
-  expect(lines[lines.length - 1]).toContain('  ENCOUNTER_END,');
+  expect(lines[lines.length - 2]).toContain('  ENCOUNTER_END,');
+
+  // The meters, from every line (not just the kept ones), ride last.
+  const last = lines[lines.length - 1];
+  expect(last.startsWith(METERS_LINE_PREFIX)).toBe(true);
+  const meters = JSON.parse(last.slice(METERS_LINE_PREFIX.length));
+  expect(meters.source).toBe('app');
+  expect(meters.damage.length).toBeGreaterThanOrEqual(15);
+  expect(meters.healing.length).toBeGreaterThanOrEqual(4);
+  const top = meters.damage[0];
+  // Buckets add up to the ability totals.
+  top.abilities.forEach((a: { total: number; b: number[][] }) =>
+    expect(a.b.reduce((n, b) => n + b[1], 0)).toBe(a.total),
+  );
+  // Healers lead healing; absorbs count as healing.
+  expect(
+    meters.healing.some((h: { absorbs?: number }) => (h.absorbs ?? 0) > 0),
+  ).toBe(true);
+  // Pets count for their owner (warlock imps' Fel Firebolt).
+  expect(
+    meters.damage.some((d: { abilities: { name: string }[] }) =>
+      d.abilities.some((a) => a.name === 'Fel Firebolt'),
+    ),
+  ).toBe(true);
   expect(lines.filter((l) => l.includes('  COMBATANT_INFO,'))).toHaveLength(20);
   expect(
     lines.filter((l) =>
