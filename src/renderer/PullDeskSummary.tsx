@@ -4,6 +4,7 @@ import { BRAND } from 'renderer/brand';
 import { Ability, AbilityScope } from './AbilityCard';
 import ConsumablesPanel, { PrepSummary } from './Consumables';
 import { usePermissions } from './usePermissions';
+import MiniSwitch from './components/Switch/MiniSwitch';
 import { Button } from './components/Button/Button';
 import {
   guildKey,
@@ -108,6 +109,7 @@ type NightIndex = {
     difficultyId: number;
     pulls: number;
     kills: number;
+    firstKillAt?: number;
   }[];
 };
 
@@ -335,7 +337,13 @@ const sortValue = (r: Raider, key: SortKey) => {
 };
 
 /** One row per raider, sortable by any column. */
-const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
+const RaiderTable = ({
+  raiders,
+  leftOut,
+}: {
+  raiders: Raider[];
+  leftOut?: Set<string>;
+}) => {
   const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({
     key: 'earlyDeaths',
     desc: true,
@@ -343,6 +351,7 @@ const RaiderTable = ({ raiders }: { raiders: Raider[] }) => {
   const [role, setRole] = React.useState('all');
 
   const rows = raiders
+    .filter((r) => !leftOut?.has(r.name))
     .filter((r) => role === 'all' || r.role === role)
     .sort((a, b) => {
       const av = sortValue(a, sort.key);
@@ -545,21 +554,30 @@ const Bar = ({
  */
 export const AvoidablePanel = ({
   rows,
+  leftOut,
 }: {
   rows: AvoidableRow[] | undefined;
+  // Raiders left out everywhere (Progression filters): not listed at all.
+  leftOut?: Set<string>;
 }) => {
   const [open, setOpen] = React.useState<string | null>(null);
   // Ability name -> raiders left out of its totals.
   const [excluded, setExcluded] = React.useState<Record<string, string[]>>({});
   if (!rows) return null;
 
-  const outOf = (name: string) =>
-    excluded[name]?.length ? new Set(excluded[name]) : undefined;
+  const outOf = (name: string) => {
+    const own = excluded[name] ?? [];
+    if (!own.length && !leftOut?.size) return undefined;
+    return new Set([...own, ...(leftOut ?? [])]);
+  };
   const shown = rows
     .map((row) => ({ row, totals: avoidableTotals(row, outOf(row.name)) }))
     .sort((a, b) => b.totals.damage - a.totals.damage);
   const max = Math.max(1, ...shown.map((s) => s.totals.damage));
-  const leftOut = Object.values(excluded).reduce((n, l) => n + l.length, 0);
+  const leftOutCount = Object.values(excluded).reduce(
+    (n, l) => n + l.length,
+    0,
+  );
 
   const toggleRaider = (ability: string, raider: string) =>
     setExcluded((prev) => {
@@ -584,12 +602,15 @@ export const AvoidablePanel = ({
 
   const raiderRows = (row: AvoidableRow) => {
     const out = outOf(row.name);
-    const ordered = [...row.raiders].sort(
-      (a, b) =>
-        Number(out?.has(a.name) ?? false) - Number(out?.has(b.name) ?? false) ||
-        b.damage - a.damage ||
-        b.hits - a.hits,
-    );
+    const ordered = row.raiders
+      .filter((r) => !leftOut?.has(r.name))
+      .sort(
+        (a, b) =>
+          Number(out?.has(a.name) ?? false) -
+            Number(out?.has(b.name) ?? false) ||
+          b.damage - a.damage ||
+          b.hits - a.hits,
+      );
     const top = Math.max(1, ...row.raiders.map((r) => r.damage));
     return ordered.map((r: AvoidableRaider) => {
       const off = Boolean(out?.has(r.name));
@@ -609,12 +630,14 @@ export const AvoidablePanel = ({
                   : 'Counted. Click to leave out of this ability’s totals.'
               }
             >
-              <input
-                type="checkbox"
-                role="switch"
+              <MiniSwitch
                 checked={!off}
                 onChange={() => toggleRaider(row.name, r.name)}
-                className="w-3.5 h-3.5 accent-[hsl(var(--brand))] cursor-pointer"
+                label={
+                  off
+                    ? `Include ${r.name} in ${row.name}`
+                    : `Leave ${r.name} out of ${row.name}`
+                }
               />
               <span className="text-foreground-lighter">{r.name}</span>
             </label>
@@ -649,9 +672,11 @@ export const AvoidablePanel = ({
     <Panel
       title="Avoidable damage"
       aside={
-        leftOut > 0 ? (
+        leftOutCount > 0 ? (
           <>
-            <span className="text-xs text-foreground">{leftOut} left out</span>
+            <span className="text-xs text-foreground">
+              {leftOutCount} left out
+            </span>
             <Button size="xs" variant="ghost" onClick={() => setExcluded({})}>
               Include everyone
             </Button>
@@ -747,7 +772,7 @@ export const AvoidablePanel = ({
           </table>
           <p className="text-xs text-foreground mt-2">
             Counts every spell ID an avoidable ability hits as (by name). Open a
-            row to see who got hit; untick someone to leave them out of that
+            row to see who got hit; switch someone off to leave them out of that
             ability&apos;s totals (they move to the bottom).
           </p>
         </div>
@@ -1421,7 +1446,15 @@ const ProgressionChart = ({
 };
 
 /** Early deaths per pull, one column per night; darker brass = more. */
-const RaiderTrend = ({ data }: { data: Progression }) => {
+const RaiderTrend = ({
+  data,
+  leftOut,
+  onToggle,
+}: {
+  data: Progression;
+  leftOut: Set<string>;
+  onToggle: (name: string) => void;
+}) => {
   const [role, setRole] = React.useState('all');
   const nights = data.nights.map((n) => n.night).slice(-10);
   const rows = data.trend
@@ -1441,11 +1474,18 @@ const RaiderTrend = ({ data }: { data: Progression }) => {
       };
     })
     .filter((r) => r.pulls > 0)
-    .sort((a, b) => b.overall - a.overall || a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        Number(leftOut.has(a.name)) - Number(leftOut.has(b.name)) ||
+        b.overall - a.overall ||
+        a.name.localeCompare(b.name),
+    );
 
   const max = Math.max(
     0.25,
-    ...rows.flatMap((r) => Object.values(r.nights).map((v) => v.rate)),
+    ...rows
+      .filter((r) => !leftOut.has(r.name))
+      .flatMap((r) => Object.values(r.nights).map((v) => v.rate)),
   );
 
   return (
@@ -1484,11 +1524,25 @@ const RaiderTrend = ({ data }: { data: Progression }) => {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.name}>
+              <tr
+                key={r.name}
+                className={leftOut.has(r.name) ? 'opacity-40' : ''}
+              >
                 <td
                   className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
                 >
-                  {r.name}
+                  <span className="inline-flex items-center gap-x-2">
+                    <MiniSwitch
+                      checked={!leftOut.has(r.name)}
+                      onChange={() => onToggle(r.name)}
+                      label={
+                        leftOut.has(r.name)
+                          ? `Include ${r.name}`
+                          : `Leave ${r.name} out of every widget`
+                      }
+                    />
+                    {r.name}
+                  </span>
                 </td>
                 <td className="px-2 py-1 text-right tabular-nums text-foreground-lighter">
                   {r.overall.toFixed(2)}
@@ -1533,7 +1587,8 @@ const RaiderTrend = ({ data }: { data: Progression }) => {
       </div>
       <p className="text-xs text-foreground mt-2">
         Early deaths per pull. Lower is better; a falling row means someone is
-        learning the fight.
+        learning the fight. Switch someone off to leave them out of every widget
+        here (raiders, avoidable damage, consumables).
         {data.nights.length > 10 && ' Showing the last 10 nights.'}
       </p>
     </div>
@@ -1541,10 +1596,26 @@ const RaiderTrend = ({ data }: { data: Progression }) => {
 };
 
 /** Top causes, one row per night: how often each one ended a pull. */
-const CauseTrend = ({ data }: { data: Progression }) => {
-  const top = data.causes.slice(0, 6).map((c) => c.name);
+const CauseTrend = ({
+  data,
+  excluded,
+  options,
+  onToggle,
+}: {
+  data: Progression;
+  excluded: string[];
+  options: { name: string; count: number }[];
+  onToggle: (cause: string) => void;
+}) => {
+  const [showAll, setShowAll] = React.useState(false);
+  const included = data.causes.map((c) => c.name);
+  const top = showAll ? included : included.slice(0, 8);
   const nights = data.nights.slice(-10);
-  if (!top.length) return <p className="text-sm text-foreground">No wipes.</p>;
+  const pullsOf = (name: string) =>
+    options.find((o) => o.name === name)?.count ?? 0;
+  if (!top.length && !excluded.length) {
+    return <p className="text-sm text-foreground">No wipes.</p>;
+  }
   const max = Math.max(
     1,
     ...nights.flatMap((n) =>
@@ -1571,8 +1642,15 @@ const CauseTrend = ({ data }: { data: Progression }) => {
         <tbody>
           {top.map((name) => (
             <tr key={name}>
-              <td className="px-2 py-1 whitespace-nowrap max-w-[260px] truncate">
-                <Ability name={name} />
+              <td className="px-2 py-1 whitespace-nowrap max-w-[300px] truncate">
+                <span className="inline-flex items-center gap-x-2">
+                  <MiniSwitch
+                    checked
+                    onChange={() => onToggle(name)}
+                    label={`Leave out pulls ended by ${name}`}
+                  />
+                  <Ability name={name} />
+                </span>
               </td>
               {nights.map((n) => {
                 const count = n.causes.find((c) => c.name === name)?.count ?? 0;
@@ -1600,9 +1678,41 @@ const CauseTrend = ({ data }: { data: Progression }) => {
           ))}
         </tbody>
       </table>
+      {excluded.length > 0 && (
+        <div className="flex flex-col gap-y-1 mt-2">
+          {excluded.map((name) => (
+            <div
+              key={name}
+              className="flex items-center gap-x-2 text-sm opacity-50 px-2"
+            >
+              <MiniSwitch
+                checked={false}
+                onChange={() => onToggle(name)}
+                label={`Include pulls ended by ${name}`}
+              />
+              <span>{name}</span>
+              <span className="text-xs text-foreground">
+                left out ({pullsOf(name)}{' '}
+                {pullsOf(name) === 1 ? 'pull' : 'pulls'})
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {included.length > 8 && (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="mt-1"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? 'Show the top 8' : `Show all ${included.length} causes`}
+        </Button>
+      )}
       <p className="text-xs text-foreground mt-2">
         Pulls ended by each cause, per night. A cause that fades out is a
-        mechanic the raid has solved.
+        mechanic the raid has solved. Switch a cause off to leave its pulls out
+        of every widget (e.g. a fluke raid wipe).
       </p>
     </div>
   );
@@ -1626,9 +1736,25 @@ const loadBossChoice = () => {
 type PhaseInfo = {
   phase: 'progression' | 'reclear';
   counts: { progression: number; reclear: number };
-  killedBefore: boolean;
   empty?: boolean;
+  // Every wipe cause in this phase, and pulls left out by the filter.
+  causeOptions?: { name: string; count: number }[];
+  excludedPulls?: number;
 };
+
+// What's left out of Progression / Reclears, per boss and phase: wipe
+// causes (their pulls drop out of every widget) and raiders (their rows).
+type Filters = Record<string, { causes: string[]; raiders: string[] }>;
+const FILTER_KEY = 'rf-pulldesk-progression-filters';
+const loadFilters = (): Filters => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+const NO_FILTER = { causes: [] as string[], raiders: [] as string[] };
 
 /**
  * Progression (every pull up to and including the first kill, in all
@@ -1651,9 +1777,16 @@ export const ProgressionView = ({
   const [allOptions, setAllOptions] = React.useState<BossOption[] | null>(null);
   const [editingList, setEditingList] = React.useState(false);
   const [phaseInfo, setPhaseInfo] = React.useState<PhaseInfo | null>(null);
-  const [phaseTick, setPhaseTick] = React.useState(0);
   const [options, setOptions] = React.useState<BossOption[] | null>(null);
   const [choice, setChoice] = React.useState<string>(loadBossChoice);
+  const [filters, setFilters] = React.useState<Filters>(loadFilters);
+  const filterKey = `${choice}:${phase}`;
+  const filter = filters[filterKey] ?? NO_FILTER;
+  const excludeKey = [...filter.causes].sort().join('|');
+  const leftOut = React.useMemo(
+    () => new Set(filter.raiders),
+    [filter.raiders],
+  );
   const [data, setData] = React.useState<Progression | null>(null);
   const [error, setError] = React.useState('');
   const [loadedChoice, setLoadedChoice] = React.useState('');
@@ -1693,14 +1826,31 @@ export const ProgressionView = ({
         return;
       }
       const seen = new Map<string, BossOption>();
+      // When each boss first died (and was first pulled), to list them in
+      // the order the raid killed them.
+      const firstKill = new Map<string, number>();
+      const firstPulled = new Map<string, string>();
       // Nights come newest first, so the first sighting is the latest.
       response.data.nights.forEach((n) =>
         n.bosses.forEach((b) => {
           const key = bossKey(b.encounterId, b.difficultyId);
           if (!seen.has(key)) seen.set(key, { ...b, lastNight: n.night });
+          firstPulled.set(key, n.night);
+          const at =
+            b.firstKillAt ?? (b.kills ? Date.parse(`${n.night}T12:00:00`) : 0);
+          if (at) firstKill.set(key, Math.min(firstKill.get(key) ?? at, at));
         }),
       );
-      const everything = [...seen.values()];
+      const latest = [...seen.keys()][0] ?? '';
+      const killOrder = (key: string) => firstKill.get(key) ?? Infinity;
+      const everything = [...seen.values()].sort((a, b) => {
+        const ka = bossKey(a.encounterId, a.difficultyId);
+        const kb = bossKey(b.encounterId, b.difficultyId);
+        return (
+          killOrder(ka) - killOrder(kb) ||
+          (firstPulled.get(ka) ?? '').localeCompare(firstPulled.get(kb) ?? '')
+        );
+      });
       const saved = config.ok ? config.data.progressionShown : null;
       // Until someone picks, Coiled Altar and Ula'tek below Mythic.
       const shown =
@@ -1720,13 +1870,13 @@ export const ProgressionView = ({
           shown.includes(bossKey(b.encounterId, b.difficultyId)),
       );
       setOptions(list);
-      setChoice((current) =>
-        list.some((b) => bossKey(b.encounterId, b.difficultyId) === current)
-          ? current
-          : list[0]
-            ? bossKey(list[0].encounterId, list[0].difficultyId)
-            : '',
-      );
+      // Keep the last choice; else the boss pulled most recently.
+      setChoice((current) => {
+        const keys = list.map((b) => bossKey(b.encounterId, b.difficultyId));
+        if (keys.includes(current)) return current;
+        if (keys.includes(latest)) return latest;
+        return keys[0] ?? '';
+      });
     });
     return () => {
       cancelled = true;
@@ -1747,6 +1897,7 @@ export const ProgressionView = ({
       encounterId,
       difficultyId,
       phase,
+      exclude: excludeKey ? excludeKey.split('|') : [],
     }).then((response) => {
       if (cancelled) return;
       setLoadedChoice(choice);
@@ -1761,7 +1912,7 @@ export const ProgressionView = ({
     return () => {
       cancelled = true;
     };
-  }, [choice, phase, phaseTick]);
+  }, [choice, phase, excludeKey]);
 
   const saveList = async (next: string[]) => {
     setShownList(next);
@@ -1778,12 +1929,31 @@ export const ProgressionView = ({
     if (!response.ok) setError(response.error);
   };
 
-  const setKilledBefore = async (on: boolean) => {
-    const [encounterId] = choice.split(':').map(Number);
-    const response = await call({ action: 'setKilledBefore', encounterId, on });
-    if (!response.ok) setError(response.error);
-    else setPhaseTick((t) => t + 1);
+  const updateFilter = (
+    change: (f: { causes: string[]; raiders: string[] }) => {
+      causes: string[];
+      raiders: string[];
+    },
+  ) => {
+    setFilters((prev) => {
+      const next = {
+        ...prev,
+        [filterKey]: change(prev[filterKey] ?? NO_FILTER),
+      };
+      try {
+        localStorage.setItem(FILTER_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable: the filter lasts until the app closes.
+      }
+      return next;
+    });
   };
+  const toggleIn = (list: string[], item: string) =>
+    list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
+  const toggleCause = (cause: string) =>
+    updateFilter((f) => ({ ...f, causes: toggleIn(f.causes, cause) }));
+  const toggleRaider = (name: string) =>
+    updateFilter((f) => ({ ...f, raiders: toggleIn(f.raiders, name) }));
 
   if (error && !options) return <p className="text-sm text-red-400">{error}</p>;
   if (!options)
@@ -1871,19 +2041,22 @@ export const ProgressionView = ({
               )}
           </span>
         )}
-        {canEdit && phaseInfo && !loading && (
-          <label
-            className="ml-auto flex items-center gap-x-2 text-xs text-foreground cursor-pointer"
-            title="For bosses you killed before Bellhop recorded them: every pull counts as a reclear."
-          >
-            <input
-              type="checkbox"
-              checked={phaseInfo.killedBefore}
-              onChange={(e) => setKilledBefore(e.target.checked)}
-              className="w-3.5 h-3.5 accent-[hsl(var(--brand))]"
-            />
-            Killed before we tracked it
-          </label>
+        {(filter.causes.length > 0 || filter.raiders.length > 0) && (
+          <span className="ml-auto flex items-center gap-x-2 text-xs text-foreground">
+            Left out:
+            {filter.causes.length > 0 &&
+              ` ${filter.causes.length} wipe ${filter.causes.length === 1 ? 'cause' : 'causes'} (${phaseInfo?.excludedPulls ?? 0} pulls)`}
+            {filter.causes.length > 0 && filter.raiders.length > 0 && ' ·'}
+            {filter.raiders.length > 0 &&
+              ` ${filter.raiders.length} ${filter.raiders.length === 1 ? 'raider' : 'raiders'}`}
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => updateFilter(() => NO_FILTER)}
+            >
+              Include everything
+            </Button>
+          </span>
         )}
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
@@ -1926,9 +2099,7 @@ export const ProgressionView = ({
         <p className="text-sm text-foreground max-w-[720px]">
           {reclear
             ? 'No reclears yet: every pull on this boss so far is progression (up to and including the first kill).'
-            : phaseInfo.killedBefore
-              ? 'Marked as killed before we tracked it, so all its pulls are under Reclears. Import the progression nights from Warcraft Logs (Pulls → Import from Warcraft Logs) and untick the box to see them here.'
-              : 'No progression pulls for this boss.'}
+            : 'No progression pulls for this boss.'}
         </p>
       )}
 
@@ -2172,16 +2343,26 @@ export const ProgressionView = ({
 
             <div className="grid items-start grid-cols-1 xl:grid-cols-2 gap-3">
               <Panel title="Wipe causes over time">
-                <CauseTrend data={data} />
+                <CauseTrend
+                  data={data}
+                  excluded={filter.causes}
+                  options={phaseInfo?.causeOptions ?? []}
+                  onToggle={toggleCause}
+                />
               </Panel>
               <Panel title="Early deaths by night">
-                <RaiderTrend data={data} />
+                <RaiderTrend
+                  data={data}
+                  leftOut={leftOut}
+                  onToggle={toggleRaider}
+                />
               </Panel>
             </div>
 
             <AvoidablePanel
               key={`${data.encounterId}:${data.difficultyId}`}
               rows={data.avoidable}
+              leftOut={leftOut}
             />
 
             {data.consumables !== undefined && (
@@ -2189,12 +2370,13 @@ export const ProgressionView = ({
                 <ConsumablesPanel
                   summary={data.consumables}
                   scope={`All nights · ${data.pulls} pulls`}
+                  leftOut={leftOut}
                 />
               </Panel>
             )}
 
             <Panel title="Raiders, all nights">
-              <RaiderTable raiders={data.raiders} />
+              <RaiderTable raiders={data.raiders} leftOut={leftOut} />
             </Panel>
           </div>
         </AbilityScope>

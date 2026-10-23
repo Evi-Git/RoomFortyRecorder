@@ -171,6 +171,17 @@ test('whole-tier import: find the guild, group reports by zone, import in the ba
   await desk.handle({ method: 'GET', cloudUserId: '1' }, res, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233'));
   assert.equal(res.body.counts.progression, 3);
   assert.ok(prog.status === 200);
+  // Leaving out a wipe cause drops those pulls from every widget.
+  assert.deepEqual(res.body.causeOptions.map((c) => c.name).sort(), ['Rending Swarm', 'Unbinding (raid-wide)']);
+  const filtered = {};
+  await desk.handle({ method: 'GET', cloudUserId: '1' }, filtered, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233&exclude=Unbinding%20(raid-wide)'));
+  assert.equal(filtered.body.pulls, res.body.pulls - 1);
+  assert.equal(filtered.body.excludedPulls, 1);
+  assert.equal(filtered.body.causeOptions.length, 2);
+  // Nights list the first kill's time, for ordering bosses.
+  const nights = {};
+  await desk.handle({ method: 'GET', cloudUserId: '1' }, nights, ['summary', 'nights'], new URL('http://x/'));
+  assert.ok(nights.body.nights.some((n) => n.bosses.some((b) => b.firstKillAt)));
 });
 
 test('whole-tier import is owner-only; the Progression list setting saves', async () => {

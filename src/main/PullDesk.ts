@@ -69,6 +69,7 @@ export type PullDeskRequest =
       encounterId: number;
       difficultyId?: number;
       phase?: 'progression' | 'reclear';
+      exclude?: string[];
     }
   | { action: 'setKilledBefore'; encounterId: number; on: boolean }
   | { action: 'importWcl'; reports: string[] }
@@ -435,7 +436,11 @@ export default class PullDesk {
           'get',
           `/summary/boss/${id(request.encounterId)}?phase=${
             request.phase ?? 'progression'
-          }${request.difficultyId ? `&difficulty=${request.difficultyId}` : ''}`,
+          }${request.difficultyId ? `&difficulty=${request.difficultyId}` : ''}${
+            request.exclude?.length
+              ? `&exclude=${encodeURIComponent(request.exclude.join('|'))}`
+              : ''
+          }`,
           undefined,
           { timeout: 120000 },
         );

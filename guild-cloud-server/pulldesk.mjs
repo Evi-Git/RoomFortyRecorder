@@ -19,7 +19,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, parseNote } from './pulldesk-analyze.mjs';
-import { abilityStats, summarizeNight, summarizeProgression } from './pulldesk-summary.mjs';
+import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
@@ -1326,7 +1326,11 @@ export const createPullDesk = (options) => {
             kills: 0,
           };
           boss.pulls += 1;
-          if (pull.result === 'kill') boss.kills += 1;
+          if (pull.result === 'kill') {
+            boss.kills += 1;
+            // When it first died that night (orders bosses by first kill).
+            boss.firstKillAt = Math.min(boss.firstKillAt ?? Infinity, pull.startedAt || pull.createdAt || Infinity);
+          }
           night.set(key, boss);
           nights.set(pull.night, night);
         });
@@ -1350,17 +1354,36 @@ export const createPullDesk = (options) => {
           (pull) => pull.encounterId === encounterId && (!difficultyId || pull.difficultyId === difficultyId),
         );
         if (!pulls.length) return fail(res, 404, 'No pulls on that boss yet');
-        const split = splitAtFirstKill(pulls, bossSettings(encounterId).killedBefore);
+        // The old "killed before we tracked it" setting is retired: imports
+        // from Warcraft Logs give the real first kill.
+        const split = splitAtFirstKill(pulls, false);
         const chosen = split[phase];
+        // Wipe causes left out (e.g. a fluke raid wipe), "|"-separated.
+        const excluded = String(url?.searchParams.get('exclude') || '')
+          .split('|')
+          .map((c) => c.trim())
+          .filter(Boolean)
+          .slice(0, 50);
         const meta = {
           phase,
           counts: { progression: split.progression.length, reclear: split.reclear.length },
-          killedBefore: Boolean(bossSettings(encounterId).killedBefore),
+          excludedCauses: excluded,
         };
-        if (!chosen.length) return json(res, 200, { ...meta, empty: true, encounterId, difficultyId });
-        const data = await cached(`boss:${encounterId}:${difficultyId}:${phase}:${meta.killedBefore}`, async () =>
-          summarizeProgression(await withReports(chosen)),
-        );
+        if (!chosen.length) return json(res, 200, { ...meta, empty: true, encounterId, difficultyId, causeOptions: [] });
+        const data = await cached(`boss:${encounterId}:${difficultyId}:${phase}:${excluded.join('|')}`, async () => {
+          const all = await withReports(chosen);
+          const counts = new Map();
+          const kept = all.filter((p) => {
+            const cause = wipeCause(p.summary, p.report);
+            if (cause) counts.set(cause, (counts.get(cause) || 0) + 1);
+            return !cause || !excluded.includes(cause);
+          });
+          return {
+            ...summarizeProgression(kept.length ? kept : all),
+            causeOptions: [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+            excludedPulls: all.length - kept.length,
+          };
+        });
         return json(res, 200, { ...data, ...meta });
       }
       return fail(res, 404, 'Unknown summary');

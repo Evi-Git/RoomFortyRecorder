@@ -589,16 +589,37 @@ const ConsumablesPanel = ({
   summary,
   prep,
   scope,
+  leftOut,
 }: {
   summary?: PrepSummary | null;
   prep?: Prep | null;
   scope: string;
+  // Raiders left out (Progression filters): dropped, totals recounted.
+  leftOut?: Set<string>;
 }) => {
   const [who, setWho] = React.useState('');
-  const data = React.useMemo(
-    () => (prep ? summaryFromPrep(prep) : (summary ?? null)),
-    [prep, summary],
-  );
+  const data = React.useMemo(() => {
+    const base = prep ? summaryFromPrep(prep) : (summary ?? null);
+    if (!base || !leftOut?.size) return base;
+    const raiders = base.raiders.filter((r) => !leftOut.has(r.name));
+    const sum = (pick: (r: SummaryRaider) => number) =>
+      raiders.reduce((n, r) => n + pick(r), 0);
+    return {
+      ...base,
+      raiders,
+      total: {
+        pulls: sum((r) => r.pulls),
+        potsUsed: sum((r) => r.potsUsed),
+        potsPossible: sum((r) => r.potsPossible),
+        food: sum((r) => r.food),
+        flask: sum((r) => r.flask),
+        augment: sum((r) => r.augment),
+        weaponOil: sum((r) => r.weaponOil),
+        vantus: sum((r) => r.vantus),
+        prepot: sum((r) => r.prepot),
+      },
+    };
+  }, [prep, summary, leftOut]);
 
   if (!data || !data.raiders.length) {
     return (
