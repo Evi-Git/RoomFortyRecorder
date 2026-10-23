@@ -212,3 +212,56 @@ test('whole-tier import is owner-only; the Progression list setting saves', asyn
   await call('1', 'PUT', ['progression-list'], { shown: ['3180:15', 'bad', '3180:15'] });
   assert.deepEqual((await call('1', 'GET', ['config'])).body.progressionShown, ['3180:15']);
 });
+
+test('imported pulls: gear, buffs, avoidable hits and potions from Warcraft Logs', async () => {
+  const { fetchReportExtras, abilityFilter } = await import('./pulldesk-import.mjs');
+  const { rawPrep, buildPrep } = await import('./consumables.mjs');
+  assert.equal(
+    abilityFilter([1292403, 'x', 1292403], ['Caustic Waves', 'Say "hi"']),
+    'ability.id in (1292403) or ability.name = "Caustic Waves" or ability.name = "Say hi"',
+  );
+  const gear = Array.from({ length: 18 }, (_, i) => ({ id: 1000 + i, itemLevel: 280, permanentEnchant: [0, 2, 4, 6, 7, 10, 11, 15].includes(i) ? 7000 : 0, temporaryEnchant: i === 15 ? 8052 : 0, gems: i === 1 ? [{ id: 240983, itemLevel: 295 }] : [] }));
+  const queries = [];
+  const fake = {
+    query: async (text, vars) => {
+      queries.push(vars?.filter || text.slice(0, 40));
+      if (text.includes('masterData')) {
+        return { reportData: { report: { fights: [{ id: 3, startTime: 1000 }], masterData: { actors: [{ id: 1, name: 'Evi' }, { id: 2, name: 'Mage' }], abilities: [{ gameID: 1292403, name: 'Caustic Waves' }, { gameID: 1233724, name: 'Hearty Well Fed' }] } } } };
+      }
+      const data = text.includes('CombatantInfo')
+        ? [{ fight: 3, sourceID: 1, specID: 65, gear, auras: [{ source: 1, ability: 1233724, stacks: 1, name: 'Hearty Well Fed' }, { source: 2, ability: 1459, stacks: 1 }] }]
+        : text.includes('DamageTaken')
+          ? [
+            { fight: 3, type: 'damage', sourceID: 99, targetID: 2, abilityGameID: 1292403, amount: 500, timestamp: 11000 },
+            { fight: 3, type: 'damage', sourceID: 99, targetID: 2, abilityGameID: 1292403, amount: 300, timestamp: 12000 },
+            { fight: 3, type: 'absorbed', sourceID: 99, targetID: 2, abilityGameID: 1292403, amount: 50, timestamp: 12000 },
+          ]
+          : [{ fight: 3, type: 'cast', sourceID: 1, abilityGameID: 431932, timestamp: 50000 }];
+      return { reportData: { report: { events: { data, nextPageTimestamp: null } } } };
+    },
+  };
+  const extras = await fetchReportExtras(fake, 'aBcD1234EfGh5678', [3], { abilityIds: [1292403], potionNames: ["Light's Potential"] });
+  const x = extras.get(3);
+  assert.equal(x.players.length, 1);
+  assert.equal(x.auraNames[1233724], 'Hearty Well Fed');
+  assert.deepEqual(x.avoidable.map((r) => [r.name, r.hits, r.damage]), [['Mage', 2, 800]]);
+  assert.equal(x.avoidable[0].spells[0].spellName, 'Caustic Waves');
+  assert.deepEqual(x.avoidable[0].spells[0].times, [{ t: 10, end: 11 }]);
+  assert.deepEqual(x.potions, { Evi: 1 });
+  assert.ok(queries.includes('ability.name = "Light\'s Potential"'));
+
+  // The same consumables pipeline as the app's own logs.
+  const report = {
+    duration: 400,
+    prepRaw: { players: x.players.map((p) => ({ guid: p.guid, name: p.name, specId: p.specId, ...rawPrep(p.args) })), auraNames: x.auraNames, sourceNames: x.sourceNames },
+    combatPotionsUsed: x.potions,
+  };
+  const prep = buildPrep(report, (id) => (x.auraNames[id] ? { name: x.auraNames[id], text: '' } : null), ["Light's Potential"]);
+  const evi = prep.players[0];
+  assert.equal(evi.food, 'Hearty Well Fed');
+  assert.equal(evi.weaponOil, true);
+  assert.equal(evi.enchantsMissing, 0);
+  assert.equal(evi.potsUsed, 1);
+  assert.equal(evi.potsPossible, 2);
+  assert.equal(prep.raidBuffs.find((b) => b.key === 'int').providers[0], 'Mage');
+});

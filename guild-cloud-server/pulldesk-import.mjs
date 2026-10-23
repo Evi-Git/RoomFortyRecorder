@@ -152,3 +152,150 @@ export const fetchReportPulls = async (wcl, code, gameDifficulties) => {
 };
 
 export { GAME_NAMES };
+
+// ---- Extras for imported pulls: consumables, avoidable hits, potions -------
+
+const quoted = (name) => `"${String(name).replace(/["\\]/g, '')}"`;
+
+/** A Warcraft Logs filter expression matching abilities by ID or name. */
+export const abilityFilter = (ids = [], names = []) => {
+  const parts = [];
+  const cleanIds = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (cleanIds.length) parts.push(`ability.id in (${cleanIds.join(', ')})`);
+  [...new Set(names.filter(Boolean))].forEach((n) => parts.push(`ability.name = ${quoted(n)}`));
+  return parts.join(' or ');
+};
+
+/**
+ * A combatantinfo event as COMBATANT_INFO args (see consumables.rawPrep):
+ * gear [itemId, ilvl, [perm, temp, onUse], [bonusIds], [gemId, ilvl, ...]]
+ * at [28], auras [source, spellId, stacks, ...] at [29].
+ */
+export const combatantArgs = (event) => {
+  const args = [];
+  args[28] = (event.gear || []).map((g) => [
+    String(g?.id || 0),
+    String(g?.itemLevel || 0),
+    [String(g?.permanentEnchant || 0), String(g?.temporaryEnchant || 0), '0'],
+    (g?.bonusIDs || []).map(String),
+    (g?.gems || []).flatMap((gem) => [String(gem?.id || 0), String(gem?.itemLevel || 0)]),
+  ]);
+  args[29] = (event.auras || []).flatMap((a) => [String(a.source ?? ''), String(a.ability || 0), String(a.stacks || 1)]);
+  return args;
+};
+
+const allEvents = async (wcl, code, fightIds, dataType, filter) => {
+  const out = [];
+  let start = null;
+  for (let page = 0; page < 30; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await wcl.query(
+      `query($code: String!, $fights: [Int]!, $start: Float, $filter: String) { reportData { report(code: $code) {
+        events(dataType: ${dataType}, fightIDs: $fights, startTime: $start, filterExpression: $filter, limit: 10000) { data nextPageTimestamp } } } }`,
+      { code, fights: fightIds, start, filter: filter || null },
+    );
+    const events = result.reportData?.report?.events;
+    (events?.data || []).forEach((e) => out.push(e));
+    if (!events?.nextPageTimestamp) break;
+    start = events.nextPageTimestamp;
+  }
+  return out;
+};
+
+/**
+ * Gear and buffs at each pull, hits from the given abilities, and combat
+ * potions cast, for fights of one Warcraft Logs report.
+ * @returns {Map<number, { players, auraNames, avoidable, potions }>} by fight ID
+ */
+export const fetchReportExtras = async (wcl, code, fightIds, { abilityIds = [], abilityNames = [], potionNames = [] } = {}) => {
+  const meta = await wcl.query(
+    `query($code: String!) { reportData { report(code: $code) {
+      fights { id startTime }
+      masterData { actors(type: "Player") { id name } abilities { gameID name } }
+    } } }`,
+    { code },
+  );
+  const report = meta.reportData?.report;
+  if (!report) throw new Error(`Report ${code} not found (is it private?)`);
+  const actors = new Map((report.masterData?.actors || []).map((a) => [a.id, a.name]));
+  const abilities = new Map((report.masterData?.abilities || []).map((a) => [a.gameID, a.name]));
+  const fightStart = new Map((report.fights || []).map((f) => [f.id, f.startTime]));
+
+  const byFight = new Map(
+    fightIds.map((id) => [id, { players: [], auraNames: {}, avoidable: new Map(), potions: {} }]),
+  );
+
+  const infos = await allEvents(wcl, code, fightIds, 'CombatantInfo');
+  infos.forEach((e) => {
+    const slot = byFight.get(e.fight);
+    const name = actors.get(e.sourceID);
+    if (!slot || !name || slot.players.some((p) => p.name === name)) return;
+    slot.players.push({ guid: String(e.sourceID), name, specId: Number(e.specID) || 0, args: combatantArgs(e) });
+    (e.auras || []).forEach((a) => {
+      const auraName = a.name || abilities.get(a.ability);
+      if (auraName) slot.auraNames[a.ability] = auraName;
+    });
+  });
+
+  const hitFilter = abilityFilter(abilityIds, abilityNames);
+  if (hitFilter) {
+    const hits = await allEvents(wcl, code, fightIds, 'DamageTaken', hitFilter);
+    hits.forEach((e) => {
+      if (e.type !== 'damage') return;
+      const slot = byFight.get(e.fight);
+      const name = actors.get(e.targetID);
+      if (!slot || !name || actors.has(e.sourceID)) return; // players only, from enemies
+      const spellId = e.abilityGameID;
+      const amount = Number(e.amount) || 0;
+      const row = slot.avoidable.get(name) || { name, hits: 0, damage: 0, bySpell: {}, spells: {} };
+      row.hits += 1;
+      row.damage += amount;
+      row.bySpell[spellId] = (row.bySpell[spellId] || 0) + 1;
+      const spell = row.spells[spellId] || { hits: 0, damage: 0, times: [] };
+      spell.hits += 1;
+      spell.damage += amount;
+      const t = Math.round((e.timestamp - (fightStart.get(e.fight) || 0)) / 100) / 10;
+      const last = spell.times[spell.times.length - 1];
+      if (!last || t - (last.end ?? last.t) > 5) {
+        if (spell.times.length < 40) spell.times.push({ t, end: t });
+      } else last.end = t;
+      row.spells[spellId] = spell;
+      slot.avoidable.set(name, row);
+    });
+  }
+
+  const potionFilter = abilityFilter([], potionNames);
+  if (potionFilter) {
+    const casts = await allEvents(wcl, code, fightIds, 'Casts', potionFilter);
+    casts.forEach((e) => {
+      if (e.type !== 'cast') return;
+      const slot = byFight.get(e.fight);
+      const name = actors.get(e.sourceID);
+      if (slot && name) slot.potions[name] = (slot.potions[name] || 0) + 1;
+    });
+  }
+
+  const out = new Map();
+  byFight.forEach((slot, fightId) => {
+    out.set(fightId, {
+      players: slot.players,
+      auraNames: slot.auraNames,
+      // Who cast buffs, for raiders without their own combatant info.
+      sourceNames: Object.fromEntries([...actors.entries()].map(([id, n]) => [String(id), n])),
+      potions: slot.potions,
+      avoidable: [...slot.avoidable.values()]
+        .map((row) => ({
+          ...row,
+          spells: Object.entries(row.spells)
+            .map(([spellId, spell]) => ({
+              spellId: Number(spellId),
+              spellName: abilities.get(Number(spellId)) || null,
+              ...spell,
+            }))
+            .sort((a, b) => b.hits - a.hits),
+        }))
+        .sort((a, b) => b.hits - a.hits),
+    });
+  });
+  return out;
+};
