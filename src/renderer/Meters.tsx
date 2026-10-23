@@ -1,7 +1,21 @@
-import React from 'react';
+import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { getSpecClass, getWoWClassColor } from './rendererutils';
+import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
+import { VideoCategory } from 'types/VideoCategory';
+import {
+  getCategoryIndex,
+  getSpecClass,
+  getWoWClassColor,
+} from './rendererutils';
+import { setConfigValue } from './useSettings';
 import AbilityName from './AbilityCard';
+import {
+  AuraView,
+  CastTimeline,
+  TimelineData,
+  WatchHint,
+} from './LogsTimeline';
+import LogsTrends from './LogsTrends';
 
 /**
  * [RoomFortyRecorder] Logs: meters for raid pulls, worked out by the app
@@ -44,7 +58,94 @@ export type MetersData = {
   healing: RawRow[];
   taken: RawRow[];
   mitigation: RawRow[];
+  // 1.9.31+: cooldown casts, buffs, Bloodlust and boss debuffs.
+  casts?: TimelineData['casts'];
+  buffs?: TimelineData['buffs'];
+  raidBuffs?: TimelineData['raidBuffs'];
+  bossDebuffs?: TimelineData['bossDebuffs'];
+  // Added by the server.
+  pull?: PullRef & { id: string; pullNumber?: number; result?: string };
+  deaths?: { t: number; name: string; spell: string | null }[];
 };
+
+/* ------------------------------------------------------------------ */
+/* Opening a recording at a moment                                     */
+/* ------------------------------------------------------------------ */
+
+export type PullRef = {
+  encounterId: number;
+  difficultyId: number;
+  startedAt: number;
+};
+
+type Watcher = {
+  /** Opens a raider's recording (anyone's if null) `seconds` into the pull. */
+  open: (pull: PullRef, name: string | null, seconds: number) => boolean;
+  has: (pull: PullRef, name: string | null) => boolean;
+};
+
+const WATCH_LEAD_SECONDS = 5;
+const VIDEO_MATCH_MS = 2 * 60 * 1000;
+
+export const WatchContext = React.createContext<Watcher | null>(null);
+
+/** Where the player starts when the recording opens. */
+const seekTo = (ref: RefObject<number>, seconds: number) => {
+  (ref as { current: number }).current = Math.max(0, seconds);
+};
+
+/** A Watcher over this PC's (and the cloud's) raid recordings. */
+export const useRecordingWatch = (
+  videoState: RendererVideo[],
+  setAppState: Dispatch<SetStateAction<AppState>>,
+  persistentProgressRef: RefObject<number>,
+): Watcher =>
+  React.useMemo(() => {
+    const find = (pull: PullRef, name: string | null) => {
+      const candidates = videoState.filter(
+        (video) =>
+          video.category === VideoCategory.Raids &&
+          video.encounterID === pull.encounterId &&
+          video.difficultyID === pull.difficultyId &&
+          typeof video.start === 'number' &&
+          Math.abs(video.start - pull.startedAt) < VIDEO_MATCH_MS &&
+          (!name || video.player?._name === name),
+      );
+      // A local copy first (instant), then the closest start.
+      candidates.sort(
+        (a, b) =>
+          Number(a.cloud) - Number(b.cloud) ||
+          Math.abs((a.start as number) - pull.startedAt) -
+            Math.abs((b.start as number) - pull.startedAt),
+      );
+      return candidates[0];
+    };
+    return {
+      has: (pull, name) => Boolean(find(pull, name) ?? find(pull, null)),
+      open: (pull, name, seconds) => {
+        // Their recording, else anyone's.
+        const video = find(pull, name) ?? find(pull, null);
+        if (!video) return false;
+        seekTo(persistentProgressRef, seconds - WATCH_LEAD_SECONDS);
+        setConfigValue(
+          'selectedCategory',
+          getCategoryIndex(VideoCategory.Raids),
+        );
+        setAppState((prev) => ({
+          ...prev,
+          page: Pages.None,
+          category: VideoCategory.Raids,
+          selectedVideos: [video],
+          multiPlayerMode: false,
+          playing: false,
+          videoFilterTags: [],
+          storageFilter: StorageFilter.BOTH,
+          dateRangeFilter: { startDate: null, endDate: null },
+        }));
+        return true;
+      },
+    };
+  }, [videoState, setAppState, persistentProgressRef]);
 type Kind = 'damage' | 'healing' | 'taken' | 'mitigation';
 
 // A row or ability added up over a slice of the fight.
@@ -182,12 +283,20 @@ const OverTime = ({
   rateLabel,
   range,
   onRange,
+  onPick,
+  markers = [],
+  bands = [],
 }: {
   series: { name: string; values: number[]; color: string; dashed?: boolean }[];
   bucketSeconds: number;
   rateLabel: string;
   range?: Range;
   onRange?: (range: Range) => void;
+  // A click (no drag) on a moment: seconds into the pull.
+  onPick?: (seconds: number) => void;
+  // Deaths (seconds) and Bloodlust windows (seconds).
+  markers?: { t: number; label: string }[];
+  bands?: [number, number][];
 }) => {
   const [hover, setHover] = React.useState<number | null>(null);
   const [drag, setDrag] = React.useState<{ a: number; b: number } | null>(null);
@@ -257,10 +366,36 @@ const OverTime = ({
           const from = Math.min(drag.a, drag.b);
           const to = Math.max(drag.a, drag.b) + 1;
           setDrag(null);
-          // A click without dragging clears the slice.
-          onRange(to - from <= 1 && drag.a === drag.b ? null : { from, to });
+          if (drag.a === drag.b) {
+            // A click: open a recording there (the slice stays).
+            if (onPick) onPick((drag.a + 0.5) * bucketSeconds);
+            else onRange(null);
+            return;
+          }
+          onRange({ from, to });
         }}
       >
+        {bands.map(([s, e]) => (
+          <rect
+            key={s}
+            x={left + (s / duration) * span}
+            y={top}
+            width={Math.max(2, ((e - s) / duration) * span)}
+            height={H - top - bottom}
+            fill="hsl(200 70% 55% / 0.12)"
+          />
+        ))}
+        {markers.map((m) => (
+          <line
+            key={`${m.label}-${m.t}`}
+            x1={left + (Math.min(duration, m.t) / duration) * span}
+            x2={left + (Math.min(duration, m.t) / duration) * span}
+            y1={top}
+            y2={H - bottom}
+            stroke="rgb(248 113 113 / 0.55)"
+            strokeDasharray="3 3"
+          />
+        ))}
         {shown && (
           <rect
             x={x(shown.from)}
@@ -338,6 +473,17 @@ const OverTime = ({
           <div className="text-foreground">
             {mmss(hover * bucketSeconds)}–{mmss((hover + 1) * bucketSeconds)}
           </div>
+          {markers
+            .filter(
+              (m) =>
+                m.t >= hover * bucketSeconds &&
+                m.t < (hover + 1) * bucketSeconds,
+            )
+            .map((m) => (
+              <div key={`${m.label}-${m.t}`} className="text-red-400">
+                {m.label}
+              </div>
+            ))}
           {series.map((s, si) => (
             <div key={s.name} className="flex items-center gap-x-1.5">
               <span
@@ -402,6 +548,9 @@ const Breakdown = ({
   encounterId,
   difficultyId,
   onBack,
+  onPick,
+  markers,
+  bands,
 }: {
   row: SliceRow;
   kind: Kind;
@@ -412,6 +561,9 @@ const Breakdown = ({
   encounterId?: number;
   difficultyId?: number;
   onBack: () => void;
+  onPick?: (seconds: number) => void;
+  markers?: { t: number; label: string }[];
+  bands?: [number, number][];
 }) => {
   const meta = KINDS.find((k) => k.key === kind)!;
   const seconds = sliceSeconds(data, range);
@@ -465,6 +617,9 @@ const Breakdown = ({
         rateLabel={meta.rate}
         range={range}
         onRange={onRange}
+        onPick={onPick}
+        markers={markers}
+        bands={bands}
         series={[
           { name: row.name, values: row.series, color: classColor(row.specId) },
           {
@@ -602,8 +757,12 @@ const PullMeters = ({
   const [error, setError] = React.useState('');
   const [loadedId, setLoadedId] = React.useState('');
   const [kind, setKind] = React.useState<Kind>('damage');
+  // The meters (kind), or the cast timeline, or buffs and debuffs.
+  const [extra, setExtra] = React.useState<'casts' | 'buffs' | null>(null);
   const [who, setWho] = React.useState<string | null>(null);
   const [range, setRange] = React.useState<Range>(null);
+  const [notice, setNotice] = React.useState('');
+  const watcher = React.useContext(WatchContext);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -643,17 +802,63 @@ const PullMeters = ({
   const max = Math.max(1, ...rows.map((r) => r.total));
   const n = bucketsOf(data);
 
+  // Recordings: open one at a moment of the pull.
+  const pullRef = data.pull ?? null;
+  const canWatch = Boolean(watcher && pullRef && watcher.has(pullRef, null));
+  const watchAt = (name: string | null, at: number) => {
+    if (!watcher || !pullRef) return;
+    if (!watcher.open(pullRef, name, at)) {
+      setNotice(
+        `No recording of this pull${name ? ` from ${name}` : ''} here.`,
+      );
+    }
+  };
+  const markers = (data.deaths ?? []).map((d) => ({
+    t: d.t,
+    label: `${d.name} died${d.spell ? ` (${d.spell})` : ''}`,
+  }));
+  const bands = (data.raidBuffs ?? []).flatMap((b) => b.intervals);
+  const secondsRange = range
+    ? {
+        from: range.from * data.bucketSeconds,
+        to: Math.min(data.duration, range.to * data.bucketSeconds),
+      }
+    : null;
+  const tab = (key: 'casts' | 'buffs', label: string) => (
+    <button
+      type="button"
+      onClick={() => setExtra(extra === key ? null : key)}
+      className={`px-3 h-8 text-xs rounded-md border border-card ${
+        extra === key
+          ? 'bg-brand text-background font-semibold'
+          : 'text-foreground-lighter hover:bg-card/50'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="flex flex-col gap-y-3">
       <div className="flex items-center gap-x-3 flex-wrap">
-        <KindTabs kind={kind} setKind={setKind} />
-        <span className="text-sm text-foreground">
-          Raid {meta.rate}{' '}
-          <span className="font-semibold text-foreground-lighter tabular-nums">
-            {compactNumber(raidTotal / seconds)}
-          </span>{' '}
-          · total {compactNumber(raidTotal)}
-        </span>
+        <KindTabs
+          kind={extra ? ('' as Kind) : kind}
+          setKind={(k) => {
+            setKind(k);
+            setExtra(null);
+          }}
+        />
+        {tab('casts', 'Casts')}
+        {tab('buffs', 'Buffs & debuffs')}
+        {!extra && (
+          <span className="text-sm text-foreground">
+            Raid {meta.rate}{' '}
+            <span className="font-semibold text-foreground-lighter tabular-nums">
+              {compactNumber(raidTotal / seconds)}
+            </span>{' '}
+            · total {compactNumber(raidTotal)}
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-x-2 text-xs text-foreground">
           {range ? (
             <>
@@ -672,9 +877,21 @@ const PullMeters = ({
           )}
         </span>
       </div>
-      {meta.help && <p className="text-xs text-foreground m-0">{meta.help}</p>}
+      <div className="flex items-center gap-x-3 flex-wrap">
+        {watcher && pullRef && <WatchHint can={canWatch} />}
+        {notice && <span className="text-xs text-yellow-400">{notice}</span>}
+      </div>
+      {!extra && meta.help && (
+        <p className="text-xs text-foreground m-0">{meta.help}</p>
+      )}
 
-      {selected ? (
+      {extra === 'casts' && (
+        <CastTimeline data={data} range={secondsRange} onWatch={watchAt} />
+      )}
+      {extra === 'buffs' && (
+        <AuraView data={data} range={secondsRange} onWatch={watchAt} />
+      )}
+      {extra ? null : selected ? (
         <Breakdown
           row={selected}
           kind={kind}
@@ -685,6 +902,9 @@ const PullMeters = ({
           encounterId={encounterId}
           difficultyId={difficultyId}
           onBack={() => setWho(null)}
+          onPick={canWatch ? (t) => watchAt(selected.name, t) : undefined}
+          markers={markers}
+          bands={bands}
         />
       ) : (
         <>
@@ -694,6 +914,9 @@ const PullMeters = ({
               rateLabel={meta.rate}
               range={range}
               onRange={setRange}
+              onPick={canWatch ? (t) => watchAt(null, t) : undefined}
+              markers={markers}
+              bands={bands}
               series={[
                 { name: 'Raid', values: sumSeries(rows, n), color: BRAND },
               ]}
@@ -1227,16 +1450,72 @@ export const LogsView = () => {
 };
 
 /** The Logs page (its own item in the side menu, under Analysis). */
-export const LogsPage = () => (
-  <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
-    <div className="flex items-center gap-x-2 px-4 py-2 border-b border-card min-h-[52px]">
-      <span className="font-display text-lg font-bold">Logs</span>
-      <span className="text-xs text-foreground ml-2">
-        Damage, healing, damage taken and prevented, from our own combat logs.
-      </span>
-    </div>
-    <div className="flex-1 overflow-y-auto p-4">
-      <LogsView />
-    </div>
-  </div>
-);
+export const LogsPage = ({
+  videoState,
+  setAppState,
+  persistentProgressRef,
+}: {
+  videoState: RendererVideo[];
+  setAppState: Dispatch<SetStateAction<AppState>>;
+  persistentProgressRef: RefObject<number>;
+}) => {
+  const watcher = useRecordingWatch(
+    videoState,
+    setAppState,
+    persistentProgressRef,
+  );
+  const [mode, setMode] = React.useState<'pulls' | 'trends'>(() => {
+    try {
+      return localStorage.getItem('rf-logs-mode') === 'trends'
+        ? 'trends'
+        : 'pulls';
+    } catch {
+      return 'pulls';
+    }
+  });
+  const change = (next: 'pulls' | 'trends') => {
+    setMode(next);
+    try {
+      localStorage.setItem('rf-logs-mode', next);
+    } catch {
+      // Not remembered.
+    }
+  };
+  return (
+    <WatchContext.Provider value={watcher}>
+      <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
+        <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
+          <span className="font-display text-lg font-bold mr-1">Logs</span>
+          <div className="flex rounded-md border border-card overflow-hidden">
+            {(
+              [
+                ['pulls', 'Pulls'],
+                ['trends', 'Trends'],
+              ] as ['pulls' | 'trends', string][]
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => change(key)}
+                className={`px-3 h-9 text-xs ${
+                  mode === key
+                    ? 'bg-brand text-background font-semibold'
+                    : 'text-foreground-lighter hover:bg-card/50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-foreground">
+            Damage, healing, damage taken and prevented, casts and buffs, from
+            our own combat logs.
+          </span>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {mode === 'pulls' ? <LogsView /> : <LogsTrends />}
+        </div>
+      </div>
+    </WatchContext.Provider>
+  );
+};

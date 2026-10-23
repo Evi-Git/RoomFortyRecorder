@@ -784,6 +784,52 @@ export const createPullDesk = (options) => {
     return pulls.length;
   };
 
+  /**
+   * Night by night: each raider's total and time in pulls per meter, and the
+   * raid's, from the stored meters. The app turns these into rates.
+   */
+  const metersTrends = async (pulls) => {
+    const KINDS = ['damage', 'healing', 'taken', 'mitigation'];
+    const nights = new Map(); // night -> { pulls, seconds, raid: {kind: total} }
+    const raiders = new Map(); // name -> { specId, nights: { night: { seconds, pulls, kind: total } } }
+    for (const pull of pulls) {
+      let meters;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        meters = JSON.parse(await fsp.readFile(metersFile(pull.id), 'utf8'));
+      } catch {
+        continue;
+      }
+      const seconds = Number(meters.duration) || pull.duration || 0;
+      if (!seconds) continue;
+      const night = nights.get(pull.night) || { night: pull.night, pulls: 0, kills: 0, seconds: 0, raid: {} };
+      night.pulls += 1;
+      if (pull.result === 'kill') night.kills += 1;
+      night.seconds += seconds;
+      const present = new Set();
+      KINDS.forEach((kind) => {
+        (meters[kind] || []).forEach((row) => {
+          night.raid[kind] = (night.raid[kind] || 0) + row.total;
+          const r = raiders.get(row.name) || { name: row.name, specId: row.specId || 0, nights: {} };
+          const n = r.nights[pull.night] || { seconds: 0, pulls: 0 };
+          if (!present.has(row.name)) {
+            n.seconds += seconds;
+            n.pulls += 1;
+            present.add(row.name);
+          }
+          n[kind] = (n[kind] || 0) + row.total;
+          r.nights[pull.night] = n;
+          raiders.set(row.name, r);
+        });
+      });
+      nights.set(pull.night, night);
+    }
+    return {
+      nights: [...nights.values()].sort((a, b) => a.night.localeCompare(b.night)),
+      raiders: [...raiders.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  };
+
   const reanalyzeOlder = (filter) => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const pulls = index.pulls.filter(
@@ -1313,6 +1359,17 @@ export const createPullDesk = (options) => {
       return json(res, 200, { progressionShown: index.settings.progressionShown });
     }
 
+    // Logs trends: each raider's rates night by night on one boss.
+    if (first === 'meters' && second === 'trends' && req.method === 'GET') {
+      const encounterId = Number(url?.searchParams.get('encounterId'));
+      const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
+      const pulls = countedPulls().filter(
+        (p) => p.appMeters && p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
+      );
+      const data = await cached(`trends:${encounterId}:${difficultyId}`, () => metersTrends(pulls));
+      return json(res, 200, data);
+    }
+
     if (first === 'import' && second === 'guild' && !(await ownerOnly(req))) {
       return fail(res, 403, 'Only the owner can import a whole tier');
     }
@@ -1408,9 +1465,28 @@ export const createPullDesk = (options) => {
           );
         }
         try {
-          const body = await fsp.readFile(metersFile(pull.id));
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': body.length });
-          return res.end(body);
+          const meters = JSON.parse(await fsp.readFile(metersFile(pull.id), 'utf8'));
+          // What the Logs page needs besides the meters: when the pull
+          // started (to open recordings) and who died when.
+          let deaths = [];
+          try {
+            const report = JSON.parse(await fsp.readFile(reportFile(pull.id), 'utf8'));
+            deaths = (report.deaths || []).map((d) => ({ t: d.t, name: d.name, spell: d.killingBlow?.spellName || null }));
+          } catch {
+            // No report: no death markers.
+          }
+          return json(res, 200, {
+            ...meters,
+            pull: {
+              id: pull.id,
+              encounterId: pull.encounterId,
+              difficultyId: pull.difficultyId,
+              startedAt: pull.startedAt ?? pull.createdAt,
+              pullNumber: pull.pullNumber,
+              result: pull.result,
+            },
+            deaths,
+          });
         } catch {
           return fail(res, 404, pull.source === 'wcl' ? 'Meters need the app\'s own log; this pull was imported from Warcraft Logs' : 'No meters for this pull yet');
         }
