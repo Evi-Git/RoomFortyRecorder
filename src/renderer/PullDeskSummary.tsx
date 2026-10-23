@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
 import { Ability, AbilityScope } from './AbilityCard';
+import ConsumablesPanel, { PrepSummary } from './Consumables';
 import { Button } from './components/Button/Button';
 import {
   guildKey,
@@ -95,6 +96,7 @@ type BossNight = {
   pullsList: PullRow[];
   spellIds?: Record<string, number>;
   avoidable?: AvoidableRow[];
+  consumables?: PrepSummary | null;
 };
 
 type NightIndex = {
@@ -136,6 +138,7 @@ type Progression = {
   causes: Cause[];
   spellIds?: Record<string, number>;
   avoidable?: AvoidableRow[];
+  consumables?: PrepSummary | null;
   raiders: Raider[];
   trend: {
     name: string;
@@ -537,7 +540,11 @@ const Bar = ({
  * it hits as); open a row for its raiders. Each raider can be left out of
  * that ability's totals (e.g. the tank soaking it on purpose).
  */
-export const AvoidablePanel = ({ rows }: { rows: AvoidableRow[] | undefined }) => {
+export const AvoidablePanel = ({
+  rows,
+}: {
+  rows: AvoidableRow[] | undefined;
+}) => {
   const [open, setOpen] = React.useState<string | null>(null);
   // Ability name -> raiders left out of its totals.
   const [excluded, setExcluded] = React.useState<Record<string, string[]>>({});
@@ -815,6 +822,15 @@ const BossNightCard = ({
           key={`${boss.encounterId}:${boss.difficultyId}`}
           rows={boss.avoidable}
         />
+
+        {boss.consumables !== undefined && (
+          <Panel title="Consumables & buffs">
+            <ConsumablesPanel
+              summary={boss.consumables}
+              scope={`This night · ${boss.pulls} ${boss.pulls === 1 ? 'pull' : 'pulls'}`}
+            />
+          </Panel>
+        )}
 
         <Panel
           title={`Pulls (${boss.pulls})`}
@@ -1964,6 +1980,15 @@ export const ProgressionView = ({
               key={`${data.encounterId}:${data.difficultyId}`}
               rows={data.avoidable}
             />
+
+            {data.consumables !== undefined && (
+              <Panel title="Consumables & buffs">
+                <ConsumablesPanel
+                  summary={data.consumables}
+                  scope={`All nights · ${data.pulls} pulls`}
+                />
+              </Panel>
+            )}
 
             <Panel title="Raiders, all nights">
               <RaiderTable raiders={data.raiders} />

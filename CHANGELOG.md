@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.21] - Unreleased
+### Added
+- **Consumables & buffs** in Analysis, read from each raider's gear and buffs at the pull (advanced combat logging):
+  - **Night summary and Progression:** raid-wide rates (food, flask, augment rune, weapon oil, vantus, pre-pot, combat potions used of possible) and a raider grid. Click a raider, or use the Show dropdown, for their own view: enchant slots, gems and a card per consumable.
+  - **Pulls → Consumables & buffs:** the raid buffs at the pull and who brought them (Arcane Intellect, Fortitude, Battle Shout, Mark of the Wild, Skyfury, Blessing of the Bronze), and who was missing what.
+  - Combat potions possible = a pre-pot plus one per 5 minutes of the pull. Food, flasks and runes are recognised by their buff's name and tooltip (looked up once on Wowhead and cached), so new tiers need no update.
+  - Gems: the log lists gems, not sockets, so a slot without a gem shows as "No gem" rather than missing.
+- Pulls whose logs the server still keeps are rechecked once in the background to fill this in; older ones show without it.
+
 ## [1.9.20] - Unreleased
 ### Changed
 - **Avoidable damage:** each raider row has a damage bar and the exact damage taken. A switch next to each raider leaves them out of that ability's totals (e.g. a tank soaking it on purpose); totals, raiders hit and pulls update, and anyone left out moves to the bottom, faded. "Include everyone" resets it.

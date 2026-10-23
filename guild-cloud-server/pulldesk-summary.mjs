@@ -5,6 +5,7 @@
 // Input everywhere: [{ summary, report }] where `summary` is the pull's index
 // entry (night, pullNumber, totalPullNumber, result, bossPercent, duration,
 // startedAt) and `report` its analyzed report (may be null if not ready).
+import { consumablesOf } from './consumables.mjs';
 
 // Count only the first N deaths of a pull against people, like the
 // recruiting page: later deaths are usually the wipe snowballing.
@@ -246,6 +247,7 @@ export const summarizePulls = (pulls) => {
 
   const spellIds = spellIdsOf(ordered);
   const avoidable = avoidableOf(ordered);
+  const consumables = consumablesOf(ordered);
   return {
     encounterId: first.encounterId,
     encounterName: first.encounterName,
@@ -253,6 +255,7 @@ export const summarizePulls = (pulls) => {
     // Ability name -> spell ID, so the app can show a card for any name.
     spellIds,
     avoidable,
+    consumables,
     pulls: ordered.length,
     kills,
     bestPercent: kills ? 0 : percents.length ? Math.min(...percents) : null,
@@ -345,12 +348,13 @@ export const summarizeProgression = (pulls) => {
     difficultyId: all.difficultyId,
     pulls: all.pulls,
     kills: all.kills,
-    nights: perNight.map(({ raiders, ...rest }) => rest),
+    nights: perNight.map(({ raiders, consumables, avoidable, ...rest }) => rest),
     series,
     firstKill: firstKill ? { pull: firstKill.n, night: firstKill.night } : null,
     causes: all.causes,
     spellIds: all.spellIds,
     avoidable: all.avoidable,
+    consumables: all.consumables,
     raiders: all.raiders,
     trend: Object.values(trend),
   };

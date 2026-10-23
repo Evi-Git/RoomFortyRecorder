@@ -5,6 +5,7 @@
 // against the real logs under tests/logs.
 
 import { availabilityAt, defensiveFor } from './pulldesk-defensives.mjs';
+import { rawPrep } from './consumables.mjs';
 
 // ---- Log line parsing -------------------------------------------------------
 
@@ -333,6 +334,8 @@ export const analyzePull = (logText, options = {}) => {
   const npcHp = new Map(); // npcId -> { t, current, max }
   const hpSamples = []; // [t, npcId, pct]
   const avoidableHits = new Map(); // name -> { hits, damage, bySpell }
+  // Gear and auras at the pull, per raider (consumables.mjs).
+  const prep = new Map(); // guid -> rawPrep
 
   const seconds = (entry) => (entry.ms - start.ms) / 1000;
 
@@ -384,11 +387,21 @@ export const analyzePull = (logText, options = {}) => {
       const existing = players.get(guid);
       if (existing) existing.specId = specId;
       else players.set(guid, { name: null, specId });
+      try {
+        if (!prep.has(guid)) prep.set(guid, rawPrep(args));
+      } catch {
+        // An unexpected COMBATANT_INFO shape: no prep data for them.
+      }
       continue;
     }
 
     notePlayer(args[1], args[2]);
     notePlayer(args[5], args[6]);
+    // Aura names (a pre-pot's buff fading names the potion).
+    if (event.startsWith('SPELL_AURA_') && args[9] && args[10]) {
+      const auraId = Number(args[9]);
+      if (auraId && !spellNames.has(auraId)) spellNames.set(auraId, args[10]);
+    }
 
     const hit = readDamage(entry);
     if (hit) {
@@ -771,5 +784,16 @@ export const analyzePull = (logText, options = {}) => {
     spellNames: Object.fromEntries(
       [...avoidable].map((id) => [id, spellNames.get(id) || null]),
     ),
+    // Raw gear and auras at the pull; named by consumables.buildPrep.
+    prepRaw: {
+      players: [...prep.entries()]
+        .map(([guid, p]) => ({ guid, name: players.get(guid)?.name || null, specId: players.get(guid)?.specId || 0, ...p }))
+        .filter((p) => p.name && (inPull.size === 0 || inPull.has(p.name))),
+      auraNames: Object.fromEntries(
+        [...new Set([...prep.values()].flatMap((p) => p.auras.map(([, id]) => id)))]
+          .filter((id) => spellNames.has(id))
+          .map((id) => [id, spellNames.get(id)]),
+      ),
+    },
   };
 };
