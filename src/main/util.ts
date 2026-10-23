@@ -958,10 +958,10 @@ const isFolderOwned = async (dir: string) => {
  */
 const takeOwnershipStorageDir = async (dir: string) => {
   const helptext =
-    'If you are setting up Warcraft Recorder for the first time, this folder should be empty.';
+    'If you are setting up Bellhop for the first time, this folder should be empty.';
 
   const content =
-    'This folder is managed by Warcraft Recorder, files in it may be automatically created, modified or deleted.';
+    'This folder is managed by Bellhop, files in it may be automatically created, modified or deleted.';
 
   const files = await fs.promises.readdir(dir);
 
@@ -1019,10 +1019,10 @@ const takeOwnershipStorageDir = async (dir: string) => {
  */
 const takeOwnershipBufferDir = async (dir: string) => {
   const helptext =
-    'If you are setting up Warcraft Recorder for the first time, this folder should be empty.';
+    'If you are setting up Bellhop for the first time, this folder should be empty.';
 
   const content =
-    'This folder is managed by Warcraft Recorder, files in it may be automatically created, modified or deleted.';
+    'This folder is managed by Bellhop, files in it may be automatically created, modified or deleted.';
 
   const files = await fs.promises.readdir(dir);
 

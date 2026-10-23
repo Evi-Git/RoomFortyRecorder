@@ -1,4 +1,6 @@
-# RoomFortyRecorder
+# Bellhop
+
+Room Forty's raid assistant (the repository and internal name are still RoomFortyRecorder).
 
 The recording, review and live-view app for the **Room Forty** raid team.
 

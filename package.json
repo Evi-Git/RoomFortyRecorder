@@ -80,12 +80,14 @@
     ],
     "nsis": {
       "oneClick": true,
+      "shortcutName": "Bellhop",
+      "uninstallDisplayName": "Bellhop",
       "include": "installer.nsh",
       "deleteAppDataOnUninstall": true
     },
     "win": {
       "icon": "assets/icon.png",
-      "artifactName": "RoomFortyRecorder-Setup${version}.exe",
+      "artifactName": "Bellhop-Setup${version}.exe",
       "target": [
         "nsis"
       ]

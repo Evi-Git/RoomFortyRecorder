@@ -205,7 +205,7 @@ const setupTray = () => {
     },
   ]);
 
-  tray.setToolTip('RoomFortyRecorder');
+  tray.setToolTip('Bellhop');
   tray.setContextMenu(contextMenu);
 
   tray.on('double-click', () => {
@@ -231,7 +231,7 @@ const createWindow = async () => {
     width: 1980 * 0.8,
     icon: getAssetPath('./icon/small-icon.png'),
     frame: false,
-    title: `RoomFortyRecorder v${appVersion}`,
+    title: `Bellhop v${appVersion}`,
     webPreferences: {
       sandbox: true, // Good security practice.
       preload: app.isPackaged
@@ -277,7 +277,7 @@ const createWindow = async () => {
     }
 
     // This shows the correct version on a release build, not during development.
-    send('updateVersionDisplay', `RoomFortyRecorder v${appVersion}`);
+    send('updateVersionDisplay', `Bellhop v${appVersion}`);
 
     const startMinimized = cfg.get<boolean>('startMinimized');
     if (!startMinimized) window.show();
