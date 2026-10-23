@@ -623,7 +623,7 @@ export const AvoidablePanel = ({
                 className="tabular-nums text-foreground"
                 title={`${r.damage.toLocaleString()} damage`}
               >
-                {r.damage.toLocaleString()}
+                {compact(r.damage)}
               </span>
             </span>
           </td>

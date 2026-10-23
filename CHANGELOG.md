@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.9.20] - Unreleased
 ### Changed
-- **Avoidable damage:** each raider row has a damage bar and the exact damage taken. A switch next to each raider leaves them out of that ability's totals (e.g. a tank soaking it on purpose); totals, raiders hit and pulls update, and anyone left out moves to the bottom, faded. "Include everyone" resets it.
+- **Avoidable damage:** each raider row has a damage bar and their damage taken (6.8M; hover for the exact number). A switch next to each raider leaves them out of that ability's totals (e.g. a tank soaking it on purpose); totals, raiders hit and pulls update, and anyone left out moves to the bottom, faded. "Include everyone" resets it.
 - The Combat pots column and the Admin page's potion list are removed; a consumables and buffs view is coming instead.
 - Admin: your own personal role (the one named like you) isn't a column; the "You" column covers it.
 
