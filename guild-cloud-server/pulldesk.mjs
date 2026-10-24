@@ -1325,6 +1325,11 @@ export const createPullDesk = (options) => {
 
     // Tooltip text and icons for many spells (the Journal view). Returns
     // what's ready; `pending` > 0 means call again for the rest.
+    // A spec's talent tree (what the combat log's talent IDs are).
+    if (kind === 'talents' && /^\d+$/.test(idText || '') && req.method === 'GET') {
+      return json(res, 200, (await journal.talents(Number(idText))) || { specId: Number(idText), nodes: {} });
+    }
+
     if (kind === 'spells' && req.method === 'POST') {
       const body = await readBody(req, 32 * 1024);
       const ids = Array.isArray(body?.ids) ? body.ids : [];

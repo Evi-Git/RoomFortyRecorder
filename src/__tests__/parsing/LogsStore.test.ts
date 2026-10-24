@@ -93,3 +93,74 @@ test('active time never passes the fight, enemy filters and multi-ability filter
   const one = total({ abilities: [a] });
   expect(total({ abilities: [a, b] })).toBeGreaterThan(one);
 });
+
+test('passive reduction talents read from their descriptions', () => {
+  // eslint-disable-next-line global-require
+  const {
+    parseReduction,
+    talentSpells,
+  } = require('../../renderer/logs/talents');
+  expect(parseReduction('Reduces all magic damage taken by 4%.')).toEqual({
+    r: 0.04,
+    schools: 126,
+  });
+  expect(
+    parseReduction(
+      'Damage taken from Fire, Frost, and Nature effects reduced by 3%.',
+    ),
+  ).toEqual({
+    r: 0.03,
+    schools: 4 | 8 | 16,
+  });
+  expect(parseReduction('Reduces damage taken by 40% for 12 sec.')).toBeNull();
+  expect(parseReduction('Increases your Haste by 5%.')).toBeNull();
+  const tree = {
+    specId: 264,
+    nodes: {
+      1: [
+        {
+          rank: 1,
+          options: [
+            {
+              entryId: 11,
+              spellId: 100,
+              name: 'Warding',
+              text: 'Reduces all magic damage taken by 2%.',
+            },
+          ],
+        },
+        {
+          rank: 2,
+          options: [
+            {
+              entryId: 11,
+              spellId: 100,
+              name: 'Warding',
+              text: 'Reduces all magic damage taken by 4%.',
+            },
+          ],
+        },
+      ],
+      2: [
+        {
+          rank: 1,
+          options: [
+            { entryId: 21, spellId: 200, name: 'A', text: '' },
+            { entryId: 22, spellId: 201, name: 'B', text: '' },
+          ],
+        },
+      ],
+    },
+  };
+  const picked = talentSpells(
+    [
+      [1, 11, 2],
+      [2, 22, 1],
+      [9, 99, 1],
+    ],
+    tree,
+  );
+  expect(
+    picked.map((t: { name: string; text: string }) => `${t.name}:${t.text}`),
+  ).toEqual(['Warding:Reduces all magic damage taken by 4%.', 'B:']);
+});

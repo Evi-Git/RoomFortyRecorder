@@ -109,6 +109,8 @@ export type Unit = {
   maxHp: number;
   /** Seconds into the pull it first showed up (spawn waves). */
   first: number;
+  /** Raiders: talents from COMBATANT_INFO as [node ID, entry ID, rank]. */
+  talents?: [number, number, number][];
 };
 
 export type Spell = { id: number; name: string; school: number };
@@ -259,6 +261,8 @@ export class StoreBuilder {
 
   private specs = new Map<string, number>();
 
+  private talents = new Map<string, [number, number, number][]>();
+
   private power = new Map<number, [number, number, number, number][]>();
 
   private fightSeconds = 0;
@@ -358,6 +362,18 @@ export class StoreBuilder {
       const head = line.slice(line.indexOf('  ') + 2, line.indexOf('['));
       const fields = head.split(',');
       this.specs.set(fields[1], Number(fields[25]) || 0);
+      // The first [...] is the talents: (node, entry, rank), ...
+      const open = line.indexOf('[');
+      const close = line.indexOf(']', open);
+      const list: [number, number, number][] = [];
+      const re = /\((\d+),(\d+),(\d+)\)/g;
+      const text = line.slice(open, close);
+      let m = re.exec(text);
+      while (m) {
+        list.push([Number(m[1]), Number(m[2]), Number(m[3])]);
+        m = re.exec(text);
+      }
+      this.talents.set(fields[1], list);
       return;
     }
     const e = parseLine(line, WANTED);
@@ -506,6 +522,7 @@ export class StoreBuilder {
       if (spec !== undefined) {
         u.specId = spec;
         u.raider = true;
+        u.talents = this.talents.get(u.guid);
       }
     });
     if (!this.specs.size) {

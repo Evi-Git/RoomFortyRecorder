@@ -1,5 +1,6 @@
 import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
 import { F, K, PullStore, Unit } from './store';
+import type { PassiveDr } from './talents';
 
 /**
  * [RoomFortyRecorder] Logs page: tables worked out from one or more pulls'
@@ -1148,7 +1149,6 @@ export const lustBands = (ctx: Ctx) => {
 /* Damage prevented (estimate)                                         */
 /* ------------------------------------------------------------------ */
 
-const SHAMAN_SPECS = new Set([262, 263, 264]);
 // Auras this weak that are up all fight (Devotion Aura) aren't cooldowns.
 const STEADY_R = 0.05;
 
@@ -1159,7 +1159,7 @@ const STEADY_R = 0.05;
  */
 export const preventedRows = (
   ctx: Ctx,
-  opts: { passive?: boolean } = {},
+  opts: { passive?: boolean; talents?: Map<string, PassiveDr[]> | null } = {},
 ): MeterRow[] => {
   const rows = new Map<string, MeterRow>();
   const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
@@ -1321,16 +1321,28 @@ export const preventedRows = (
         if (!abilityOk(ctx, span.spellId)) return;
         add(span.caster, span.spellId, span.name, prevented, t);
       });
-      // Passive reductions on magic damage (armour handles physical): the
-      // raider's usual personal cut, never more than this hit's own.
+      if (!opts.passive) continue;
+      // Talents that always cut this school (Elemental Warding...), at the
+      // percentage their description gives.
+      let byTalents = 0;
+      (opts.talents?.get(p.units[d].guid) ?? []).forEach((dr) => {
+        if (!(dr.schools & school) && !(school === 0 && dr.schools === 127))
+          return;
+        const prevented = (amount * dr.r) / (1 - dr.r);
+        byTalents += prevented;
+        if (abilityOk(ctx, dr.spellId))
+          add(d, dr.spellId, dr.name, prevented, t);
+      });
+      // The rest of the raider's usual cut of magic damage (armour handles
+      // physical): versatility and whatever else, never more than this
+      // hit's own cut.
       const own = personal.get(d);
       const cutNow = own !== undefined && !(school & 1) ? hitCut(i) : null;
       if (own !== undefined && cutNow !== null && abilityOk(ctx, 0)) {
         const cut = Math.min(own, cutNow);
-        const name = SHAMAN_SPECS.has(p.units[d].specId)
-          ? 'Elemental Resistance & other passives (estimate)'
-          : 'Passive talents & versatility (estimate)';
-        add(d, 0, name, amount / (1 - cut) - amount, t);
+        const rest = amount / (1 - cut) - amount - byTalents;
+        if (rest > 0)
+          add(d, 0, 'Versatility & other passives (estimate)', rest, t);
       }
     }
   });

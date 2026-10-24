@@ -28,6 +28,11 @@ import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { CATEGORICAL, classColor, compact, mmss } from './format';
 import { AbilityPicker, EnemyPicker } from './Pickers';
+import { usePassiveTalents } from './talents';
+import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
+
+// Cooldowns are counted from their auras, not as talents.
+const isCooldown = (spellId: number) => Boolean(DAMAGE_REDUCTION[spellId]);
 
 /** A filter expression: narrowing the data, or marking matches on charts. */
 type Layer = {
@@ -291,19 +296,23 @@ const LogsExplorer = ({
     [stores, filters, layerExpr],
   );
 
+  // Raiders' passive reduction talents, when passives are counted.
+  const talentDrs = usePassiveTalents(stores, prevented && passive, isCooldown);
+
   const meter: MeterKind | null = METER_TABS.has(tab)
     ? (tab as MeterKind)
     : null;
   const rows = React.useMemo(() => {
     if (!stores.length || !meter || mode !== 'tables') return [];
-    if (meter === 'prevented') return preventedRows(ctx, { passive });
+    if (meter === 'prevented')
+      return preventedRows(ctx, { passive, talents: talentDrs });
     if (meter === 'healing' && prevented)
       return withPrevented(
         meterRows(ctx, 'healing'),
-        preventedRows(ctx, { passive }),
+        preventedRows(ctx, { passive, talents: talentDrs }),
       );
     return meterRows(ctx, meter);
-  }, [ctx, meter, stores.length, mode, prevented, passive]);
+  }, [ctx, meter, stores.length, mode, prevented, passive, talentDrs]);
   const enemies = React.useMemo(() => enemyOptions(stores), [stores]);
   // Abilities to pick from: this tab's, whatever is picked now.
   const abilityRows = React.useMemo(() => {
