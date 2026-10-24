@@ -308,47 +308,66 @@ export default class PullDesk {
     await uploadFullLog(client, claim.pullId as string, pull);
   }
 
-  private iconFlight = new Map<string, Promise<Response>>();
+  private iconFlight = new Map<
+    string,
+    Promise<{ bytes: Uint8Array; type: string } | null>
+  >();
 
   /**
-   * A spell icon image for the rficon:// protocol: from userData/icons, else
-   * the guild server's icon cache (which may serve an HD pack), else
-   * Blizzard's or Wowhead's image servers directly. Kept on disk for good.
+   * A spell icon's image bytes: from userData/icons-v2, else the guild
+   * server's icon cache (which may serve an HD pack), else Blizzard's or
+   * Wowhead's image servers directly. Kept on disk for good. Never takes
+   * more than 30 s.
    */
-  public icon(rawName: string): Promise<Response> {
+  private iconBytes(rawName: string) {
     const name = rawName.toLowerCase();
-    if (!/^[a-z0-9_-]{1,120}$/.test(name)) {
-      return Promise.resolve(new Response(null, { status: 404 }));
-    }
+    if (!/^[a-z0-9_-]{1,120}$/.test(name)) return Promise.resolve(null);
     const known = this.iconFlight.get(name);
-    if (known) return known.then((r) => r.clone());
-    // Never leave an image request hanging: give up after 30 s.
+    if (known) return known;
     const started = Date.now();
     let timer: NodeJS.Timeout | undefined;
     const job = Promise.race([
       this.loadIcon(name),
-      new Promise<Response>((resolve) => {
+      new Promise<null>((resolve) => {
         timer = setTimeout(() => {
           console.warn(`[SpellIcons] Image ${name} timed out after 30 s`);
-          resolve(new Response(null, { status: 504 }));
+          resolve(null);
         }, 30000);
       }),
-    ]).then((response) => {
+    ]).then((image) => {
       clearTimeout(timer);
       const ms = Date.now() - started;
-      if (!response.ok || ms > 3000) {
+      if (!image || ms > 3000) {
         console.info(
-          `[SpellIcons] Image ${name}: ${response.ok ? 'found' : `not found (${response.status})`} in ${ms} ms`,
+          `[SpellIcons] Image ${name}: ${image ? 'found' : 'not found'} in ${ms} ms`,
         );
       }
-      return response;
+      return image;
     });
     this.iconFlight.set(name, job);
     job.finally(() => this.iconFlight.delete(name));
-    return job.then((r) => r.clone());
+    return job;
   }
 
-  private async loadIcon(name: string): Promise<Response> {
+  /** The rficon:// protocol: a fresh Response per request (no clones). */
+  public async icon(rawName: string): Promise<Response> {
+    const image = await this.iconBytes(rawName);
+    if (!image) return new Response(null, { status: 404 });
+    return new Response(Buffer.from(image.bytes), {
+      headers: { 'Content-Type': image.type },
+    });
+  }
+
+  /** The same image as a data: URL, for the renderer over IPC. */
+  public async iconDataUrl(rawName: string): Promise<string | null> {
+    const image = await this.iconBytes(rawName);
+    if (!image) return null;
+    return `data:${image.type};base64,${Buffer.from(image.bytes).toString('base64')}`;
+  }
+
+  private async loadIcon(
+    name: string,
+  ): Promise<{ bytes: Uint8Array; type: string } | null> {
     const types: Record<string, string> = {
       png: 'image/png',
       jpg: 'image/jpeg',
@@ -361,10 +380,10 @@ export default class PullDesk {
         return 'webp';
       return null;
     };
-    const reply = (bytes: Uint8Array, ext: string) =>
-      new Response(Buffer.from(bytes), {
-        headers: { 'Content-Type': types[ext] },
-      });
+    const reply = (bytes: Uint8Array, ext: string) => ({
+      bytes,
+      type: types[ext],
+    });
     // icons-v2: icons-pack PNGs saved before 1.9.48 could be invisible.
     const dir = path.join(app.getPath('userData'), 'icons-v2');
     const save = async (bytes: Uint8Array, ext: string) => {
@@ -444,7 +463,7 @@ export default class PullDesk {
         // Next source.
       }
     }
-    return new Response(null, { status: 404 });
+    return null;
   }
 
   /**

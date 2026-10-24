@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.49] - Unreleased
+### Fixed
+- **Blank spell icons (for real this time):** the icon pictures were downloaded and saved fine (they're in the app's `icons-v2` folder), but the page loaded them through the app's own `rficon://` address, and those requests got stuck inside the browser engine, blocking every icon after the first few. The page now gets each picture from the app directly and only falls back to Blizzard's and Wowhead's servers when the app has none.
+
 ## [1.9.48] - Unreleased
 ### Fixed
 - **Invisible spell icons from the HD icon pack:** many game TGA files carry a fourth byte that isn't real transparency (the file says it has none, or it's 0 for every pixel). The server took it literally and turned those icons into fully transparent PNGs, which loaded fine but showed as empty boxes. Those icons are now opaque. The server's converted-pack cache and the app's icon cache start fresh so the invisible copies are not reused. **Update the server too.**

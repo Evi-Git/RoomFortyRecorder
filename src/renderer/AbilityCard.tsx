@@ -40,21 +40,40 @@ export type AbilityCardData = {
 const cache = new Map<string, AbilityCardData>();
 
 // Icon images: the app's icon cache first (disk, then the guild server's
-// cache, which can serve an HD pack), then Blizzard's and Wowhead's servers.
-const ICON_URLS = [
-  (icon: string) => `rficon://icon/${icon}`,
+// cache, which can serve an HD pack), sent over IPC as a data: URL, then
+// Blizzard's and Wowhead's servers.
+const ICON_CDNS = [
   (icon: string) =>
     `https://render.worldofwarcraft.com/us/icons/56/${icon}.jpg`,
   (icon: string) => `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg`,
 ];
 
-/** A spell icon by its name (e.g. "ability_creature_poison_02"). */
-// Each source gets a few seconds (a stalled request would otherwise leave
-// the box blank for good). After every source has failed, the whole list
-// is tried again a couple of times, with a pause, before giving up.
-const ICON_SOURCE_MS = 6000;
-const ICON_ROUNDS = 3;
+// Data URLs from the app (null = it has none), shared by every icon.
+const iconData = new Map<string, string | null>();
+const iconDataFlight = new Map<string, Promise<string | null>>();
+const loadIconData = (icon: string) => {
+  if (iconData.has(icon)) return Promise.resolve(iconData.get(icon) ?? null);
+  let job = iconDataFlight.get(icon);
+  if (!job) {
+    job = (ipc.invoke('iconImage', [icon]) as Promise<string | null>)
+      .then((url) =>
+        typeof url === 'string' && url.startsWith('data:image/') ? url : null,
+      )
+      .catch(() => null)
+      .then((url) => {
+        iconData.set(icon, url);
+        iconDataFlight.delete(icon);
+        return url;
+      });
+    iconDataFlight.set(icon, job);
+  }
+  return job;
+};
 
+// A CDN image that neither loads nor fails within this counts as failed.
+const ICON_SOURCE_MS = 6000;
+
+/** A spell icon by its name (e.g. "ability_creature_poison_02"). */
 export const GameIcon = ({
   icon,
   className,
@@ -62,43 +81,53 @@ export const GameIcon = ({
   icon: string | null | undefined;
   className: string;
 }) => {
-  // How far along the sources this icon is (a new icon starts over).
-  const [failed, setFailed] = React.useState<{
+  const [data, setData] = React.useState<{
+    icon: string;
+    url: string | null;
+  } | null>(() =>
+    icon && iconData.has(icon)
+      ? { icon, url: iconData.get(icon) ?? null }
+      : null,
+  );
+  // Which CDN this icon is on, once the app had nothing (a new icon starts over).
+  const [cdn, setCdn] = React.useState<{
     icon: string | null | undefined;
     n: number;
-    waiting: boolean;
-  }>({ icon, n: 0, waiting: false });
-  const current =
-    failed.icon === icon ? failed : { icon, n: 0, waiting: false };
-  const attempt = current.n;
-  const round = Math.floor(attempt / ICON_URLS.length);
+  }>({
+    icon,
+    n: 0,
+  });
   const [loaded, setLoaded] = React.useState('');
 
-  const next = React.useCallback(() => {
-    const n = attempt + 1;
-    if (n % ICON_URLS.length === 0 && n < ICON_URLS.length * ICON_ROUNDS) {
-      // Every source failed: wait a little before the next round.
-      setFailed({ icon, n, waiting: true });
-      setTimeout(
-        () =>
-          setFailed((f) =>
-            f.icon === icon && f.n === n ? { ...f, waiting: false } : f,
-          ),
-        5000 * (n / ICON_URLS.length),
-      );
-      return;
-    }
-    setFailed({ icon, n, waiting: false });
-  }, [attempt, icon]);
-
-  const src =
-    icon && round < ICON_ROUNDS && !current.waiting
-      ? `${ICON_URLS[attempt % ICON_URLS.length](icon)}${round ? `?r=${round}` : ''}`
-      : '';
-
-  // A source that neither loads nor fails in time counts as failed.
   React.useEffect(() => {
-    if (!src || loaded === src) return undefined;
+    if (!icon) return undefined;
+    let live = true;
+    loadIconData(icon).then((url) => {
+      if (live) setData({ icon, url });
+    });
+    return () => {
+      live = false;
+    };
+  }, [icon]);
+
+  const appData = data && data.icon === icon ? data : null;
+  const cdnIndex = cdn.icon === icon ? cdn.n : 0;
+  let src = '';
+  if (icon && appData) {
+    if (appData.url && cdnIndex === 0) src = appData.url;
+    else {
+      const i = appData.url ? cdnIndex - 1 : cdnIndex;
+      if (i < ICON_CDNS.length) src = ICON_CDNS[i](icon);
+    }
+  }
+
+  const next = React.useCallback(
+    () => setCdn({ icon, n: cdnIndex + 1 }),
+    [icon, cdnIndex],
+  );
+
+  React.useEffect(() => {
+    if (!src || src.startsWith('data:') || loaded === src) return undefined;
     const timer = setTimeout(next, ICON_SOURCE_MS);
     return () => clearTimeout(timer);
   }, [src, loaded, next]);
@@ -108,7 +137,7 @@ export const GameIcon = ({
   }
   return (
     <img
-      key={src}
+      key={src.length > 200 ? `data:${icon}` : src}
       src={src}
       alt=""
       draggable={false}
