@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.41] - Unreleased
+### Changed
+- **Abilities that share a name are one row** in a raider's breakdown, like Warcraft Logs: the total of every spell named Eviscerate, with an arrow to open each one. They're named the way Warcraft Logs names them where it can ("Eviscerate (Ancient Arts)"), otherwise with their spell ID. The chart's legend merges them too.
+
+### Fixed
+- **Spell icons fill in on their own** instead of after leaving and reopening a breakdown, and show straight away after restarting the app. The guild server answers with the icons it already has at once instead of waiting on new lookups, stops asking Wowhead for a while when it refuses, and remembers spells nobody knows for a few hours.
+
 ## [1.9.40] - Unreleased
 ### Fixed
 - **Spell icons on the Logs page:** the guild server now also asks Warcraft Logs for a spell's icon when Wowhead and Blizzard have none (Wowhead's tooltips may be blocked from the server). Spells cached earlier without an icon are looked up again, once a day. The server log says when Wowhead refuses.

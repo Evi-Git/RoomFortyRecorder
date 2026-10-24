@@ -96,6 +96,7 @@ export type PullDeskRequest =
       name?: string;
     }
   | { action: 'journalSpells'; ids: number[]; difficultyId?: number }
+  | { action: 'spellNames'; ids: number[] }
   | { action: 'talentTree'; specId: number }
   | {
       action: 'avoidableToggle';
@@ -679,6 +680,13 @@ export default class PullDesk {
           'get',
           `/journal/talents/${id(request.specId)}`,
           undefined,
+          { timeout: 60000 },
+        );
+      case 'spellNames':
+        return client.pullDeskRequest(
+          'post',
+          '/journal/names',
+          { ids: request.ids },
           { timeout: 60000 },
         );
       case 'journalSpells':

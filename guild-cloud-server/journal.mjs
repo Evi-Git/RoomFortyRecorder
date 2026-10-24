@@ -394,19 +394,28 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
         checkedAt: Date.now(),
       };
     }
-    if (fromWowhead) return { ...fromWowhead, checkedAt: Date.now() };
-    return null;
+    // Nobody knew it (or answered): remembered for a few hours so it
+    // doesn't hold up every batch.
+    return { ...(fromWowhead || {}), missing: true, checkedAt: Date.now() };
   };
   // Answers without an icon are asked again once a day.
-  const stale = (hit) => !hit.icon && Date.now() - (hit.checkedAt || 0) > DAY;
+  const stale = (hit) =>
+    !hit.icon && Date.now() - (hit.checkedAt || 0) > (hit.missing ? NOT_FOUND_TTL : DAY);
   const wowheadWarned = new Set();
+  // After Wowhead refuses or times out, leave it alone for a while so every
+  // spell doesn't wait on it.
+  let wowheadPausedUntil = 0;
   const fetchWowhead = async (id, difficultyId) => {
+    if (Date.now() < wowheadPausedUntil) return null;
     await slot();
     try {
       const url = `${wowheadBase}/${id}?dataEnv=1&locale=0${difficultyId ? `&dd=${difficultyId}` : ''}`;
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(10000) });
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(6000) });
       if (response.status === 404) return { missing: true };
       if (!response.ok) {
+        if (response.status === 403 || response.status === 429 || response.status >= 500) {
+          wowheadPausedUntil = Date.now() + 30 * 60 * 1000;
+        }
         // Say so once per status, so a blocked Wowhead shows in the log.
         if (!wowheadWarned.has(response.status)) {
           wowheadWarned.add(response.status);
@@ -422,6 +431,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
         icon: typeof body.icon === 'string' && /^[a-z0-9_-]+$/i.test(body.icon) ? body.icon.toLowerCase() : null,
       };
     } catch {
+      wowheadPausedUntil = Date.now() + 10 * 60 * 1000;
       return null;
     } finally {
       release();
@@ -461,7 +471,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
    * and fetches at most `budget` more per call, so the view fills in over a
    * few calls instead of waiting on a whole raid's worth.
    */
-  const spells = async (spellIds, difficultyId = null, budget = 24) => {
+  const spells = async (spellIds, difficultyId = null, budget = 24, waitMs = 4000) => {
     const ids = [...new Set(spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 400);
     const dd = Number(difficultyId) || 0;
     const cache = await spellsLoaded();
@@ -473,12 +483,56 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
         if (!hit.missing) out[id] = hit;
       } else todo.push(id);
     });
+    // What's cached goes back now; new lookups get a few seconds, and the
+    // rest carry on in the background for the next call.
     const batch = todo.slice(0, budget);
-    const fetched = await Promise.all(batch.map((id) => spell(id, dd)));
-    batch.forEach((id, i) => {
-      if (fetched[i]) out[id] = fetched[i];
-    });
-    return { spells: out, pending: todo.length - batch.length };
+    let done = 0;
+    const jobs = batch.map((id) =>
+      spell(id, dd).then((value) => {
+        done += 1;
+        if (value) out[id] = value;
+      }),
+    );
+    let timer;
+    await Promise.race([
+      Promise.all(jobs),
+      new Promise((resolve) => {
+        timer = Number.isFinite(waitMs) ? setTimeout(resolve, waitMs) : null;
+      }),
+    ]);
+    clearTimeout(timer);
+    return { spells: { ...out }, pending: todo.length - done };
+  };
+
+  // ---- Warcraft Logs' spell names --------------------------------------------
+  //
+  // Several spells often share a name (a talent's extra Eviscerate hit);
+  // Warcraft Logs names them apart ("Eviscerate (Ancient Arts)"). Asked
+  // once per spell, 30 to a query, and kept for good.
+  let wclNames = null;
+  let wclNamesSave = Promise.resolve();
+  const names = async (spellIds) => {
+    const ids = [...new Set(spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 120);
+    wclNames ??= await readJson('wcl-names.json', {});
+    const todo = ids.filter((id) => !(id in wclNames));
+    if (todo.length && wcl?.configured) {
+      for (let i = 0; i < todo.length; i += 30) {
+        const chunk = todo.slice(i, i + 30);
+        try {
+          const fields = chunk.map((id) => `a${id}: ability(id: ${id}) { name }`).join(' ');
+          const data = await wcl.query(`{ gameData { ${fields} } }`, {}, { quiet: true });
+          chunk.forEach((id) => {
+            const name = data?.gameData?.[`a${id}`]?.name;
+            wclNames[id] = typeof name === 'string' && name ? name : null;
+          });
+        } catch {
+          // Leave them for next time.
+        }
+      }
+      wclNamesSave = wclNamesSave.then(() => writeJson('wcl-names.json', wclNames)).catch(() => {});
+      await wclNamesSave;
+    }
+    return { names: Object.fromEntries(ids.filter((id) => id in wclNames).map((id) => [id, wclNames[id]])) };
   };
 
   // ---- Icon images ----------------------------------------------------------
@@ -693,5 +747,5 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     return talentInFlight.get(specId);
   };
 
-  return { configured, encounter, spell, spells, raw, talents, icon };
+  return { configured, encounter, spell, spells, raw, talents, icon, names };
 };

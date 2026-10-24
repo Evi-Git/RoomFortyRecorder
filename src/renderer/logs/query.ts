@@ -647,8 +647,9 @@ export const abilitySeries = (
   top = 8,
 ) => {
   const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
+  // By name: the same ability under several spell IDs is one series.
   const by = new Map<
-    number,
+    string,
     { name: string; values: Float64Array; total: number }
   >();
   const pets = ctx.filters.pets && meter !== 'taken';
@@ -660,7 +661,7 @@ export const abilitySeries = (
       const ref = rowOf(p, unit, pets);
       if (!ref || ref.key !== rowKey) return;
       const spell = p.spells[p.sp[i]];
-      const id = spell?.id ?? 0;
+      const id = spell?.name ?? '?';
       let entry = by.get(id);
       if (!entry) {
         entry = {
@@ -1415,4 +1416,56 @@ export const withPrevented = (healing: MeterRow[], prevented: MeterRow[]) => {
     });
   });
   return [...rows.values()].sort((a, b) => b.total - a.total);
+};
+
+/** Abilities with the same name (several spell IDs), as WCL nests them. */
+export type AbilityGroup = {
+  key: string;
+  /** The row to show: the ability itself, or the group's sum. */
+  head: AbilityRow;
+  /** Two or more when grouped; the main one (cast, else biggest) first. */
+  parts: AbilityRow[];
+};
+
+export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
+  const groups = new Map<string, AbilityRow[]>();
+  abilities.forEach((a) => {
+    const key = `${a.name}|${a.by}|${a.kind ?? ''}`;
+    const list = groups.get(key) ?? [];
+    list.push(a);
+    groups.set(key, list);
+  });
+  return [...groups.entries()].map(([key, list]) => {
+    if (list.length === 1) return { key, head: list[0], parts: list };
+    const parts = [...list].sort(
+      (x, y) => y.casts - x.casts || y.total - x.total,
+    );
+    const head: AbilityRow = {
+      ...parts[0],
+      key: `group:${key}`,
+      total: 0,
+      hits: 0,
+      crits: 0,
+      ticks: 0,
+      casts: 0,
+      misses: 0,
+      overheal: 0,
+      absorbed: 0,
+      mitigated: 0,
+      uptime: 0,
+    };
+    parts.forEach((a) => {
+      head.total += a.total;
+      head.hits += a.hits;
+      head.crits += a.crits;
+      head.ticks += a.ticks;
+      head.casts += a.casts;
+      head.misses += a.misses;
+      head.overheal += a.overheal;
+      head.absorbed += a.absorbed;
+      head.mitigated += a.mitigated;
+      head.uptime = Math.max(head.uptime, a.uptime);
+    });
+    return { key, head, parts };
+  });
 };

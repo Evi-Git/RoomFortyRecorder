@@ -700,7 +700,7 @@ export const createPullDesk = (options) => {
     ].filter((id) => !KNOWN_AURAS.has(id));
     // Wowhead tooltips (no Blizzard keys needed, but tests run without
     // either, so only when the journal is set up).
-    const looked = journal.configured && ids.length ? (await journal.spells(ids, 0, ids.length)).spells : {};
+    const looked = journal.configured && ids.length ? (await journal.spells(ids, 0, ids.length, Infinity)).spells : {};
     return buildPrep(report, (id) => auraInfo(report, looked, id), index.settings.combatPotions);
   };
 
@@ -1341,6 +1341,12 @@ export const createPullDesk = (options) => {
         'Cache-Control': 'private, max-age=2592000',
       });
       return res.end(found.bytes);
+    }
+
+    // Warcraft Logs' names for spells that share a name.
+    if (kind === 'names' && req.method === 'POST') {
+      const body = await readBody(req, 32 * 1024);
+      return json(res, 200, await journal.names(Array.isArray(body?.ids) ? body.ids : []));
     }
 
     if (kind === 'spells' && req.method === 'POST') {

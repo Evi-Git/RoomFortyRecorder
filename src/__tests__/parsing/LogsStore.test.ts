@@ -209,3 +209,35 @@ test('buffs that cut damage taken count while up, credited to the caster', () =>
     ),
   ).toBe(true);
 });
+
+test('abilities sharing a name are one group, the cast one first', () => {
+  const { groupAbilities } = require('../../renderer/logs/query');
+  const row = (spellId: number, name: string, total: number, casts = 0) => ({
+    key: `${spellId}|`,
+    spellId,
+    name,
+    by: '',
+    total,
+    hits: 1,
+    crits: 0,
+    ticks: 0,
+    casts,
+    misses: 0,
+    overheal: 0,
+    absorbed: 0,
+    mitigated: 0,
+    uptime: 0,
+  });
+  const groups = groupAbilities([
+    row(2, 'Eviscerate', 900),
+    row(1, 'Eviscerate', 700, 78),
+    row(3, 'Backstab', 200, 71),
+  ]);
+  expect(groups).toHaveLength(2);
+  const evis = groups.find(
+    (g: { head: { name: string } }) => g.head.name === 'Eviscerate',
+  );
+  expect(evis.parts.map((a: { spellId: number }) => a.spellId)).toEqual([1, 2]);
+  expect(evis.head.total).toBe(1600);
+  expect(evis.head.casts).toBe(78);
+});

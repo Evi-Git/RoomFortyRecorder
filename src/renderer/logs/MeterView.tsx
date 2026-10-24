@@ -1,10 +1,12 @@
 import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   abilitySeries,
   abilitySplit,
+  AbilityGroup,
   AbilityRow,
   byAbility,
+  groupAbilities,
   Ctx,
   Meter,
   MeterRow,
@@ -19,7 +21,7 @@ const wholeFight = (ctx: Ctx): Ctx =>
     ? { ...ctx, filters: { ...ctx.filters, range: null } }
     : ctx;
 import TimeChart, { ChartSeries } from './TimeChart';
-import SpellIcon from './SpellIcon';
+import SpellIcon, { useSpellLabels } from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import {
   CATEGORICAL,
@@ -241,7 +243,7 @@ const Drill = ({
     top: number;
   } | null>(null);
   const [sort, onSort] = useSort('total');
-  const abilities = sortRows([...row.abilities.values()], sort, {
+  const columns: Record<string, (a: AbilityRow) => number | string> = {
     name: (a) => a.name,
     total: (a) => a.total,
     rate: (a) => a.total,
@@ -256,8 +258,46 @@ const Drill = ({
       a.total + a.overheal ? a.overheal / (a.total + a.overheal) : 0,
     mitigated: (a) =>
       a.total + a.mitigated ? a.mitigated / (a.total + a.mitigated) : 0,
-  });
-  const top = Math.max(1, ...abilities.map((a) => a.total));
+  };
+  // The same ability under several spell IDs is one row (the sum), opened
+  // to show each, named the way Warcraft Logs names them where it can.
+  const groups = sortRows(
+    groupAbilities([...row.abilities.values()]),
+    sort,
+    Object.fromEntries(
+      Object.entries(columns).map(([k, f]) => [
+        k,
+        (g: AbilityGroup) => f(g.head),
+      ]),
+    ),
+  );
+  const [open, setOpen] = React.useState<Set<string>>(() => new Set());
+  const labels = useSpellLabels(
+    groups.flatMap((g) =>
+      g.parts.length > 1 ? g.parts.map((a) => a.spellId) : [],
+    ),
+  );
+  const lines = groups.flatMap((g) =>
+    g.parts.length === 1
+      ? [{ a: g.head, child: false, group: null as AbilityGroup | null }]
+      : [
+          { a: g.head, child: false, group: g },
+          ...(open.has(g.key)
+            ? sortRows(g.parts, sort, columns).map((a) => ({
+                a,
+                child: true,
+                group: g,
+              }))
+            : []),
+        ],
+  );
+  const nameOf = (a: AbilityRow, group: AbilityGroup | null) => {
+    if (!group || group.head === a) return a.name;
+    const label = labels.get(a.spellId);
+    if (label && label !== a.name) return label;
+    return a.name;
+  };
+  const top = Math.max(1, ...groups.map((g) => g.head.total));
   const sh = (label: string, column: string, left = false) => (
     <SortTh
       label={label}
@@ -383,10 +423,12 @@ const Drill = ({
             </tr>
           </thead>
           <tbody>
-            {abilities.map((a) => (
+            {lines.map(({ a, child, group }) => (
               <tr
                 key={a.key}
-                className="border-b border-card/40 hover:bg-card/30"
+                className={`border-b border-card/40 hover:bg-card/30 ${
+                  child ? 'bg-card/10' : ''
+                }`}
                 onMouseEnter={(e) => {
                   if (meter === 'prevented') return;
                   const outer = box.current?.getBoundingClientRect();
@@ -396,12 +438,57 @@ const Drill = ({
                 onMouseLeave={() => setHover(null)}
               >
                 <td className={`${td} text-foreground-lighter`}>
-                  <span className="inline-flex items-center gap-x-2">
+                  <span
+                    className={`inline-flex items-center gap-x-2 ${
+                      child ? 'pl-6' : ''
+                    }`}
+                  >
+                    {group && !child ? (
+                      <button
+                        type="button"
+                        aria-expanded={open.has(group.key)}
+                        title={`${group.parts.length} spells named ${a.name}`}
+                        onClick={() =>
+                          setOpen((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(group.key)) next.delete(group.key);
+                            else next.add(group.key);
+                            return next;
+                          })
+                        }
+                        className="w-4 text-foreground hover:text-foreground-lighter"
+                      >
+                        {open.has(group.key) ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )}
+                      </button>
+                    ) : (
+                      !child &&
+                      groups.some((g) => g.parts.length > 1) && (
+                        <span className="w-4" />
+                      )
+                    )}
                     <SpellIcon spellId={a.spellId} name={a.name} />
                     <span>
-                      {a.name}
+                      {nameOf(a, group)}
                       {a.by && (
                         <span className="text-foreground"> ({a.by})</span>
+                      )}
+                      {child &&
+                        group?.parts[0] !== a &&
+                        nameOf(a, group) === a.name && (
+                          <span className="text-foreground text-xs">
+                            {' '}
+                            · {a.spellId}
+                          </span>
+                        )}
+                      {group && !child && (
+                        <span className="text-foreground text-xs">
+                          {' '}
+                          ×{group.parts.length}
+                        </span>
                       )}
                     </span>
                   </span>

@@ -317,3 +317,53 @@ test('spell icons: Warcraft Logs when Wowhead and Blizzard have none; no-icon an
   const { spells } = await fresh.spells([53]);
   assert.equal(spells[53].icon, 'ability_rogue_eviscerate');
 });
+
+test('spell batches answer with what is cached without waiting on slow lookups', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  await fsp.mkdir(path.join(storage, 'journal'), { recursive: true });
+  await fsp.writeFile(
+    path.join(storage, 'journal', 'spells.json'),
+    JSON.stringify({ '1:0': { id: 1, name: 'A', text: '', icon: 'a' } }),
+  );
+  let release;
+  const slow = new Promise((r) => { release = r; });
+  const fetchImpl = async (url) => {
+    await slow;
+    return { ok: true, status: 200, json: async () => ({ name: 'B', tooltip: '', icon: 'b' }) };
+  };
+  const journal = createJournal({ storage, env: {}, fetchImpl });
+  const started = Date.now();
+  const first = await journal.spells([1, 2], 0, 24, 50);
+  assert.ok(Date.now() - started < 1000);
+  assert.deepEqual(Object.keys(first.spells), ['1']);
+  assert.equal(first.pending, 1);
+  release();
+  await new Promise((r) => setTimeout(r, 200));
+  const second = await journal.spells([1, 2], 0, 24, 50);
+  assert.equal(second.spells[2].icon, 'b');
+  assert.equal(second.pending, 0);
+});
+
+test('Warcraft Logs names for spells, 30 to a query, kept', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  const queries = [];
+  const wcl = {
+    configured: true,
+    query: async (text) => {
+      queries.push(text);
+      const out = {};
+      for (const m of text.matchAll(/a(\d+): ability/g)) out[`a${m[1]}`] = { name: m[1] === '2' ? 'Eviscerate (Ancient Arts)' : 'Eviscerate' };
+      return { gameData: out };
+    },
+  };
+  const journal = createJournal({ storage, env: {}, fetchImpl: () => assert.fail('no fetch'), wcl });
+  const ids = Array.from({ length: 35 }, (_, i) => i + 1);
+  const { names } = await journal.names(ids);
+  assert.equal(names[2], 'Eviscerate (Ancient Arts)');
+  assert.equal(queries.length, 2);
+  await journal.names([2, 3]);
+  assert.equal(queries.length, 2, 'cached');
+  const again = createJournal({ storage, env: {}, fetchImpl: () => assert.fail('no fetch'), wcl });
+  assert.equal((await again.names([2])).names[2], 'Eviscerate (Ancient Arts)');
+  assert.equal(queries.length, 2, 'kept on disk');
+});
