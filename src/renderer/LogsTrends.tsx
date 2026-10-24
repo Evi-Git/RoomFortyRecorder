@@ -4,8 +4,8 @@ import { getSpecClass, getWoWClassColor } from './rendererutils';
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
  * damage taken or damage prevented night by night on one boss, from the
- * stored meters. Progression nights count every pull up to the first kill;
- * after that only kills count, so weeks compare like with like.
+ * stored meters. Only kills count (the first kill, then every reclear), so
+ * weeks compare like with like.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -28,7 +28,7 @@ type NightTotals = {
   seconds: number;
   raid: Partial<Record<Kind, number>>;
   /** Pulls up to the first kill, or (after it) kills only. */
-  phase?: 'progression' | 'kills';
+  phase?: 'first' | 'kills';
 };
 type RaiderNight = { seconds: number; pulls: number } & Partial<
   Record<Kind, number>
@@ -432,14 +432,13 @@ export const LogsTrends = () => {
                   {(
                     [
                       [
-                        'Counted',
+                        'Kill',
                         (n: NightTotals) =>
-                          n.phase === 'kills' ? 'Kills' : 'Progression',
+                          n.phase === 'first' ? 'First kill' : 'Reclear',
                       ],
                       [
-                        'Pulls',
-                        (n: NightTotals) =>
-                          `${n.pulls}${n.kills ? ` (${n.kills} kill${n.kills > 1 ? 's' : ''})` : ''}`,
+                        'Kills',
+                        (n: NightTotals) => String(n.kills),
                       ],
                       [
                         'Fight time',
@@ -506,9 +505,9 @@ export const LogsTrends = () => {
                     >
                       <div>{shortNight(n.night)}</div>
                       <div className="text-[10px]">
-                        {n.phase === 'kills'
-                          ? `${n.kills} kill${n.kills > 1 ? 's' : ''}`
-                          : `${n.pulls} pulls${n.kills ? ' · kill' : ''}`}
+                        {n.phase === 'first'
+                          ? 'first kill'
+                          : `${n.kills} kill${n.kills > 1 ? 's' : ''}`}
                       </div>
                     </th>
                   ))}
@@ -589,9 +588,9 @@ export const LogsTrends = () => {
             </table>
           </div>
           <p className="text-xs text-foreground m-0">
-            Progression nights count every pull up to and including the first
-            kill; after that only kills count, so later weeks compare like with
-            like. {meta.rate} over the counted pulls&apos; fight time. Shading:
+            Only kills count: the first kill, then every reclear, so weeks
+            compare like with like. {meta.rate} over the kills&apos; fight
+            time. Shading:
             each raider against their own best night. Change: their last night
             against their first
             {kind === 'taken' ? ' (less damage taken is green)' : ''}.

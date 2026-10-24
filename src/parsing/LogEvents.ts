@@ -66,6 +66,7 @@ export type LogEvent = {
   attacker: string;
   attackSpellId: number;
   attackSpellName: string;
+  attackSchool: number;
 };
 
 const DECIMAL = /^-?\d+\.\d+$/;
@@ -143,6 +144,7 @@ const blank = (): LogEvent => ({
   over: 0,
   attacker: NO_GUID,
   attackSpellId: 0,
+  attackSchool: 0,
   attackSpellName: '',
 });
 
@@ -284,6 +286,7 @@ export const parseLine = (
     e.attacker = e.src;
     e.attackSpellId = withSpell ? int(args[9]) : 1;
     e.attackSpellName = withSpell ? (args[10] ?? '') : 'Melee';
+    e.attackSchool = withSpell ? hex(args[11]) : 1;
     // The event's source becomes the absorber (who cast the shield).
     e.src = args[a];
     e.srcName = args[a + 1] === 'nil' ? '' : (args[a + 1] ?? '');

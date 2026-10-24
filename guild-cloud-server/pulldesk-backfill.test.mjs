@@ -190,15 +190,13 @@ test('meters reply carries the pull and its deaths; trends add up night by night
   assert.ok(got.body.deaths[0].name);
   assert.equal(got.body.damage[1].name, 'Mage');
 
+  // A wipe: Trends only count kills.
   const trends = await call('GET', ['meters', 'trends'], undefined, `?encounterId=${encounterId}&difficulty=${difficultyId}`);
   assert.equal(trends.status, 200);
-  assert.deepEqual(trends.body.nights.map((n) => [n.night, n.pulls]), [['2026-10-21', 1]]);
-  assert.equal(trends.body.nights[0].raid.damage, 5160);
-  const evi = trends.body.raiders.find((r) => r.name === 'Evi');
-  assert.deepEqual(evi.nights['2026-10-21'], { seconds: 172, pulls: 1, damage: 1720, healing: 860 });
+  assert.deepEqual(trends.body.nights, []);
 });
 
-test('trends: progression nights count every pull to the first kill, later nights only kills', async () => {
+test('trends count kills only: the first kill, then reclears', async () => {
   const { call } = await setup();
   const killSlice = slice.replace(/(ENCOUNTER_END,\d+,"[^"]*",\d+,\d+,)0,/, '$11,');
   assert.notEqual(killSlice, slice);
@@ -217,7 +215,7 @@ test('trends: progression nights count every pull to the first kill, later night
   assert.deepEqual(
     trends.body.nights.map((n) => [n.night, n.pulls, n.kills, n.phase]),
     [
-      ['2026-10-14', 2, 1, 'progression'],
+      ['2026-10-14', 1, 1, 'first'],
       ['2026-10-21', 1, 1, 'kills'],
     ],
   );

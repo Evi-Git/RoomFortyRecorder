@@ -332,6 +332,9 @@ export class StoreBuilder {
       i = this.spells.length;
       this.spellIndex.set(id, i);
       this.spells.push({ id, name, school });
+    } else if (!this.spells[i].school && school) {
+      // First seen without a school (e.g. as an absorbed attack).
+      this.spells[i].school = school;
     }
     return i;
   }
@@ -418,7 +421,7 @@ export class StoreBuilder {
       kind = K.ABSORB;
       a = e.amount;
       x = this.unit(e.attacker, '', 0);
-      aux = this.spell(e.attackSpellId, e.attackSpellName, 0);
+      aux = this.spell(e.attackSpellId, e.attackSpellName, e.attackSchool);
     } else if (type === 'SPELL_CAST_SUCCESS') kind = K.CAST;
     else if (type === 'SPELL_CAST_START') kind = K.BEGIN;
     else if (type === 'SPELL_AURA_APPLIED') {

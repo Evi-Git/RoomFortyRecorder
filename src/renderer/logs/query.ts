@@ -314,6 +314,8 @@ export type AbilityRow = {
   mitigated: number;
   /** Debuff uptime on targets (DoTs), seconds. */
   uptime: number;
+  /** Healing: a heal, a shield, or damage prevented (for the bar's look). */
+  kind?: 'heal' | 'shield' | 'prevented';
 };
 
 export type MeterRow = RowRef & {
@@ -322,6 +324,9 @@ export type MeterRow = RowRef & {
   pets: number;
   overheal: number;
   mitigated: number;
+  /** Healing: of total, shields (absorbs) and damage prevented. */
+  shields: number;
+  prevented: number;
   /** Seconds active (casting or hitting). */
   active: number;
   abilities: Map<string, AbilityRow>;
@@ -396,11 +401,15 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
   // each cast or hit), merged, and never past the end of what's in view.
   const activity = new Map<string, [number, number][]>();
   const ends = ctx.pulls.map((_, pi) => ctx.offsets[pi] + window_(ctx, pi)[1]);
+  const starts = ctx.pulls.map(
+    (_, pi) => ctx.offsets[pi] + window_(ctx, pi)[0],
+  );
   const touch = (key: string, at: number, pi: number) => {
+    const start = Math.max(at, starts[pi]);
     const end = Math.min(at + 1.5, ends[pi]);
-    if (end <= at) return;
+    if (end <= start) return;
     const list = activity.get(key) ?? [];
-    list.push([at, end]);
+    list.push([start, end]);
     activity.set(key, list);
   };
 
@@ -419,6 +428,8 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
           pets: 0,
           overheal: 0,
           mitigated: 0,
+          shields: 0,
+          prevented: 0,
           active: 0,
           abilities: new Map(),
           series: new Float64Array(points),
@@ -456,6 +467,11 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
       if (kind === K.HEAL) {
         ab.overheal += p.x[i];
         row.overheal += p.x[i];
+        ab.kind = ab.kind === 'shield' ? 'shield' : 'heal';
+      }
+      if (kind === K.ABSORB) {
+        row.shields += amount;
+        if (!ab.kind) ab.kind = 'shield';
       }
       row.total += amount;
       if (fromPet) row.pets += amount;
@@ -1132,6 +1148,10 @@ export const lustBands = (ctx: Ctx) => {
 /* Damage prevented (estimate)                                         */
 /* ------------------------------------------------------------------ */
 
+const SHAMAN_SPECS = new Set([262, 263, 264]);
+// Auras this weak that are up all fight (Devotion Aura) aren't cooldowns.
+const STEADY_R = 0.05;
+
 /**
  * Damage kept off raiders by damage-reduction cooldowns, credited to whoever
  * cast them (personal ones to the wearer): taken x r / (1 - r) while up.
@@ -1197,6 +1217,57 @@ export const preventedRows = (
       spans.set(a.dst, list);
     });
     if (!spans.size && !opts.passive) return;
+    // Passive reductions (talents, versatility): each raider's usual cut of
+    // magic damage when no cooldown is up, from the log's before-and-after
+    // amounts, above the raid's floor (what everyone gets: boss and raid-wide
+    // effects). Steady auras we count already (Devotion Aura) come off first.
+    const steadyCut = (d: number, t: number) => {
+      let keep = 1;
+      (spans.get(d) ?? []).forEach((sp) => {
+        if (sp.r <= STEADY_R && t >= sp.start && t < sp.end) keep *= 1 - sp.r;
+      });
+      return keep;
+    };
+    const cooldownUp = (d: number, t: number) =>
+      (spans.get(d) ?? []).some(
+        (sp) => sp.r > STEADY_R && t >= sp.start && t < sp.end,
+      );
+    // This hit's cut (0..1) not explained by auras we count, or null.
+    const hitCut = (i: number) => {
+      const landed = p.a[i] + p.b[i];
+      if (!landed || p.x[i] <= landed) return null;
+      const cut = 1 - landed / p.x[i] / steadyCut(p.d[i], p.t[i]);
+      return cut > 0 && cut < 0.6 ? cut : null;
+    };
+    const personal = new Map<number, number>();
+    if (opts.passive) {
+      const samples = new Map<number, number[]>();
+      for (let i = 0; i < p.n; i += 1) {
+        if (p.k[i] !== K.DMG) continue;
+        const d = p.d[i];
+        if (d < 0 || !p.units[d].raider) continue;
+        if ((p.spells[p.sp[i]]?.school ?? 1) & 1) continue;
+        if (cooldownUp(d, p.t[i])) continue;
+        const cut = hitCut(i);
+        if (cut === null) continue;
+        const list = samples.get(d) ?? [];
+        list.push(cut);
+        samples.set(d, list);
+      }
+      const medians = new Map<number, number>();
+      samples.forEach((list, d) => {
+        if (list.length < 8) return;
+        const sorted = [...list].sort((x, y) => x - y);
+        medians.set(d, sorted[Math.floor(sorted.length / 2)]);
+      });
+      const ordered = [...medians.values()].sort((x, y) => x - y);
+      const floor =
+        ordered.length >= 3 ? ordered[Math.floor(ordered.length * 0.15)] : 0;
+      medians.forEach((m, d) => {
+        const own = 1 - (1 - m) / (1 - floor);
+        if (own > 0.002) personal.set(d, own);
+      });
+    }
     const add = (
       caster: number,
       spellId: number,
@@ -1214,6 +1285,8 @@ export const preventedRows = (
           pets: 0,
           overheal: 0,
           mitigated: 0,
+          shields: 0,
+          prevented: 0,
           active: 0,
           abilities: new Map(),
           series: new Float64Array(points),
@@ -1241,25 +1314,23 @@ export const preventedRows = (
       if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
       const amount = p.a[i] + p.b[i];
       const school = p.spells[p.sp[i]]?.school ?? 1;
-      let byCooldowns = 0;
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
         if (span.magicOnly && school === 1) return;
         const prevented = (amount * span.r) / (1 - span.r);
-        byCooldowns += prevented;
         if (!abilityOk(ctx, span.spellId)) return;
         add(span.caster, span.spellId, span.name, prevented, t);
       });
-      // What else took damage off (magic only, since armour handles the
-      // rest): talents like Elemental Resistance, versatility, auras.
-      if (
-        opts.passive &&
-        school !== 1 &&
-        p.x[i] > amount &&
-        abilityOk(ctx, 0)
-      ) {
-        const rest = p.x[i] - amount - byCooldowns;
-        if (rest > 0) add(d, 0, 'Passive reductions', rest, t);
+      // Passive reductions on magic damage (armour handles physical): the
+      // raider's usual personal cut, never more than this hit's own.
+      const own = personal.get(d);
+      const cutNow = own !== undefined && !(school & 1) ? hitCut(i) : null;
+      if (own !== undefined && cutNow !== null && abilityOk(ctx, 0)) {
+        const cut = Math.min(own, cutNow);
+        const name = SHAMAN_SPECS.has(p.units[d].specId)
+          ? 'Elemental Resistance & other passives (estimate)'
+          : 'Passive talents & versatility (estimate)';
+        add(d, 0, name, amount / (1 - cut) - amount, t);
       }
     }
   });
@@ -1290,9 +1361,10 @@ export const withPrevented = (healing: MeterRow[], prevented: MeterRow[]) => {
     const target = row;
     r.abilities.forEach((a) => {
       const key = `prevented:${a.key}`;
-      target.abilities.set(key, { ...a, key, name: `${a.name} (prevented)` });
+      target.abilities.set(key, { ...a, key, kind: 'prevented' });
     });
     target.total += r.total;
+    target.prevented += r.total;
     r.series.forEach((v, i) => {
       target.series[i] += v;
     });
