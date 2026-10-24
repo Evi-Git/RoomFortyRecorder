@@ -86,6 +86,7 @@ const fakeBlizzard = () => {
         spec_talent_nodes: [],
       });
     }
+    if (/spell\/404404/.test(u)) return { ok: false, status: 404, json: async () => ({}) };
     if (u.includes('/media/spell/')) {
       const id = /spell\/(\d+)/.exec(u)[1];
       return ok({ assets: [{ key: 'icon', value: `https://render.example/icons/56/${id}.jpg` }] });
@@ -287,4 +288,32 @@ test('icons: local pack first, else downloaded once and cached; bad names refuse
   assert.equal(await journal.icon('nothing_here'), null);
   assert.equal(calls.length, n, 'misses remembered for a while');
   assert.equal(await journal.icon('../etc/passwd'), null);
+});
+
+test('spell icons: Warcraft Logs when Wowhead and Blizzard have none; no-icon answers retried', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  let wclCalls = 0;
+  const wcl = {
+    configured: true,
+    query: async (text) => {
+      wclCalls += 1;
+      const id = Number(/ability\(id: (\d+)\)/.exec(text)[1]);
+      return { gameData: { ability: { id, name: 'Eviscerate', icon: 'ability_rogue_eviscerate.jpg' } } };
+    },
+  };
+  // Wowhead blocked (403), Blizzard not set up.
+  const fetchImpl = async () => ({ ok: false, status: 403, json: async () => ({}) });
+  const journal = createJournal({ storage, env: {}, fetchImpl, wcl });
+  const got = await journal.spell(196819);
+  assert.equal(got.icon, 'ability_rogue_eviscerate');
+  assert.equal(got.name, 'Eviscerate');
+  await journal.spell(196819);
+  assert.equal(wclCalls, 1, 'cached');
+
+  // An old cached answer without an icon is asked again.
+  await fsp.mkdir(path.join(storage, 'journal'), { recursive: true });
+  await fsp.writeFile(path.join(storage, 'journal', 'spells.json'), JSON.stringify({ '53:0': { id: 53, name: 'Backstab', text: 'Stab.', icon: null } }));
+  const fresh = createJournal({ storage, env: {}, fetchImpl, wcl });
+  const { spells } = await fresh.spells([53]);
+  assert.equal(spells[53].icon, 'ability_rogue_eviscerate');
 });
