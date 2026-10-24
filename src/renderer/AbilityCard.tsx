@@ -56,7 +56,12 @@ export const GameIcon = ({
   icon: string | null | undefined;
   className: string;
 }) => {
-  const [attempt, setAttempt] = React.useState(0);
+  // Failed image sources, for this icon (a new icon starts over).
+  const [failed, setFailed] = React.useState<{
+    icon: string | null | undefined;
+    n: number;
+  }>({ icon, n: 0 });
+  const attempt = failed.icon === icon ? failed.n : 0;
   if (!icon || attempt >= ICON_URLS.length) {
     return <span className={`${className} border border-card bg-card/50`} />;
   }
@@ -65,7 +70,7 @@ export const GameIcon = ({
       src={ICON_URLS[attempt](icon)}
       alt=""
       draggable={false}
-      onError={() => setAttempt((a) => a + 1)}
+      onError={() => setFailed({ icon, n: attempt + 1 })}
       className={className}
     />
   );

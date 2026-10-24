@@ -119,3 +119,25 @@ test('icon pack folder: BLP files in any layout, converted once', async () => {
   await fsp.rm(file);
   assert.equal((await journal.icon('spell_holy_renew')).type, 'image/png', 'kept as PNG');
 });
+
+test('icon pack folder is read once for many requests at the same time', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  const pack = await fsp.mkdtemp(path.join(os.tmpdir(), 'pack-'));
+  const data = blp({ compression: 2, width: 4, height: 4, data: [0x00, 0xf8, 0x1f, 0x00, 0, 0, 0, 0] });
+  for (let i = 0; i < 20; i += 1) await fsp.writeFile(path.join(pack, `icon_${i}.blp`), data);
+  let reads = 0;
+  const real = fsp.readdir;
+  fsp.readdir = async (...args) => {
+    reads += 1;
+    return real(...args);
+  };
+  try {
+    const journal = createJournal({ storage, env: { GUILD_CLOUD_ICON_DIR: pack }, fetchImpl: async () => ({ ok: false, status: 404 }) });
+    const found = await Promise.all(Array.from({ length: 20 }, (_, i) => journal.icon(`icon_${i}`)));
+    assert.ok(found.every((f) => f?.type === 'image/png'));
+    await Promise.all([journal.icon('not_there_1'), journal.icon('not_there_2')]);
+    assert.equal(reads, 1);
+  } finally {
+    fsp.readdir = real;
+  }
+});

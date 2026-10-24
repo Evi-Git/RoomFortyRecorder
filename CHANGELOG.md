@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.42] - Unreleased
+### Fixed
+- **Spell icons on the Logs page** now come from the same lookup as the video timeline (which already showed them): the app's own icon list, kept on disk, filled from the guild server and then Wowhead. Icons appear on their own as they're found, missing ones are asked again while they're on screen, and they're there straight away after a restart. Hovering an icon shows its icon name, or whether it's still being looked up.
+- An icon that failed to load once no longer stays blank when the right icon arrives later.
+- With an icon pack set, the server read the pack folder once per icon request at first (tens of thousands of files each time), which made icons slow; it reads it once now.
+
 ## [1.9.41] - Unreleased
 ### Changed
 - **Abilities that share a name are one row** in a raider's breakdown, like Warcraft Logs: the total of every spell named Eviscerate, with an arrow to open each one. They're named the way Warcraft Logs names them where it can ("Eviscerate (Ancient Arts)"), otherwise with their spell ID. The chart's legend merges them too.
