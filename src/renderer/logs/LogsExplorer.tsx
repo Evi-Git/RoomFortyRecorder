@@ -28,7 +28,8 @@ import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { CATEGORICAL, classColor, compact, mmss } from './format';
 import { AbilityPicker, EnemyPicker } from './Pickers';
-import { usePassiveTalents } from './talents';
+import { useAuraDrs, usePassiveTalents } from './talents';
+import { loadSpellTexts } from './SpellIcon';
 import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
 
 // Cooldowns are counted from their auras, not as talents.
@@ -47,7 +48,7 @@ type Layer = {
 /**
  * [RoomFortyRecorder] The Logs page's pull explorer, after Warcraft Logs:
  * Tables / Timelines / Events / Queries over one pull or several added up,
- * with tabs (Summary, Damage Done, Damage Taken, Healing, Damage Prevented,
+ * with tabs (Summary, Damage Done, Damage Taken, Healing (with mitigations),
  * Buffs, Debuffs, Interrupts, Dispels, Resources, Casts) and filters
  * (friendlies/enemies, enemy, ability, pets, ignore after deaths, filter
  * expression, a slice of the fight).
@@ -247,7 +248,7 @@ const LogsExplorer = ({
   const [layerMode, setLayerMode] = React.useState<'filter' | 'mark'>('filter');
   // Healing: count damage prevented as healing (and passive reductions).
   const [prevented, setPrevented] = React.useState(false);
-  const [passive, setPassive] = React.useState(false);
+  const [passive, setPassive] = React.useState(true);
   const [exprError, setExprError] = React.useState('');
   const [timelinePull, setTimelinePull] = React.useState(0);
   const [notice, setNotice] = React.useState('');
@@ -298,6 +299,8 @@ const LogsExplorer = ({
 
   // Raiders' passive reduction talents, when passives are counted.
   const talentDrs = usePassiveTalents(stores, prevented && passive, isCooldown);
+  // Buffs that cut damage taken (Elemental Resistance...), from their text.
+  const auraDrs = useAuraDrs(stores, prevented, isCooldown, loadSpellTexts);
 
   const meter: MeterKind | null = METER_TABS.has(tab)
     ? (tab as MeterKind)
@@ -305,14 +308,18 @@ const LogsExplorer = ({
   const rows = React.useMemo(() => {
     if (!stores.length || !meter || mode !== 'tables') return [];
     if (meter === 'prevented')
-      return preventedRows(ctx, { passive, talents: talentDrs });
+      return preventedRows(ctx, {
+        passive,
+        talents: talentDrs,
+        auras: auraDrs,
+      });
     if (meter === 'healing' && prevented)
       return withPrevented(
         meterRows(ctx, 'healing'),
-        preventedRows(ctx, { passive, talents: talentDrs }),
+        preventedRows(ctx, { passive, talents: talentDrs, auras: auraDrs }),
       );
     return meterRows(ctx, meter);
-  }, [ctx, meter, stores.length, mode, prevented, passive, talentDrs]);
+  }, [ctx, meter, stores.length, mode, prevented, passive, talentDrs, auraDrs]);
   const enemies = React.useMemo(() => enemyOptions(stores), [stores]);
   // Abilities to pick from: this tab's, whatever is picked now.
   const abilityRows = React.useMemo(() => {
@@ -593,9 +600,12 @@ const LogsExplorer = ({
             >
               <Switch
                 checked={prevented}
-                onCheckedChange={(v: boolean) => setPrevented(v)}
+                onCheckedChange={(v: boolean) => {
+                  setPrevented(v);
+                  if (v) setPassive(true);
+                }}
               />
-              Damage prevented
+              Mitigations
             </label>
           )}
           {meter === 'healing' && prevented && (

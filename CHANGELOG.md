@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.37] - Unreleased
+### Added
+- **Buffs that cut damage taken count as mitigations**, credited to whoever cast them: Elemental Resistance (from Healing Stream Totem) and any other raider buff whose description says it reduces damage taken. The percentage and damage schools come from the buff's description, or from the caster's talent of the same name; it counts only while the buff is up. Talents already counted as always-on passives aren't counted twice.
+- **Spell icons are cached:** the app keeps every icon it loads on disk, and the guild server keeps a shared copy (`journal/icons/`), so icons load from your own server instead of Blizzard's or Wowhead's each time. The server can serve an icon pack first (an upscaled HD set, say): set `GUILD_CLOUD_ICON_DIR` to a folder of `<icon>.png` files on the server, or `GUILD_CLOUD_ICON_PACK_URL` to a link template with `{name}`.
+- The app also looks up icon names on Wowhead itself, so icons show even when the guild server can't reach Wowhead.
+
+### Changed
+- "Damage prevented" is now **Mitigations** (Healing tab switch, bar key, trends and meters), and turning it on also turns on "+ passives".
+
 ## [1.9.36] - Unreleased
 ### Added
 - **Passive reduction talents in damage prevented** (Healing, with "Damage prevented" and "+ passives" on): each raider's talents are read from the combat log and looked up in Blizzard's talent data (by the guild server, once per spec, kept for a week). Talents that always reduce damage taken, like Elemental Warding and Elemental Resistance, get their own rows at the percentage their description gives, for the damage schools they cover. What's left of the raider's usual cut of magic damage shows as "Versatility & other passives (estimate)".

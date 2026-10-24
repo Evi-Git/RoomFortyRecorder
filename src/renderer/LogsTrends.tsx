@@ -18,7 +18,7 @@ const KINDS: { key: Kind; label: string; rate: string }[] = [
   { key: 'damage', label: 'Damage done', rate: 'DPS' },
   { key: 'healing', label: 'Healing', rate: 'HPS' },
   { key: 'taken', label: 'Damage taken', rate: 'DTPS' },
-  { key: 'mitigation', label: 'Damage prevented', rate: 'PPS' },
+  { key: 'mitigation', label: 'Mitigations', rate: 'PPS' },
 ];
 
 type NightTotals = {

@@ -21,6 +21,29 @@ let busy = false;
 
 const notify = () => listeners.forEach((fn) => fn());
 
+// The app also looks icon names up on Wowhead itself (cached on disk), in
+// case the guild server can't reach it. Doesn't hold up the server's answer.
+const direct = new Map<number, string>();
+const directAsked = new Set<number>();
+const askDirect = (ids: number[]) => {
+  const fresh = ids.filter((id) => !directAsked.has(id));
+  if (!fresh.length) return;
+  fresh.forEach((id) => directAsked.add(id));
+  (ipc.invoke('spellIcons', [fresh]) as Promise<Record<string, string>>)
+    .then((icons) => {
+      fresh.forEach((id) => {
+        const icon = icons?.[id];
+        if (!icon) return;
+        direct.set(id, icon);
+        const info = known.get(id);
+        if (!info) known.set(id, { name: null, text: '', icon });
+        else if (!info.icon) known.set(id, { ...info, icon });
+      });
+      notify();
+    })
+    .catch(() => {});
+};
+
 const flush = async () => {
   timer = null;
   if (busy) return;
@@ -28,6 +51,7 @@ const flush = async () => {
   if (!ids.length) return;
   busy = true;
   try {
+    askDirect(ids);
     const response = (await ipc.invoke('pullDesk', [
       { action: 'journalSpells', ids },
     ])) as Response<{
@@ -41,14 +65,14 @@ const flush = async () => {
         tries.set(id, n);
         if (n >= 4) {
           wanted.delete(id);
-          known.set(id, null);
+          if (!known.get(id)) known.set(id, null);
         }
       });
     } else {
       ids.forEach((id) => {
         const info = response.data.spells[id];
         if (info) {
-          known.set(id, info);
+          known.set(id, { ...info, icon: info.icon || direct.get(id) || null });
           wanted.delete(id);
         }
       });
@@ -56,11 +80,11 @@ const flush = async () => {
       // Ones it couldn't get (Wowhead busy) are asked again a few times.
       if (response.data.pending === 0) {
         ids.forEach((id) => {
-          if (known.has(id)) return;
+          if (!wanted.has(id)) return;
           const n = (tries.get(id) ?? 0) + 1;
           tries.set(id, n);
           if (n >= 4) {
-            known.set(id, null);
+            if (!known.get(id)) known.set(id, null);
             wanted.delete(id);
           }
         });
@@ -80,6 +104,37 @@ const ask = (id: number) => {
   wanted.add(id);
   if (!timer) timer = setTimeout(flush, 60);
 };
+
+/**
+ * Many spells' text, once the server has answered for all of them (or given
+ * up on some): for reading damage reductions out of buff descriptions.
+ */
+export const loadSpellTexts = (ids: number[]) =>
+  new Promise<Map<number, SpellInfo>>((resolve) => {
+    const list = [...new Set(ids)].filter((id) => id > 1);
+    // Ones only the app's own icon lookup filled in still need the server.
+    list.forEach((id) => {
+      if (!known.has(id) || (!known.get(id)?.text && !tries.has(id))) {
+        if (!wanted.has(id)) wanted.add(id);
+      }
+    });
+    if (!timer && wanted.size) timer = setTimeout(flush, 60);
+    const done = () => list.every((id) => !wanted.has(id));
+    const finish = () => {
+      listeners.delete(check);
+      const out = new Map<number, SpellInfo>();
+      list.forEach((id) => {
+        const info = known.get(id);
+        if (info) out.set(id, info);
+      });
+      resolve(out);
+    };
+    const check = () => {
+      if (done()) finish();
+    };
+    if (done()) finish();
+    else listeners.add(check);
+  });
 
 /** A spell's icon and text, filled in once the server has it. */
 export const useSpell = (id: number): SpellInfo | null => {

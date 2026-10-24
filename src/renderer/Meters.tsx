@@ -181,7 +181,7 @@ const KINDS: { key: Kind; label: string; rate: string; help: string }[] = [
   { key: 'taken', label: 'Damage taken', rate: 'DTPS', help: '' },
   {
     key: 'mitigation',
-    label: 'Damage prevented',
+    label: 'Mitigations',
     rate: 'PPS',
     help: 'An estimate of damage kept off raiders by cooldowns cast on them (Pain Suppression, Ironbark, Blessing of Sacrifice, Power Word: Barrier, Time Dilation, Zephyr, Anti-Magic Zone, Spirit Link). Shields are in Healing.',
   },

@@ -132,6 +132,11 @@ ipcMain.handle('getHardwareAcceleration', () => {
 // Register the vod:// protocol as privileged. Required to securely play
 // videos from disk.
 protocol.registerSchemesAsPrivileged([
+  // [RoomFortyRecorder] Spell icons, cached on disk and on the guild server.
+  {
+    scheme: 'rficon',
+    privileges: { bypassCSP: true, standard: true, supportFetchAPI: true },
+  },
   {
     scheme: 'vod',
     privileges: {
@@ -646,6 +651,11 @@ app
 
     // Required by the video player to safely play files from disk.
     protocol.handle('vod', handleSafeVodRequest);
+    protocol.handle('rficon', (request) =>
+      PullDesk.getInstance().icon(
+        decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/, '')),
+      ),
+    );
 
     createWindow();
   })

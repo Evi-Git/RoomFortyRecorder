@@ -307,6 +307,104 @@ export default class PullDesk {
     await uploadFullLog(client, claim.pullId as string, pull);
   }
 
+  private iconFlight = new Map<string, Promise<Response>>();
+
+  /**
+   * A spell icon image for the rficon:// protocol: from userData/icons, else
+   * the guild server's icon cache (which may serve an HD pack), else
+   * Blizzard's or Wowhead's image servers directly. Kept on disk for good.
+   */
+  public icon(rawName: string): Promise<Response> {
+    const name = rawName.toLowerCase();
+    if (!/^[a-z0-9_-]{1,120}$/.test(name)) {
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }
+    const known = this.iconFlight.get(name);
+    if (known) return known.then((r) => r.clone());
+    const job = this.loadIcon(name);
+    this.iconFlight.set(name, job);
+    job.finally(() => this.iconFlight.delete(name));
+    return job.then((r) => r.clone());
+  }
+
+  private async loadIcon(name: string): Promise<Response> {
+    const types: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      webp: 'image/webp',
+    };
+    const kind = (b: Uint8Array) => {
+      if (b[0] === 0x89 && b[1] === 0x50) return 'png';
+      if (b[0] === 0xff && b[1] === 0xd8) return 'jpg';
+      if (b[0] === 0x52 && b[1] === 0x49 && b[8] === 0x57 && b[9] === 0x45)
+        return 'webp';
+      return null;
+    };
+    const reply = (bytes: Uint8Array, ext: string) =>
+      new Response(Buffer.from(bytes), {
+        headers: { 'Content-Type': types[ext] },
+      });
+    const dir = path.join(app.getPath('userData'), 'icons');
+    for (const ext of Object.keys(types)) {
+      try {
+        const bytes = await fs.promises.readFile(
+          path.join(dir, `${name}.${ext}`),
+        );
+        if (kind(bytes)) return reply(bytes, ext);
+      } catch {
+        // Not cached as this type.
+      }
+    }
+    const save = (bytes: Uint8Array, ext: string) =>
+      fs.promises
+        .mkdir(dir, { recursive: true })
+        .then(() =>
+          fs.promises.writeFile(path.join(dir, `${name}.${ext}`), bytes),
+        )
+        .catch(() => {});
+
+    const client = CloudClient.getInstance();
+    if (client.pullDeskReady()) {
+      try {
+        const data = await client.pullDeskRequest<ArrayBuffer>(
+          'get',
+          `/journal/icon/${name}`,
+          undefined,
+          { responseType: 'arraybuffer', timeout: 20000 },
+        );
+        const bytes = new Uint8Array(data);
+        const ext = kind(bytes);
+        if (ext) {
+          await save(bytes, ext);
+          return reply(bytes, ext);
+        }
+      } catch {
+        // Older server or no such icon: try the image servers directly.
+      }
+    }
+    for (const url of [
+      `https://render.worldofwarcraft.com/us/icons/56/${name}.jpg`,
+      `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`,
+    ]) {
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (response.ok) {
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          const ext = kind(bytes);
+          if (ext) {
+            await save(bytes, ext);
+            return reply(bytes, ext);
+          }
+        }
+      } catch {
+        // Next source.
+      }
+    }
+    return new Response(null, { status: 404 });
+  }
+
   /**
    * A pull's full combat log (gzipped), for the Logs page: from the cache
    * in userData, else downloaded from the guild server and cached.

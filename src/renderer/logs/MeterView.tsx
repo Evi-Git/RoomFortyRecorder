@@ -129,7 +129,7 @@ const BarKey = ({ prevented }: { prevented: boolean }) => (
       [
         ['solid', 'Healing'],
         ['faint', 'Shields'],
-        ...(prevented ? [['striped', 'Damage prevented']] : []),
+        ...(prevented ? [['striped', 'Mitigations']] : []),
         ['ghost', 'Overheal'],
       ] as [Look, string][]
     ).map(([look, label]) => (
@@ -518,7 +518,7 @@ const Drill = ({
         {meter === 'taken'
           ? 'Amounts include what shields soaked; the faint bar is what armour and reductions took off.'
           : meter === 'healing'
-            ? 'Effective healing. Shields count for whoever cast them; damage prevented (when switched on) for whoever cast the cooldown, and passive reductions are estimated from the log.'
+            ? 'Effective healing. Shields count for whoever cast them; mitigations (when switched on) for whoever cast the cooldown or has the passive, estimated from the log.'
             : meter === 'prevented'
               ? 'An estimate of damage kept off by damage-reduction cooldowns, credited to the caster (personal ones to the wearer). Shields are in Healing.'
               : 'Damage includes what enemy shields soaked. Pets and guardians count for their owner unless Pets is on.'}
@@ -872,7 +872,7 @@ const MeterView = ({
                             {
                               value: r.prevented,
                               look: 'striped',
-                              label: 'Damage prevented',
+                              label: 'Mitigations',
                             },
                           ]
                         : meter === 'taken'

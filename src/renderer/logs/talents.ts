@@ -66,14 +66,23 @@ const SCHOOL_WORDS: [RegExp, number][] = [
 const CONDITIONAL =
   /\b(for \d+(\.\d+)? sec|while|after|when|if\b|chance|below|above|stack|nearby|within|during|each|instead|area|the next)\b/i;
 
-/** "Reduces all magic damage taken by 4%." -> { r: 0.04, schools: 126 }. */
-export const parseReduction = (text: string) => {
+// Buffs are up only while they apply, so "for 3 sec" or "after..." is fine;
+// these still make the number unreliable.
+const UNRELIABLE =
+  /\b(chance|stack|each|per|for every|nearby|within|area|enem(y|ies)|below|above|instead|the next|up to)\b/i;
+
+/**
+ * "Reduces all magic damage taken by 4%." -> { r: 0.04, schools: 126 }.
+ * `buff`: the text of an aura (or of the talent that grants it), where
+ * durations and triggers don't matter because the aura's uptime says when.
+ */
+export const parseReduction = (text: string, buff = false) => {
   const sentences = text
     .replace(/\s+/g, ' ')
     .split(/(?<=[.!])\s+/)
     .filter((s) => /damage (you )?tak(en|e)/i.test(s));
   for (const sentence of sentences) {
-    if (CONDITIONAL.test(sentence)) continue;
+    if ((buff ? UNRELIABLE : CONDITIONAL).test(sentence)) continue;
     const m =
       /reduc\w*[^%.]*?by (\d+(?:\.\d+)?)%/i.exec(sentence) ??
       /(\d+(?:\.\d+)?)% (?:less|reduced)/i.exec(sentence);
@@ -155,6 +164,107 @@ export const usePassiveTalents = (
             list.push({ spellId: t.spellId, name: t.name, ...dr });
         });
         if (list.length) drs.set(guid, list);
+      });
+      setResult({ key, drs });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `key` stands for the pulls; `skip` is a fixed table lookup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enabled]);
+  return enabled && result?.key === key ? result.drs : null;
+};
+
+/** A buff that cuts damage taken while it's up, from its description. */
+export type AuraDr = { r: number; schools: number; name: string };
+
+/**
+ * Buffs raiders put on each other (or themselves) that cut damage taken but
+ * aren't in the cooldown table: Elemental Resistance and the like. Each
+ * buff's description (Wowhead, through the guild server) gives the
+ * percentage and schools; when it doesn't, the caster's talent of the same
+ * name does ("Healing from Healing Stream Totem reduces Fire, Frost, and
+ * Nature damage taken by 6% for 3 sec."). Talents counted as always-on
+ * passives are left out so nothing counts twice.
+ */
+export const useAuraDrs = (
+  stores: PullStore[],
+  enabled: boolean,
+  skip: (spellId: number) => boolean,
+  loadTexts: (ids: number[]) => Promise<Map<number, { text: string }>>,
+) => {
+  const [result, setResult] = React.useState<{
+    key: string;
+    drs: Map<number, AuraDr>;
+  } | null>(null);
+  const key = stores.map((s) => s.id).join(',');
+  React.useEffect(() => {
+    if (!enabled || !stores.length) return undefined;
+    let cancelled = false;
+    // Buff spell -> name and the raiders who cast it.
+    const buffs = new Map<number, { name: string; casters: Set<string> }>();
+    const casters = new Map<
+      string,
+      { specId: number; talents: [number, number, number][] }
+    >();
+    stores.forEach((p) =>
+      p.auras.forEach((a) => {
+        if (a.debuff || a.dst < 0 || a.src < 0) return;
+        if (!p.units[a.dst].raider) return;
+        const spell = p.spells[a.spell];
+        if (!spell || spell.id <= 1 || skip(spell.id)) return;
+        const caster = p.units[p.units[a.src].root];
+        if (!caster?.raider) return;
+        const entry = buffs.get(spell.id) ?? {
+          name: spell.name,
+          casters: new Set<string>(),
+        };
+        entry.casters.add(caster.guid);
+        buffs.set(spell.id, entry);
+        if (caster.talents?.length && caster.specId) {
+          casters.set(caster.guid, {
+            specId: caster.specId,
+            talents: caster.talents,
+          });
+        }
+      }),
+    );
+    const specs = [...new Set([...casters.values()].map((c) => c.specId))];
+    Promise.all([
+      buffs.size ? loadTexts([...buffs.keys()]) : Promise.resolve(new Map()),
+      Promise.all(
+        specs.map((id) => loadTree(id).then((t) => [id, t] as const)),
+      ),
+    ]).then(([texts, loaded]) => {
+      if (cancelled) return;
+      const bySpec = new Map(loaded);
+      // Each caster's talents by name.
+      const talentsOf = new Map<string, Map<string, TalentOption>>();
+      casters.forEach((c, guid) => {
+        const tree = bySpec.get(c.specId);
+        if (!tree) return;
+        const byName = new Map<string, TalentOption>();
+        talentSpells(c.talents, tree).forEach((t) =>
+          byName.set(t.name.toLowerCase(), t),
+        );
+        talentsOf.set(guid, byName);
+      });
+      const drs = new Map<number, AuraDr>();
+      buffs.forEach((buff, spellId) => {
+        const name = buff.name.toLowerCase();
+        const talents = [...buff.casters]
+          .map((g) => talentsOf.get(g)?.get(name))
+          .filter((t): t is TalentOption => Boolean(t));
+        // Already counted as an always-on talent.
+        if (talents.some((t) => parseReduction(t.text))) return;
+        const text =
+          (texts as Map<number, { text: string }>).get(spellId)?.text ?? '';
+        const dr =
+          parseReduction(text, true) ??
+          talents.map((t) => parseReduction(t.text, true)).find(Boolean) ??
+          null;
+        if (dr) drs.set(spellId, { ...dr, name: buff.name });
       });
       setResult({ key, drs });
     });

@@ -251,3 +251,40 @@ test('talent trees: node and entry IDs to spells, fetched once per spec', async 
   assert.equal(calls.length, before);
   assert.deepEqual((await journal.talents(999)).nodes, {});
 });
+
+test('icons: local pack first, else downloaded once and cached; bad names refused', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  const pack = await fsp.mkdtemp(path.join(os.tmpdir(), 'pack-'));
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  const JPG = Buffer.from([0xff, 0xd8, 0xff, 4, 5, 6]);
+  await fsp.writeFile(path.join(pack, 'spell_hd.png'), PNG);
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    if (url.includes('render.worldofwarcraft.com') && url.includes('spell_web')) {
+      return new Response(JPG, { status: 200 });
+    }
+    return new Response('nope', { status: 404 });
+  };
+  const journal = createJournal({
+    storage,
+    env: { GUILD_CLOUD_ICON_DIR: pack, GUILD_CLOUD_ICON_PACK_URL: 'https://example.test/hd/{name}.png' },
+    fetchImpl,
+  });
+  const hd = await journal.icon('SPELL_HD');
+  assert.equal(hd.type, 'image/png');
+  assert.deepEqual(hd.bytes, PNG);
+  assert.equal(calls.length, 0);
+
+  const web = await journal.icon('spell_web');
+  assert.equal(web.type, 'image/jpeg');
+  assert.deepEqual(calls, ['https://example.test/hd/spell_web.png', 'https://render.worldofwarcraft.com/us/icons/56/spell_web.jpg']);
+  await journal.icon('spell_web');
+  assert.equal(calls.length, 2, 'cached on disk');
+
+  assert.equal(await journal.icon('nothing_here'), null);
+  const n = calls.length;
+  assert.equal(await journal.icon('nothing_here'), null);
+  assert.equal(calls.length, n, 'misses remembered for a while');
+  assert.equal(await journal.icon('../etc/passwd'), null);
+});

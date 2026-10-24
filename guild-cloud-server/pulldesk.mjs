@@ -1241,7 +1241,7 @@ export const createPullDesk = (options) => {
     index.pulls.find((p) => p.encounterId === encounterId)?.encounterName || null;
 
   // Journal routes: /journal/boss/:encounterId, /journal/spell/:spellId,
-  // /journal/spells, /journal/raw/:journalId.
+  // /journal/spells, /journal/raw/:journalId, /journal/icon/:name.
   const handleJournal = async (req, res, rest, url) => {
     const [, kind, idText] = rest;
     const q = (k) => url?.searchParams.get(k);
@@ -1328,6 +1328,18 @@ export const createPullDesk = (options) => {
     // A spec's talent tree (what the combat log's talent IDs are).
     if (kind === 'talents' && /^\d+$/.test(idText || '') && req.method === 'GET') {
       return json(res, 200, (await journal.talents(Number(idText))) || { specId: Number(idText), nodes: {} });
+    }
+
+    // A spell icon image by name, cached on this server (see journal.mjs).
+    if (kind === 'icon' && req.method === 'GET') {
+      const found = await journal.icon(idText);
+      if (!found) return fail(res, 404, 'No such icon');
+      res.writeHead(200, {
+        'Content-Type': found.type,
+        'Content-Length': found.bytes.length,
+        'Cache-Control': 'private, max-age=2592000',
+      });
+      return res.end(found.bytes);
     }
 
     if (kind === 'spells' && req.method === 'POST') {

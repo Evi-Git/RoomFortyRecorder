@@ -39,8 +39,10 @@ export type AbilityCardData = {
 
 const cache = new Map<string, AbilityCardData>();
 
-// Icon images: Blizzard's image server first, Wowhead's as a fallback.
+// Icon images: the app's icon cache first (disk, then the guild server's
+// cache, which can serve an HD pack), then Blizzard's and Wowhead's servers.
 const ICON_URLS = [
+  (icon: string) => `rficon://icon/${icon}`,
   (icon: string) =>
     `https://render.worldofwarcraft.com/us/icons/56/${icon}.jpg`,
   (icon: string) => `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg`,
