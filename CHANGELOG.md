@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.45] - Unreleased
+### Added
+- **Icon call counts in the app log:** while the Logs page asks for spell icons and tooltip text, the app logs the first call and then, once a minute, how many calls it made, how many came back empty, the slowest, and any still running (with how long). This shows whether icon lookups are never asked, stuck, or answered empty.
+
 ## [1.9.44] - Unreleased
 ### Fixed
 - **Open Log Folder works again:** the diagnostics dialog's button now opens the log folder directly (creating it if needed) instead of asking Explorer to highlight it, which did nothing on some PCs.
