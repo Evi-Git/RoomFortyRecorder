@@ -342,8 +342,40 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     }, WOWHEAD_GAP_MS);
   };
 
+  // Blizzard's spell API, for when Wowhead has nothing or is busy: it knows
+  // player spells (not boss ones) and their icons.
+  const blizzardSpell = async (id) => {
+    if (!configured) return null;
+    try {
+      const [info, media] = await Promise.all([
+        api(`/data/wow/spell/${id}`).catch(() => null),
+        api(`/data/wow/media/spell/${id}`).catch(() => null),
+      ]);
+      const iconUrl = (media?.assets || []).find((a) => a.key === 'icon')?.value || '';
+      const icon = /\/([a-z0-9_-]+)\.jpg$/i.exec(iconUrl)?.[1]?.toLowerCase() || null;
+      if (!info?.name && !icon) return null;
+      return { id, name: info?.name || null, text: info?.description || '', icon };
+    } catch {
+      return null;
+    }
+  };
+
   const inFlight = new Map();
   const fetchSpell = async (id, difficultyId) => {
+    const fromWowhead = await fetchWowhead(id, difficultyId);
+    // Wowhead's answer, unless it was busy (null) or had no icon.
+    if (fromWowhead?.missing || fromWowhead?.icon) return fromWowhead;
+    const fromBlizzard = await blizzardSpell(id);
+    if (fromBlizzard) {
+      return {
+        ...fromBlizzard,
+        name: fromWowhead?.name || fromBlizzard.name,
+        text: fromWowhead?.text || fromBlizzard.text,
+      };
+    }
+    return fromWowhead;
+  };
+  const fetchWowhead = async (id, difficultyId) => {
     await slot();
     try {
       const url = `${wowheadBase}/${id}?dataEnv=1&locale=0${difficultyId ? `&dd=${difficultyId}` : ''}`;

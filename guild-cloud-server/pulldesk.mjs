@@ -855,10 +855,10 @@ export const createPullDesk = (options) => {
         kills: 0,
         seconds: 0,
         raid: {},
-        // 'progression' (up to the first kill) or 'kills' (kills only after).
+        // 'first' (the night of the first kill) or 'kills' (a reclear).
         phase: 'kills',
       };
-      if (progressionIds.has(pull.id)) night.phase = 'progression';
+      if (progressionIds.has(pull.id)) night.phase = 'first';
       night.pulls += 1;
       if (pull.result === 'kill') night.kills += 1;
       night.seconds += seconds;
@@ -1423,18 +1423,17 @@ export const createPullDesk = (options) => {
     if (first === 'meters' && second === 'trends' && req.method === 'GET') {
       const encounterId = Number(url?.searchParams.get('encounterId'));
       const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
-      // Progression (first pull through the first kill), then only kills,
-      // so later weeks compare like with like.
+      // Kills only: the first kill on each difficulty, then every reclear
+      // kill, so weeks compare like with like.
       const all = countedPulls().filter(
-        (p) => p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
+        (p) =>
+          p.result === 'kill' && p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
       );
-      const { progression, reclear } = splitAtFirstKill(all, false);
-      const progressionIds = new Set(progression.map((p) => p.id));
+      const { progression } = splitAtFirstKill(all, false);
+      const firstKills = new Set(progression.map((p) => p.id));
       // App meters, or Warcraft Logs' tables for imported pulls.
-      const pulls = [...progression, ...reclear.filter((p) => p.result === 'kill')].filter(
-        (p) => p.appMeters || p.wclMeters,
-      );
-      const data = await cached(`trends3:${encounterId}:${difficultyId}`, () => metersTrends(pulls, progressionIds));
+      const pulls = all.filter((p) => p.appMeters || p.wclMeters);
+      const data = await cached(`trends4:${encounterId}:${difficultyId}`, () => metersTrends(pulls, firstKills));
       return json(res, 200, data);
     }
 

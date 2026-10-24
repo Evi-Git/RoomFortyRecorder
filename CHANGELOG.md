@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.35] - Unreleased
+### Changed
+- **Trends count kills only:** the first kill on each boss, then every reclear kill. Wipes are left out.
+- **Healing bars show what kind of healing it is:** solid for heals, lighter for shields, striped for damage prevented (when switched on), with a key under the table.
+- **Passive reductions are an estimate per raider now:** each raider's usual cut of magic damage when no cooldown is up, above what the whole raid gets (boss and raid-wide effects), and never more than a hit's own cut. For shamans it's labelled Elemental Resistance & other passives. The old figure counted every reduction on every hit and came out far too high.
+
+### Fixed
+- Spells first seen being absorbed by a shield had no damage school, so some magic damage was treated as physical (and the other way round) in damage prevented.
+- Spell icons that didn't load the first time (the spell site was busy) are asked for again, and the server falls back to Blizzard's spell data for player spells.
+- Active time can't start before the part of the fight you're looking at.
+
 ## [1.9.34] - Unreleased
 ### Added
 - **Slicing the chart:** the slice shows its from, to and length while you drag, the drag keeps going if the mouse leaves the chart (it pins to the edge), and **right-click** goes back to the whole fight.

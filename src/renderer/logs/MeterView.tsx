@@ -61,54 +61,86 @@ const rowColor = (r: { specId: number; player: boolean; pet: boolean }) =>
 const th = 'px-2 py-1.5 font-normal whitespace-nowrap';
 const td = 'px-2 py-1 tabular-nums whitespace-nowrap';
 
-/** An amount bar: main part, plus a lighter tail (pets, overheal, mitigated). */
+type Look = 'solid' | 'faint' | 'striped' | 'ghost';
+type Part = { value: number; look: Look; label: string };
+
+/** How each kind of amount is drawn (also used for the key). */
+const partStyle = (look: Look, color: string): React.CSSProperties => {
+  if (look === 'striped')
+    return {
+      background: `repeating-linear-gradient(135deg, ${color} 0 3px, transparent 3px 6px)`,
+      boxShadow: `inset 0 0 0 1px ${color}`,
+      opacity: 0.9,
+    };
+  return {
+    background: color,
+    opacity: look === 'solid' ? 0.9 : look === 'faint' ? 0.5 : 0.22,
+  };
+};
+
+/**
+ * An amount bar made of parts: solid (healing, damage), faint (shields,
+ * pets), striped (damage prevented) and ghost (overheal, mitigated).
+ */
 const AmountBar = ({
-  value,
-  extra = 0,
-  extraLabel,
+  parts,
   max,
   color,
   share,
   label,
 }: {
-  value: number;
-  /** The number shown (defaults to value). */
-  label?: number;
-  extra?: number;
-  extraLabel?: string;
+  parts: Part[];
   max: number;
   color: string;
   share: string;
+  /** The number shown. */
+  label: number;
 }) => (
   <span className="flex items-center gap-x-2 min-w-[220px]">
     <span className="w-[52px] text-right text-xs text-foreground shrink-0">
       {share}
     </span>
     <span className="flex-1 flex items-center h-3.5">
-      <span
-        className="h-full rounded-l-[3px]"
-        style={{
-          width: `${(value / Math.max(1, max)) * 100}%`,
-          minWidth: value ? 2 : 0,
-          background: color,
-          opacity: 0.9,
-        }}
-      />
-      {extra > 0 && (
-        <span
-          className="h-full rounded-r-[3px]"
-          title={extraLabel}
-          style={{
-            width: `${(extra / Math.max(1, max)) * 100}%`,
-            background: color,
-            opacity: 0.35,
-          }}
-        />
-      )}
+      {parts
+        .filter((part) => part.value > 0)
+        .map((part, i, list) => (
+          <span
+            key={part.label}
+            className={`h-full ${i === 0 ? 'rounded-l-[3px]' : ''} ${i === list.length - 1 ? 'rounded-r-[3px]' : ''}`}
+            title={`${part.label}: ${compact(part.value)}`}
+            style={{
+              width: `${(part.value / Math.max(1, max)) * 100}%`,
+              minWidth: 2,
+              ...partStyle(part.look, color),
+            }}
+          />
+        ))}
     </span>
     <span className="w-[64px] text-right text-xs text-foreground-lighter shrink-0">
-      {compact(label ?? value)}
+      {compact(label)}
     </span>
+  </span>
+);
+
+/** The key to a bar's looks, for Healing. */
+const BarKey = ({ prevented }: { prevented: boolean }) => (
+  <span className="inline-flex items-center gap-x-3 text-[11px] text-foreground">
+    {(
+      [
+        ['solid', 'Healing'],
+        ['faint', 'Shields'],
+        ...(prevented ? [['striped', 'Damage prevented']] : []),
+        ['ghost', 'Overheal'],
+      ] as [Look, string][]
+    ).map(([look, label]) => (
+      <span key={look} className="inline-flex items-center gap-x-1">
+        <span
+          className="inline-block w-4 h-2.5 rounded-[2px]"
+          style={partStyle(look, 'hsl(var(--foreground-lighter))')}
+        />
+        {label}
+      </span>
+    ))}
   </span>
 );
 
@@ -376,14 +408,34 @@ const Drill = ({
                 </td>
                 <td className={td}>
                   <AmountBar
-                    value={a.total}
-                    extra={
-                      meter === 'healing'
-                        ? a.overheal
-                        : meter === 'taken'
-                          ? a.mitigated
-                          : 0
-                    }
+                    parts={[
+                      {
+                        value: a.total,
+                        look:
+                          a.kind === 'shield'
+                            ? 'faint'
+                            : a.kind === 'prevented' || meter === 'prevented'
+                              ? 'striped'
+                              : 'solid',
+                        label:
+                          a.kind === 'shield'
+                            ? 'Shields'
+                            : a.kind === 'prevented'
+                              ? 'Prevented'
+                              : 'Amount',
+                      },
+                      {
+                        value:
+                          meter === 'healing'
+                            ? a.overheal
+                            : meter === 'taken'
+                              ? a.mitigated
+                              : 0,
+                        look: 'ghost',
+                        label: meter === 'taken' ? 'Mitigated' : 'Overheal',
+                      },
+                    ]}
+                    label={a.total}
                     max={top}
                     color={rowColor(row)}
                     share={pct(a.total, row.total)}
@@ -460,12 +512,13 @@ const Drill = ({
           </div>
         )}
       </div>
+      {meter === 'healing' && <BarKey prevented={row.prevented > 0} />}
       <p className="text-xs text-foreground m-0">
         {rows.length > 1 ? 'Hover an ability for who it hit. ' : ''}
         {meter === 'taken'
           ? 'Amounts include what shields soaked; the faint bar is what armour and reductions took off.'
           : meter === 'healing'
-            ? 'Effective healing; the faint bar is overheal. Shields count for whoever cast them.'
+            ? 'Effective healing. Shields count for whoever cast them; damage prevented (when switched on) for whoever cast the cooldown, and passive reductions are estimated from the log.'
             : meter === 'prevented'
               ? 'An estimate of damage kept off by damage-reduction cooldowns, credited to the caster (personal ones to the wearer). Shields are in Healing.'
               : 'Damage includes what enemy shields soaked. Pets and guardians count for their owner unless Pets is on.'}
@@ -708,7 +761,10 @@ const MeterView = ({
                   </td>
                   <td className={td}>
                     <AmountBar
-                      value={a.total}
+                      parts={[
+                        { value: a.total, look: 'solid', label: 'Amount' },
+                      ]}
+                      label={a.total}
                       max={max}
                       color="hsl(var(--brand))"
                       share={pct(a.total, total)}
@@ -800,18 +856,51 @@ const MeterView = ({
                 </td>
                 <td className={td}>
                   <AmountBar
-                    value={
-                      r.total -
-                      (meter === 'damage' || meter === 'healing' ? r.pets : 0)
+                    parts={
+                      meter === 'healing'
+                        ? [
+                            {
+                              value: r.total - r.shields - r.prevented,
+                              look: 'solid',
+                              label: 'Healing',
+                            },
+                            {
+                              value: r.shields,
+                              look: 'faint',
+                              label: 'Shields',
+                            },
+                            {
+                              value: r.prevented,
+                              look: 'striped',
+                              label: 'Damage prevented',
+                            },
+                          ]
+                        : meter === 'taken'
+                          ? [
+                              { value: r.total, look: 'solid', label: 'Taken' },
+                              {
+                                value: r.mitigated,
+                                look: 'ghost',
+                                label: 'Mitigated',
+                              },
+                            ]
+                          : meter === 'prevented'
+                            ? [
+                                {
+                                  value: r.total,
+                                  look: 'striped',
+                                  label: 'Prevented',
+                                },
+                              ]
+                            : [
+                                {
+                                  value: r.total - r.pets,
+                                  look: 'solid',
+                                  label: 'Own',
+                                },
+                                { value: r.pets, look: 'faint', label: 'Pets' },
+                              ]
                     }
-                    extra={
-                      meter === 'taken'
-                        ? r.mitigated
-                        : meter === 'damage' || meter === 'healing'
-                          ? r.pets
-                          : 0
-                    }
-                    extraLabel={meter === 'taken' ? 'Mitigated' : 'Pets'}
                     label={r.total}
                     max={max}
                     color={rowColor(r)}
@@ -852,6 +941,9 @@ const MeterView = ({
           </tfoot>
         </table>
       </div>
+      {meter === 'healing' && (
+        <BarKey prevented={rows.some((r) => r.prevented > 0)} />
+      )}
     </div>
   );
 };

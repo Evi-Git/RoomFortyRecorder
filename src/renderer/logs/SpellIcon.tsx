@@ -14,6 +14,7 @@ type Response<T> = { ok: true; data: T } | { ok: false; error: string };
 const ipc = window.electron.ipcRenderer;
 const known = new Map<number, SpellInfo | null>();
 const wanted = new Set<number>();
+const tries = new Map<number, number>();
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let busy = false;
@@ -34,10 +35,14 @@ const flush = async () => {
       pending: number;
     }>;
     if (!response.ok) {
-      // No guild server spell cache: stop asking this session.
+      // The server couldn't answer: try again a few times, then give up.
       ids.forEach((id) => {
-        wanted.delete(id);
-        known.set(id, null);
+        const n = (tries.get(id) ?? 0) + 1;
+        tries.set(id, n);
+        if (n >= 4) {
+          wanted.delete(id);
+          known.set(id, null);
+        }
       });
     } else {
       ids.forEach((id) => {
@@ -48,10 +53,16 @@ const flush = async () => {
         }
       });
       // The server fetches a few at a time; anything left comes next call.
+      // Ones it couldn't get (Wowhead busy) are asked again a few times.
       if (response.data.pending === 0) {
         ids.forEach((id) => {
-          if (!known.has(id)) known.set(id, null);
-          wanted.delete(id);
+          if (known.has(id)) return;
+          const n = (tries.get(id) ?? 0) + 1;
+          tries.set(id, n);
+          if (n >= 4) {
+            known.set(id, null);
+            wanted.delete(id);
+          }
         });
       }
     }
@@ -60,7 +71,7 @@ const flush = async () => {
   } finally {
     busy = false;
     notify();
-    if (wanted.size) timer = setTimeout(flush, 1200);
+    if (wanted.size) timer = setTimeout(flush, tries.size ? 2500 : 1200);
   }
 };
 
