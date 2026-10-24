@@ -8,6 +8,7 @@ export type Channels =
   | 'videoButtonDisk'
   | 'videoButtonCloud'
   | 'logPath'
+  | 'appUpdating'
   | 'openURL'
   | 'test'
   | 'getAllDisplays'

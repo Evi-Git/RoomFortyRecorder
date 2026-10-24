@@ -1,5 +1,6 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import UpdatingOverlay from './components/Brand/UpdatingOverlay';
 import {
   ErrorReport,
   MicStatus,
@@ -485,6 +486,7 @@ const WarcraftRecorder = () => {
         }}
       >
         <Toaster />
+        <UpdatingOverlay />
         <KillVideoProgress language={appState.language} />
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>

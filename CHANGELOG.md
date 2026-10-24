@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.46] - Unreleased
+### Changed
+- **On-brand updates:** installing an update now shows a Room Forty "Updating" screen in the app, then installs silently (no Windows installer window) and reopens the app by itself. Updates also skip re-installing the Visual C++ runtime, which first installs still do.
+
 ## [1.9.45] - Unreleased
 ### Added
 - **Icon call counts in the app log:** while the Logs page asks for spell icons and tooltip text, the app logs the first call and then, once a minute, how many calls it made, how many came back empty, the slowest, and any still running (with how long). This shows whether icon lookups are never asked, stuck, or answered empty.

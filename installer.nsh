@@ -1,4 +1,7 @@
 !macro customInstall
+  # Updates already have the Visual C++ runtime; skipping it keeps the
+  # silent in-app update free of Microsoft's own progress window.
+  ${IfNot} ${isUpdated}
   NSISdl::download https://aka.ms/vs/17/release/vc_redist.x64.exe "$INSTDIR\vc_redist.x64.exe"  
   
   ${If} ${FileExists} `$INSTDIR\vc_redist.x64.exe`
@@ -18,6 +21,7 @@
 
   ${Else}
       MessageBox MB_OK|MB_ICONEXCLAMATION 'WARNING: Room Forty Toolkit was unable to download the latest Visual C++ Redistributable package from Microsoft.'
+  ${EndIf}
   ${EndIf}
 
   # The app was called RoomFortyRecorder, then Bellhop: drop the old-name
