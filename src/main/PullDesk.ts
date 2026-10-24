@@ -345,26 +345,25 @@ export default class PullDesk {
         headers: { 'Content-Type': types[ext] },
       });
     const dir = path.join(app.getPath('userData'), 'icons');
-    for (const ext of Object.keys(types)) {
+    const save = async (bytes: Uint8Array, ext: string) => {
       try {
-        const bytes = await fs.promises.readFile(
-          path.join(dir, `${name}.${ext}`),
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(path.join(dir, `${name}.${ext}`), bytes);
+        // Only one copy per icon (an HD PNG replaces an older JPG).
+        await Promise.all(
+          Object.keys(types)
+            .filter((e) => e !== ext)
+            .map((e) =>
+              fs.promises.rm(path.join(dir, `${name}.${e}`), { force: true }),
+            ),
         );
-        if (kind(bytes)) return reply(bytes, ext);
       } catch {
-        // Not cached as this type.
+        // Not cached this time.
       }
-    }
-    const save = (bytes: Uint8Array, ext: string) =>
-      fs.promises
-        .mkdir(dir, { recursive: true })
-        .then(() =>
-          fs.promises.writeFile(path.join(dir, `${name}.${ext}`), bytes),
-        )
-        .catch(() => {});
-
+    };
     const client = CloudClient.getInstance();
-    if (client.pullDeskReady()) {
+    const fromServer = async () => {
+      if (!client.pullDeskReady()) return null;
       try {
         const data = await client.pullDeskRequest<ArrayBuffer>(
           'get',
@@ -374,14 +373,35 @@ export default class PullDesk {
         );
         const bytes = new Uint8Array(data);
         const ext = kind(bytes);
-        if (ext) {
-          await save(bytes, ext);
+        if (!ext) return null;
+        await save(bytes, ext);
+        return reply(bytes, ext);
+      } catch {
+        return null; // Older server or no such icon.
+      }
+    };
+
+    for (const ext of Object.keys(types)) {
+      const file = path.join(dir, `${name}.${ext}`);
+      try {
+        const bytes = await fs.promises.readFile(file);
+        if (kind(bytes)) {
+          // Once a day, ask the server again in the background: it may
+          // have an icon pack (HD) since this copy was saved.
+          const { mtimeMs } = await fs.promises.stat(file);
+          if (Date.now() - mtimeMs > 24 * 3600 * 1000) {
+            fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
+            fromServer();
+          }
           return reply(bytes, ext);
         }
       } catch {
-        // Older server or no such icon: try the image servers directly.
+        // Not cached as this type.
       }
     }
+
+    const served = await fromServer();
+    if (served) return served;
     for (const url of [
       `https://render.worldofwarcraft.com/us/icons/56/${name}.jpg`,
       `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`,
