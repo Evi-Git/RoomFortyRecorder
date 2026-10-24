@@ -361,11 +361,24 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     }
   };
 
+  // Warcraft Logs lookups never hold a request up: its client pauses for up
+  // to an hour when the hourly points run low (imports share them).
+  const wclQuick = (text, ms = 8000) => {
+    if (!wcl?.configured) return Promise.resolve(null);
+    let timer;
+    return Promise.race([
+      wcl.query(text, {}, { quiet: true }).catch(() => null),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+
   // Warcraft Logs' game data knows every spell's icon (needs WCL set up).
   const wclSpell = async (id) => {
     if (!wcl?.configured) return null;
     try {
-      const data = await wcl.query(`{ gameData { ability(id: ${Number(id)}) { id name icon } } }`, {}, { quiet: true });
+      const data = await wclQuick(`{ gameData { ability(id: ${Number(id)}) { id name icon } } }`);
       const ability = data?.gameData?.ability;
       const icon = /^([a-z0-9_-]+)(\.(jpg|png))?$/i.exec(String(ability?.icon || ''))?.[1]?.toLowerCase() || null;
       if (!icon || icon === 'inv_misc_questionmark') return ability?.name ? { id, name: ability.name, text: '', icon: null } : null;
@@ -520,7 +533,8 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
         const chunk = todo.slice(i, i + 30);
         try {
           const fields = chunk.map((id) => `a${id}: ability(id: ${id}) { name }`).join(' ');
-          const data = await wcl.query(`{ gameData { ${fields} } }`, {}, { quiet: true });
+          const data = await wclQuick(`{ gameData { ${fields} } }`);
+          if (!data) continue; // busy or paused: next time
           chunk.forEach((id) => {
             const name = data?.gameData?.[`a${id}`]?.name;
             wclNames[id] = typeof name === 'string' && name ? name : null;

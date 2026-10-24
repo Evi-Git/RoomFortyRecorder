@@ -31,6 +31,8 @@ export default class SpellIcons {
 
   private inFlight = new Map<number, Promise<void>>();
 
+  private wowheadWarned = false;
+
   static getInstance() {
     if (!SpellIcons.instance) SpellIcons.instance = new SpellIcons();
     return SpellIcons.instance;
@@ -77,15 +79,25 @@ export default class SpellIcons {
         return;
       }
 
-      if (!response.ok) return; // Try again next time.
+      if (!response.ok) {
+        if (!this.wowheadWarned) {
+          this.wowheadWarned = true;
+          console.warn('[SpellIcons] Wowhead answered', response.status);
+        }
+        return; // Try again next time.
+      }
       const body = (await response.json()) as { icon?: unknown };
       const icon = typeof body.icon === 'string' ? body.icon : '';
       this.cache[spellId] = /^[a-z0-9_-]+$/i.test(icon)
         ? icon.toLowerCase()
         : '';
       this.scheduleSave();
-    } catch {
+    } catch (error) {
       // Offline or timed out: leave it uncached so a later view retries.
+      if (!this.wowheadWarned) {
+        this.wowheadWarned = true;
+        console.warn('[SpellIcons] Wowhead lookup failed:', String(error));
+      }
     }
   }
 
@@ -116,8 +128,9 @@ export default class SpellIcons {
         }
       });
       this.scheduleSave();
-    } catch {
+    } catch (error) {
       // Server busy or offline: Wowhead below, and asked again later.
+      console.warn('[SpellIcons] Guild server lookup failed:', String(error));
     }
   }
 
@@ -130,7 +143,10 @@ export default class SpellIcons {
     );
     // The guild server first (quick once the guild has seen a spell), then
     // Wowhead directly for what it didn't have.
+    const started = Date.now();
+    const unknown = ids.filter((id) => !this.cache[id]).length;
     await this.fromServer(ids.filter((id) => !this.cache[id]));
+    const serverMs = Date.now() - started;
     const missing = ids.filter((id) => this.cache[id] === undefined);
 
     // A few at a time, so a long fight's spell list doesn't hammer Wowhead.
@@ -154,6 +170,15 @@ export default class SpellIcons {
     ids.forEach((id) => {
       if (this.cache[id]) result[id] = this.cache[id];
     });
+    if (unknown) {
+      // What the icon lookup did, for when icons don't show.
+      console.info(
+        `[SpellIcons] ${ids.length} asked, ${unknown} not cached:`,
+        `guild server ${serverMs} ms,`,
+        `Wowhead ${missing.length} in ${Date.now() - started - serverMs} ms,`,
+        `${ids.length - Object.keys(result).length} still without an icon`,
+      );
+    }
     return result;
   }
 }

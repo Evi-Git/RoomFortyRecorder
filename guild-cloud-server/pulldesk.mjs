@@ -1244,6 +1244,11 @@ export const createPullDesk = (options) => {
   // Journal routes: /journal/boss/:encounterId, /journal/spell/:spellId,
   // /journal/spells, /journal/raw/:journalId, /journal/icon/:name.
   const handleJournal = async (req, res, rest, url) => {
+    const started = Date.now();
+    res.on?.('finish', () => {
+      const ms = Date.now() - started;
+      if (ms > 3000) console.warn(`[journal] ${req.method} ${rest.join('/')} took ${(ms / 1000).toFixed(1)} s`);
+    });
     const [, kind, idText] = rest;
     const q = (k) => url?.searchParams.get(k);
 
