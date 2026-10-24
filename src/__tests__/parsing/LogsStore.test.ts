@@ -95,7 +95,6 @@ test('active time never passes the fight, enemy filters and multi-ability filter
 });
 
 test('passive reduction talents read from their descriptions', () => {
-  // eslint-disable-next-line global-require
   const {
     parseReduction,
     talentSpells,
@@ -163,4 +162,50 @@ test('passive reduction talents read from their descriptions', () => {
   expect(
     picked.map((t: { name: string; text: string }) => `${t.name}:${t.text}`),
   ).toEqual(['Warding:Reduces all magic damage taken by 4%.', 'B:']);
+});
+
+test('buffs that cut damage taken count while up, credited to the caster', () => {
+  const { parseReduction } = require('../../renderer/logs/talents');
+
+  const { preventedRows } = require('../../renderer/logs/query');
+  const er =
+    'Healing from Healing Stream Totem reduces Fire, Frost, and Nature damage taken by 6% for 3 sec.';
+  expect(parseReduction(er)).toBeNull();
+  expect(parseReduction(er, true)).toEqual({ r: 0.06, schools: 4 | 8 | 16 });
+  expect(
+    parseReduction('Reduces damage taken by 2% for each enemy nearby.', true),
+  ).toBeNull();
+
+  const p = build();
+  // A buff a raider put on another raider, standing in for one.
+  const buff = p.auras.find(
+    (a) =>
+      !a.debuff &&
+      a.src >= 0 &&
+      a.dst >= 0 &&
+      a.src !== a.dst &&
+      p.units[a.dst].raider &&
+      p.units[p.units[a.src].root].raider &&
+      a.end - a.start > 5,
+  );
+  expect(buff).toBeTruthy();
+  if (!buff) return;
+  const spellId = p.spells[buff.spell].id;
+  const ctx = makeCtx([p], DEFAULT_FILTERS);
+  const without = preventedRows(ctx);
+  const withBuff = preventedRows(ctx, {
+    auras: new Map([[spellId, { r: 0.1, schools: 127, name: 'Test buff' }]]),
+  });
+  const sum = (rows: { total: number }[]) =>
+    rows.reduce((n, r) => n + r.total, 0);
+  expect(sum(withBuff)).toBeGreaterThan(sum(without));
+  const caster = p.units[p.units[buff.src].root];
+  const row = withBuff.find((r: { name: string }) =>
+    caster.name.startsWith(r.name),
+  );
+  expect(
+    [...row.abilities.values()].some(
+      (a: { spellId: number }) => a.spellId === spellId,
+    ),
+  ).toBe(true);
 });

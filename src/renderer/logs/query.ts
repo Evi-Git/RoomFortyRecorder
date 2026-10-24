@@ -1159,7 +1159,12 @@ const STEADY_R = 0.05;
  */
 export const preventedRows = (
   ctx: Ctx,
-  opts: { passive?: boolean; talents?: Map<string, PassiveDr[]> | null } = {},
+  opts: {
+    passive?: boolean;
+    talents?: Map<string, PassiveDr[]> | null;
+    /** Buffs that cut damage (from their descriptions), by spell ID. */
+    auras?: Map<number, { r: number; schools: number; name: string }> | null;
+  } = {},
 ): MeterRow[] => {
   const rows = new Map<string, MeterRow>();
   const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
@@ -1180,7 +1185,10 @@ export const preventedRows = (
       start: number;
       end: number;
       r: number;
-      magicOnly: boolean;
+      /** School bits it cuts (127 all, 126 magic). */
+      schools: number;
+      /** Long-uptime buffs: divided out of hits, not a "cooldown up". */
+      steady: boolean;
       caster: number;
       spellId: number;
       name: string;
@@ -1188,8 +1196,28 @@ export const preventedRows = (
     const spans = new Map<number, Span[]>();
     p.auras.forEach((a) => {
       const spell = p.spells[a.spell];
-      const dr = spell ? DAMAGE_REDUCTION[spell.id] : undefined;
-      if (!dr || a.dst < 0 || !p.units[a.dst].raider) return;
+      if (!spell || a.dst < 0 || !p.units[a.dst].raider) return;
+      const fromText = DAMAGE_REDUCTION[spell.id]
+        ? undefined
+        : opts.auras?.get(spell.id);
+      if (fromText && !a.debuff) {
+        const src = a.src >= 0 ? p.units[a.src].root : -1;
+        const list = spans.get(a.dst) ?? [];
+        list.push({
+          start: a.start,
+          end: a.end,
+          r: fromText.r,
+          schools: fromText.schools,
+          steady: true,
+          caster: src >= 0 && p.units[src].raider ? src : a.dst,
+          spellId: spell.id,
+          name: fromText.name,
+        });
+        spans.set(a.dst, list);
+        return;
+      }
+      const dr = DAMAGE_REDUCTION[spell.id];
+      if (!dr) return;
       let caster = -1;
       if (dr.personal) caster = a.dst;
       else if (a.src >= 0 && p.units[p.units[a.src].root].raider)
@@ -1209,7 +1237,8 @@ export const preventedRows = (
         start: a.start,
         end: a.end,
         r: dr.r,
-        magicOnly: Boolean(dr.magicOnly),
+        schools: dr.magicOnly ? 126 : 127,
+        steady: dr.r <= STEADY_R,
         caster,
         spellId: spell.id,
         name: dr.name,
@@ -1221,22 +1250,26 @@ export const preventedRows = (
     // magic damage when no cooldown is up, from the log's before-and-after
     // amounts, above the raid's floor (what everyone gets: boss and raid-wide
     // effects). Steady auras we count already (Devotion Aura) come off first.
-    const steadyCut = (d: number, t: number) => {
+    const cuts = (sp: Span, school: number) =>
+      school ? (sp.schools & school) !== 0 : sp.schools === 127;
+    const steadyCut = (d: number, t: number, school: number) => {
       let keep = 1;
       (spans.get(d) ?? []).forEach((sp) => {
-        if (sp.r <= STEADY_R && t >= sp.start && t < sp.end) keep *= 1 - sp.r;
+        if (sp.steady && cuts(sp, school) && t >= sp.start && t < sp.end)
+          keep *= 1 - sp.r;
       });
       return keep;
     };
     const cooldownUp = (d: number, t: number) =>
       (spans.get(d) ?? []).some(
-        (sp) => sp.r > STEADY_R && t >= sp.start && t < sp.end,
+        (sp) => !sp.steady && t >= sp.start && t < sp.end,
       );
     // This hit's cut (0..1) not explained by auras we count, or null.
     const hitCut = (i: number) => {
       const landed = p.a[i] + p.b[i];
       if (!landed || p.x[i] <= landed) return null;
-      const cut = 1 - landed / p.x[i] / steadyCut(p.d[i], p.t[i]);
+      const school = p.spells[p.sp[i]]?.school ?? 1;
+      const cut = 1 - landed / p.x[i] / steadyCut(p.d[i], p.t[i], school);
       return cut > 0 && cut < 0.6 ? cut : null;
     };
     const personal = new Map<number, number>();
@@ -1316,7 +1349,7 @@ export const preventedRows = (
       const school = p.spells[p.sp[i]]?.school ?? 1;
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
-        if (span.magicOnly && school === 1) return;
+        if (!cuts(span, school)) return;
         const prevented = (amount * span.r) / (1 - span.r);
         if (!abilityOk(ctx, span.spellId)) return;
         add(span.caster, span.spellId, span.name, prevented, t);

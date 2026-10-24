@@ -445,6 +445,82 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     return { spells: out, pending: todo.length - batch.length };
   };
 
+  // ---- Icon images ----------------------------------------------------------
+  //
+  // Spell icons by name ("spell_holy_powerwordbarrier"), fetched once and
+  // kept under journal/icons/ for good, so raiders' apps load them from this
+  // server instead of each reaching Blizzard's or Wowhead's image servers.
+  // Sources, first that has it:
+  //   GUILD_CLOUD_ICON_DIR       a folder of icons on this machine (e.g. an
+  //                              upscaled HD pack), files named <icon>.png/.jpg
+  //   GUILD_CLOUD_ICON_PACK_URL  a URL template, {name} = icon name, e.g. a
+  //                              GitHub raw link to an HD pack
+  //   Blizzard's render server, then Wowhead's icon CDN.
+  const ICON_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
+  const iconDir = path.join(dir, 'icons');
+  const packDir = env.GUILD_CLOUD_ICON_DIR || '';
+  const iconSources = [
+    env.GUILD_CLOUD_ICON_PACK_URL || '',
+    'https://render.worldofwarcraft.com/us/icons/56/{name}.jpg',
+    'https://wow.zamimg.com/images/wow/icons/large/{name}.jpg',
+  ].filter(Boolean);
+  const iconMissing = new Map(); // name -> when we last found nothing
+  const iconFlight = new Map();
+  const imageType = (bytes) => {
+    if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'png';
+    if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpg';
+    if (bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP') return 'webp';
+    return null;
+  };
+  const readIcon = async (folder, name) => {
+    for (const ext of Object.keys(ICON_TYPES)) {
+      try {
+        const bytes = await fsp.readFile(path.join(folder, `${name}.${ext}`));
+        if (imageType(bytes)) return { bytes, type: ICON_TYPES[imageType(bytes)] };
+      } catch {
+        // Not this one.
+      }
+    }
+    return null;
+  };
+  const downloadIcon = async (name) => {
+    for (const template of iconSources) {
+      try {
+        const response = await fetchImpl(template.replaceAll('{name}', name), { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) continue;
+        const bytes = Buffer.from(await response.arrayBuffer());
+        const ext = imageType(bytes);
+        if (!ext || bytes.length > 2 * 1024 * 1024) continue;
+        await fsp.mkdir(iconDir, { recursive: true });
+        await fsp.writeFile(path.join(iconDir, `${name}.${ext}`), bytes);
+        return { bytes, type: ICON_TYPES[ext] };
+      } catch {
+        // Try the next source.
+      }
+    }
+    return null;
+  };
+
+  /** An icon image by name: { bytes, type } or null. */
+  const icon = async (rawName) => {
+    const name = String(rawName || '').toLowerCase();
+    if (!/^[a-z0-9_-]{1,120}$/.test(name)) return null;
+    const local = (packDir && (await readIcon(packDir, name))) || (await readIcon(iconDir, name));
+    if (local) return local;
+    if (Date.now() - (iconMissing.get(name) || 0) < NOT_FOUND_TTL) return null;
+    if (!iconFlight.has(name)) {
+      iconFlight.set(
+        name,
+        downloadIcon(name).then((found) => {
+          iconFlight.delete(name);
+          if (!found) iconMissing.set(name, Date.now());
+          return found;
+        }),
+      );
+    }
+    return iconFlight.get(name);
+  };
+
   /** The untouched API answer, for checking what Blizzard sends. */
   const raw = (journalId) => readJson(`raw-${Number(journalId)}.json`, null);
 
@@ -525,5 +601,5 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     return talentInFlight.get(specId);
   };
 
-  return { configured, encounter, spell, spells, raw, talents };
+  return { configured, encounter, spell, spells, raw, talents, icon };
 };
