@@ -210,6 +210,17 @@ export const decodeTga = (buf) => {
       }
     }
   }
+  // Many game TGAs carry a 4th byte that isn't real alpha: the header says
+  // 0 alpha bits, or every pixel's alpha is 0. Taken literally that's an
+  // invisible icon, so treat those as opaque.
+  if (step === 4) {
+    const alphaBits = buf[17] & 0x0f;
+    let anyAlpha = false;
+    for (let i = 3; i < pixels.length && !anyAlpha; i += 4) anyAlpha = pixels[i] !== 0;
+    if (alphaBits === 0 || !anyAlpha) {
+      for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255;
+    }
+  }
   if (topDown) return { width, height, rgba: pixels };
   const rgba = new Uint8Array(n * 4);
   for (let y = 0; y < height; y += 1) {

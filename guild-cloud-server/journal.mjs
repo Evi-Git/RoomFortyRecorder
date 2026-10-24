@@ -612,7 +612,8 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     await walk(packDir, 0);
     packIndex = found;
   };
-  const packCacheDir = path.join(dir, 'icons-pack');
+  // v2: TGAs whose alpha byte was all 0 had been saved as invisible PNGs.
+  const packCacheDir = path.join(dir, 'icons-pack-v2');
   const readPack = async (name) => {
     if (!packDir) return null;
     const cached = await readIcon(packCacheDir, name);

@@ -93,6 +93,7 @@ test('TGA: bottom-up raw and RLE', () => {
     h.writeUInt16LE(2, 12);
     h.writeUInt16LE(1, 14);
     h[16] = 32;
+    h[17] = 8; // 8 alpha bits
     return h;
   };
   const raw = Buffer.concat([head(2), Buffer.from([0, 0, 255, 255, 255, 0, 0, 128])]);
@@ -100,6 +101,24 @@ test('TGA: bottom-up raw and RLE', () => {
   const rle = Buffer.concat([head(10), Buffer.from([0x81, 0, 255, 0, 200])]);
   assert.deepEqual([...decodeTga(rle).rgba], [0, 255, 0, 200, 0, 255, 0, 200]);
   assert.ok(toPng(raw, 'tga'));
+});
+
+test('TGA: a 4th byte that is not alpha gives an opaque icon', () => {
+  const head = (alphaBits) => {
+    const h = Buffer.alloc(18);
+    h[2] = 2;
+    h.writeUInt16LE(2, 12);
+    h.writeUInt16LE(1, 14);
+    h[16] = 32;
+    h[17] = alphaBits;
+    return h;
+  };
+  // Header says no alpha bits.
+  const noBits = Buffer.concat([head(0), Buffer.from([0, 0, 255, 7, 255, 0, 0, 9])]);
+  assert.deepEqual([...decodeTga(noBits).rgba], [255, 0, 0, 255, 0, 0, 255, 255]);
+  // Header says 8, but every alpha is 0.
+  const allZero = Buffer.concat([head(8), Buffer.from([0, 0, 255, 0, 255, 0, 0, 0])]);
+  assert.deepEqual([...decodeTga(allZero).rgba], [255, 0, 0, 255, 0, 0, 255, 255]);
 });
 
 test('icon pack folder: BLP files in any layout, converted once', async () => {

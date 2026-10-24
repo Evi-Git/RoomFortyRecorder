@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.48] - Unreleased
+### Fixed
+- **Invisible spell icons from the HD icon pack:** many game TGA files carry a fourth byte that isn't real transparency (the file says it has none, or it's 0 for every pixel). The server took it literally and turned those icons into fully transparent PNGs, which loaded fine but showed as empty boxes. Those icons are now opaque. The server's converted-pack cache and the app's icon cache start fresh so the invisible copies are not reused. **Update the server too.**
+- The app log no longer says an icon image "timed out" when it had actually loaded.
+
 ## [1.9.47] - Unreleased
 ### Fixed
 - **Blank spell icons on the Logs page:** the icon name was found, but the picture never loaded, and once every image source had failed (or one stalled) the box stayed blank until the page was reopened. Each source now gets 6 seconds, and after all fail the icon tries them again twice, with a short pause. The app's own icon fetch also gives up after 30 seconds instead of possibly hanging.
