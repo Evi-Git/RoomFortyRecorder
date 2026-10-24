@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.47] - Unreleased
+### Fixed
+- **Blank spell icons on the Logs page:** the icon name was found, but the picture never loaded, and once every image source had failed (or one stalled) the box stayed blank until the page was reopened. Each source now gets 6 seconds, and after all fail the icon tries them again twice, with a short pause. The app's own icon fetch also gives up after 30 seconds instead of possibly hanging.
+
+### Added
+- The app log notes icon pictures that took over 3 seconds or weren't found (`[SpellIcons] Image ...`).
+
 ## [1.9.46] - Unreleased
 ### Changed
 - **On-brand updates:** installing an update now shows a Room Forty "Updating" screen in the app, then installs silently (no Windows installer window) and reopens the app by itself. Updates also skip re-installing the Visual C++ runtime, which first installs still do.

@@ -322,7 +322,25 @@ export default class PullDesk {
     }
     const known = this.iconFlight.get(name);
     if (known) return known.then((r) => r.clone());
-    const job = this.loadIcon(name);
+    // Never leave an image request hanging: give up after 30 s.
+    const started = Date.now();
+    const job = Promise.race([
+      this.loadIcon(name),
+      new Promise<Response>((resolve) =>
+        setTimeout(() => {
+          console.warn(`[SpellIcons] Image ${name} timed out after 30 s`);
+          resolve(new Response(null, { status: 504 }));
+        }, 30000),
+      ),
+    ]).then((response) => {
+      const ms = Date.now() - started;
+      if (!response.ok || ms > 3000) {
+        console.info(
+          `[SpellIcons] Image ${name}: ${response.ok ? 'found' : `not found (${response.status})`} in ${ms} ms`,
+        );
+      }
+      return response;
+    });
     this.iconFlight.set(name, job);
     job.finally(() => this.iconFlight.delete(name));
     return job.then((r) => r.clone());
