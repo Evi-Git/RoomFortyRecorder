@@ -8,8 +8,16 @@ import {
   Ctx,
   Meter,
   MeterRow,
+  meterRows,
+  preventedRows,
   viewSeconds,
 } from './query';
+
+/** The same view over the whole fight: charts show it all, with the slice highlighted. */
+const wholeFight = (ctx: Ctx): Ctx =>
+  ctx.filters.range
+    ? { ...ctx, filters: { ...ctx.filters, range: null } }
+    : ctx;
 import TimeChart, { ChartSeries } from './TimeChart';
 import {
   CATEGORICAL,
@@ -102,6 +110,29 @@ const AmountBar = ({
   </span>
 );
 
+// Line styles for raiders sharing a class colour: solid, dashed, dotted...
+const DASHES: (string | undefined)[] = [
+  undefined,
+  '7 4',
+  '2 3',
+  '10 3 2 3',
+  '4 2',
+];
+
+const LineSwatch = ({ color, dash }: { color: string; dash?: string }) => (
+  <svg width="18" height="6" aria-hidden="true">
+    <line
+      x1="0"
+      x2="18"
+      y1="3"
+      y2="3"
+      stroke={color}
+      strokeWidth="2"
+      strokeDasharray={dash}
+    />
+  </svg>
+);
+
 /** Hover card for an ability: who it came from and who it hit. */
 const SplitCard = ({
   ctx,
@@ -190,7 +221,7 @@ const Drill = ({
         },
       ];
     }
-    return abilitySeries(ctx, meter, row.key).map((s, i) => ({
+    return abilitySeries(wholeFight(ctx), meter, row.key).map((s, i) => ({
       key: `${s.name}${i}`,
       name: s.name,
       color:
@@ -444,24 +475,48 @@ const MeterView = ({
   const [focus, setFocus] = React.useState<string | null>(null);
   // Raider lines switched on from the legend (the total is always drawn).
   const [picked, setPicked] = React.useState<string[]>([]);
+  const [showTotal, setShowTotal] = React.useState(true);
+  // Chart lines cover the whole fight even when a slice is picked.
+  const chartRows = React.useMemo(() => {
+    if (!ctx.filters.range) return rows;
+    const whole = wholeFight(ctx);
+    return meter === 'prevented'
+      ? preventedRows(whole)
+      : meterRows(whole, meter);
+  }, [ctx, rows, meter]);
+
+  // Raiders who share a class colour get different line styles.
+  const dashes = React.useMemo(() => {
+    const seen = new Map<string, number>();
+    const out = new Map<string, string | undefined>();
+    rows.forEach((r) => {
+      const color = rowColor(r);
+      const n = seen.get(color) ?? 0;
+      seen.set(color, n + 1);
+      out.set(r.key, DASHES[n % DASHES.length]);
+    });
+    return out;
+  }, [rows]);
 
   const series = React.useMemo<ChartSeries[]>(() => {
-    const sum = new Float64Array(rows[0]?.series.length ?? 0);
-    rows.forEach((r) =>
+    const sum = new Float64Array(chartRows[0]?.series.length ?? 0);
+    chartRows.forEach((r) =>
       r.series.forEach((v, i) => {
         sum[i] += v;
       }),
     );
-    const lines: ChartSeries[] = [
-      {
-        key: 'total',
-        name: 'Total',
-        color: 'hsl(var(--brand))',
-        values: sum,
-        width: 2.5,
-      },
-    ];
-    rows
+    const lines: ChartSeries[] = showTotal
+      ? [
+          {
+            key: 'total',
+            name: 'Total',
+            color: 'hsl(var(--brand))',
+            values: sum,
+            width: 2.5,
+          },
+        ]
+      : [];
+    chartRows
       .filter((r) => r.key === focus || picked.includes(r.key))
       .forEach((r) =>
         lines.push({
@@ -469,11 +524,12 @@ const MeterView = ({
           name: r.name,
           color: rowColor(r),
           values: r.series,
-          width: 1.5,
+          width: 2,
+          dash: dashes.get(r.key),
         }),
       );
     return lines;
-  }, [rows, focus, picked]);
+  }, [chartRows, focus, picked, dashes, showTotal]);
 
   if (selected && group === 'source') {
     return (
@@ -502,38 +558,64 @@ const MeterView = ({
         boundaries={extras.boundaries}
       />
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-foreground mt-1">
-        <span className="inline-flex items-center gap-x-1.5 text-foreground-lighter">
-          <span
-            className="inline-block w-3.5 h-0.5"
-            style={{ background: 'hsl(var(--brand))' }}
-          />
+        <button
+          type="button"
+          onClick={() => setShowTotal(!showTotal)}
+          aria-pressed={showTotal}
+          title={showTotal ? 'Hide the raid total' : 'Show the raid total'}
+          className={`inline-flex items-center gap-x-1.5 rounded px-1 ${
+            showTotal ? 'bg-card text-foreground-lighter' : 'opacity-70'
+          }`}
+        >
+          <LineSwatch color="hsl(var(--brand))" />
           Total
-        </span>
+        </button>
         {rows.map((r) => (
           <button
             key={r.key}
             type="button"
             onMouseEnter={() => setFocus(r.key)}
             onMouseLeave={() => setFocus(null)}
-            onClick={() =>
+            onClick={() => {
+              // The first raider line hides the total, so lines are readable.
+              if (!picked.length && !picked.includes(r.key))
+                setShowTotal(false);
               setPicked((list) =>
                 list.includes(r.key)
                   ? list.filter((k) => k !== r.key)
                   : [...list, r.key],
-              )
+              );
+            }}
+            title={
+              picked.includes(r.key)
+                ? 'Take their line off the chart'
+                : 'Put their line on the chart'
             }
-            title="Click to keep their line on the chart"
-            className={`inline-flex items-center gap-x-1.5 hover:text-foreground-lighter ${
-              picked.includes(r.key) ? 'text-foreground-lighter' : ''
+            aria-pressed={picked.includes(r.key)}
+            className={`inline-flex items-center gap-x-1.5 rounded px-1 hover:text-foreground-lighter ${
+              picked.includes(r.key)
+                ? 'bg-card text-foreground-lighter'
+                : 'opacity-70'
             }`}
           >
-            <span
-              className="inline-block w-3.5 h-0.5"
-              style={{ background: rowColor(r) }}
-            />
+            <LineSwatch color={rowColor(r)} dash={dashes.get(r.key)} />
             {r.name}
           </button>
         ))}
+        {picked.length > 0 ? (
+          <button
+            type="button"
+            className="text-brand hover:underline px-1"
+            onClick={() => {
+              setPicked([]);
+              setShowTotal(true);
+            }}
+          >
+            Clear lines
+          </button>
+        ) : (
+          <span className="px-1">Click names to add their lines.</span>
+        )}
       </div>
     </div>
   );

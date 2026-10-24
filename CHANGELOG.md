@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.33] - Unreleased
+### Fixed
+- **Logs showed NaN, a flat chart, and ignored slices and the deaths filter.** Newer combat logs put a time zone after the time ("20:05:17.7771-4"), which the Logs page couldn't read, so every event lost its time. It reads both forms now.
+- Dragging a slice keeps the whole fight on the chart (the slice is highlighted) while the tables update to the slice.
+
+### Added
+- **Filter expression help:** suggestions as you type (fields, operators, this pull's ability and raider names, then and/or), and a **?** cheat sheet with every field, the operators and clickable examples. Queries has the same box.
+- **Raider lines on the chart:** click names under the chart to overlay their lines in class colours; raiders sharing a class colour get dashed or dotted lines. The first line you add hides the raid total (click Total to bring it back); Clear lines resets.
+
 ## [1.9.32] - Unreleased
 ### Added
 - **Logs now works like Warcraft Logs.** Pick a pull, or tick several to add them up, then choose:

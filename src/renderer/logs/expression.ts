@@ -37,27 +37,28 @@ export const EXPRESSION_FIELDS = [
   'extra.name',
 ];
 
-const TYPE_NAMES: Record<string, (p: PullStore, i: number) => boolean> = {
-  damage: (p, i) => p.k[i] === K.DMG,
-  heal: (p, i) => p.k[i] === K.HEAL,
-  absorb: (p, i) => p.k[i] === K.ABSORB,
-  absorbed: (p, i) => p.k[i] === K.ABSORB,
-  cast: (p, i) => p.k[i] === K.CAST,
-  begincast: (p, i) => p.k[i] === K.BEGIN,
-  applybuff: (p, i) => p.k[i] === K.APPLY && !(p.f[i] & F.DEBUFF),
-  applydebuff: (p, i) => p.k[i] === K.APPLY && Boolean(p.f[i] & F.DEBUFF),
-  removebuff: (p, i) => p.k[i] === K.REMOVE && !(p.f[i] & F.DEBUFF),
-  removedebuff: (p, i) => p.k[i] === K.REMOVE && Boolean(p.f[i] & F.DEBUFF),
-  stacks: (p, i) => p.k[i] === K.DOSE,
-  death: (p, i) => p.k[i] === K.DIED,
-  interrupt: (p, i) => p.k[i] === K.INTERRUPT,
-  dispel: (p, i) => p.k[i] === K.DISPEL,
-  resource: (p, i) => p.k[i] === K.ENERGIZE,
-  energize: (p, i) => p.k[i] === K.ENERGIZE,
-  summon: (p, i) => p.k[i] === K.SUMMON,
-  resurrect: (p, i) => p.k[i] === K.RES,
-  miss: (p, i) => p.k[i] === K.MISS,
-};
+export const TYPE_NAMES: Record<string, (p: PullStore, i: number) => boolean> =
+  {
+    damage: (p, i) => p.k[i] === K.DMG,
+    heal: (p, i) => p.k[i] === K.HEAL,
+    absorb: (p, i) => p.k[i] === K.ABSORB,
+    absorbed: (p, i) => p.k[i] === K.ABSORB,
+    cast: (p, i) => p.k[i] === K.CAST,
+    begincast: (p, i) => p.k[i] === K.BEGIN,
+    applybuff: (p, i) => p.k[i] === K.APPLY && !(p.f[i] & F.DEBUFF),
+    applydebuff: (p, i) => p.k[i] === K.APPLY && Boolean(p.f[i] & F.DEBUFF),
+    removebuff: (p, i) => p.k[i] === K.REMOVE && !(p.f[i] & F.DEBUFF),
+    removedebuff: (p, i) => p.k[i] === K.REMOVE && Boolean(p.f[i] & F.DEBUFF),
+    stacks: (p, i) => p.k[i] === K.DOSE,
+    death: (p, i) => p.k[i] === K.DIED,
+    interrupt: (p, i) => p.k[i] === K.INTERRUPT,
+    dispel: (p, i) => p.k[i] === K.DISPEL,
+    resource: (p, i) => p.k[i] === K.ENERGIZE,
+    energize: (p, i) => p.k[i] === K.ENERGIZE,
+    summon: (p, i) => p.k[i] === K.SUMMON,
+    resurrect: (p, i) => p.k[i] === K.RES,
+    miss: (p, i) => p.k[i] === K.MISS,
+  };
 
 const unitType = (p: PullStore, unit: number) => {
   if (unit < 0) return '';
