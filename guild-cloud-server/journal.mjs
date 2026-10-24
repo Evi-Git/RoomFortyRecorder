@@ -570,6 +570,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
   const PACK_EXTS = ['png', 'jpg', 'webp', 'blp', 'tga'];
   let packIndex = null;
   let packIndexedAt = 0;
+  let packIndexing = null;
   const indexPack = async () => {
     const found = new Map();
     const walk = async (folder, depth) => {
@@ -596,14 +597,23 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     };
     await walk(packDir, 0);
     packIndex = found;
-    packIndexedAt = Date.now();
   };
   const packCacheDir = path.join(dir, 'icons-pack');
   const readPack = async (name) => {
     if (!packDir) return null;
     const cached = await readIcon(packCacheDir, name);
     if (cached) return cached;
-    if (!packIndex || (!packIndex.has(name) && Date.now() - packIndexedAt > 10 * 60 * 1000)) await indexPack();
+    // One walk of the folder at a time (a pack has tens of thousands of
+    // files), at most every 10 minutes for names it doesn't have.
+    if (!packIndex || (!packIndex.has(name) && Date.now() - packIndexedAt > 10 * 60 * 1000)) {
+      if (!packIndexing) {
+        packIndexedAt = Date.now();
+        packIndexing = indexPack().finally(() => {
+          packIndexing = null;
+        });
+      }
+      await packIndexing;
+    }
     const hit = packIndex.get(name);
     if (!hit) return null;
     try {

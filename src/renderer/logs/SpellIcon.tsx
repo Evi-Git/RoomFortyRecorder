@@ -21,27 +21,66 @@ let busy = false;
 
 const notify = () => listeners.forEach((fn) => fn());
 
-// The app also looks icon names up on Wowhead itself (cached on disk), in
-// case the guild server can't reach it. Doesn't hold up the server's answer.
-const direct = new Map<number, string>();
-const directAsked = new Set<number>();
-const askDirect = (ids: number[]) => {
-  const fresh = ids.filter((id) => !directAsked.has(id));
-  if (!fresh.length) return;
-  fresh.forEach((id) => directAsked.add(id));
-  (ipc.invoke('spellIcons', [fresh]) as Promise<Record<string, string>>)
-    .then((icons) => {
-      fresh.forEach((id) => {
-        const icon = icons?.[id];
-        if (!icon) return;
-        direct.set(id, icon);
-        const info = known.get(id);
-        if (!info) known.set(id, { name: null, text: '', icon });
-        else if (!info.icon) known.set(id, { ...info, icon });
-      });
-      notify();
-    })
-    .catch(() => {});
+// Icon names come from the app's own icon cache (main process, kept on
+// disk: the guild server's spell cache, then Wowhead), separate from the
+// tooltip text so a slow or failed text lookup never leaves a blank icon.
+// Missing ones are asked again with growing gaps while they're on screen.
+const icons = new Map<number, string>();
+const iconWanted = new Set<number>();
+const iconTries = new Map<number, number>();
+let iconTimer: ReturnType<typeof setTimeout> | null = null;
+let iconBusy = false;
+
+const scheduleIcons = (ms: number) => {
+  if (!iconTimer) iconTimer = setTimeout(flushIcons, ms);
+};
+
+const flushIcons = async () => {
+  iconTimer = null;
+  if (iconBusy) {
+    scheduleIcons(500);
+    return;
+  }
+  // A few dozen at a time, so the first ones show while the rest load.
+  const ids = [...iconWanted].slice(0, 40);
+  if (!ids.length) return;
+  iconBusy = true;
+  try {
+    const got = (await ipc.invoke('spellIcons', [ids])) as Record<
+      string,
+      string
+    > | null;
+    ids.forEach((id) => {
+      const icon = got?.[id];
+      if (icon) {
+        icons.set(id, icon);
+        iconWanted.delete(id);
+        return;
+      }
+      const n = (iconTries.get(id) ?? 0) + 1;
+      iconTries.set(id, n);
+      if (n >= 6) iconWanted.delete(id);
+    });
+  } catch {
+    ids.forEach((id) => iconTries.set(id, (iconTries.get(id) ?? 0) + 1));
+  } finally {
+    iconBusy = false;
+    notify();
+    if (iconWanted.size) {
+      const worst = Math.max(
+        0,
+        ...[...iconWanted].map((id) => iconTries.get(id) ?? 0),
+      );
+      scheduleIcons(worst ? Math.min(30000, 1500 * 2 ** worst) : 50);
+    }
+  }
+};
+
+const askIcon = (id: number) => {
+  if (id <= 1 || icons.has(id) || iconWanted.has(id)) return;
+  if ((iconTries.get(id) ?? 0) >= 6) return;
+  iconWanted.add(id);
+  scheduleIcons(60);
 };
 
 const flush = async () => {
@@ -51,7 +90,6 @@ const flush = async () => {
   if (!ids.length) return;
   busy = true;
   try {
-    askDirect(ids);
     const response = (await ipc.invoke('pullDesk', [
       { action: 'journalSpells', ids },
     ])) as Response<{
@@ -72,7 +110,8 @@ const flush = async () => {
       ids.forEach((id) => {
         const info = response.data.spells[id];
         if (info) {
-          known.set(id, { ...info, icon: info.icon || direct.get(id) || null });
+          known.set(id, info);
+          if (info.icon && !icons.has(id)) icons.set(id, info.icon);
           wanted.delete(id);
         }
       });
@@ -141,12 +180,24 @@ export const useSpell = (id: number): SpellInfo | null => {
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
   React.useEffect(() => {
     ask(id);
+    askIcon(id);
     listeners.add(bump);
     return () => {
       listeners.delete(bump);
     };
   }, [id]);
-  return known.get(id) ?? null;
+  const info = known.get(id) ?? null;
+  const icon = icons.get(id) ?? info?.icon ?? null;
+  return info || icon
+    ? { name: info?.name ?? null, text: info?.text ?? '', icon }
+    : null;
+};
+
+/** What the icon lookup knows, for the tooltip. */
+const iconStatus = (id: number) => {
+  if (icons.has(id)) return `icon ${icons.get(id)}`;
+  if (iconWanted.has(id)) return 'icon: looking up';
+  return 'no icon found';
 };
 
 const MELEE_ICON = 'inv_sword_04';
@@ -185,7 +236,9 @@ const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
                   {info?.name || name || 'Unknown spell'}
                 </div>
                 <div className="text-foreground">
-                  {spellId > 1 ? `Spell ${spellId}` : 'Auto attack'}
+                  {spellId > 1
+                    ? `Spell ${spellId} · ${iconStatus(spellId)}`
+                    : 'Auto attack'}
                 </div>
               </div>
             </div>

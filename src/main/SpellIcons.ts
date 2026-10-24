@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
+import CloudClient from 'storage/CloudClient';
 
 /**
  * [RoomFortyRecorder] Spell ID -> icon name (e.g. 204018 ->
@@ -88,6 +89,38 @@ export default class SpellIcons {
     }
   }
 
+  // When we last asked the guild server about a spell it didn't know.
+  private serverAsked = new Map<number, number>();
+
+  /**
+   * The guild server's spell cache (shared by the guild, reaches Blizzard
+   * and Warcraft Logs too). Answers within a few seconds with what it has.
+   */
+  private async fromServer(ids: number[]) {
+    const client = CloudClient.getInstance();
+    if (!client.pullDeskReady()) return;
+    const now = Date.now();
+    const ask = ids.filter(
+      (id) => now - (this.serverAsked.get(id) ?? 0) > 20000,
+    );
+    if (!ask.length) return;
+    ask.forEach((id) => this.serverAsked.set(id, now));
+    try {
+      const data = await client.pullDeskRequest<{
+        spells: Record<string, { icon?: string | null }>;
+      }>('post', '/journal/spells', { ids: ask }, { timeout: 15000 });
+      Object.entries(data?.spells ?? {}).forEach(([id, info]) => {
+        const icon = info?.icon;
+        if (typeof icon === 'string' && /^[a-z0-9_-]+$/i.test(icon)) {
+          this.cache[id] = icon.toLowerCase();
+        }
+      });
+      this.scheduleSave();
+    } catch {
+      // Server busy or offline: Wowhead below, and asked again later.
+    }
+  }
+
   /** Icon names for these spells; '' or missing means no icon. */
   async get(spellIds: number[]): Promise<Record<string, string>> {
     await this.load();
@@ -95,6 +128,9 @@ export default class SpellIcons {
     const ids = [...new Set(spellIds)].filter(
       (id) => Number.isInteger(id) && id > 0,
     );
+    // The guild server first (quick once the guild has seen a spell), then
+    // Wowhead directly for what it didn't have.
+    await this.fromServer(ids.filter((id) => !this.cache[id]));
     const missing = ids.filter((id) => this.cache[id] === undefined);
 
     // A few at a time, so a long fight's spell list doesn't hammer Wowhead.
