@@ -508,10 +508,25 @@ export default class PullDesk {
       };
     }
 
+    const started = Date.now();
     try {
       const data = await this.route(client, request);
+      if (
+        /^(journal|spellNames)/.test(request.action) &&
+        Date.now() - started > 3000
+      ) {
+        console.info(
+          `[PullDesk] ${request.action} took ${Date.now() - started} ms`,
+        );
+      }
       return { ok: true, data };
     } catch (error) {
+      if (/^(journal|spellNames)/.test(request.action)) {
+        console.warn(
+          `[PullDesk] ${request.action} failed after ${Date.now() - started} ms:`,
+          String(error),
+        );
+      }
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         const message = (error.response?.data as { error?: string } | undefined)

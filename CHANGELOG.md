@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.43] - Unreleased
+### Fixed
+- **Spell lookups no longer wait on Warcraft Logs' hourly limit:** when the guild's Warcraft Logs points ran low, its client paused for up to an hour, and spell icon and name lookups that reached it waited with it. They now give up after 8 seconds and try again later.
+
+### Added
+- Logging for spell icon lookups, so missing icons can be traced: the app's log says how long the guild server and Wowhead took and how many spells are still without an icon, and the server window notes journal requests that take over 3 seconds.
+
 ## [1.9.42] - Unreleased
 ### Fixed
 - **Spell icons on the Logs page** now come from the same lookup as the video timeline (which already showed them): the app's own icon list, kept on disk, filled from the guild server and then Wowhead. Icons appear on their own as they're found, missing ones are asked again while they're on screen, and they're there straight away after a restart. Hovering an icon shows its icon name, or whether it's still being looked up.
