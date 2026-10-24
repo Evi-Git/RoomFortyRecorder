@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.34] - Unreleased
+### Added
+- **Slicing the chart:** the slice shows its from, to and length while you drag, the drag keeps going if the mouse leaves the chart (it pins to the edge), and **right-click** goes back to the whole fight.
+- **Enemy picker:** All enemies, **Bosses** or **Non-bosses**, any one kind of enemy (with its ID when names repeat), and for enemies that come in numbers, one **wave** or one **instance** of them.
+- **Several abilities at once:** the ability picker has a search box and a **+** next to each ability to add it to what's shown; clicking a name shows only that one.
+- **Layered expressions:** each expression you enter becomes a chip. Chips are **filters** (all must match) or **markers** (coloured lines on the charts wherever they match, like Warcraft Logs' decorators); turn them on and off, switch kind, or remove them.
+- **Spell icons** next to abilities in the tables, with a tooltip (name, ID and description) on hover.
+- **Sortable columns:** click a column header (name, amount, casts, hits, crit, uptime...) to sort; click again to flip.
+- **Damage prevented is a Healing switch** now (the separate tab is gone): it credits damage kept off raiders to whoever cast the cooldown. "+ passives" also counts what talents and versatility took off magic damage (Elemental Resistance and the like) for the raider who has them. Devotion Aura, Guardian of Ancient Kings and Protective Light are now counted.
+- **Trends include imported pulls:** pulls imported from Warcraft Logs get damage, healing and damage taken from Warcraft Logs (fetched in the background after the server update), so earlier progression and reclear kills show up.
+
+### Fixed
+- Active time could go just over 100%: the last moment of activity was counted past the end of the fight.
+- Adds the boss summons count as their own enemies, not as the boss.
+
 ## [1.9.33] - Unreleased
 ### Fixed
 - **Logs showed NaN, a flat chart, and ignored slices and the deaths filter.** Newer combat logs put a time zone after the time ("20:05:17.7771-4"), which the Logs page couldn't read, so every event lost its time. It reads both forms now.

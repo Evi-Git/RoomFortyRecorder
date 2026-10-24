@@ -22,13 +22,14 @@ import zlib from 'node:zlib';
 import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
 import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
-import { fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
+import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
-const WCL_EXTRAS_VERSION = 2;
+// 3: also damage, healing and damage taken (for Trends).
+const WCL_EXTRAS_VERSION = 3;
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
 const PREP_VERSION = 3;
@@ -735,6 +736,17 @@ export const createPullDesk = (options) => {
         console.warn(`[pulldesk] Warcraft Logs extras for ${code} failed`, error.message);
         continue;
       }
+      // Meters for Trends, for pulls without the app's own.
+      let meters = new Map();
+      const needMeters = items.filter((i) => !i.pull.appMeters).map((i) => i.report.wclFight);
+      if (needMeters.length) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          meters = await fetchFightMeters(wcl, code, needMeters);
+        } catch (error) {
+          console.warn(`[pulldesk] Warcraft Logs meters for ${code} failed`, error.message);
+        }
+      }
       for (const { pull, report } of items) {
         const x = extras.get(report.wclFight);
         if (!x) continue;
@@ -753,6 +765,29 @@ export const createPullDesk = (options) => {
         }
         // eslint-disable-next-line no-await-in-loop
         await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
+        const m = meters.get(report.wclFight);
+        if (m && !pull.appMeters && (m.damage.length || m.healing.length)) {
+          const specOf = new Map(x.players.map((p) => [p.name, p.specId]));
+          const rows = (list) =>
+            list.map((r) => ({ name: r.name, specId: specOf.get(r.name) || 0, total: r.total, abilities: [] }));
+          // eslint-disable-next-line no-await-in-loop
+          await fsp.mkdir(path.dirname(metersFile(pull.id)), { recursive: true });
+          // eslint-disable-next-line no-await-in-loop
+          await fsp.writeFile(
+            metersFile(pull.id),
+            JSON.stringify({
+              v: 'wcl',
+              source: 'wcl',
+              bucketSeconds: 5,
+              duration: m.seconds || pull.duration || 0,
+              damage: rows(m.damage),
+              healing: rows(m.healing),
+              taken: rows(m.taken),
+              mitigation: [],
+            }),
+          );
+          pull.wclMeters = true;
+        }
         pull.wclExtras = WCL_EXTRAS_VERSION;
       }
     }
@@ -1395,8 +1430,11 @@ export const createPullDesk = (options) => {
       );
       const { progression, reclear } = splitAtFirstKill(all, false);
       const progressionIds = new Set(progression.map((p) => p.id));
-      const pulls = [...progression, ...reclear.filter((p) => p.result === 'kill')].filter((p) => p.appMeters);
-      const data = await cached(`trends2:${encounterId}:${difficultyId}`, () => metersTrends(pulls, progressionIds));
+      // App meters, or Warcraft Logs' tables for imported pulls.
+      const pulls = [...progression, ...reclear.filter((p) => p.result === 'kill')].filter(
+        (p) => p.appMeters || p.wclMeters,
+      );
+      const data = await cached(`trends3:${encounterId}:${difficultyId}`, () => metersTrends(pulls, progressionIds));
       return json(res, 200, data);
     }
 

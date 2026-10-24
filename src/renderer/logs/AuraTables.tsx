@@ -1,6 +1,8 @@
 import React from 'react';
 import { AuraCategory, auraRows, AuraRow, Ctx, viewSeconds } from './query';
 import { pct, thousands } from './format';
+import SpellIcon from './SpellIcon';
+import { sortRows, SortTh, useSort } from './sort';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables grouped
@@ -99,7 +101,25 @@ const Section = ({
   onPick?: (t: number) => void;
 }) => {
   const [all, setAll] = React.useState(false);
-  const shown = all ? rows : rows.slice(0, 15);
+  const [sort, onSort] = useSort('uptime');
+  const sorted = sortRows(rows, sort, {
+    name: (r) => r.name,
+    count: (r) => r.count,
+    targets: (r) => r.targets,
+    uptime: (r) => r.uptime,
+    source: (r) => r.sources[0]?.[0] ?? '',
+  });
+  const shown = all ? sorted : sorted.slice(0, 15);
+  const sh = (label: string, column: string, left = false) => (
+    <SortTh
+      label={label}
+      column={column}
+      state={sort}
+      onSort={onSort}
+      numeric={column !== 'name' && column !== 'source'}
+      className={`${th} ${left ? 'text-left' : 'text-right'}`}
+    />
+  );
   return (
     <section className="rounded-md border border-card bg-background/40 overflow-hidden">
       <h4 className="m-0 px-3 py-2 text-sm font-semibold text-foreground-lighter bg-card/40">
@@ -120,12 +140,12 @@ const Section = ({
           </colgroup>
           <thead className="text-xs text-foreground border-b border-card">
             <tr>
-              <th className={`${th} text-left`}>Name</th>
-              <th className={`${th} text-right`}>Count</th>
-              {debuffs && <th className={`${th} text-right`}>Raiders</th>}
-              <th className={`${th} text-right`}>Uptime</th>
+              {sh('Name', 'name', true)}
+              {sh('Count', 'count')}
+              {debuffs && sh('Raiders', 'targets')}
+              {sh('Uptime', 'uptime')}
               <th className={`${th} text-left`}>Over the fight</th>
-              <th className={`${th} text-left`}>Source</th>
+              {sh('Source', 'source', true)}
             </tr>
           </thead>
           <tbody>
@@ -135,7 +155,10 @@ const Section = ({
                 className="border-b border-card/40 hover:bg-card/30"
               >
                 <td className={`${td} text-foreground-lighter truncate`}>
-                  {r.name}
+                  <span className="inline-flex items-center gap-x-2 max-w-full">
+                    <SpellIcon spellId={r.spellId} name={r.name} />
+                    <span className="truncate">{r.name}</span>
+                  </span>
                 </td>
                 <td className={`${td} text-right`}>{thousands(r.count)}</td>
                 {debuffs && <td className={`${td} text-right`}>{r.targets}</td>}
@@ -183,20 +206,18 @@ const AuraTables = ({
   ctx,
   debuffs,
   who,
-  enemy,
   bands,
   onPick,
 }: {
   ctx: Ctx;
   debuffs: boolean;
   who: string | null;
-  enemy: string | null;
   bands: [number, number][];
   onPick?: (t: number) => void;
 }) => {
   const rows = React.useMemo(
-    () => auraRows(ctx, { debuffs, who, enemy }),
-    [ctx, debuffs, who, enemy],
+    () => auraRows(ctx, { debuffs, who }),
+    [ctx, debuffs, who],
   );
   const seconds = viewSeconds(ctx);
   if (!rows.length) {

@@ -73,12 +73,14 @@ const TimeChart = ({
   range: [number, number] | null;
   onRange?: (r: [number, number] | null) => void;
   onPick?: (seconds: number) => void;
-  markers?: { t: number; label: string }[];
+  markers?: { t: number; label: string; color?: string }[];
   bands?: [number, number][];
   boundaries?: { t: number; label: string }[];
   smoothing?: number;
   height?: number;
 }) => {
+  const svgRef = React.useRef<SVGSVGElement>(null);
+  const dragRef = React.useRef<{ a: number; b: number } | null>(null);
   const box = React.useRef<HTMLDivElement>(null);
   const [W, setW] = React.useState(800);
   const [hover, setHover] = React.useState<number | null>(null);
@@ -135,11 +137,50 @@ const TimeChart = ({
     LEFT + (Math.min(total, Math.max(0, t)) / total) * span;
   const xi = (i: number) => LEFT + ((i + 0.5) / points) * span;
   const y = (v: number) => TOP + (1 - v / max) * plotH;
-  const secondsAt = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * W;
+  // Seconds under a screen x, pinned to the chart's edges.
+  const secondsAtX = (clientX: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const px = ((clientX - rect.left) / rect.width) * W;
     return Math.min(total, Math.max(0, ((px - LEFT) / span) * total));
   };
+  const secondsAt = (e: React.MouseEvent<SVGSVGElement>) =>
+    secondsAtX(e.clientX);
+  const setDragBoth = (d: { a: number; b: number } | null) => {
+    dragRef.current = d;
+    setDrag(d);
+  };
+  const dragging = drag !== null;
+  // While the button is held, keep tracking outside the chart too.
+  React.useEffect(() => {
+    if (!dragging) return undefined;
+    const move = (ev: MouseEvent) => {
+      const d = dragRef.current;
+      if (d) setDragBoth({ ...d, b: secondsAtX(ev.clientX) });
+    };
+    const up = () => {
+      const d = dragRef.current;
+      setDragBoth(null);
+      if (!d) return;
+      const a = Math.min(d.a, d.b);
+      const b = Math.max(d.a, d.b);
+      // A click (barely moved): open a recording there.
+      if ((b - a) / total < 0.005) {
+        if (onPick) onPick(d.a);
+        return;
+      }
+      if (onRange) onRange([a, b]);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    // secondsAtX/onPick/onRange are fresh each render; the drag only needs
+    // the latest when it ends, read through refs above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
   const shown = drag
     ? ([Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)] as [number, number])
     : range;
@@ -151,37 +192,27 @@ const TimeChart = ({
   return (
     <div className="relative select-none" ref={box}>
       <svg
+        ref={svgRef}
         width={W}
         height={height}
         viewBox={`0 0 ${W} ${height}`}
         className={`block ${onRange ? 'cursor-crosshair' : ''}`}
         role="img"
         aria-label={`${rateLabel} over time`}
-        onMouseMove={(e) => {
-          const t = secondsAt(e);
-          setHover(t);
-          if (drag) setDrag({ ...drag, b: t });
-        }}
-        onMouseLeave={() => {
-          setHover(null);
-          setDrag(null);
-        }}
+        onMouseMove={(e) => setHover(secondsAt(e))}
+        onMouseLeave={() => setHover(null)}
         onMouseDown={(e) => {
-          if (!onRange && !onPick) return;
+          if (e.button !== 0 || (!onRange && !onPick)) return;
+          e.preventDefault();
           const t = secondsAt(e);
-          setDrag({ a: t, b: t });
+          setDragBoth({ a: t, b: t });
         }}
-        onMouseUp={() => {
-          if (!drag) return;
-          const a = Math.min(drag.a, drag.b);
-          const b = Math.max(drag.a, drag.b);
-          setDrag(null);
-          // A click (barely moved): open a recording there.
-          if ((b - a) / total < 0.005) {
-            if (onPick) onPick(drag.a);
-            return;
-          }
-          if (onRange) onRange([a, b]);
+        onContextMenu={(e) => {
+          // Right click: back to the whole fight.
+          if (!onRange) return;
+          e.preventDefault();
+          setDragBoth(null);
+          onRange(null);
         }}
       >
         {bands.map(([s, e]) => (
@@ -290,19 +321,47 @@ const TimeChart = ({
             x2={x(m.t)}
             y1={TOP}
             y2={TOP + plotH}
-            stroke="rgb(248 113 113 / 0.6)"
-            strokeDasharray="3 3"
+            stroke={m.color ?? 'rgb(248 113 113 / 0.6)'}
+            strokeDasharray={m.color ? undefined : '3 3'}
+            strokeOpacity={m.color ? 0.75 : 1}
           />
         ))}
         {shown && (
-          <rect
-            x={x(shown[0])}
-            y={TOP}
-            width={Math.max(2, x(shown[1]) - x(shown[0]))}
-            height={plotH}
-            fill="hsl(var(--brand) / 0.14)"
-            stroke="hsl(var(--brand) / 0.55)"
-          />
+          <g>
+            <rect
+              x={x(shown[0])}
+              y={TOP}
+              width={Math.max(2, x(shown[1]) - x(shown[0]))}
+              height={plotH}
+              fill="hsl(var(--brand) / 0.14)"
+              stroke="hsl(var(--brand) / 0.55)"
+            />
+            {/* From, to and length of the slice, live while dragging. */}
+            <rect
+              x={Math.min(
+                W - RIGHT - 150,
+                Math.max(LEFT, (x(shown[0]) + x(shown[1])) / 2 - 75),
+              )}
+              y={TOP + 2}
+              width={150}
+              height={18}
+              rx={3}
+              fill="hsl(var(--background) / 0.9)"
+              stroke="hsl(var(--brand) / 0.6)"
+            />
+            <text
+              x={Math.min(
+                W - RIGHT - 75,
+                Math.max(LEFT + 75, (x(shown[0]) + x(shown[1])) / 2),
+              )}
+              y={TOP + 15}
+              textAnchor="middle"
+              fontSize="11"
+              fill="hsl(var(--foreground-lighter))"
+            >
+              {mmss(shown[0])} – {mmss(shown[1])} ({mmss(shown[1] - shown[0])})
+            </text>
+          </g>
         )}
         {hover !== null && !drag && (
           <line
@@ -353,7 +412,9 @@ const TimeChart = ({
               </div>
             ))}
           {onPick && (
-            <div className="text-foreground mt-0.5">Click to watch</div>
+            <div className="text-foreground mt-0.5">
+              Click to watch · drag to slice · right-click for the whole fight
+            </div>
           )}
         </div>
       )}

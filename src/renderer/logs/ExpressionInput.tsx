@@ -190,7 +190,9 @@ const ExpressionInput = ({
   className,
   placeholder,
   label,
+  applyOnBlur = true,
 }: {
+  applyOnBlur?: boolean;
   value: string;
   onChange: (v: string) => void;
   onApply: (v: string) => void;
@@ -249,7 +251,7 @@ const ExpressionInput = ({
         onFocus={() => setOpen(true)}
         onBlur={() => {
           setTimeout(() => setOpen(false), 150);
-          onApply(value);
+          if (applyOnBlur) onApply(value);
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' && shown.length) {

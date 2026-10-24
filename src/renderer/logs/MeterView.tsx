@@ -19,6 +19,8 @@ const wholeFight = (ctx: Ctx): Ctx =>
     ? { ...ctx, filters: { ...ctx.filters, range: null } }
     : ctx;
 import TimeChart, { ChartSeries } from './TimeChart';
+import SpellIcon from './SpellIcon';
+import { sortRows, SortTh, useSort } from './sort';
 import {
   CATEGORICAL,
   classColor,
@@ -206,10 +208,34 @@ const Drill = ({
     ability: AbilityRow;
     top: number;
   } | null>(null);
-  const abilities = [...row.abilities.values()].sort(
-    (a, b) => b.total - a.total,
-  );
+  const [sort, onSort] = useSort('total');
+  const abilities = sortRows([...row.abilities.values()], sort, {
+    name: (a) => a.name,
+    total: (a) => a.total,
+    rate: (a) => a.total,
+    casts: (a) => a.casts,
+    avgCast: (a) => (a.casts ? a.total / a.casts : 0),
+    hits: (a) => a.hits,
+    avgHit: (a) => (a.hits ? a.total / a.hits : 0),
+    crit: (a) => (a.hits ? a.crits / a.hits : 0),
+    uptime: (a) => a.uptime,
+    miss: (a) => (a.hits + a.misses ? a.misses / (a.hits + a.misses) : 0),
+    overheal: (a) =>
+      a.total + a.overheal ? a.overheal / (a.total + a.overheal) : 0,
+    mitigated: (a) =>
+      a.total + a.mitigated ? a.mitigated / (a.total + a.mitigated) : 0,
+  });
   const top = Math.max(1, ...abilities.map((a) => a.total));
+  const sh = (label: string, column: string, left = false) => (
+    <SortTh
+      label={label}
+      column={column}
+      state={sort}
+      onSort={onSort}
+      numeric={column !== 'name'}
+      className={`${th} ${left ? 'text-left' : 'text-right'}`}
+    />
+  );
   const series = React.useMemo<ChartSeries[]>(() => {
     if (meter === 'prevented') {
       return [
@@ -310,28 +336,18 @@ const Drill = ({
         <table className="w-full text-sm">
           <thead className="text-xs text-foreground border-b border-card bg-card/30">
             <tr>
-              <th className={`${th} text-left`}>Name</th>
-              <th className={`${th} text-left`}>Amount</th>
-              {showCasts && <th className={`${th} text-right`}>Casts</th>}
-              {showCasts && <th className={`${th} text-right`}>Avg cast</th>}
-              <th className={`${th} text-right`}>Hits</th>
-              <th className={`${th} text-right`}>Avg hit</th>
-              {meter !== 'prevented' && (
-                <th className={`${th} text-right`}>Crit %</th>
-              )}
-              {meter === 'damage' && (
-                <th className={`${th} text-right`}>Uptime %</th>
-              )}
-              {meter === 'damage' && (
-                <th className={`${th} text-right`}>Miss %</th>
-              )}
-              {meter === 'healing' && (
-                <th className={`${th} text-right`}>Overheal %</th>
-              )}
-              {meter === 'taken' && (
-                <th className={`${th} text-right`}>Mitigated %</th>
-              )}
-              <th className={`${th} text-right`}>{RATE[meter]}</th>
+              {sh('Name', 'name', true)}
+              {sh('Amount', 'total', true)}
+              {showCasts && sh('Casts', 'casts')}
+              {showCasts && sh('Avg cast', 'avgCast')}
+              {sh('Hits', 'hits')}
+              {sh('Avg hit', 'avgHit')}
+              {meter !== 'prevented' && sh('Crit %', 'crit')}
+              {meter === 'damage' && sh('Uptime %', 'uptime')}
+              {meter === 'damage' && sh('Miss %', 'miss')}
+              {meter === 'healing' && sh('Overheal %', 'overheal')}
+              {meter === 'taken' && sh('Mitigated %', 'mitigated')}
+              {sh(RATE[meter], 'rate')}
             </tr>
           </thead>
           <tbody>
@@ -348,8 +364,15 @@ const Drill = ({
                 onMouseLeave={() => setHover(null)}
               >
                 <td className={`${td} text-foreground-lighter`}>
-                  {a.name}
-                  {a.by && <span className="text-foreground"> ({a.by})</span>}
+                  <span className="inline-flex items-center gap-x-2">
+                    <SpellIcon spellId={a.spellId} name={a.name} />
+                    <span>
+                      {a.name}
+                      {a.by && (
+                        <span className="text-foreground"> ({a.by})</span>
+                      )}
+                    </span>
+                  </span>
                 </td>
                 <td className={td}>
                   <AmountBar
@@ -476,6 +499,17 @@ const MeterView = ({
   // Raider lines switched on from the legend (the total is always drawn).
   const [picked, setPicked] = React.useState<string[]>([]);
   const [showTotal, setShowTotal] = React.useState(true);
+  const [sort, onSort] = useSort('total');
+  const sh = (label: string, column: string, left = false) => (
+    <SortTh
+      label={label}
+      column={column}
+      state={sort}
+      onSort={onSort}
+      numeric={column !== 'name'}
+      className={`${th} ${left ? 'text-left' : 'text-right'}`}
+    />
+  );
   // Chart lines cover the whole fight even when a slice is picked.
   const chartRows = React.useMemo(() => {
     if (!ctx.filters.range) return rows;
@@ -632,7 +666,14 @@ const MeterView = ({
   }
 
   if (group === 'ability') {
-    const abilities = byAbility(rows);
+    const abilities = sortRows(byAbility(rows), sort, {
+      name: (a) => a.name,
+      total: (a) => a.total,
+      rate: (a) => a.total,
+      casts: (a) => a.casts,
+      hits: (a) => a.hits,
+      crit: (a) => (a.hits ? a.crits / a.hits : 0),
+    });
     const max = Math.max(1, ...abilities.map((a) => a.total));
     return (
       <div className="flex flex-col gap-y-3">
@@ -641,19 +682,16 @@ const MeterView = ({
           <table className="w-full text-sm">
             <thead className="text-xs text-foreground border-b border-card bg-card/30">
               <tr>
-                <th className={`${th} text-left`}>Ability</th>
-                <th className={`${th} text-left`}>Amount</th>
-                {(meter === 'damage' || meter === 'healing') && (
-                  <th className={`${th} text-right`}>Casts</th>
-                )}
-                <th className={`${th} text-right`}>Hits</th>
-                {meter !== 'prevented' && (
-                  <th className={`${th} text-right`}>Crit %</th>
-                )}
+                {sh('Ability', 'name', true)}
+                {sh('Amount', 'total', true)}
+                {(meter === 'damage' || meter === 'healing') &&
+                  sh('Casts', 'casts')}
+                {sh('Hits', 'hits')}
+                {meter !== 'prevented' && sh('Crit %', 'crit')}
                 <th className={`${th} text-left`}>
                   {meter === 'taken' ? 'Who took it' : 'Who'}
                 </th>
-                <th className={`${th} text-right`}>{RATE[meter]}</th>
+                {sh(RATE[meter], 'rate')}
               </tr>
             </thead>
             <tbody>
@@ -662,7 +700,12 @@ const MeterView = ({
                   key={a.key}
                   className="border-b border-card/40 hover:bg-card/30"
                 >
-                  <td className={`${td} text-foreground-lighter`}>{a.name}</td>
+                  <td className={`${td} text-foreground-lighter`}>
+                    <span className="inline-flex items-center gap-x-2">
+                      <SpellIcon spellId={a.spellId} name={a.name} />
+                      {a.name}
+                    </span>
+                  </td>
                   <td className={td}>
                     <AmountBar
                       value={a.total}
@@ -718,22 +761,28 @@ const MeterView = ({
         <table className="w-full text-sm">
           <thead className="text-xs text-foreground border-b border-card bg-card/30">
             <tr>
-              <th className={`${th} text-left`}>Name</th>
-              <th className={`${th} text-left`}>Amount</th>
-              {meter === 'taken' && (
-                <th className={`${th} text-right`}>Mitigated</th>
-              )}
-              {meter === 'healing' && (
-                <th className={`${th} text-right`}>Overheal</th>
-              )}
-              {(meter === 'damage' || meter === 'healing') && (
-                <th className={`${th} text-right`}>Active</th>
-              )}
-              <th className={`${th} text-right`}>{RATE[meter]}</th>
+              {sh('Name', 'name', true)}
+              {sh('Amount', 'total', true)}
+              {meter === 'taken' && sh('Mitigated', 'mitigated')}
+              {meter === 'healing' && sh('Overheal', 'overheal')}
+              {(meter === 'damage' || meter === 'healing') &&
+                sh('Active', 'active')}
+              {sh(RATE[meter], 'rate')}
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {sortRows(rows, sort, {
+              name: (r) => r.name,
+              total: (r) => r.total,
+              rate: (r) => r.total,
+              mitigated: (r) =>
+                r.total + r.mitigated
+                  ? r.mitigated / (r.total + r.mitigated)
+                  : 0,
+              overheal: (r) =>
+                r.total + r.overheal ? r.overheal / (r.total + r.overheal) : 0,
+              active: (r) => r.active,
+            }).map((r) => (
               <tr
                 key={r.key}
                 className="border-b border-card/40 hover:bg-card/30"

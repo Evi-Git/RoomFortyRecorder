@@ -15,10 +15,10 @@ export type Filters = {
   side: Side;
   /** List pets on their own rows (else they count for their owner). */
   pets: boolean;
-  /** Enemy (by name) hit, or for damage taken, the enemy hitting. */
-  enemy: string | null;
-  /** Ability (spell id). */
-  ability: number | null;
+  /** Enemies hit (or, for damage taken, hitting): see EnemyFilter. */
+  enemy: EnemyFilter | null;
+  /** Abilities (spell IDs); empty = all. */
+  abilities: number[];
   /** Stop counting each pull after this many raider deaths (0 = off). */
   deathCutoff: number;
   /** Extra condition from the filter expression. */
@@ -30,9 +30,147 @@ export const DEFAULT_FILTERS: Filters = {
   side: 'friendly',
   pets: false,
   enemy: null,
-  ability: null,
+  abilities: [],
   deathCutoff: 0,
   expr: null,
+};
+
+/**
+ * Which enemies: bosses, everything else, or one kind of NPC (by creature
+ * ID), optionally one spawn wave ("group") or one instance of it.
+ */
+export type EnemyFilter =
+  | { kind: 'bosses' }
+  | { kind: 'adds' }
+  | {
+      kind: 'npc';
+      npcId: number;
+      name: string;
+      group?: number;
+      instance?: number;
+    };
+
+type EnemyInfo = {
+  bosses: Set<number>;
+  /** unit -> [instance number, group number], 1-based, by NPC ID. */
+  spawn: Map<number, [number, number]>;
+};
+const enemyInfos = new WeakMap<PullStore, EnemyInfo>();
+
+/** Bosses (the most health), and each NPC's spawn order and waves. */
+export const enemyInfo = (p: PullStore): EnemyInfo => {
+  const known = enemyInfos.get(p);
+  if (known) return known;
+  const hostile = p.units
+    .map((u, i) => ({ u, i }))
+    // Enemies, including ones the boss summoned (not raiders' pets).
+    .filter(
+      ({ u }) => !u.player && !u.friendly && !p.units[u.root].player && u.npcId,
+    );
+  const top = Math.max(0, ...hostile.map(({ u }) => u.maxHp));
+  const bosses = new Set<number>();
+  if (p.boss >= 0 && p.units[p.boss].npcId) bosses.add(p.units[p.boss].npcId);
+  // Bosses: lots of health, and only one or a few of them (not 30 adds).
+  const copies = new Map<number, number>();
+  hostile.forEach(({ u }) =>
+    copies.set(u.npcId, (copies.get(u.npcId) ?? 0) + 1),
+  );
+  hostile.forEach(({ u }) => {
+    if (top && u.maxHp >= top * 0.3 && (copies.get(u.npcId) ?? 0) <= 3)
+      bosses.add(u.npcId);
+  });
+  const byNpc = new Map<number, number[]>();
+  hostile.forEach(({ u, i }) => {
+    const list = byNpc.get(u.npcId) ?? [];
+    list.push(i);
+    byNpc.set(u.npcId, list);
+  });
+  const spawn = new Map<number, [number, number]>();
+  byNpc.forEach((list) => {
+    list.sort((a, b) => p.units[a].first - p.units[b].first);
+    let group = 0;
+    let last = -Infinity;
+    list.forEach((unit, n) => {
+      // More than 8 seconds after the last one: a new wave.
+      if (p.units[unit].first - last > 8) group += 1;
+      last = p.units[unit].first;
+      spawn.set(unit, [n + 1, group]);
+    });
+  });
+  const info = { bosses, spawn };
+  enemyInfos.set(p, info);
+  return info;
+};
+
+/** Does this (enemy) unit pass the enemy filter? */
+export const enemyOk = (ctx: Ctx, p: PullStore, unit: number) => {
+  const f = ctx.filters.enemy;
+  if (!f) return true;
+  if (unit < 0) return false;
+  // The enemy itself (adds the boss summoned are their own enemies).
+  const root = unit;
+  const u = p.units[root];
+  const info = enemyInfo(p);
+  if (f.kind === 'bosses') return info.bosses.has(u.npcId);
+  if (f.kind === 'adds') return !u.player && !info.bosses.has(u.npcId);
+  if (u.npcId !== f.npcId) return false;
+  const at = info.spawn.get(root);
+  if (f.instance && at?.[0] !== f.instance) return false;
+  if (f.group && at?.[1] !== f.group) return false;
+  return true;
+};
+
+/** Does this spell pass the abilities filter? */
+export const abilityOk = (ctx: Ctx, spellId: number | undefined) =>
+  !ctx.filters.abilities.length ||
+  (spellId !== undefined && ctx.filters.abilities.includes(spellId));
+
+export type EnemyOption = {
+  npcId: number;
+  name: string;
+  boss: boolean;
+  instances: number;
+  groups: number;
+};
+
+/** NPCs in the pulls (for the enemy picker): bosses first, then most hit. */
+export const enemyOptions = (pulls: PullStore[]): EnemyOption[] => {
+  const out = new Map<number, EnemyOption & { hits: number }>();
+  pulls.forEach((p) => {
+    const info = enemyInfo(p);
+    const hits = new Float64Array(p.units.length);
+    for (let i = 0; i < p.n; i += 1) {
+      if (p.k[i] === K.DMG && p.d[i] >= 0) hits[p.d[i]] += p.a[i] + p.b[i];
+    }
+    p.units.forEach((u, i) => {
+      if (u.player || u.friendly || p.units[u.root].player || !u.npcId) return;
+      if (!hits[i] && !info.bosses.has(u.npcId)) return;
+      const o = out.get(u.npcId) ?? {
+        npcId: u.npcId,
+        name: u.name,
+        boss: info.bosses.has(u.npcId),
+        instances: 0,
+        groups: 0,
+        hits: 0,
+      };
+      const at = info.spawn.get(i);
+      if (at) {
+        o.instances = Math.max(o.instances, at[0]);
+        o.groups = Math.max(o.groups, at[1]);
+      }
+      o.hits += hits[i];
+      out.set(u.npcId, o);
+    });
+  });
+  return [...out.values()]
+    .sort((a, b) => Number(b.boss) - Number(a.boss) || b.hits - a.hits)
+    .map((o) => ({
+      npcId: o.npcId,
+      name: o.name,
+      boss: o.boss,
+      instances: o.instances,
+      groups: o.groups,
+    }));
 };
 
 export type Ctx = {
@@ -138,9 +276,10 @@ export const rowOf = (
       pet: false,
     };
   }
+  // Enemies by their own name (adds the boss summoned are their own rows).
   return {
-    key: `npc:${root.name}`,
-    name: root.name || 'Unknown',
+    key: `npc:${u.name}`,
+    name: u.name || 'Unknown',
     specId: 0,
     player: false,
     pet: false,
@@ -215,19 +354,19 @@ const newAbility = (
 
 /** Does event i belong in this meter, and whose row (by unit) is it. */
 const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
-  const { side, enemy, ability } = ctx.filters;
+  const { side, enemy } = ctx.filters;
   const kind = p.k[i];
-  if (ability !== null && p.spells[p.sp[i]]?.id !== ability) return -1;
+  if (!abilityOk(ctx, p.spells[p.sp[i]]?.id)) return -1;
   const s = p.s[i];
   const d = p.d[i];
   if (meter === 'damage') {
     if (kind !== K.DMG) return -1;
     if (side === 'friendly') {
       if (!isRaiderSide(p, s) || !isEnemy(p, d)) return -1;
-      if (enemy && p.units[d].name !== enemy) return -1;
+      if (enemy && !enemyOk(ctx, p, d)) return -1;
     } else {
       if (!isEnemy(p, s) || !isRaiderSide(p, d)) return -1;
-      if (enemy && p.units[s].name !== enemy) return -1;
+      if (enemy && !enemyOk(ctx, p, s)) return -1;
     }
     return s;
   }
@@ -236,7 +375,7 @@ const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
     if (side === 'friendly' ? !isRaiderSide(p, s) : !isEnemy(p, s)) return -1;
     if (kind === K.HEAL && side === 'friendly' && !p.units[d]?.friendly)
       return -1;
-    if (enemy && p.units[d]?.name !== enemy) return -1;
+    if (enemy && side === 'enemy' && !enemyOk(ctx, p, s)) return -1;
     return s;
   }
   // Taken: by who was hit.
@@ -244,7 +383,7 @@ const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
   if (side === 'friendly') {
     if (d < 0 || !p.units[d].raider) return -1;
   } else if (!isEnemy(p, d)) return -1;
-  if (enemy && p.units[s]?.name !== enemy) return -1;
+  if (enemy && !enemyOk(ctx, p, side === 'friendly' ? s : d)) return -1;
   return d;
 };
 
@@ -253,25 +392,21 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
   const rows = new Map<string, MeterRow>();
   const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
   const pets = ctx.filters.pets && meter !== 'taken';
-  // Active time: merged [t, t + 1.5] windows per row.
-  const activity = new Map<
-    string,
-    { start: number; end: number; sum: number }
-  >();
-  const touch = (key: string, at: number) => {
-    const a = activity.get(key);
-    if (!a) {
-      activity.set(key, { start: at, end: at + 1.5, sum: 0 });
-    } else if (at > a.end) {
-      a.sum += a.end - a.start;
-      a.start = at;
-      a.end = at + 1.5;
-    } else a.end = Math.max(a.end, at + 1.5);
+  // Active time: [t, t + 1.5] windows per row (a global cooldown after
+  // each cast or hit), merged, and never past the end of what's in view.
+  const activity = new Map<string, [number, number][]>();
+  const ends = ctx.pulls.map((_, pi) => ctx.offsets[pi] + window_(ctx, pi)[1]);
+  const touch = (key: string, at: number, pi: number) => {
+    const end = Math.min(at + 1.5, ends[pi]);
+    if (end <= at) return;
+    const list = activity.get(key) ?? [];
+    list.push([at, end]);
+    activity.set(key, list);
   };
 
   scan(
     ctx,
-    (p, i, at) => {
+    (p, i, at, pi) => {
       const unit = meterUnit(ctx, p, i, meter);
       if (unit < 0) return;
       const ref = rowOf(p, unit, pets);
@@ -326,7 +461,8 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
       if (fromPet) row.pets += amount;
       const pt = Math.min(points - 1, Math.floor(at / SERIES_STEP));
       row.series[pt] += amount;
-      if (meter !== 'taken' && unit === p.units[unit].root) touch(ref.key, at);
+      if (meter !== 'taken' && unit === p.units[unit].root)
+        touch(ref.key, at, pi);
     },
     { kinds: [K.DMG, K.HEAL, K.ABSORB] },
   );
@@ -335,7 +471,7 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
   if (meter !== 'taken') {
     scan(
       ctx,
-      (p, i, at) => {
+      (p, i, at, pi) => {
         const unit = p.s[i];
         const want =
           ctx.filters.side === 'friendly'
@@ -346,13 +482,12 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         const row = ref && rows.get(ref.key);
         if (!row) return;
         const spell = p.spells[p.sp[i]];
-        if (ctx.filters.ability !== null && spell?.id !== ctx.filters.ability)
-          return;
+        if (!abilityOk(ctx, spell?.id)) return;
         const fromPet =
           unit !== p.units[unit].root && !pets ? p.units[unit].name : '';
         const ab = row.abilities.get(`${spell?.id ?? 0}|${fromPet}`);
         if (p.k[i] === K.CAST) {
-          if (unit === p.units[unit].root) touch(row.key, at);
+          if (unit === p.units[unit].root) touch(row.key, at, pi);
           if (ab) ab.casts += 1;
         } else if (ab && meter === 'damage') ab.misses += 1;
       },
@@ -371,9 +506,9 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
     });
   }
 
-  activity.forEach((a, key) => {
+  activity.forEach((list, key) => {
     const row = rows.get(key);
-    if (row) row.active = a.sum + (a.end - a.start);
+    if (row) row.active = unionLength(list);
   });
 
   return [...rows.values()]
@@ -620,7 +755,7 @@ const CONSUMABLE =
  */
 export const auraRows = (
   ctx: Ctx,
-  opts: { debuffs: boolean; who: string | null; enemy: string | null },
+  opts: { debuffs: boolean; who: string | null },
 ): AuraRow[] => {
   const onEnemy = ctx.filters.side === 'enemy';
   type Agg = {
@@ -659,15 +794,17 @@ export const auraRows = (
   ctx.pulls.forEach((p, pi) => {
     const [from, to] = window_(ctx, pi);
     const off = ctx.offsets[pi];
-    const bossName = p.boss >= 0 ? p.units[p.boss].name : '';
+    const { bosses } = enemyInfo(p);
     p.auras.forEach((a) => {
       if (a.debuff !== opts.debuffs) return;
       const target = a.dst >= 0 ? p.units[a.dst] : null;
       if (!target) return;
       if (onEnemy) {
         if (!isEnemy(p, a.dst)) return;
-        const want = opts.enemy ?? bossName;
-        if (want && target.name !== want) return;
+        // The picked enemies, else the bosses.
+        if (ctx.filters.enemy) {
+          if (!enemyOk(ctx, p, a.dst)) return;
+        } else if (!bosses.has(p.units[target.root].npcId)) return;
         if (a.src < 0 || !isRaiderSide(p, a.src)) return;
       } else {
         if (!target.raider) return;
@@ -678,8 +815,7 @@ export const auraRows = (
       if (e <= s && !(a.start >= from && a.start <= to)) return;
       const spell = p.spells[a.spell];
       if (!spell) return;
-      if (ctx.filters.ability !== null && spell.id !== ctx.filters.ability)
-        return;
+      if (!abilityOk(ctx, spell.id)) return;
       let agg = aggs.get(spell.id);
       if (!agg) {
         agg = {
@@ -844,8 +980,7 @@ export const castRows = (ctx: Ctx): CastRow[] => {
       if (!ref) return;
       const spell = p.spells[p.sp[i]];
       if (!spell) return;
-      if (ctx.filters.ability !== null && spell.id !== ctx.filters.ability)
-        return;
+      if (!abilityOk(ctx, spell.id)) return;
       let row = rows.get(ref.key);
       if (!row) {
         row = { ...ref, total: 0, spells: [], map: new Map() };
@@ -1002,7 +1137,10 @@ export const lustBands = (ctx: Ctx) => {
  * cast them (personal ones to the wearer): taken x r / (1 - r) while up.
  * Shields are in Healing. An estimate: talents and stacking change it.
  */
-export const preventedRows = (ctx: Ctx): MeterRow[] => {
+export const preventedRows = (
+  ctx: Ctx,
+  opts: { passive?: boolean } = {},
+): MeterRow[] => {
   const rows = new Map<string, MeterRow>();
   const points = Math.max(1, Math.ceil(ctx.total / SERIES_STEP));
   ctx.pulls.forEach((p, pi) => {
@@ -1058,54 +1196,106 @@ export const preventedRows = (ctx: Ctx): MeterRow[] => {
       });
       spans.set(a.dst, list);
     });
-    if (!spans.size) return;
+    if (!spans.size && !opts.passive) return;
+    const add = (
+      caster: number,
+      spellId: number,
+      name: string,
+      prevented: number,
+      t: number,
+    ) => {
+      const ref = rowOf(p, caster, false);
+      if (!ref || prevented <= 0) return;
+      let row = rows.get(ref.key);
+      if (!row) {
+        row = {
+          ...ref,
+          total: 0,
+          pets: 0,
+          overheal: 0,
+          mitigated: 0,
+          active: 0,
+          abilities: new Map(),
+          series: new Float64Array(points),
+        };
+        rows.set(ref.key, row);
+      }
+      const key = `${spellId}|`;
+      const ab = row.abilities.get(key) ?? newAbility(key, spellId, name, '');
+      ab.total += prevented;
+      ab.hits += 1;
+      row.abilities.set(key, ab);
+      row.total += prevented;
+      row.series[Math.min(points - 1, Math.floor((off + t) / SERIES_STEP))] +=
+        prevented;
+    };
     for (let i = 0; i < p.n; i += 1) {
       const t = p.t[i];
       if (t < from) continue;
       if (t > to) break;
       if (p.k[i] !== K.DMG) continue;
-      const list = spans.get(p.d[i]);
-      if (!list) continue;
+      const d = p.d[i];
+      if (d < 0 || !p.units[d].raider) continue;
+      const list = spans.get(d) ?? [];
+      if (!list.length && !opts.passive) continue;
       if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
       const amount = p.a[i] + p.b[i];
       const school = p.spells[p.sp[i]]?.school ?? 1;
+      let byCooldowns = 0;
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
         if (span.magicOnly && school === 1) return;
-        if (
-          ctx.filters.ability !== null &&
-          span.spellId !== ctx.filters.ability
-        )
-          return;
-        const ref = rowOf(p, span.caster, false);
-        if (!ref) return;
         const prevented = (amount * span.r) / (1 - span.r);
-        let row = rows.get(ref.key);
-        if (!row) {
-          row = {
-            ...ref,
-            total: 0,
-            pets: 0,
-            overheal: 0,
-            mitigated: 0,
-            active: 0,
-            abilities: new Map(),
-            series: new Float64Array(points),
-          };
-          rows.set(ref.key, row);
-        }
-        const key = `${span.spellId}|`;
-        const ab =
-          row.abilities.get(key) ??
-          newAbility(key, span.spellId, span.name, '');
-        ab.total += prevented;
-        ab.hits += 1;
-        row.abilities.set(key, ab);
-        row.total += prevented;
-        row.series[Math.min(points - 1, Math.floor((off + t) / SERIES_STEP))] +=
-          prevented;
+        byCooldowns += prevented;
+        if (!abilityOk(ctx, span.spellId)) return;
+        add(span.caster, span.spellId, span.name, prevented, t);
       });
+      // What else took damage off (magic only, since armour handles the
+      // rest): talents like Elemental Resistance, versatility, auras.
+      if (
+        opts.passive &&
+        school !== 1 &&
+        p.x[i] > amount &&
+        abilityOk(ctx, 0)
+      ) {
+        const rest = p.x[i] - amount - byCooldowns;
+        if (rest > 0) add(d, 0, 'Passive reductions', rest, t);
+      }
     }
+  });
+  return [...rows.values()].sort((a, b) => b.total - a.total);
+};
+
+/** Healing with damage prevented added in (credited to whoever prevented it). */
+export const withPrevented = (healing: MeterRow[], prevented: MeterRow[]) => {
+  const rows = new Map<string, MeterRow>();
+  healing.forEach((r) =>
+    rows.set(r.key, {
+      ...r,
+      abilities: new Map(r.abilities),
+      series: r.series.slice(),
+    }),
+  );
+  prevented.forEach((r) => {
+    let row = rows.get(r.key);
+    if (!row) {
+      row = {
+        ...r,
+        total: 0,
+        abilities: new Map(),
+        series: new Float64Array(r.series.length),
+      };
+      rows.set(r.key, row);
+    }
+    const target = row;
+    r.abilities.forEach((a) => {
+      const key = `prevented:${a.key}`;
+      target.abilities.set(key, { ...a, key, name: `${a.name} (prevented)` });
+    });
+    target.total += r.total;
+    r.series.forEach((v, i) => {
+      target.series[i] += v;
+    });
   });
   return [...rows.values()].sort((a, b) => b.total - a.total);
 };

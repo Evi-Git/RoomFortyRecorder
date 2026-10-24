@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
-import { pullsFromReport, reportCode } from './pulldesk-import.mjs';
+import { fetchFightMeters, pullsFromReport, reportCode } from './pulldesk-import.mjs';
 import { createPullDesk } from './pulldesk.mjs';
 
 const T0 = Date.parse('2026-10-20T00:30:00Z');
@@ -264,4 +264,35 @@ test('imported pulls: gear, buffs, avoidable hits and potions from Warcraft Logs
   assert.equal(evi.potsUsed, 1);
   assert.equal(evi.potsPossible, 2);
   assert.equal(prep.raidBuffs.find((b) => b.key === 'int').providers[0], 'Mage');
+});
+
+test('fight meters come from Warcraft Logs tables, several fights per query', async () => {
+  const queries = [];
+  const wcl = {
+    query: async (q) => {
+      queries.push(q);
+      const report = {};
+      [...q.matchAll(/(\w)(\d+): table\(dataType: (\w+)/g)].forEach(([, k, id]) => {
+        report[`${k}${id}`] = {
+          data: {
+            totalTime: 300000,
+            entries: [
+              { name: 'Evi', total: k === 'd' ? 1000 * Number(id) : 10 },
+              { name: 'Nobody', total: 0 },
+            ],
+          },
+        };
+      });
+      return { reportData: { report } };
+    },
+  };
+  const ids = [1, 2, 3, 4, 5, 6, 7];
+  const meters = await fetchFightMeters(wcl, 'abc', ids);
+  assert.equal(queries.length, 2);
+  assert.deepEqual(meters.get(3), {
+    seconds: 300,
+    damage: [{ name: 'Evi', total: 3000 }],
+    healing: [{ name: 'Evi', total: 10 }],
+    taken: [{ name: 'Evi', total: 10 }],
+  });
 });

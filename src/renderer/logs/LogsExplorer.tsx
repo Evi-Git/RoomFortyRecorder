@@ -1,13 +1,15 @@
 import React from 'react';
-import { Clock, List, Search, Table2 } from 'lucide-react';
+import { Clock, Eye, EyeOff, List, Search, Table2, X } from 'lucide-react';
 import Switch from '../components/Switch/Switch';
 import { CastTimeline, AuraView, WatchHint } from '../LogsTimeline';
-import { compileExpression } from './expression';
+import { compileExpression, Predicate } from './expression';
 import {
   abilityNames,
   DEFAULT_FILTERS,
-  enemyNames,
+  enemyOptions,
   Filters,
+  scan,
+  withPrevented,
   lustBands,
   makeCtx,
   meterRows,
@@ -24,7 +26,18 @@ import EventsView, { EventTab } from './EventsView';
 import QueriesView from './QueriesView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
-import { classColor, compact, mmss } from './format';
+import { CATEGORICAL, classColor, compact, mmss } from './format';
+import { AbilityPicker, EnemyPicker } from './Pickers';
+
+/** A filter expression: narrowing the data, or marking matches on charts. */
+type Layer = {
+  id: number;
+  text: string;
+  fn: Predicate;
+  mode: 'filter' | 'mark';
+  on: boolean;
+  color: string;
+};
 
 /**
  * [RoomFortyRecorder] The Logs page's pull explorer, after Warcraft Logs:
@@ -43,7 +56,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'damage', label: 'Damage Done' },
   { key: 'taken', label: 'Damage Taken' },
   { key: 'healing', label: 'Healing' },
-  { key: 'prevented', label: 'Damage Prevented' },
   { key: 'buffs', label: 'Buffs' },
   { key: 'debuffs', label: 'Debuffs' },
   { key: 'interrupts', label: 'Interrupts' },
@@ -226,6 +238,11 @@ const LogsExplorer = ({
   const [who, setWho] = React.useState<string | null>(null);
   const [auraWho, setAuraWho] = React.useState<string | null>(null);
   const [exprText, setExprText] = React.useState('');
+  const [layers, setLayers] = React.useState<Layer[]>([]);
+  const [layerMode, setLayerMode] = React.useState<'filter' | 'mark'>('filter');
+  // Healing: count damage prevented as healing (and passive reductions).
+  const [prevented, setPrevented] = React.useState(false);
+  const [passive, setPassive] = React.useState(false);
   const [exprError, setExprError] = React.useState('');
   const [timelinePull, setTimelinePull] = React.useState(0);
   const [notice, setNotice] = React.useState('');
@@ -246,7 +263,7 @@ const LogsExplorer = ({
   const [shownKey, setShownKey] = React.useState(key);
   if (shownKey !== key) {
     setShownKey(key);
-    setFilters((f) => ({ ...f, range: null, enemy: null, ability: null }));
+    setFilters((f) => ({ ...f, range: null, enemy: null, abilities: [] }));
     setWho(null);
     setTimelinePull(0);
     setNotice('');
@@ -261,39 +278,79 @@ const LogsExplorer = ({
         .join(',');
   const loaded = load.stores;
   const stores = React.useMemo(() => (ready ? loaded : []), [ready, loaded]);
-  const ctx = React.useMemo(() => makeCtx(stores, filters), [stores, filters]);
+  // Filter layers that are on, all of them must match.
+  const layerExpr = React.useMemo<Predicate | null>(() => {
+    const fns = layers
+      .filter((l) => l.on && l.mode === 'filter')
+      .map((l) => l.fn);
+    if (!fns.length) return null;
+    return (p, i) => fns.every((fn) => fn(p, i));
+  }, [layers]);
+  const ctx = React.useMemo(
+    () => makeCtx(stores, { ...filters, expr: layerExpr }),
+    [stores, filters, layerExpr],
+  );
 
   const meter: MeterKind | null = METER_TABS.has(tab)
     ? (tab as MeterKind)
     : null;
   const rows = React.useMemo(() => {
     if (!stores.length || !meter || mode !== 'tables') return [];
-    return meter === 'prevented' ? preventedRows(ctx) : meterRows(ctx, meter);
-  }, [ctx, meter, stores.length, mode]);
-  const enemies = React.useMemo(
-    () => (stores.length ? enemyNames(makeCtx(stores, DEFAULT_FILTERS)) : []),
-    [stores],
-  );
+    if (meter === 'prevented') return preventedRows(ctx, { passive });
+    if (meter === 'healing' && prevented)
+      return withPrevented(
+        meterRows(ctx, 'healing'),
+        preventedRows(ctx, { passive }),
+      );
+    return meterRows(ctx, meter);
+  }, [ctx, meter, stores.length, mode, prevented, passive]);
+  const enemies = React.useMemo(() => enemyOptions(stores), [stores]);
+  // Abilities to pick from: this tab's, whatever is picked now.
+  const abilityRows = React.useMemo(() => {
+    if (!filters.abilities.length) return rows;
+    if (!stores.length || !meter || meter === 'prevented') return rows;
+    return meterRows(
+      { ...ctx, filters: { ...ctx.filters, abilities: [] } },
+      meter,
+    );
+  }, [rows, ctx, meter, stores.length, filters.abilities.length]);
   const roster = React.useMemo(
     () => (stores.length ? raiders(makeCtx(stores, DEFAULT_FILTERS)) : []),
     [stores],
   );
-  const abilities = React.useMemo(() => abilityNames(rows), [rows]);
+  const abilities = React.useMemo(
+    () => abilityNames(abilityRows),
+    [abilityRows],
+  );
   const vocab = React.useMemo(() => vocabularyOf(stores), [stores]);
   const bands = React.useMemo(
     () => (stores.length ? lustBands(makeCtx(stores, DEFAULT_FILTERS)) : []),
     [stores],
   );
-  const markers = React.useMemo(
-    () =>
-      stores.flatMap((p, pi) =>
+  const markers = React.useMemo(() => {
+    const out: { t: number; label: string; color?: string }[] = stores.flatMap(
+      (p, pi) =>
         p.deaths.map((d) => ({
           t: ctx.offsets[pi] + d.t,
           label: `${p.units[d.unit].name} died${d.spell >= 0 ? ` (${p.spells[d.spell]?.name})` : ''}`,
         })),
-      ),
-    [stores, ctx.offsets],
-  );
+    );
+    // Marker layers: a line at each match (at most one per half second).
+    const all = makeCtx(stores, DEFAULT_FILTERS);
+    layers
+      .filter((l) => l.on && l.mode === 'mark')
+      .forEach((l) => {
+        let last = -1;
+        let count = 0;
+        scan(all, (p, i, at) => {
+          if (count >= 1500 || at - last < 0.5 || !l.fn(p, i)) return;
+          last = at;
+          count += 1;
+          out.push({ t: at, label: l.text, color: l.color });
+        });
+      });
+    return out;
+  }, [stores, ctx.offsets, layers]);
   const boundaries = React.useMemo(
     () =>
       stores.length > 1
@@ -358,15 +415,36 @@ const LogsExplorer = ({
 
   const field =
     'bg-card text-foreground-lighter rounded px-2 h-8 text-xs border border-background';
-  const applyExpr = (text: string) => {
+  // Enter adds the expression as a layer (a filter or chart markers).
+  const addLayer = (text: string) => {
+    if (!text.trim()) {
+      setExprError('');
+      return;
+    }
     try {
       const fn = compileExpression(text);
+      if (!fn) return;
       setExprError('');
-      patch({ expr: fn });
+      setLayers((list) => [
+        ...list,
+        {
+          id: Date.now(),
+          text: text.trim(),
+          fn,
+          mode: layerMode,
+          on: true,
+          color: CATEGORICAL[(list.length + 2) % CATEGORICAL.length],
+        },
+      ]);
+      setExprText('');
     } catch (error) {
       setExprError((error as Error).message);
     }
   };
+  const editLayer = (id: number, change: Partial<Layer>) =>
+    setLayers((list) =>
+      list.map((l) => (l.id === id ? { ...l, ...change } : l)),
+    );
   const sideSwitch = (
     <div className="flex items-center gap-x-3 text-sm">
       {(['friendly', 'enemy'] as const).map((side) => (
@@ -443,37 +521,17 @@ const LogsExplorer = ({
 
       {showFilters && (
         <div className="flex items-center gap-2 flex-wrap">
-          <select
-            className={field}
-            value={filters.enemy ?? ''}
-            onChange={(e) => patch({ enemy: e.target.value || null })}
-            aria-label="Enemy"
-          >
-            <option value="">All enemies</option>
-            {enemies.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+          <EnemyPicker
+            value={filters.enemy}
+            options={enemies}
+            onChange={(enemy) => patch({ enemy })}
+          />
           {meter && (
-            <select
-              className={field}
-              value={filters.ability ?? ''}
-              onChange={(e) =>
-                patch({
-                  ability: e.target.value ? Number(e.target.value) : null,
-                })
-              }
-              aria-label="Ability"
-            >
-              <option value="">All abilities</option>
-              {abilities.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+            <AbilityPicker
+              value={filters.abilities}
+              options={abilities}
+              onChange={(ids) => patch({ abilities: ids })}
+            />
           )}
           {(tab === 'buffs' || tab === 'debuffs') &&
             filters.side === 'friendly' && (
@@ -519,6 +577,30 @@ const LogsExplorer = ({
               </option>
             ))}
           </select>
+          {meter === 'healing' && (
+            <label
+              className="flex items-center gap-x-1.5 text-xs text-foreground"
+              title="Count damage kept off raiders by damage-reduction cooldowns as healing, for whoever cast them"
+            >
+              <Switch
+                checked={prevented}
+                onCheckedChange={(v: boolean) => setPrevented(v)}
+              />
+              Damage prevented
+            </label>
+          )}
+          {meter === 'healing' && prevented && (
+            <label
+              className="flex items-center gap-x-1.5 text-xs text-foreground"
+              title="Also count what talents and versatility took off magic damage (Elemental Resistance and the like), for the raider who has them"
+            >
+              <Switch
+                checked={passive}
+                onCheckedChange={(v: boolean) => setPassive(v)}
+              />
+              + passives
+            </label>
+          )}
           {(meter === 'damage' || meter === 'healing' || tab === 'casts') && (
             <label className="flex items-center gap-x-1.5 text-xs text-foreground">
               <Switch
@@ -528,25 +610,89 @@ const LogsExplorer = ({
               Pets
             </label>
           )}
+          <select
+            className={field}
+            value={layerMode}
+            onChange={(e) => setLayerMode(e.target.value as 'filter' | 'mark')}
+            aria-label="Add expressions as"
+            title="Enter adds the expression as a filter on the data, or as markers on the charts"
+          >
+            <option value="filter">Add as filter</option>
+            <option value="mark">Add as marker</option>
+          </select>
           <ExpressionInput
             value={exprText}
             onChange={setExprText}
-            onApply={applyExpr}
+            onApply={addLayer}
+            applyOnBlur={false}
             vocab={vocab}
             label="Filter expression"
-            placeholder='Filter expression, e.g. ability.name ~ "breath" (? for help)'
+            placeholder='Expression, Enter to add, e.g. ability.name ~ "breath" (? for help)'
             className={`${field} flex-1 font-mono`}
           />
-          {exprText && (
+        </div>
+      )}
+      {showFilters && layers.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+          {layers.map((l) => (
+            <span
+              key={l.id}
+              className={`inline-flex items-center gap-x-1.5 rounded-md border px-1.5 py-0.5 ${
+                l.on ? 'border-card bg-card/60' : 'border-card/50 opacity-50'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  editLayer(l.id, {
+                    mode: l.mode === 'filter' ? 'mark' : 'filter',
+                  })
+                }
+                title="Switch between filtering the data and marking the charts"
+                className="rounded px-1 text-[10px] font-semibold"
+                style={{
+                  background:
+                    l.mode === 'mark' ? l.color : 'hsl(var(--brand) / 0.25)',
+                  color: l.mode === 'mark' ? '#111' : 'hsl(var(--brand))',
+                }}
+              >
+                {l.mode === 'filter' ? 'Filter' : 'Marker'}
+              </button>
+              <span
+                className="font-mono text-foreground-lighter max-w-[360px] truncate"
+                title={l.text}
+              >
+                {l.text}
+              </span>
+              <button
+                type="button"
+                aria-label={l.on ? 'Turn off' : 'Turn on'}
+                title={l.on ? 'Turn off' : 'Turn on'}
+                onClick={() => editLayer(l.id, { on: !l.on })}
+                className="text-foreground hover:text-foreground-lighter"
+              >
+                {l.on ? <Eye size={13} /> : <EyeOff size={13} />}
+              </button>
+              <button
+                type="button"
+                aria-label="Remove"
+                title="Remove"
+                onClick={() =>
+                  setLayers((list) => list.filter((x) => x.id !== l.id))
+                }
+                className="text-foreground hover:text-red-400"
+              >
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+          {layers.length > 1 && (
             <button
               type="button"
-              className="text-xs text-brand hover:underline px-1"
-              onClick={() => {
-                setExprText('');
-                applyExpr('');
-              }}
+              className="text-brand hover:underline"
+              onClick={() => setLayers([])}
             >
-              Clear
+              Clear all
             </button>
           )}
         </div>
@@ -605,7 +751,6 @@ const LogsExplorer = ({
               ctx={ctx}
               debuffs={tab === 'debuffs'}
               who={filters.side === 'friendly' ? auraWho : null}
-              enemy={filters.side === 'enemy' ? filters.enemy : null}
               bands={bands}
               onPick={onWatch ? (t) => onWatch(t, null) : undefined}
             />

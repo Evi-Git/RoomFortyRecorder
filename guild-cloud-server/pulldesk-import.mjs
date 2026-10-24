@@ -203,6 +203,49 @@ const allEvents = async (wcl, code, fightIds, dataType, filter) => {
 };
 
 /**
+ * Damage done, healing and damage taken per player for fights of one
+ * report, from Warcraft Logs' own tables (for Trends on imported pulls).
+ * @returns {Map<number, { seconds, damage, healing, taken }>} by fight ID
+ */
+export const fetchFightMeters = async (wcl, code, fightIds) => {
+  const out = new Map();
+  const KINDS = [
+    ['d', 'DamageDone', 'damage'],
+    ['h', 'Healing', 'healing'],
+    ['t', 'DamageTaken', 'taken'],
+  ];
+  for (let i = 0; i < fightIds.length; i += 6) {
+    const chunk = fightIds.slice(i, i + 6);
+    const fields = chunk
+      .flatMap((id) => KINDS.map(([k, type]) => `${k}${id}: table(dataType: ${type}, fightIDs: [${Number(id)}])`))
+      .join('\n');
+    // eslint-disable-next-line no-await-in-loop
+    const result = await wcl.query(`query($code: String!) { reportData { report(code: $code) { ${fields} } } }`, { code });
+    const report = result.reportData?.report || {};
+    chunk.forEach((id) => {
+      const fight = { seconds: 0, damage: [], healing: [], taken: [] };
+      KINDS.forEach(([k, , key]) => {
+        let table = report[`${k}${id}`];
+        if (typeof table === 'string') {
+          try {
+            table = JSON.parse(table);
+          } catch {
+            table = null;
+          }
+        }
+        const data = table?.data || table || {};
+        if (data.totalTime) fight.seconds = Math.max(fight.seconds, Number(data.totalTime) / 1000);
+        fight[key] = (data.entries || [])
+          .filter((e) => e && e.name && Number(e.total) > 0)
+          .map((e) => ({ name: String(e.name), total: Number(e.total) || 0 }));
+      });
+      out.set(id, fight);
+    });
+  }
+  return out;
+};
+
+/**
  * Gear and buffs at each pull, hits from the given abilities, and combat
  * potions cast, for fights of one Warcraft Logs report.
  * @returns {Map<number, { players, auraNames, avoidable, potions }>} by fight ID
