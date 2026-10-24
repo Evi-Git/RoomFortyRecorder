@@ -13,6 +13,8 @@ export type ChartSeries = {
   color: string;
   values: ArrayLike<number>;
   dashed?: boolean;
+  /** SVG dash pattern, e.g. '6 3' (wins over dashed). */
+  dash?: string;
   width?: number;
 };
 
@@ -274,7 +276,9 @@ const TimeChart = ({
                 fill="none"
                 stroke={series[si].color}
                 strokeWidth={series[si].width ?? 2}
-                strokeDasharray={series[si].dashed ? '4 3' : undefined}
+                strokeDasharray={
+                  series[si].dash ?? (series[si].dashed ? '4 3' : undefined)
+                }
                 strokeLinejoin="round"
                 points={Array.from(s, (v, i) => `${xi(i)},${y(v)}`).join(' ')}
               />

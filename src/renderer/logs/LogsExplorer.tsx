@@ -22,6 +22,7 @@ import AuraTables from './AuraTables';
 import { CastView, CountView, ResourceView, SummaryView } from './OtherTables';
 import EventsView, { EventTab } from './EventsView';
 import QueriesView from './QueriesView';
+import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { classColor, compact, mmss } from './format';
 
@@ -278,6 +279,7 @@ const LogsExplorer = ({
     [stores],
   );
   const abilities = React.useMemo(() => abilityNames(rows), [rows]);
+  const vocab = React.useMemo(() => vocabularyOf(stores), [stores]);
   const bands = React.useMemo(
     () => (stores.length ? lustBands(makeCtx(stores, DEFAULT_FILTERS)) : []),
     [stores],
@@ -526,35 +528,27 @@ const LogsExplorer = ({
               Pets
             </label>
           )}
-          <form
-            className="flex items-center gap-x-1 flex-1 min-w-[260px]"
-            onSubmit={(e) => {
-              e.preventDefault();
-              applyExpr(exprText);
-            }}
-          >
-            <input
-              value={exprText}
-              onChange={(e) => setExprText(e.target.value)}
-              onBlur={() => applyExpr(exprText)}
-              placeholder='Filter expression, e.g. ability.name ~ "breath"'
-              spellCheck={false}
-              className={`${field} flex-1 font-mono`}
-              aria-label="Filter expression"
-            />
-            {exprText && (
-              <button
-                type="button"
-                className="text-xs text-brand hover:underline px-1"
-                onClick={() => {
-                  setExprText('');
-                  applyExpr('');
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </form>
+          <ExpressionInput
+            value={exprText}
+            onChange={setExprText}
+            onApply={applyExpr}
+            vocab={vocab}
+            label="Filter expression"
+            placeholder='Filter expression, e.g. ability.name ~ "breath" (? for help)'
+            className={`${field} flex-1 font-mono`}
+          />
+          {exprText && (
+            <button
+              type="button"
+              className="text-xs text-brand hover:underline px-1"
+              onClick={() => {
+                setExprText('');
+                applyExpr('');
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
       {exprError && showFilters && (
@@ -634,7 +628,9 @@ const LogsExplorer = ({
         <EventsView ctx={ctx} tab={tab} who={who} onWatch={onWatch} />
       )}
 
-      {mode === 'queries' && <QueriesView ctx={ctx} onWatch={onWatch} />}
+      {mode === 'queries' && (
+        <QueriesView ctx={ctx} vocab={vocab} onWatch={onWatch} />
+      )}
 
       {mode === 'timelines' && (
         <TimelineMode

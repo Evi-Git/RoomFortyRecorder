@@ -214,18 +214,19 @@ const WANTED = new Set([
 
 /** Seconds since 1970 from "M/D/YYYY HH:MM:SS.ffff" (local, no zone). */
 const dayCache = { key: '', base: 0 };
+const STAMP = /^\s*(\d+)\/(\d+)(?:\/(\d+))?\s+(\d+):(\d+):(\d+(?:\.\d+)?)/;
 export const lineSeconds = (line: string) => {
-  const space = line.indexOf(' ');
-  const date = line.slice(0, space);
-  if (date !== dayCache.key) {
-    const [m, d, y] = date.split('/').map(Number);
-    dayCache.key = date;
-    dayCache.base = Date.UTC(y || 2000, (m || 1) - 1, d || 1) / 1000;
+  // "M/D/YYYY HH:MM:SS.ffff" — newer clients add a time zone after the
+  // seconds ("...17.7771-4"), older ones leave out the year.
+  const m = STAMP.exec(line);
+  if (!m) return Number.NaN;
+  const key = `${m[1]}/${m[2]}/${m[3] ?? ''}`;
+  if (key !== dayCache.key) {
+    dayCache.key = key;
+    dayCache.base =
+      Date.UTC(Number(m[3]) || 2000, Number(m[1]) - 1, Number(m[2])) / 1000;
   }
-  const h = Number(line.slice(space + 1, line.indexOf(':', space)));
-  const rest = line.slice(line.indexOf(':', space) + 1, line.indexOf('  '));
-  const [mm, ss] = rest.split(':');
-  return dayCache.base + h * 3600 + Number(mm) * 60 + Number(ss);
+  return dayCache.base + Number(m[4]) * 3600 + Number(m[5]) * 60 + Number(m[6]);
 };
 
 /** Builds a PullStore from the lines of one pull (START..END). */
@@ -255,6 +256,8 @@ export class StoreBuilder {
   private power = new Map<number, [number, number, number, number][]>();
 
   private fightSeconds = 0;
+
+  private lastT = 0;
 
   private alloc(cap: number) {
     return {
@@ -326,11 +329,13 @@ export class StoreBuilder {
   public feed(line: string) {
     if (line.includes('  ENCOUNTER_START,')) {
       this.start = lineSeconds(line);
+      if (!Number.isFinite(this.start)) this.start = 0;
       return;
     }
     if (this.start < 0) return;
     if (line.includes('  ENCOUNTER_END,')) {
-      this.end = lineSeconds(line);
+      const end = lineSeconds(line);
+      if (Number.isFinite(end)) this.end = end;
       const fields = line.slice(line.indexOf('  ') + 2).split(',');
       const ms = Number(fields[fields.length - 1]);
       if (ms > 0) this.fightSeconds = ms / 1000;
@@ -344,9 +349,12 @@ export class StoreBuilder {
     }
     const e = parseLine(line, WANTED);
     if (!e) return;
-    let t = lineSeconds(line) - this.start;
+    const at = lineSeconds(line);
+    // A line we can't date: keep it at the last time we had.
+    let t = Number.isFinite(at) ? at - this.start : this.lastT;
     if (t < -43200) t += 86400; // past midnight
-    this.end = Math.max(this.end, t + this.start);
+    this.lastT = t;
+    if (Number.isFinite(at)) this.end = Math.max(this.end, at);
 
     const src = this.unit(e.src, e.srcName, e.srcFlags);
     const dst = this.unit(e.dst, e.dstName, e.dstFlags);

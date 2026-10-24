@@ -6,6 +6,7 @@ import { Ctx, scan } from './query';
 import { K } from './store';
 import { compact, thousands } from './format';
 import EventsView from './EventsView';
+import ExpressionInput, { Vocabulary } from './ExpressionInput';
 
 /**
  * [RoomFortyRecorder] Logs page Queries: ready-made and saved filter
@@ -109,9 +110,11 @@ const Tally = ({
 
 const QueriesView = ({
   ctx,
+  vocab,
   onWatch,
 }: {
   ctx: Ctx;
+  vocab: Vocabulary;
   onWatch?: (t: number, name: string | null) => void;
 }) => {
   const [text, setText] = React.useState(PRESETS[0].expr);
@@ -245,13 +248,14 @@ const QueriesView = ({
             setApplied(text);
           }}
         >
-          <textarea
+          <ExpressionInput
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={2}
-            spellCheck={false}
-            className={`${field} font-mono text-xs w-full`}
-            aria-label="Query"
+            onChange={setText}
+            onApply={setApplied}
+            vocab={vocab}
+            label="Query"
+            placeholder="type = death (? for help)"
+            className={`${field} font-mono text-xs w-full h-9`}
           />
           <div className="flex items-center gap-x-2 flex-wrap">
             <button
