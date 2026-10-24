@@ -208,3 +208,50 @@ const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
 };
 
 export default SpellIcon;
+
+// Warcraft Logs' names for spells that share a name ("Eviscerate (Ancient
+// Arts)"), from the guild server (cached there for good).
+const labels = new Map<number, string | null>();
+const labelWanted = new Set<number>();
+let labelTimer: ReturnType<typeof setTimeout> | null = null;
+
+const flushLabels = async () => {
+  labelTimer = null;
+  const ids = [...labelWanted].slice(0, 60);
+  ids.forEach((id) => labelWanted.delete(id));
+  if (!ids.length) return;
+  try {
+    const response = (await ipc.invoke('pullDesk', [
+      { action: 'spellNames', ids },
+    ])) as Response<{ names: Record<string, string | null> }>;
+    ids.forEach((id) =>
+      labels.set(id, response.ok ? (response.data.names[id] ?? null) : null),
+    );
+  } catch {
+    ids.forEach((id) => labels.set(id, null));
+  }
+  notify();
+  if (labelWanted.size) labelTimer = setTimeout(flushLabels, 200);
+};
+
+/** Warcraft Logs' names for these spells, as they arrive. */
+export const useSpellLabels = (ids: number[]) => {
+  const [, bump] = React.useReducer((n: number) => n + 1, 0);
+  const key = [...new Set(ids)].sort((a, b) => a - b).join(',');
+  React.useEffect(() => {
+    listeners.add(bump);
+    key
+      .split(',')
+      .filter(Boolean)
+      .map(Number)
+      .forEach((id) => {
+        if (!labels.has(id)) labelWanted.add(id);
+      });
+    if (labelWanted.size && !labelTimer)
+      labelTimer = setTimeout(flushLabels, 60);
+    return () => {
+      listeners.delete(bump);
+    };
+  }, [key]);
+  return labels;
+};
