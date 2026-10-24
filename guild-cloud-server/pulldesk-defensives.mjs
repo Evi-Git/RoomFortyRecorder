@@ -20,19 +20,46 @@
 // cast during the pull counts too, so talented abilities show up once used.
 
 const CLASS_BY_SPEC = {
-  250: 'Death Knight', 251: 'Death Knight', 252: 'Death Knight',
-  577: 'Demon Hunter', 581: 'Demon Hunter', 1480: 'Demon Hunter',
-  102: 'Druid', 103: 'Druid', 104: 'Druid', 105: 'Druid',
-  1467: 'Evoker', 1468: 'Evoker', 1473: 'Evoker',
-  253: 'Hunter', 254: 'Hunter', 255: 'Hunter',
-  62: 'Mage', 63: 'Mage', 64: 'Mage',
-  268: 'Monk', 269: 'Monk', 270: 'Monk',
-  65: 'Paladin', 66: 'Paladin', 70: 'Paladin',
-  256: 'Priest', 257: 'Priest', 258: 'Priest',
-  259: 'Rogue', 260: 'Rogue', 261: 'Rogue',
-  262: 'Shaman', 263: 'Shaman', 264: 'Shaman',
-  265: 'Warlock', 266: 'Warlock', 267: 'Warlock',
-  71: 'Warrior', 72: 'Warrior', 73: 'Warrior',
+  250: 'Death Knight',
+  251: 'Death Knight',
+  252: 'Death Knight',
+  577: 'Demon Hunter',
+  581: 'Demon Hunter',
+  1480: 'Demon Hunter',
+  102: 'Druid',
+  103: 'Druid',
+  104: 'Druid',
+  105: 'Druid',
+  1467: 'Evoker',
+  1468: 'Evoker',
+  1473: 'Evoker',
+  253: 'Hunter',
+  254: 'Hunter',
+  255: 'Hunter',
+  62: 'Mage',
+  63: 'Mage',
+  64: 'Mage',
+  268: 'Monk',
+  269: 'Monk',
+  270: 'Monk',
+  65: 'Paladin',
+  66: 'Paladin',
+  70: 'Paladin',
+  256: 'Priest',
+  257: 'Priest',
+  258: 'Priest',
+  259: 'Rogue',
+  260: 'Rogue',
+  261: 'Rogue',
+  262: 'Shaman',
+  263: 'Shaman',
+  264: 'Shaman',
+  265: 'Warlock',
+  266: 'Warlock',
+  267: 'Warlock',
+  71: 'Warrior',
+  72: 'Warrior',
+  73: 'Warrior',
 };
 
 export const classForSpec = (specId) => CLASS_BY_SPEC[specId] || null;
@@ -44,31 +71,31 @@ const TABLE = {
   'Anti-Magic Shell': ['personal', 60, ['Death Knight']],
   'Anti-Magic Zone': ['raid', 120],
   'Death Pact': ['personal', 120],
-  'Lichborne': ['personal', 120],
+  Lichborne: ['personal', 120],
   'Vampiric Blood': ['personal', 90, [250]],
   'Dancing Rune Weapon': ['personal', 120, [250]],
   // Demon Hunter
-  'Blur': ['personal', 60, [577, 1480]],
-  'Netherwalk': ['immunity', 180],
-  'Darkness': ['raid', 300],
+  Blur: ['personal', 60, [577, 1480]],
+  Netherwalk: ['immunity', 180],
+  Darkness: ['raid', 300],
   'Fiery Brand': ['personal', 60, [581]],
-  'Metamorphosis': ['personal', 180, [581]],
+  Metamorphosis: ['personal', 180, [581]],
   // Druid
-  'Barkskin': ['personal', 60, ['Druid']],
+  Barkskin: ['personal', 60, ['Druid']],
   'Survival Instincts': ['personal', 180, [103, 104]],
   'Frenzied Regeneration': ['personal', 36],
-  'Renewal': ['personal', 90],
-  'Ironbark': ['external', 90, [105]],
-  'Tranquility': ['raid', 180, [105]],
+  Renewal: ['personal', 90],
+  Ironbark: ['external', 90, [105]],
+  Tranquility: ['raid', 180, [105]],
   // Evoker
   'Obsidian Scales': ['personal', 90, ['Evoker']],
   'Renewing Blaze': ['personal', 90],
-  'Zephyr': ['raid', 120],
-  'Rewind': ['raid', 240],
+  Zephyr: ['raid', 120],
+  Rewind: ['raid', 240],
   'Time Dilation': ['external', 60],
   // Hunter
   'Aspect of the Turtle': ['immunity', 180, ['Hunter']],
-  'Exhilaration': ['personal', 120, ['Hunter']],
+  Exhilaration: ['personal', 120, ['Hunter']],
   'Survival of the Fittest': ['personal', 180],
   'Roar of Sacrifice': ['external', 60],
   // Mage
@@ -84,8 +111,8 @@ const TABLE = {
   'Dampen Harm': ['personal', 120],
   'Touch of Karma': ['personal', 90, [269]],
   'Life Cocoon': ['external', 120, [270]],
-  'Revival': ['raid', 180],
-  'Restoral': ['raid', 180],
+  Revival: ['raid', 180],
+  Restoral: ['raid', 180],
   'Celestial Brew': ['personal', 60],
   'Invoke Niuzao, the Black Ox': ['personal', 180],
   // Paladin
@@ -101,7 +128,7 @@ const TABLE = {
   'Guardian of Ancient Kings': ['personal', 300, [66]],
   // Priest
   'Desperate Prayer': ['personal', 90, ['Priest']],
-  'Dispersion': ['personal', 120, [258]],
+  Dispersion: ['personal', 120, [258]],
   'Vampiric Embrace': ['raid', 120],
   'Pain Suppression': ['external', 180, [256]],
   'Guardian Spirit': ['external', 180, [257]],
@@ -109,7 +136,7 @@ const TABLE = {
   'Divine Hymn': ['raid', 180],
   // Rogue
   'Cloak of Shadows': ['immunity', 120, ['Rogue']],
-  'Evasion': ['personal', 120, ['Rogue']],
+  Evasion: ['personal', 120, ['Rogue']],
   'Crimson Vial': ['personal', 30, ['Rogue']],
   // Shaman
   'Astral Shift': ['personal', 120, ['Shaman']],
@@ -128,7 +155,7 @@ const TABLE = {
   'Rallying Cry': ['raid', 180],
   'Spell Reflection': ['personal', 25],
   // Consumables (cooldowns handled specially below)
-  'Healthstone': ['healthstone', 60],
+  Healthstone: ['healthstone', 60],
   'Demonic Healthstone': ['healthstone', 60],
 };
 
@@ -141,7 +168,10 @@ const REPLACES = {
 const POTION_COOLDOWN = 300;
 const isHealthPotion = (name) => /\b(health|healing) potion\b/i.test(name);
 
-const normalize = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normalize = (name) =>
+  String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 
 const BY_KEY = new Map(
   Object.entries(TABLE).map(([name, [kind, cd, baseline]]) => [
@@ -154,7 +184,12 @@ const BY_KEY = new Map(
 export const defensiveFor = (spellName) => {
   if (!spellName) return null;
   if (isHealthPotion(spellName)) {
-    return { name: 'Health Potion', kind: 'potion', cd: POTION_COOLDOWN, baseline: [] };
+    return {
+      name: 'Health Potion',
+      kind: 'potion',
+      cd: POTION_COOLDOWN,
+      baseline: [],
+    };
   }
   return BY_KEY.get(normalize(spellName)) || null;
 };
@@ -184,14 +219,21 @@ export const availabilityAt = (player, uses, atTime, warlockInRaid) => {
   };
 
   for (const entry of BY_KEY.values()) {
-    if (entry.kind !== 'healthstone' && hasBaseline(entry, player.specId)) add(entry);
+    if (entry.kind !== 'healthstone' && hasBaseline(entry, player.specId))
+      add(entry);
   }
   uses.forEach((use) => {
     // Any healthstone (Demonic or not) is one item.
-    if (use.entry.kind === 'healthstone') add(BY_KEY.get(normalize('Healthstone')));
+    if (use.entry.kind === 'healthstone')
+      add(BY_KEY.get(normalize('Healthstone')));
     else add(use.entry);
   });
-  add({ name: 'Health Potion', kind: 'potion', cd: POTION_COOLDOWN, baseline: [] });
+  add({
+    name: 'Health Potion',
+    kind: 'potion',
+    cd: POTION_COOLDOWN,
+    baseline: [],
+  });
   if (warlockInRaid) add(BY_KEY.get(normalize('Healthstone')));
 
   // Talents that replace a baseline ability.
@@ -225,7 +267,13 @@ export const availabilityAt = (player, uses, atTime, warlockInRaid) => {
     });
   }
 
-  const order = { immunity: 0, personal: 1, external: 2, healthstone: 3, potion: 4 };
+  const order = {
+    immunity: 0,
+    personal: 1,
+    external: 2,
+    healthstone: 3,
+    potion: 4,
+  };
   return result.sort(
     (a, b) =>
       (a.status === 'ready' ? 0 : 1) - (b.status === 'ready' ? 0 : 1) ||

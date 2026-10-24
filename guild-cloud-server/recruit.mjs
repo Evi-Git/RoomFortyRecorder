@@ -41,7 +41,16 @@ export const parseCookies = (header = '') =>
  * @param {(discordId: string) => Promise<string[]|null>} options.memberRoleNames
  * @param {object} options.env
  */
-export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken, memberRoleNames, env, canUser = null }) => {
+export const createRecruit = ({
+  storage,
+  readBody,
+  json,
+  fail,
+  sessionFromToken,
+  memberRoleNames,
+  env,
+  canUser = null,
+}) => {
   const roles = String(env.GUILD_CLOUD_RECRUIT_ROLES ?? 'Officer')
     .split(',')
     .map((r) => r.trim().toLowerCase())
@@ -51,7 +60,10 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
     clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
     clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
     baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-    log: (m) => crawler && crawler.status && crawler.status.log.push(`${new Date().toISOString().slice(11, 19)} ${m}`),
+    log: (m) =>
+      crawler &&
+      crawler.status &&
+      crawler.status.log.push(`${new Date().toISOString().slice(11, 19)} ${m}`),
   });
   const crawler = createRecruitCrawler({
     storage,
@@ -72,7 +84,10 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
     if (canUser) return canUser(session.discordId, 'recruit');
     if (roles.length === 0) return true;
     const names = await memberRoleNames(session.discordId);
-    return Array.isArray(names) && names.some((n) => roles.includes(String(n).toLowerCase()));
+    return (
+      Array.isArray(names) &&
+      names.some((n) => roles.includes(String(n).toLowerCase()))
+    );
   };
 
   const sendFile = async (res, file, type) => {
@@ -106,7 +121,11 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
   /** Pages under /recruit. */
   const handlePage = async (req, res, parts, url) => {
     if (parts[1] === 'score.mjs') {
-      return sendFile(res, path.join(HERE, 'recruit-score.mjs'), 'text/javascript; charset=utf-8');
+      return sendFile(
+        res,
+        path.join(HERE, 'recruit-score.mjs'),
+        'text/javascript; charset=utf-8',
+      );
     }
     if (parts[1] === 'logout') {
       res.writeHead(302, {
@@ -115,11 +134,18 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
       });
       return res.end();
     }
-    if (parts.length > 1) return html(res, 404, messagePage('Not found', 'That page does not exist.'));
+    if (parts.length > 1)
+      return html(
+        res,
+        404,
+        messagePage('Not found', 'That page does not exist.'),
+      );
 
     const session = sessionFor(req);
     if (!session) {
-      res.writeHead(302, { Location: `/auth/discord/start?web=1&next=${encodeURIComponent(url.pathname)}` });
+      res.writeHead(302, {
+        Location: `/auth/discord/start?web=1&next=${encodeURIComponent(url.pathname)}`,
+      });
       return res.end();
     }
     if (!(await isRecruiter(session))) {
@@ -133,15 +159,23 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
         ),
       );
     }
-    const page = await fs.readFile(path.join(HERE, 'recruit-page.html'), 'utf8');
-    return html(res, 200, page.replace('__USER__', escapeHtml(session.userName)));
+    const page = await fs.readFile(
+      path.join(HERE, 'recruit-page.html'),
+      'utf8',
+    );
+    return html(
+      res,
+      200,
+      page.replace('__USER__', escapeHtml(session.userName)),
+    );
   };
 
   /** JSON API under /api/recruit. */
   const handleApi = async (req, res, parts) => {
     const session = sessionFor(req);
     if (!session) return fail(res, 401, 'Sign in with Discord first');
-    if (!(await isRecruiter(session))) return fail(res, 403, 'Recruiting is for officers');
+    if (!(await isRecruiter(session)))
+      return fail(res, 403, 'Recruiting is for officers');
 
     const action = parts[2];
     if (action === 'state' && req.method === 'GET') {
@@ -159,9 +193,14 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
     }
     if (action === 'crawl' && req.method === 'POST') {
       if (!wcl.configured) {
-        return fail(res, 400, 'Add GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET to the server .env first.');
+        return fail(
+          res,
+          400,
+          'Add GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET to the server .env first.',
+        );
       }
-      if (crawler.status.running) return fail(res, 409, 'A crawl is already running');
+      if (crawler.status.running)
+        return fail(res, 409, 'A crawl is already running');
       const body = await readBody(req, 16 * 1024).catch(() => ({}));
       crawler.run({ guildLimit: body?.test ? 1 : 0 }).catch(() => {});
       return json(res, 202, { started: true });
@@ -180,26 +219,44 @@ export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken,
   };
 
   // Daily crawl at the configured hour (server's local time).
-  const timer = setInterval(async () => {
-    try {
-      const settings = await crawler.getSettings();
-      if (!wcl.configured || crawler.status.running || settings.autoCrawlHour < 0) return;
-      const now = new Date();
-      if (now.getHours() !== settings.autoCrawlHour) return;
-      const last = await crawler.lastRun();
-      if (last?.startedAt && Date.now() - last.startedAt < 20 * 60 * 60 * 1000) return;
-      crawler.run().catch(() => {});
-    } catch {
-      // Try again next tick.
-    }
-  }, 10 * 60 * 1000);
+  const timer = setInterval(
+    async () => {
+      try {
+        const settings = await crawler.getSettings();
+        if (
+          !wcl.configured ||
+          crawler.status.running ||
+          settings.autoCrawlHour < 0
+        )
+          return;
+        const now = new Date();
+        if (now.getHours() !== settings.autoCrawlHour) return;
+        const last = await crawler.lastRun();
+        if (
+          last?.startedAt &&
+          Date.now() - last.startedAt < 20 * 60 * 60 * 1000
+        )
+          return;
+        crawler.run().catch(() => {});
+      } catch {
+        // Try again next tick.
+      }
+    },
+    10 * 60 * 1000,
+  );
   timer.unref?.();
 
   return { handlePage, handleApi, crawler, wcl };
 };
 
 const escapeHtml = (value) =>
-  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[
+        c
+      ],
+  );
 
 const clampInt = (value, min, max) => {
   const n = Number.parseInt(value, 10);
@@ -218,7 +275,8 @@ export const validateSettings = (body) => {
   if (!body || typeof body !== 'object') return { error: 'Invalid settings' };
   const out = {};
   if (body.region !== undefined) {
-    if (!['us', 'eu', 'kr', 'tw', 'cn'].includes(String(body.region))) return { error: 'Unknown region' };
+    if (!['us', 'eu', 'kr', 'tw', 'cn'].includes(String(body.region)))
+      return { error: 'Unknown region' };
     out.region = String(body.region);
   }
   [
@@ -234,8 +292,10 @@ export const validateSettings = (body) => {
       if (n !== null) out[key] = n;
     }
   });
-  if (out.minRank && out.maxRank && out.minRank > out.maxRank) return { error: 'Min rank is above max rank' };
-  if (body.parseKind !== undefined) out.parseKind = body.parseKind === 'best' ? 'best' : 'median';
+  if (out.minRank && out.maxRank && out.minRank > out.maxRank)
+    return { error: 'Min rank is above max rank' };
+  if (body.parseKind !== undefined)
+    out.parseKind = body.parseKind === 'best' ? 'best' : 'median';
   if (body.weights && typeof body.weights === 'object') {
     out.weights = {
       parse: clampInt(body.weights.parse, 0, 100) ?? 50,
@@ -265,14 +325,23 @@ export const validateSettings = (body) => {
       name: String(b.name || '').slice(0, 80),
       rioSlug: String(b.rioSlug || '').slice(0, 80),
       excusedDeaths: stringList(b.excusedDeaths),
-      mechanics: (Array.isArray(b.mechanics) ? b.mechanics : []).slice(0, 8).map((m, i) => ({
-        id: String(m.id || `m${i}`).replace(/[^a-z0-9_-]/gi, '').slice(0, 20) || `m${i}`,
-        label: String(m.label || 'Mechanic').slice(0, 60),
-        kind: m.kind === 'interrupt' ? 'interrupt' : 'debuff',
-        abilities: stringList(m.abilities, 8),
-        beforeSeconds: m.beforeSeconds ? clampInt(m.beforeSeconds, 1, 3600) : undefined,
-        assignedShare: m.assignedShare ? Math.min(1, Math.max(0.05, Number(m.assignedShare) || 0.5)) : undefined,
-      })),
+      mechanics: (Array.isArray(b.mechanics) ? b.mechanics : [])
+        .slice(0, 8)
+        .map((m, i) => ({
+          id:
+            String(m.id || `m${i}`)
+              .replace(/[^a-z0-9_-]/gi, '')
+              .slice(0, 20) || `m${i}`,
+          label: String(m.label || 'Mechanic').slice(0, 60),
+          kind: m.kind === 'interrupt' ? 'interrupt' : 'debuff',
+          abilities: stringList(m.abilities, 8),
+          beforeSeconds: m.beforeSeconds
+            ? clampInt(m.beforeSeconds, 1, 3600)
+            : undefined,
+          assignedShare: m.assignedShare
+            ? Math.min(1, Math.max(0.05, Number(m.assignedShare) || 0.5))
+            : undefined,
+        })),
     }));
   }
   return out;

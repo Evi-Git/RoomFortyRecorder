@@ -24,7 +24,10 @@ const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // /health so you can see which version is running.
 const SERVER_VERSION = (() => {
   try {
-    return fs.readFileSync(path.join(SERVER_DIR, 'SERVER_VERSION'), 'utf8').trim() || null;
+    return (
+      fs.readFileSync(path.join(SERVER_DIR, 'SERVER_VERSION'), 'utf8').trim() ||
+      null
+    );
   } catch {
     return null;
   }
@@ -53,14 +56,14 @@ const DISCORD_CLIENT_ID = process.env.GUILD_CLOUD_DISCORD_CLIENT_ID || '';
 const DISCORD_CLIENT_SECRET =
   process.env.GUILD_CLOUD_DISCORD_CLIENT_SECRET || '';
 const DISCORD_GUILD_ID = process.env.GUILD_CLOUD_DISCORD_GUILD_ID || '';
-const DISCORD_BOT_TOKEN =
-  process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
-const DISCORD_ALLOWED_ROLES = (process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || '')
+const DISCORD_BOT_TOKEN = process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN || '';
+const DISCORD_ALLOWED_ROLES = (
+  process.env.GUILD_CLOUD_DISCORD_ALLOWED_ROLES || ''
+)
   .split(',')
   .map((role) => role.trim().toLowerCase())
   .filter(Boolean);
-const DISCORD_REDIRECT_URI =
-  process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
+const DISCORD_REDIRECT_URI = process.env.GUILD_CLOUD_DISCORD_REDIRECT_URI || '';
 const DISCORD_API = 'https://discord.com/api/v10';
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const OAUTH_STATE_TTL_SECONDS = 10 * 60;
@@ -78,7 +81,8 @@ const timelineFile = (key) => path.join(TIMELINE_DIR, `${key}.json`);
 const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 
 const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1000');
-const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
+const SECRET =
+  process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
 const ADMIN_SECRET = process.env.GUILD_CLOUD_ADMIN_SECRET || '';
 
 // Public HTTPS hostname for THIS server's own API (auth, chat, admin,
@@ -113,7 +117,8 @@ const MEDIAMTX_API = (
 // from R2 -- e.g. https://roomforty-r2-download.<subdomain>.workers.dev, or
 // a custom domain routed to it. This is where every signed download URL
 // points; this server no longer serves video bytes itself.
-const WORKER_URL = process.env.GUILD_CLOUD_WORKER_URL?.replace(/\/+$/, '') || '';
+const WORKER_URL =
+  process.env.GUILD_CLOUD_WORKER_URL?.replace(/\/+$/, '') || '';
 
 // R2 (S3-compatible) config -- used for presigning uploads and for
 // housekeeping/deletion. Playback never goes through this SDK; it's Worker
@@ -151,7 +156,12 @@ if (!WORKER_URL) {
   );
 }
 
-if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) {
+if (
+  !R2_ACCOUNT_ID ||
+  !R2_ACCESS_KEY_ID ||
+  !R2_SECRET_ACCESS_KEY ||
+  !R2_BUCKET
+) {
   console.warn(
     '[guild-cloud] R2 is not fully configured; uploads and housekeeping will fail',
   );
@@ -214,7 +224,8 @@ const fail = (res, status, message) => json(res, status, { error: message });
 
 const withCors = (headers = {}) => ({
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range, X-View-As-Role',
+  'Access-Control-Allow-Headers':
+    'Authorization, Content-Type, Range, X-View-As-Role',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   ...headers,
 });
@@ -298,14 +309,20 @@ const memberRoleCache = new Map();
 let guildRoleCache = { at: 0, names: new Map() };
 
 const guildRoleNames = async () => {
-  if (Date.now() - guildRoleCache.at < ROLE_CACHE_MS) return guildRoleCache.names;
+  if (Date.now() - guildRoleCache.at < ROLE_CACHE_MS)
+    return guildRoleCache.names;
   const roles = await discordJson(
     `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/roles`,
     { headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` } },
   );
   const names = new Map(
     Array.isArray(roles)
-      ? roles.map((role) => [role.id, String(role.name || '').trim().toLowerCase()])
+      ? roles.map((role) => [
+          role.id,
+          String(role.name || '')
+            .trim()
+            .toLowerCase(),
+        ])
       : [],
   );
   guildRoleCache = { at: Date.now(), names };
@@ -356,7 +373,12 @@ const permissions = createPermissions({
     return (Array.isArray(roles) ? roles : [])
       .filter((role) => role.name !== '@everyone' && !role.managed)
       .sort((a, b) => b.position - a.position)
-      .map((role) => ({ id: role.id, name: role.name, position: role.position, color: role.color || 0 }));
+      .map((role) => ({
+        id: role.id,
+        name: role.name,
+        position: role.position,
+        color: role.color || 0,
+      }));
   },
 });
 
@@ -371,13 +393,18 @@ const canWatchLive = async (session, req = null) => {
 let liveListCache = { at: 0, streams: [] };
 const listLiveStreams = async () => {
   if (Date.now() - liveListCache.at < 2000) return liveListCache.streams;
-  const response = await fetch(`${MEDIAMTX_API}/v3/paths/list?itemsPerPage=200`, {
-    signal: AbortSignal.timeout(3000),
-  });
+  const response = await fetch(
+    `${MEDIAMTX_API}/v3/paths/list?itemsPerPage=200`,
+    {
+      signal: AbortSignal.timeout(3000),
+    },
+  );
   if (!response.ok) throw new Error(`MediaMTX API ${response.status}`);
   const body = await response.json();
   const streams = (Array.isArray(body.items) ? body.items : [])
-    .filter((item) => item.ready && /^rf\/[A-Za-z0-9_-]+$/.test(item.name || ''))
+    .filter(
+      (item) => item.ready && /^rf\/[A-Za-z0-9_-]+$/.test(item.name || ''),
+    )
     .map((item) => ({
       name: item.name.slice(3),
       since: item.readyTime || null,
@@ -395,11 +422,21 @@ const passwordMatches = (given, expected) =>
 const handleMediamtxAuth = async (req, res) => {
   // Only MediaMTX on this PC may ask. Requests that came through Caddy carry
   // X-Forwarded-For and are refused.
-  const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-  if (!local || req.headers['x-forwarded-for']) return text(res, 404, 'Not found');
+  const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(
+    req.socket.remoteAddress,
+  );
+  if (!local || req.headers['x-forwarded-for'])
+    return text(res, 404, 'Not found');
 
   const body = await readBody(req, 16 * 1024);
-  const { action, path: streamPath = '', ip, user, password, token } = body || {};
+  const {
+    action,
+    path: streamPath = '',
+    ip,
+    user,
+    password,
+    token,
+  } = body || {};
   const deny = (why) => {
     console.info(`[live] Denied ${action} ${streamPath} from ${ip}: ${why}`);
     return text(res, 401, 'Unauthorized');
@@ -456,7 +493,10 @@ const decodeToken = (token, action) => {
   if (!constantTimeEqual(signature, expected)) throw new Error('Invalid token');
 
   const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-  if (payload.action !== action || payload.exp < Math.floor(Date.now() / 1000)) {
+  if (
+    payload.action !== action ||
+    payload.exp < Math.floor(Date.now() / 1000)
+  ) {
     throw new Error('Expired token');
   }
 
@@ -513,7 +553,8 @@ const callbackResult = (callback, values) => {
 const discordJson = async (url, options) => {
   const response = await fetch(url, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`Discord request failed: ${response.status}`);
+  if (!response.ok)
+    throw new Error(`Discord request failed: ${response.status}`);
   return data;
 };
 
@@ -528,7 +569,8 @@ const handleDiscordAuth = async (req, res, url, parts) => {
     let next = '/recruit';
     if (web) {
       const wanted = url.searchParams.get('next') || '/recruit';
-      if (/^\/[a-z0-9/_-]*$/i.test(wanted) && !wanted.startsWith('//')) next = wanted;
+      if (/^\/[a-z0-9/_-]*$/i.test(wanted) && !wanted.startsWith('//'))
+        next = wanted;
     } else {
       try {
         callback = localCallback(url.searchParams.get('callback') || '');
@@ -538,7 +580,12 @@ const handleDiscordAuth = async (req, res, url, parts) => {
     }
 
     if (!discordConfigured()) {
-      if (web) return text(res, 503, 'Discord sign-in is not configured on this server.');
+      if (web)
+        return text(
+          res,
+          503,
+          'Discord sign-in is not configured on this server.',
+        );
       return redirect(
         res,
         callbackResult(callback, { error: 'discord_not_configured' }),
@@ -596,7 +643,8 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         }),
       });
       const accessToken = token.access_token;
-      if (typeof accessToken !== 'string') throw new Error('Missing Discord token');
+      if (typeof accessToken !== 'string')
+        throw new Error('Missing Discord token');
 
       const headers = { Authorization: `Bearer ${accessToken}` };
       const user = await discordJson(`${DISCORD_API}/users/@me`, { headers });
@@ -613,14 +661,17 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         { headers: botHeaders },
       );
       if (memberResponse.status === 404) {
-        if (pending.web) return webError('You need to be in the Room Forty Discord.');
+        if (pending.web)
+          return webError('You need to be in the Room Forty Discord.');
         return redirect(
           res,
           callbackResult(pending.callback, { error: 'not_room_forty_member' }),
         );
       }
       if (!memberResponse.ok) {
-        throw new Error(`Discord member request failed: ${memberResponse.status}`);
+        throw new Error(
+          `Discord member request failed: ${memberResponse.status}`,
+        );
       }
 
       const member = await memberResponse.json();
@@ -632,7 +683,9 @@ const handleDiscordAuth = async (req, res, url, parts) => {
         Array.isArray(roles)
           ? roles.map((role) => [
               role.id,
-              String(role.name || '').trim().toLowerCase(),
+              String(role.name || '')
+                .trim()
+                .toLowerCase(),
             ])
           : [],
       );
@@ -642,10 +695,15 @@ const handleDiscordAuth = async (req, res, url, parts) => {
           DISCORD_ALLOWED_ROLES.includes(roleNames.get(roleId)),
         );
       if (!hasAllowedRole) {
-        if (pending.web) return webError('Your Discord account does not have a Room Forty role.');
+        if (pending.web)
+          return webError(
+            'Your Discord account does not have a Room Forty role.',
+          );
         return redirect(
           res,
-          callbackResult(pending.callback, { error: 'missing_room_forty_role' }),
+          callbackResult(pending.callback, {
+            error: 'missing_room_forty_role',
+          }),
         );
       }
 
@@ -681,7 +739,8 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       );
     } catch (error) {
       console.error('[guild-cloud] Discord OAuth failed', error.message);
-      if (pending.web) return webError('Discord sign-in failed. Try again in a minute.');
+      if (pending.web)
+        return webError('Discord sign-in failed. Try again in a minute.');
       return redirect(
         res,
         callbackResult(pending.callback, { error: 'discord_auth_failed' }),
@@ -712,7 +771,9 @@ const requireGuild = (value) => {
 
 const r2HeadObject = async (key) => {
   try {
-    return await s3.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return await s3.send(
+      new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }),
+    );
   } catch (error) {
     if (error.$metadata?.httpStatusCode === 404 || error.name === 'NotFound') {
       return null;
@@ -724,11 +785,9 @@ const r2HeadObject = async (key) => {
 const r2Exists = async (key) => Boolean(await r2HeadObject(key));
 
 const r2PresignedPutUrl = async (key, expiresInSeconds = 60 * 60) =>
-  getSignedUrl(
-    s3,
-    new PutObjectCommand({ Bucket: R2_BUCKET, Key: key }),
-    { expiresIn: expiresInSeconds },
-  );
+  getSignedUrl(s3, new PutObjectCommand({ Bucket: R2_BUCKET, Key: key }), {
+    expiresIn: expiresInSeconds,
+  });
 
 const r2DeleteObject = async (key) => {
   try {
@@ -761,7 +820,10 @@ const r2DeleteObjects = async (keys) => {
         failed.push(error.Key);
       }
     } catch (error) {
-      console.error('[guild-cloud] R2 bulk delete request failed', error.message);
+      console.error(
+        '[guild-cloud] R2 bulk delete request failed',
+        error.message,
+      );
       failed.push(...batch);
     }
   }
@@ -782,7 +844,11 @@ const r2ListAllObjects = async () => {
       }),
     );
     for (const item of response.Contents || []) {
-      objects.push({ key: item.Key, size: item.Size, lastModified: item.LastModified });
+      objects.push({
+        key: item.Key,
+        size: item.Size,
+        lastModified: item.LastModified,
+      });
     }
     continuationToken = response.IsTruncated
       ? response.NextContinuationToken
@@ -801,7 +867,10 @@ const r2ListAllObjects = async () => {
 // invalidateListingCache() so polls never show stale results afterward.
 // Set GUILD_CLOUD_LISTING_CACHE_SECONDS=0 to disable caching entirely.
 const LISTING_CACHE_MS =
-  Math.max(0, Number.parseFloat(process.env.GUILD_CLOUD_LISTING_CACHE_SECONDS || '60')) * 1000;
+  Math.max(
+    0,
+    Number.parseFloat(process.env.GUILD_CLOUD_LISTING_CACHE_SECONDS || '60'),
+  ) * 1000;
 let listingCache = { objects: null, fetchedAt: 0 };
 let listingInFlight = null;
 let listingGeneration = 0;
@@ -815,7 +884,10 @@ const invalidateListingCache = () => {
 const r2ListAllObjectsCached = async ({ fresh = false } = {}) => {
   const useCache = !fresh && LISTING_CACHE_MS > 0;
   if (useCache) {
-    if (listingCache.objects && Date.now() - listingCache.fetchedAt < LISTING_CACHE_MS) {
+    if (
+      listingCache.objects &&
+      Date.now() - listingCache.fetchedAt < LISTING_CACHE_MS
+    ) {
       return listingCache.objects;
     }
     // Concurrent cache misses share one request instead of each listing.
@@ -925,7 +997,12 @@ const videoEntries = async ({ fresh = false } = {}) => {
   const entries = [];
   for (const video of state.videos) {
     const object = bySize.get(video.videoKey);
-    if (object) entries.push({ video, size: object.size, lastModified: object.lastModified });
+    if (object)
+      entries.push({
+        video,
+        size: object.size,
+        lastModified: object.lastModified,
+      });
   }
   return entries;
 };
@@ -941,7 +1018,9 @@ const housekeep = async () => {
   // it was requested; a video uploaded and registered while it was in flight
   // is not in that snapshot, and dropping it would leave its file orphaned in
   // R2 with no library entry (this happened on busy raid nights).
-  const trackedBeforeListing = new Set(state.videos.map((video) => video.videoKey));
+  const trackedBeforeListing = new Set(
+    state.videos.map((video) => video.videoKey),
+  );
   let entries = await videoEntries({ fresh: true });
   let usage = entries.reduce((total, entry) => total + entry.size, 0);
   let changed = false;
@@ -1119,7 +1198,8 @@ const handleApi = async (req, res, url, parts) => {
 
     pruneOAuth();
     const body = await readBody(req, 64 * 1024);
-    const login = typeof body.code === 'string' ? loginCodes.get(body.code) : null;
+    const login =
+      typeof body.code === 'string' ? loginCodes.get(body.code) : null;
     if (!login) return fail(res, 401, 'Invalid or expired Discord login');
     loginCodes.delete(body.code);
 
@@ -1155,16 +1235,18 @@ const handleApi = async (req, res, url, parts) => {
 
     if (parts[2] === 'users' && req.method === 'GET') {
       const now = Math.floor(Date.now() / 1000);
-      const users = Object.entries(state.knownUsers).map(([discordId, info]) => ({
-        discordId,
-        userName: info.userName,
-        lastLogin: info.lastLogin,
-        revoked: Boolean(
-          (state.revokedUsers[discordId] &&
-            state.revokedUsers[discordId] > (info.lastLogin || 0)) ||
-            state.revokedAllBefore > (info.lastLogin || 0),
-        ),
-      }));
+      const users = Object.entries(state.knownUsers).map(
+        ([discordId, info]) => ({
+          discordId,
+          userName: info.userName,
+          lastLogin: info.lastLogin,
+          revoked: Boolean(
+            (state.revokedUsers[discordId] &&
+              state.revokedUsers[discordId] > (info.lastLogin || 0)) ||
+              state.revokedAllBefore > (info.lastLogin || 0),
+          ),
+        }),
+      );
       return json(res, 200, { now, users });
     }
 
@@ -1202,7 +1284,11 @@ const handleApi = async (req, res, url, parts) => {
     // Re-scans (rather than trusting a client-supplied list) and actually
     // deletes whatever is still orphaned and still older than
     // ORPHAN_MIN_AGE_MS at the moment this runs.
-    if (parts[2] === 'orphans' && parts[3] === 'delete' && req.method === 'POST') {
+    if (
+      parts[2] === 'orphans' &&
+      parts[3] === 'delete' &&
+      req.method === 'POST'
+    ) {
       const orphans = await findOrphanedR2Objects();
       const keys = orphans.map((o) => o.key);
       const failedKeys = new Set(await r2DeleteObjects(keys));
@@ -1287,7 +1373,11 @@ const handleApi = async (req, res, url, parts) => {
   const guild = parts[2];
 
   if (parts[3] === 'permissions') {
-    return permissions.handle(req, res, parts.slice(4), { readBody, json, fail });
+    return permissions.handle(req, res, parts.slice(4), {
+      readBody,
+      json,
+      fail,
+    });
   }
 
   if (parts[3] === 'pulldesk' && parts[4] === 'watcher') {
@@ -1400,7 +1490,11 @@ const handleApi = async (req, res, url, parts) => {
 
   if (parts[3] === 'upload' && req.method === 'POST') {
     const body = await readBody(req, 64 * 1024);
-    if (!isSafeKey(body.key) || !Number.isSafeInteger(body.bytes) || body.bytes < 1) {
+    if (
+      !isSafeKey(body.key) ||
+      !Number.isSafeInteger(body.bytes) ||
+      body.bytes < 1
+    ) {
       return fail(res, 400, 'Invalid upload request');
     }
 
@@ -1436,7 +1530,9 @@ const handleApi = async (req, res, url, parts) => {
       .map((name) => state.videos.find((entry) => entry.videoName === name))
       .filter(Boolean);
 
-    const failedKeys = new Set(await r2DeleteObjects(matched.map((video) => video.videoKey)));
+    const failedKeys = new Set(
+      await r2DeleteObjects(matched.map((video) => video.videoKey)),
+    );
     invalidateListingCache();
 
     // Only drop metadata for videos actually confirmed deleted from R2 --
@@ -1444,9 +1540,13 @@ const handleApi = async (req, res, url, parts) => {
     // counting against quota) rather than silently disappearing from the
     // library while the bytes are still sitting in the bucket, unreachable
     // and unaccounted for.
-    const failedVideos = matched.filter((video) => failedKeys.has(video.videoKey));
+    const failedVideos = matched.filter((video) =>
+      failedKeys.has(video.videoKey),
+    );
     state.videos = state.videos.filter(
-      (video) => !matched.some((m) => m.videoKey === video.videoKey) || failedKeys.has(video.videoKey),
+      (video) =>
+        !matched.some((m) => m.videoKey === video.videoKey) ||
+        failedKeys.has(video.videoKey),
     );
     await persist();
 
@@ -1478,7 +1578,8 @@ const handleApi = async (req, res, url, parts) => {
       return fail(res, 400, 'Invalid tag request');
     }
     state.videos.forEach((video) => {
-      if (body.videos.includes(video.videoName)) video.tag = body.tag || undefined;
+      if (body.videos.includes(video.videoName))
+        video.tag = body.tag || undefined;
     });
     await persist();
     return json(res, 200, {});
@@ -1524,7 +1625,11 @@ const handleApi = async (req, res, url, parts) => {
     }
   }
 
-  if (parts[3] === 'named-chat' && parts.length === 5 && req.method === 'POST') {
+  if (
+    parts[3] === 'named-chat' &&
+    parts.length === 5 &&
+    req.method === 'POST'
+  ) {
     const correlator = createCorrelator(`named:${parts[4]}`);
     chatFor(correlator);
     await persist();
@@ -1589,10 +1694,14 @@ const handleLink = async (res, id, startAt) => {
 <meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="${embedWidth}">
 <meta property="og:video:height" content="${embedHeight}">
-${thumb ? `<meta property="og:image" content="${htmlEscape(thumb)}">
+${
+  thumb
+    ? `<meta property="og:image" content="${htmlEscape(thumb)}">
 <meta property="og:image:type" content="image/jpeg">
 <meta name="twitter:image" content="${htmlEscape(thumb)}">
-` : ''}<meta name="twitter:card" content="player">
+`
+    : ''
+}<meta name="twitter:card" content="player">
 <title>${htmlEscape(title)}</title>
 <style>
 :root{color-scheme:dark}body{margin:2rem;background:#111;color:#eee;font:16px system-ui,sans-serif;text-align:center}main{margin:auto;max-width:1200px}h1{font-size:1.25rem;font-weight:500;overflow-wrap:anywhere}video{display:block;margin:1.5rem auto;max-width:100%;max-height:78vh}button{border:1px solid #555;border-radius:.5rem;background:#222;color:#eee;cursor:pointer;font:inherit;padding:.6rem 1rem}button:hover:not(:disabled){background:#333}button.liked{border-color:#e85d75;color:#ff8ca0}button:disabled{cursor:default;opacity:.9}#status{min-height:1.5em;color:#aaa;font-size:.9rem}
@@ -1654,7 +1763,8 @@ const handleLike = async (res, id) => {
   if (!link) return fail(res, 404, 'Link not found');
   if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
-  if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
+  if (linkLikes(link) < Number.MAX_SAFE_INTEGER)
+    link.likes = linkLikes(link) + 1;
   await persist();
   return json(res, 200, { likes: link.likes });
 };
@@ -1673,8 +1783,13 @@ const requestHandler = async (req, res) => {
     return handleDiscordAuth(req, res, url, parts);
   }
 
-  if (parts[0] === 'health') return json(res, 200, { ok: true, version: SERVER_VERSION });
-  if (parts[0] === 'internal' && parts[1] === 'mediamtx-auth' && req.method === 'POST') {
+  if (parts[0] === 'health')
+    return json(res, 200, { ok: true, version: SERVER_VERSION });
+  if (
+    parts[0] === 'internal' &&
+    parts[1] === 'mediamtx-auth' &&
+    req.method === 'POST'
+  ) {
     return handleMediamtxAuth(req, res);
   }
   // Note: no /upload or /download routes anymore -- uploads go straight to
@@ -1686,7 +1801,10 @@ const requestHandler = async (req, res) => {
   if (parts[0] === 'link' && parts[2] === 'thumb.jpg' && req.method === 'GET') {
     const file = await coach.thumbnailPath(parts[1]);
     if (!file) return fail(res, 404, 'No preview');
-    res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+    res.writeHead(200, {
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=86400',
+    });
     return fs.createReadStream(file).pipe(res);
   }
   if (parts[0] === 'link' && parts[2] === 'like' && req.method === 'POST') {
@@ -1696,7 +1814,8 @@ const requestHandler = async (req, res) => {
     return handleLink(res, parts[1], url.searchParams.get('t'));
   }
   if (parts[0] === 'recruit') return recruit.handlePage(req, res, parts, url);
-  if (parts[0] === 'api' && parts[1] === 'recruit') return recruit.handleApi(req, res, parts);
+  if (parts[0] === 'api' && parts[1] === 'recruit')
+    return recruit.handleApi(req, res, parts);
   if (parts[0] === 'api') return handleApi(req, res, url, parts);
 
   return text(res, 404, 'Not found');
@@ -1717,7 +1836,9 @@ const main = async () => {
     console.log(`[guild-cloud] Listening on http://${HOST}:${PORT}`);
     console.log(`[guild-cloud] Metadata storage: ${STORAGE}`);
     console.log(`[guild-cloud] Video storage: R2 bucket "${R2_BUCKET}"`);
-    console.log(`[guild-cloud] Playback via Worker: ${WORKER_URL || '(not set!)'}`);
+    console.log(
+      `[guild-cloud] Playback via Worker: ${WORKER_URL || '(not set!)'}`,
+    );
     console.log(`[guild-cloud] Guild: ${GUILD}`);
   });
 };

@@ -28,7 +28,9 @@ export const wipeCause = (summary, report) => {
   const first = report.deaths?.[0];
   if (first?.killingBlow?.spellName) return first.killingBlow.spellName;
   if (report.deaths?.length) return 'Unknown';
-  return (summary.duration || report.duration || 0) < 20 ? 'Reset' : 'No deaths';
+  return (summary.duration || report.duration || 0) < 20
+    ? 'Reset'
+    : 'No deaths';
 };
 
 const RAID_WIDE = ' (raid-wide)';
@@ -39,10 +41,12 @@ const spellIdsOf = (pulls) => {
   pulls.forEach(({ report }) => {
     (report?.deaths || []).forEach((d) => {
       const kb = d.killingBlow;
-      if (kb?.spellName && kb.spellId && !ids[kb.spellName]) ids[kb.spellName] = kb.spellId;
+      if (kb?.spellName && kb.spellId && !ids[kb.spellName])
+        ids[kb.spellName] = kb.spellId;
     });
     const mass = report?.wipe?.massDeath;
-    if (mass?.spellName && mass.spellId && !ids[mass.spellName]) ids[mass.spellName] = mass.spellId;
+    if (mass?.spellName && mass.spellId && !ids[mass.spellName])
+      ids[mass.spellName] = mass.spellId;
   });
   return ids;
 };
@@ -54,7 +58,16 @@ const spellIdsOf = (pulls) => {
 export const abilityStats = (pulls) => {
   const stats = {};
   const entry = (name, spellId) => {
-    stats[name] ??= { name, spellId: spellId || null, spellIds: [], wipes: 0, deaths: 0, earlyDeaths: 0, hits: 0, damage: 0 };
+    stats[name] ??= {
+      name,
+      spellId: spellId || null,
+      spellIds: [],
+      wipes: 0,
+      deaths: 0,
+      earlyDeaths: 0,
+      hits: 0,
+      damage: 0,
+    };
     const e = stats[name];
     if (!e.spellId && spellId) e.spellId = spellId;
     if (spellId && !e.spellIds.includes(spellId)) e.spellIds.push(spellId);
@@ -77,12 +90,22 @@ export const abilityStats = (pulls) => {
       if (i < EARLY_DEATHS) e.earlyDeaths += 1;
     });
     const cause = wipeCause(summary, report);
-    if (cause && cause !== 'Reset' && cause !== 'No deaths' && cause !== 'Unknown' && cause !== 'Not analyzed') {
-      const name = cause.endsWith(RAID_WIDE) ? cause.slice(0, -RAID_WIDE.length) : cause;
+    if (
+      cause &&
+      cause !== 'Reset' &&
+      cause !== 'No deaths' &&
+      cause !== 'Unknown' &&
+      cause !== 'Not analyzed'
+    ) {
+      const name = cause.endsWith(RAID_WIDE)
+        ? cause.slice(0, -RAID_WIDE.length)
+        : cause;
       entry(name, report.wipe?.massDeath?.spellId).wipes += 1;
     }
   });
-  return Object.values(stats).sort((a, b) => b.wipes - a.wipes || b.deaths - a.deaths);
+  return Object.values(stats).sort(
+    (a, b) => b.wipes - a.wipes || b.deaths - a.deaths,
+  );
 };
 
 /**
@@ -94,14 +117,23 @@ export const avoidableOf = (pulls) => {
   const byName = new Map();
   const ability = (name) => {
     if (!byName.has(name)) {
-      byName.set(name, { name, spellIds: [], hits: 0, damage: 0, deaths: 0, pulls: 0, raiders: new Map() });
+      byName.set(name, {
+        name,
+        spellIds: [],
+        hits: 0,
+        damage: 0,
+        deaths: 0,
+        pulls: 0,
+        raiders: new Map(),
+      });
     }
     return byName.get(name);
   };
   const raider = (a, name) => {
     // `pulls`: which pulls (by index) they were hit in, so the app can
     // recount pulls when some raiders are left out.
-    if (!a.raiders.has(name)) a.raiders.set(name, { name, hits: 0, damage: 0, deaths: 0, pulls: [] });
+    if (!a.raiders.has(name))
+      a.raiders.set(name, { name, hits: 0, damage: 0, deaths: 0, pulls: [] });
     return a.raiders.get(name);
   };
   pulls.forEach(({ report }, index) => {
@@ -141,7 +173,9 @@ export const avoidableOf = (pulls) => {
   return [...byName.values()]
     .map((a) => ({
       ...a,
-      raiders: [...a.raiders.values()].sort((x, y) => y.hits - x.hits || y.deaths - x.deaths),
+      raiders: [...a.raiders.values()].sort(
+        (x, y) => y.hits - x.hits || y.deaths - x.deaths,
+      ),
       raidersHit: [...a.raiders.values()].filter((r) => r.hits > 0).length,
     }))
     .sort((x, y) => y.hits - x.hits);
@@ -149,7 +183,9 @@ export const avoidableOf = (pulls) => {
 
 const countBy = (items) => {
   const counts = new Map();
-  items.filter(Boolean).forEach((item) => counts.set(item, (counts.get(item) || 0) + 1));
+  items
+    .filter(Boolean)
+    .forEach((item) => counts.set(item, (counts.get(item) || 0) + 1));
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -160,14 +196,20 @@ const countBy = (items) => {
  * @param {{ summary: object, report: object|null }[]} pulls
  */
 export const summarizePulls = (pulls) => {
-  const ordered = [...pulls].sort((a, b) => (a.summary.startedAt || a.summary.createdAt || 0) - (b.summary.startedAt || b.summary.createdAt || 0));
+  const ordered = [...pulls].sort(
+    (a, b) =>
+      (a.summary.startedAt || a.summary.createdAt || 0) -
+      (b.summary.startedAt || b.summary.createdAt || 0),
+  );
   const first = ordered[0]?.summary || {};
   const percents = ordered
     .filter((p) => p.summary.result !== 'kill')
     .map((p) => p.summary.bossPercent)
     .filter((v) => typeof v === 'number');
   const kills = ordered.filter((p) => p.summary.result === 'kill').length;
-  const durations = ordered.map((p) => p.summary.duration).filter((v) => typeof v === 'number');
+  const durations = ordered
+    .map((p) => p.summary.duration)
+    .filter((v) => typeof v === 'number');
 
   const raiders = new Map();
   const raider = (name, role) => {
@@ -199,7 +241,8 @@ export const summarizePulls = (pulls) => {
   ordered.forEach(({ report }) => {
     if (!report) return;
     (report.roster || []).forEach((p) => {
-      if (p.specId > 0 || !report.roster.some((x) => x.specId > 0)) raider(p.name, p.role).pulls += 1;
+      if (p.specId > 0 || !report.roster.some((x) => x.specId > 0))
+        raider(p.name, p.role).pulls += 1;
     });
     (report.deaths || []).forEach((death, i) => {
       const r = raider(death.name, death.role);
@@ -268,11 +311,18 @@ export const summarizePulls = (pulls) => {
     lastPullAt: ordered.at(-1)?.summary.startedAt || null,
     causes: countBy(pullsList.map((p) => p.cause)).map((c) => ({
       ...c,
-      spellId: spellIds[c.name.endsWith(RAID_WIDE) ? c.name.slice(0, -RAID_WIDE.length) : c.name] ?? null,
+      spellId:
+        spellIds[
+          c.name.endsWith(RAID_WIDE)
+            ? c.name.slice(0, -RAID_WIDE.length)
+            : c.name
+        ] ?? null,
     })),
     raiders: [...raiders.values()]
       .filter((r) => r.pulls > 0)
-      .sort((a, b) => b.earlyDeaths - a.earlyDeaths || a.name.localeCompare(b.name)),
+      .sort(
+        (a, b) => b.earlyDeaths - a.earlyDeaths || a.name.localeCompare(b.name),
+      ),
     pullsList,
   };
 };
@@ -335,7 +385,11 @@ export const summarizeProgression = (pulls) => {
   const trend = {};
   perNight.forEach(({ night, raiders }) => {
     raiders.forEach((r) => {
-      trend[r.name] = trend[r.name] || { name: r.name, role: r.role, nights: {} };
+      trend[r.name] = trend[r.name] || {
+        name: r.name,
+        role: r.role,
+        nights: {},
+      };
       trend[r.name].nights[night] = {
         pulls: r.pulls,
         earlyDeaths: r.earlyDeaths,
@@ -350,7 +404,9 @@ export const summarizeProgression = (pulls) => {
     difficultyId: all.difficultyId,
     pulls: all.pulls,
     kills: all.kills,
-    nights: perNight.map(({ raiders, consumables, avoidable, ...rest }) => rest),
+    nights: perNight.map(
+      ({ raiders, consumables, avoidable, ...rest }) => rest,
+    ),
     series,
     firstKill: firstKill ? { pull: firstKill.n, night: firstKill.night } : null,
     causes: all.causes,

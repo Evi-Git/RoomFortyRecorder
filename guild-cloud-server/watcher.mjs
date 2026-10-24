@@ -38,11 +38,15 @@ const toPercent = (value) => {
   return Math.round((v > 100 ? v / 100 : v) * 10) / 10;
 };
 
-const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const norm = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 
 // The raid night a pull belongs to (pulls after midnight count as the night
 // before), in UTC, which is close enough for a comparison chart.
-const nightOf = (at) => new Date(at - NIGHT_CUTOFF_HOURS * 3600000).toISOString().slice(0, 10);
+const nightOf = (at) =>
+  new Date(at - NIGHT_CUTOFF_HOURS * 3600000).toISOString().slice(0, 10);
 
 /**
  * Turn a guild's report fights into per-boss progression: every pull in
@@ -68,7 +72,13 @@ export const buildProgress = (reports, encounterNames) => {
   // The same pull can appear in two reports (two loggers): keep one.
   pulls.sort((a, b) => a.at - b.at);
   const unique = pulls.filter(
-    (p, i) => !pulls.slice(Math.max(0, i - 3), i).some((q) => q.encounterId === p.encounterId && Math.abs(q.at - p.at) < 20000),
+    (p, i) =>
+      !pulls
+        .slice(Math.max(0, i - 3), i)
+        .some(
+          (q) =>
+            q.encounterId === p.encounterId && Math.abs(q.at - p.at) < 20000,
+        ),
   );
 
   const bosses = {};
@@ -81,7 +91,13 @@ export const buildProgress = (reports, encounterNames) => {
     });
     if (boss.kill) return; // farm after the first kill
     const n = boss.series.length + 1;
-    boss.series.push({ n, at: p.at, night: nightOf(p.at), percent: p.percent, kill: p.kill });
+    boss.series.push({
+      n,
+      at: p.at,
+      night: nightOf(p.at),
+      percent: p.percent,
+      kill: p.kill,
+    });
     if (p.kill) boss.kill = { pull: n, at: p.at, night: nightOf(p.at) };
   });
   Object.values(bosses).forEach((boss) => {
@@ -92,7 +108,16 @@ export const buildProgress = (reports, encounterNames) => {
   return bosses;
 };
 
-export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, env, fetchImpl, can = null }) => {
+export const createWatcher = ({
+  storage,
+  readBody,
+  json,
+  fail,
+  memberRoleNames,
+  env,
+  fetchImpl,
+  can = null,
+}) => {
   const dir = path.join(storage, 'watcher');
   const file = (name) => path.join(dir, name);
   const officerRoles = String(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer')
@@ -100,7 +125,13 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
     .map((role) => role.trim().toLowerCase())
     .filter(Boolean);
 
-  const status = { running: false, startedAt: null, finishedAt: null, log: [], error: '' };
+  const status = {
+    running: false,
+    startedAt: null,
+    finishedAt: null,
+    log: [],
+    error: '',
+  };
   const log = (message) => {
     status.log.push(`${new Date().toISOString().slice(11, 19)} ${message}`);
     if (status.log.length > 300) status.log.splice(0, status.log.length - 300);
@@ -127,7 +158,10 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
     await fsp.rename(`${name}.tmp`, name);
   };
 
-  const getSettings = async () => ({ ...DEFAULT_WATCHER_SETTINGS, ...(await readJson(file('settings.json'), {})) });
+  const getSettings = async () => ({
+    ...DEFAULT_WATCHER_SETTINGS,
+    ...(await readJson(file('settings.json'), {})),
+  });
 
   const isOfficer = async (req) => {
     if (can) return can(req, 'watcherManage');
@@ -137,17 +171,31 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
   };
 
   const resolveZone = async (settings) => {
-    const data = await wcl.query('query { worldData { zones { id name encounters { id name } } } }');
+    const data = await wcl.query(
+      'query { worldData { zones { id name encounters { id name } } } }',
+    );
     const zone = (data.worldData?.zones || [])
       .filter((z) => norm(z.name) === norm(settings.zoneName))
       .sort((a, b) => b.id - a.id)[0];
-    if (!zone) throw new Error(`Warcraft Logs has no zone called "${settings.zoneName}".`);
+    if (!zone)
+      throw new Error(
+        `Warcraft Logs has no zone called "${settings.zoneName}".`,
+      );
     return zone;
   };
 
   const resolveGuild = async (guild) => {
     const region = String(guild.region || 'us').toUpperCase();
-    const slugs = [...new Set([serverSlug(guild.realm), String(guild.realm || '').toLowerCase().replace(/\s+/g, '-')].filter(Boolean))];
+    const slugs = [
+      ...new Set(
+        [
+          serverSlug(guild.realm),
+          String(guild.realm || '')
+            .toLowerCase()
+            .replace(/\s+/g, '-'),
+        ].filter(Boolean),
+      ),
+    ];
     for (const slug of slugs) {
       try {
         // eslint-disable-next-line no-await-in-loop
@@ -204,14 +252,26 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
 
   const crawl = async () => {
     if (status.running) return;
-    Object.assign(status, { running: true, startedAt: Date.now(), finishedAt: null, log: [], error: '' });
+    Object.assign(status, {
+      running: true,
+      startedAt: Date.now(),
+      finishedAt: null,
+      log: [],
+      error: '',
+    });
     wcl.resume();
     try {
-      if (!wcl.configured) throw new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in .env.');
+      if (!wcl.configured)
+        throw new Error(
+          'Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in .env.',
+        );
       const settings = await getSettings();
-      if (!settings.guilds.length) throw new Error('Add a guild to watch first.');
+      if (!settings.guilds.length)
+        throw new Error('Add a guild to watch first.');
       const zone = await resolveZone(settings);
-      const names = Object.fromEntries((zone.encounters || []).map((e) => [e.id, e.name]));
+      const names = Object.fromEntries(
+        (zone.encounters || []).map((e) => [e.id, e.name]),
+      );
       log(`${zone.name} (#${zone.id}): ${Object.keys(names).length} bosses.`);
 
       const previous = await readJson(file('results.json'), { guilds: [] });
@@ -221,8 +281,14 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
         const id = await resolveGuild(guild);
         const label = `${guild.name}-${guild.realm} (${String(guild.region).toUpperCase()})`;
         if (!id) {
-          log(`${label}: not found on Warcraft Logs. Check the name, realm and region.`);
-          const old = previous.guilds.find((g) => norm(g.name) === norm(guild.name) && norm(g.realm) === norm(guild.realm));
+          log(
+            `${label}: not found on Warcraft Logs. Check the name, realm and region.`,
+          );
+          const old = previous.guilds.find(
+            (g) =>
+              norm(g.name) === norm(guild.name) &&
+              norm(g.realm) === norm(guild.realm),
+          );
           if (old) guilds.push(old);
           continue;
         }
@@ -236,10 +302,16 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
         }
         const bosses = buildProgress(withFights, names);
         const killed = Object.values(bosses).filter((b) => b.kill).length;
-        log(`${label}: ${Object.keys(bosses).length} bosses pulled, ${killed} killed.`);
+        log(
+          `${label}: ${Object.keys(bosses).length} bosses pulled, ${killed} killed.`,
+        );
         guilds.push({ ...guild, guildId: id, updatedAt: Date.now(), bosses });
       }
-      await writeJson(file('results.json'), { zone: { id: zone.id, name: zone.name }, updatedAt: Date.now(), guilds });
+      await writeJson(file('results.json'), {
+        zone: { id: zone.id, name: zone.name },
+        updatedAt: Date.now(),
+        guilds,
+      });
       log(`Done. ${wcl.usage.spentByUs.toFixed(0)} points used.`);
     } catch (error) {
       status.error = error.message;
@@ -252,15 +324,24 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
 
   // Daily crawl while not frozen.
   let lastAutoDay = '';
-  const timer = setInterval(async () => {
-    const settings = await getSettings();
-    const now = new Date();
-    const day = now.toDateString();
-    if (settings.frozen || !settings.guilds.length || settings.autoCrawlHour < 0) return;
-    if (now.getHours() !== settings.autoCrawlHour || lastAutoDay === day) return;
-    lastAutoDay = day;
-    crawl();
-  }, 5 * 60 * 1000);
+  const timer = setInterval(
+    async () => {
+      const settings = await getSettings();
+      const now = new Date();
+      const day = now.toDateString();
+      if (
+        settings.frozen ||
+        !settings.guilds.length ||
+        settings.autoCrawlHour < 0
+      )
+        return;
+      if (now.getHours() !== settings.autoCrawlHour || lastAutoDay === day)
+        return;
+      lastAutoDay = day;
+      crawl();
+    },
+    5 * 60 * 1000,
+  );
   timer.unref?.();
 
   const validate = (body, current) => {
@@ -273,7 +354,8 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
     if (body.frozen !== undefined) next.frozen = Boolean(body.frozen);
     if (body.autoCrawlHour !== undefined) {
       const hour = Number(body.autoCrawlHour);
-      if (!Number.isInteger(hour) || hour < -1 || hour > 23) throw new Error('Crawl hour must be -1 to 23');
+      if (!Number.isInteger(hour) || hour < -1 || hour > 23)
+        throw new Error('Crawl hour must be -1 to 23');
       next.autoCrawlHour = hour;
     }
     if (body.guilds !== undefined) {
@@ -281,11 +363,19 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
         throw new Error(`Watch up to ${MAX_GUILDS} guilds`);
       }
       next.guilds = body.guilds.map((g) => {
-        const name = String(g?.name || '').trim().slice(0, 80);
-        const realm = String(g?.realm || '').trim().slice(0, 80);
-        const region = String(g?.region || 'us').trim().toLowerCase();
-        if (!name || !realm) throw new Error('Each guild needs a name and realm');
-        if (!['us', 'eu', 'kr', 'tw', 'cn'].includes(region)) throw new Error(`Unknown region "${region}"`);
+        const name = String(g?.name || '')
+          .trim()
+          .slice(0, 80);
+        const realm = String(g?.realm || '')
+          .trim()
+          .slice(0, 80);
+        const region = String(g?.region || 'us')
+          .trim()
+          .toLowerCase();
+        if (!name || !realm)
+          throw new Error('Each guild needs a name and realm');
+        if (!['us', 'eu', 'kr', 'tw', 'cn'].includes(region))
+          throw new Error(`Unknown region "${region}"`);
         return { name, realm, region };
       });
     }
@@ -305,10 +395,14 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
         results,
       });
     }
-    if (!(await isOfficer(req))) return fail(res, 403, 'Only officers can change the guild watcher');
+    if (!(await isOfficer(req)))
+      return fail(res, 403, 'Only officers can change the guild watcher');
     if (first === 'settings' && req.method === 'PUT') {
       try {
-        const next = validate(await readBody(req, 64 * 1024), await getSettings());
+        const next = validate(
+          await readBody(req, 64 * 1024),
+          await getSettings(),
+        );
         await writeJson(file('settings.json'), next);
         return json(res, 200, next);
       } catch (error) {

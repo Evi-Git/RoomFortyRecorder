@@ -28,7 +28,10 @@ const MAX_NOTE = 500;
 const MAX_FLAGS = 5000;
 const FLAG_DAYS_KEPT = 120;
 
-const clean = (value, max) => String(value ?? '').trim().slice(0, max);
+const clean = (value, max) =>
+  String(value ?? '')
+    .trim()
+    .slice(0, max);
 const isSnowflake = (value) => /^\d{5,25}$/.test(String(value || ''));
 
 const mmss = (seconds) => {
@@ -52,8 +55,10 @@ export const createCoach = ({
   const file = path.join(storage, 'coach.json');
   // Preview frames for sent clips: <storage>/coach-thumbs/<link id>.jpg
   const thumbDir = path.join(storage, 'coach-thumbs');
-  const thumbFile = (linkId) => path.join(thumbDir, `${String(linkId).replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
-  const discordApi = env.GUILD_CLOUD_COACH_DISCORD_API || 'https://discord.com/api/v10';
+  const thumbFile = (linkId) =>
+    path.join(thumbDir, `${String(linkId).replace(/[^A-Za-z0-9_-]/g, '')}.jpg`);
+  const discordApi =
+    env.GUILD_CLOUD_COACH_DISCORD_API || 'https://discord.com/api/v10';
   const officerRoles = String(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer')
     .split(',')
     .map((role) => role.trim().toLowerCase())
@@ -69,8 +74,14 @@ export const createCoach = ({
         const parsed = JSON.parse(await fsp.readFile(file, 'utf8'));
         data = {
           flags: Array.isArray(parsed.flags) ? parsed.flags : [],
-          channels: parsed.channels && typeof parsed.channels === 'object' ? parsed.channels : {},
-          users: parsed.users && typeof parsed.users === 'object' ? parsed.users : {},
+          channels:
+            parsed.channels && typeof parsed.channels === 'object'
+              ? parsed.channels
+              : {},
+          users:
+            parsed.users && typeof parsed.users === 'object'
+              ? parsed.users
+              : {},
         };
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
@@ -81,7 +92,9 @@ export const createCoach = ({
 
   const persist = () => {
     const cutoff = Date.now() - FLAG_DAYS_KEPT * 86400000;
-    data.flags = data.flags.filter((flag) => flag.at >= cutoff).slice(-MAX_FLAGS);
+    data.flags = data.flags
+      .filter((flag) => flag.at >= cutoff)
+      .slice(-MAX_FLAGS);
     const body = JSON.stringify(data);
     saveQueue = saveQueue.then(async () => {
       await fsp.mkdir(storage, { recursive: true });
@@ -126,12 +139,17 @@ export const createCoach = ({
     if (Date.now() - channelCache.at < CACHE_MS && channelCache.list.length) {
       return channelCache.list;
     }
-    const result = await discord('GET', `/guilds/${encodeURIComponent(discordGuildId)}/channels`);
+    const result = await discord(
+      'GET',
+      `/guilds/${encodeURIComponent(discordGuildId)}/channels`,
+    );
     if (!result.ok || !Array.isArray(result.data)) {
       throw new Error(`Discord channel list failed (${result.status})`);
     }
     const categories = new Map(
-      result.data.filter((c) => c.type === 4).map((c) => [c.id, { name: c.name, position: c.position }]),
+      result.data
+        .filter((c) => c.type === 4)
+        .map((c) => [c.id, { name: c.name, position: c.position }]),
     );
     const list = result.data
       .filter((c) => c.type === 0 || c.type === 5)
@@ -151,7 +169,8 @@ export const createCoach = ({
   // intent; without it, falls back to people who have used the app.
   let memberCache = { at: 0, list: null };
   const guildMembers = async () => {
-    if (Date.now() - memberCache.at < CACHE_MS && memberCache.list) return memberCache.list;
+    if (Date.now() - memberCache.at < CACHE_MS && memberCache.list)
+      return memberCache.list;
     let list = null;
     try {
       const result = await discord(
@@ -183,8 +202,15 @@ export const createCoach = ({
   const seen = (req) => {
     if (!req.cloudUserId) return;
     const before = data.users[req.cloudUserId];
-    if (before?.name === req.cloudUserName && Date.now() - (before.seenAt || 0) < 86400000) return;
-    data.users[req.cloudUserId] = { name: req.cloudUserName, seenAt: Date.now() };
+    if (
+      before?.name === req.cloudUserName &&
+      Date.now() - (before.seenAt || 0) < 86400000
+    )
+      return;
+    data.users[req.cloudUserId] = {
+      name: req.cloudUserName,
+      seenAt: Date.now(),
+    };
     persist();
   };
 
@@ -211,16 +237,19 @@ export const createCoach = ({
       try {
         const all = await guildChannels();
         channels = officer ? all : all.filter((c) => c.id === mine);
-        if (!officer && mine && !channels.length) channels = [{ id: mine, name: 'your channel', category: '' }];
+        if (!officer && mine && !channels.length)
+          channels = [{ id: mine, name: 'your channel', category: '' }];
       } catch (error) {
         channelError = error.message;
         if (mine) channels = [{ id: mine, name: 'your channel', category: '' }];
       }
-      const personal = Object.entries(data.channels).map(([discordId, entry]) => ({
-        discordId,
-        name: entry.name,
-        channelId: entry.channelId,
-      }));
+      const personal = Object.entries(data.channels).map(
+        ([discordId, entry]) => ({
+          discordId,
+          name: entry.name,
+          channelId: entry.channelId,
+        }),
+      );
       return json(res, 200, {
         officer,
         canMapChannels: mapper,
@@ -229,19 +258,32 @@ export const createCoach = ({
         channels,
         channelError,
         // Personal channels are labelled with their raider in the dropdown.
-        personal: officer || mapper ? personal : personal.filter((p) => p.discordId === req.cloudUserId),
+        personal:
+          officer || mapper
+            ? personal
+            : personal.filter((p) => p.discordId === req.cloudUserId),
         members: mapper ? await guildMembers() : [],
       });
     }
 
     if (first === 'mapping' && req.method === 'PUT') {
-      if (!(await isOfficer(req, 'clipChannels'))) return fail(res, 403, 'Your Discord role cannot edit personal channels');
+      if (!(await isOfficer(req, 'clipChannels')))
+        return fail(
+          res,
+          403,
+          'Your Discord role cannot edit personal channels',
+        );
       const body = await readBody(req, 256 * 1024);
-      if (!Array.isArray(body?.mapping)) return fail(res, 400, 'Expected { mapping: [...] }');
+      if (!Array.isArray(body?.mapping))
+        return fail(res, 400, 'Expected { mapping: [...] }');
       const next = {};
       for (const row of body.mapping) {
-        if (!isSnowflake(row?.discordId) || !isSnowflake(row?.channelId)) continue;
-        next[row.discordId] = { name: clean(row.name, 80) || row.discordId, channelId: row.channelId };
+        if (!isSnowflake(row?.discordId) || !isSnowflake(row?.channelId))
+          continue;
+        next[row.discordId] = {
+          name: clean(row.name, 80) || row.discordId,
+          channelId: row.channelId,
+        };
       }
       data.channels = next;
       await persist();
@@ -261,10 +303,18 @@ export const createCoach = ({
         return fail(res, 403, 'Your Discord role cannot send clips');
       }
       const link = await createShareLink(String(body?.videoName || ''));
-      if (!link) return fail(res, 404, 'That video is not in the guild cloud. Upload it first.');
+      if (!link)
+        return fail(
+          res,
+          404,
+          'That video is not in the guild cloud. Upload it first.',
+        );
 
       // The app sends the frame being coached as the link's preview image.
-      if (typeof body?.thumbnail === 'string' && body.thumbnail.length < 700 * 1024) {
+      if (
+        typeof body?.thumbnail === 'string' &&
+        body.thumbnail.length < 700 * 1024
+      ) {
         const jpeg = Buffer.from(body.thumbnail, 'base64');
         if (jpeg[0] === 0xff && jpeg[1] === 0xd8) {
           await fsp.mkdir(thumbDir, { recursive: true });
@@ -283,10 +333,14 @@ export const createCoach = ({
         linkUrl,
       ].filter(Boolean);
 
-      const result = await discord('POST', `/channels/${encodeURIComponent(channelId)}/messages`, {
-        content: lines.join('\n'),
-        allowed_mentions: { parse: [] },
-      });
+      const result = await discord(
+        'POST',
+        `/channels/${encodeURIComponent(channelId)}/messages`,
+        {
+          content: lines.join('\n'),
+          allowed_mentions: { parse: [] },
+        },
+      );
       if (!result.ok) {
         const reason =
           result.status === 403 || result.status === 404
@@ -298,10 +352,16 @@ export const createCoach = ({
     }
 
     if (first === 'flags' && !second && req.method === 'GET') {
-      const days = Math.min(120, Math.max(1, Number(url?.searchParams.get('days')) || 7));
+      const days = Math.min(
+        120,
+        Math.max(1, Number(url?.searchParams.get('days')) || 7),
+      );
       const since = Date.now() - days * 86400000;
       return json(res, 200, {
-        flags: data.flags.filter((f) => f.at >= since).sort((a, b) => b.at - a.at).map(flagView),
+        flags: data.flags
+          .filter((f) => f.at >= since)
+          .sort((a, b) => b.at - a.at)
+          .map(flagView),
       });
     }
 
@@ -327,8 +387,15 @@ export const createCoach = ({
     if (first === 'flags' && second) {
       const flag = data.flags.find((f) => f.id === second);
       if (!flag) return fail(res, 404, 'Flag not found');
-      if (flag.byId !== req.cloudUserId && !(await isOfficer(req, 'flagsModerate'))) {
-        return fail(res, 403, 'Only the person who flagged it or an officer can change it');
+      if (
+        flag.byId !== req.cloudUserId &&
+        !(await isOfficer(req, 'flagsModerate'))
+      ) {
+        return fail(
+          res,
+          403,
+          'Only the person who flagged it or an officer can change it',
+        );
       }
       if (req.method === 'PATCH') {
         const body = await readBody(req, 16 * 1024);

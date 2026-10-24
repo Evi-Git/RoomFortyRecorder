@@ -28,9 +28,13 @@ const orEveryone = (roles) => (roles.length ? roles : [EVERYONE]);
 
 /** The capabilities, in the order the Admin page shows them. */
 export const capabilities = (env = {}) => {
-  const liveViewers = list(env.GUILD_CLOUD_LIVE_VIEWER_ROLES ?? 'Raider+,Officer');
+  const liveViewers = list(
+    env.GUILD_CLOUD_LIVE_VIEWER_ROLES ?? 'Raider+,Officer',
+  );
   const editors = list(
-    env.GUILD_CLOUD_PULLDESK_EDITOR_ROLES ?? env.GUILD_CLOUD_LIVE_VIEWER_ROLES ?? 'Raider+,Officer',
+    env.GUILD_CLOUD_PULLDESK_EDITOR_ROLES ??
+      env.GUILD_CLOUD_LIVE_VIEWER_ROLES ??
+      'Raider+,Officer',
   );
   const officers = list(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer');
   const recruiters = list(env.GUILD_CLOUD_RECRUIT_ROLES ?? 'Officer');
@@ -101,7 +105,11 @@ export const capabilities = (env = {}) => {
   ];
 };
 
-const cleanRole = (role) => String(role ?? '').trim().toLowerCase().slice(0, 100);
+const cleanRole = (role) =>
+  String(role ?? '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 100);
 
 /**
  * @param {object} options
@@ -110,7 +118,12 @@ const cleanRole = (role) => String(role ?? '').trim().toLowerCase().slice(0, 100
  * @param {(discordId: string) => Promise<string[]|null>} options.memberRoleNames lower-case names
  * @param {() => Promise<{id:string,name:string,position:number,color:number}[]>} [options.guildRoles]
  */
-export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRoles }) => {
+export const createPermissions = ({
+  storage,
+  env = {},
+  memberRoleNames,
+  guildRoles,
+}) => {
   const file = path.join(storage, 'permissions.json');
   const caps = capabilities(env);
   const capKeys = new Set(caps.map((c) => c.key));
@@ -132,7 +145,8 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
         if (parsed && typeof parsed === 'object') saved = parsed;
       })
       .catch((error) => {
-        if (error.code !== 'ENOENT') console.warn('[permissions] Could not read', error.message);
+        if (error.code !== 'ENOENT')
+          console.warn('[permissions] Could not read', error.message);
       });
     return loaded;
   };
@@ -165,7 +179,9 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
     if (owner) return true;
     const grants = grantsFor(key);
     if (grants.includes(EVERYONE)) return true;
-    return Boolean(roles?.some((role) => grants.includes(String(role).toLowerCase())));
+    return Boolean(
+      roles?.some((role) => grants.includes(String(role).toLowerCase())),
+    );
   };
 
   /** Can this signed-in request do `key`? Honors "view as". */
@@ -216,7 +232,8 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
       const owner = isOwner(req.cloudUserId);
       const roles = await rolesOf(req.cloudUserId, viewAs);
       const result = {};
-      for (const cap of caps) result[cap.key] = allowed(cap.key, roles, owner && !viewAs);
+      for (const cap of caps)
+        result[cap.key] = allowed(cap.key, roles, owner && !viewAs);
       return json(res, 200, {
         owner,
         viewAs,
@@ -225,7 +242,8 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
       });
     }
 
-    if (!isOwner(req.cloudUserId)) return fail(res, 403, 'Only the owner can change permissions');
+    if (!isOwner(req.cloudUserId))
+      return fail(res, 403, 'Only the owner can change permissions');
 
     let roleList = [];
     let roleError = '';
@@ -236,7 +254,9 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
     }
     // The owner's own role (named like them, e.g. "Evi") isn't a column:
     // the "You" column already covers it.
-    const personal = String(req.cloudUserName ?? '').trim().toLowerCase();
+    const personal = String(req.cloudUserName ?? '')
+      .trim()
+      .toLowerCase();
     roleList = roleList.filter((r) => r.name.toLowerCase() !== personal);
     const roleNames = roleList.map((r) => r.name.toLowerCase());
 
@@ -261,7 +281,8 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
 
     if (!first && req.method === 'PUT') {
       const body = await readBody(req, 64 * 1024);
-      if (!body || typeof body.grants !== 'object') return fail(res, 400, 'Expected { grants, columns }');
+      if (!body || typeof body.grants !== 'object')
+        return fail(res, 400, 'Expected { grants, columns }');
       const grants = {};
       for (const cap of caps) {
         const value = body.grants[cap.key];
@@ -272,7 +293,12 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
       const columns = Array.isArray(body.columns)
         ? [...new Set(body.columns.map(cleanRole).filter(Boolean))].slice(0, 50)
         : columnsOf(roleNames);
-      await save({ grants, columns, updatedAt: Date.now(), updatedBy: req.cloudUserName || req.cloudUserId });
+      await save({
+        grants,
+        columns,
+        updatedAt: Date.now(),
+        updatedBy: req.cloudUserName || req.cloudUserId,
+      });
       return json(res, 200, { ok: true, grants, columns });
     }
 
@@ -285,5 +311,13 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
     return fail(res, 404, 'Not found');
   };
 
-  return { ready, can, canUser, isOwner, handle, capabilities: caps, configured: owners.size > 0 };
+  return {
+    ready,
+    can,
+    canUser,
+    isOwner,
+    handle,
+    capabilities: caps,
+    configured: owners.size > 0,
+  };
 };

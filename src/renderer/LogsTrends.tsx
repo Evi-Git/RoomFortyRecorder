@@ -436,10 +436,7 @@ export const LogsTrends = () => {
                         (n: NightTotals) =>
                           n.phase === 'first' ? 'First kill' : 'Reclear',
                       ],
-                      [
-                        'Kills',
-                        (n: NightTotals) => String(n.kills),
-                      ],
+                      ['Kills', (n: NightTotals) => String(n.kills)],
                       [
                         'Fight time',
                         (n: NightTotals) =>
@@ -589,10 +586,9 @@ export const LogsTrends = () => {
           </div>
           <p className="text-xs text-foreground m-0">
             Only kills count: the first kill, then every reclear, so weeks
-            compare like with like. {meta.rate} over the kills&apos; fight
-            time. Shading:
-            each raider against their own best night. Change: their last night
-            against their first
+            compare like with like. {meta.rate} over the kills&apos; fight time.
+            Shading: each raider against their own best night. Change: their
+            last night against their first
             {kind === 'taken' ? ' (less damage taken is green)' : ''}.
           </p>
         </>

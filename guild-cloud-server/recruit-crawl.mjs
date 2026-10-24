@@ -52,7 +52,10 @@ export const DEFAULT_SETTINGS = {
   autoCrawlHour: 5,
 };
 
-const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const norm = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 const DAY = 24 * 60 * 60 * 1000;
 
 export const createRecruitCrawler = ({
@@ -110,7 +113,8 @@ export const createRecruitCrawler = ({
     // ...and the DPS-only list from 1.9.4 gains the Tanks tab.
     if (
       JSON.stringify(saved.specGroups) === OLD_DEFAULT_GROUPS ||
-      JSON.stringify(saved.specGroups) === JSON.stringify([{ label: 'DPS', role: 'dps' }])
+      JSON.stringify(saved.specGroups) ===
+        JSON.stringify([{ label: 'DPS', role: 'dps' }])
     ) {
       delete saved.specGroups;
     }
@@ -125,16 +129,24 @@ export const createRecruitCrawler = ({
   // ---- Warcraft Logs lookups ------------------------------------------------
 
   const resolveEncounters = async (settings) => {
-    const data = await wcl.query('query { worldData { zones { id name encounters { id name } } } }');
+    const data = await wcl.query(
+      'query { worldData { zones { id name encounters { id name } } } }',
+    );
     const zones = data.worldData?.zones || [];
     const zone = zones
       .filter((z) => norm(z.name) === norm(settings.zoneName))
       .sort((a, b) => b.id - a.id)[0];
-    if (!zone) throw new Error(`Warcraft Logs has no zone called "${settings.zoneName}".`);
+    if (!zone)
+      throw new Error(
+        `Warcraft Logs has no zone called "${settings.zoneName}".`,
+      );
     const encounters = {};
     settings.bosses.forEach((boss) => {
-      const match = (zone.encounters || []).find((e) => norm(e.name) === norm(boss.name));
-      if (!match) throw new Error(`"${boss.name}" isn't an encounter in ${zone.name}.`);
+      const match = (zone.encounters || []).find(
+        (e) => norm(e.name) === norm(boss.name),
+      );
+      if (!match)
+        throw new Error(`"${boss.name}" isn't an encounter in ${zone.name}.`);
       encounters[boss.name] = match.id;
     });
     return { zoneId: zone.id, encounters };
@@ -145,7 +157,15 @@ export const createRecruitCrawler = ({
   // then use the guild's ID for everything after.
   const resolveGuild = async (guild) => {
     const region = String(guild.region || '').toUpperCase();
-    const slugs = [...new Set([guild.realmSlug, serverSlug(guild.realm), serverSlug(guild.realmSlug)].filter(Boolean))];
+    const slugs = [
+      ...new Set(
+        [
+          guild.realmSlug,
+          serverSlug(guild.realm),
+          serverSlug(guild.realmSlug),
+        ].filter(Boolean),
+      ),
+    ];
     for (const slug of slugs) {
       let data = {};
       try {
@@ -168,7 +188,11 @@ export const createRecruitCrawler = ({
 
   const listReports = async (guildId, zoneId, endTime, settings) => {
     const reports = [];
-    for (let page = 1; page <= 10 && reports.length < settings.maxReportsPerGuild; page += 1) {
+    for (
+      let page = 1;
+      page <= 10 && reports.length < settings.maxReportsPerGuild;
+      page += 1
+    ) {
       // eslint-disable-next-line no-await-in-loop
       const data = await wcl.query(
         `query($guild: Int!, $zone: Int, $page: Int!, $end: Float) {
@@ -192,13 +216,19 @@ export const createRecruitCrawler = ({
     if (filtered.length) return filtered;
 
     const anyZone = await listReports(guildId, null, endTime, settings);
-    const recent = anyZone.length ? anyZone : await listReports(guildId, null, null, settings);
+    const recent = anyZone.length
+      ? anyZone
+      : await listReports(guildId, null, null, settings);
     const zones = {};
     recent.forEach((r) => {
       const name = r.zone?.name || 'no zone';
-      zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] = (zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] || 0) + 1;
+      zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] =
+        (zones[`${name}${r.zone?.id ? ` #${r.zone.id}` : ''}`] || 0) + 1;
     });
-    const summary = Object.entries(zones).map(([z, n]) => `${z} ×${n}`).join(', ') || 'none';
+    const summary =
+      Object.entries(zones)
+        .map(([z, n]) => `${z} ×${n}`)
+        .join(', ') || 'none';
     // Only reports that could hold these bosses: this zone, or no zone set.
     // A guild whose logs are all older raids or Mythic+ isn't worth scanning.
     const usable = recent.filter((r) => !r.zone?.id || r.zone.id === zoneId);
@@ -259,13 +289,23 @@ export const createRecruitCrawler = ({
       .filter((m) => m.kind === 'debuff')
       .flatMap((m) => m.abilities)
       .map((n) => JSON.stringify(n));
-    return names.length ? `type = "applydebuff" and ability.name in (${names.join(', ')})` : null;
+    return names.length
+      ? `type = "applydebuff" and ability.name in (${names.join(', ')})`
+      : null;
   };
 
-  const analyzeReport = async (entry, boss, fightIds, encounterId, settings) => {
+  const analyzeReport = async (
+    entry,
+    boss,
+    fightIds,
+    encounterId,
+    settings,
+  ) => {
     const fightKey = crypto
       .createHash('sha1')
-      .update(`${[...fightIds].sort().join(',')}|${JSON.stringify(boss)}|${settings.deathCutoff}`)
+      .update(
+        `${[...fightIds].sort().join(',')}|${JSON.stringify(boss)}|${settings.deathCutoff}`,
+      )
       .digest('hex');
     const cached = entry.analyses?.[boss.name];
     if (cached && cached.fightKey === fightKey) return cached.part;
@@ -282,12 +322,20 @@ export const createRecruitCrawler = ({
     const report = data.reportData?.report || {};
     let deaths = report.deaths?.data || [];
     if (report.deaths?.nextPageTimestamp) {
-      deaths = await allEvents(entry.code, { fights }, 'dataType: Deaths, hostilityType: Friendlies');
+      deaths = await allEvents(
+        entry.code,
+        { fights },
+        'dataType: Deaths, hostilityType: Friendlies',
+      );
     }
     const hasDebuffs = boss.mechanics.some((m) => m.kind === 'debuff');
     const hasInterrupts = boss.mechanics.some((m) => m.kind === 'interrupt');
     const debuffs = hasDebuffs
-      ? await allEvents(entry.code, { fights, filter: debuffFilter(boss) }, 'dataType: Debuffs, hostilityType: Friendlies')
+      ? await allEvents(
+          entry.code,
+          { fights, filter: debuffFilter(boss) },
+          'dataType: Debuffs, hostilityType: Friendlies',
+        )
       : [];
     const interrupts = hasInterrupts
       ? await allEvents(entry.code, { fights }, 'dataType: Interrupts')
@@ -306,7 +354,10 @@ export const createRecruitCrawler = ({
       deathCutoff: settings.deathCutoff,
     });
 
-    entry.analyses = { ...(entry.analyses || {}), [boss.name]: { fightKey, part } };
+    entry.analyses = {
+      ...(entry.analyses || {}),
+      [boss.name]: { fightKey, part },
+    };
     await writeJson(path.join(reportsDir, `${entry.code}.json`), entry);
     return part;
   };
@@ -319,7 +370,9 @@ export const createRecruitCrawler = ({
       const hit = cache[c.parseKey];
       return !hit || Date.now() - hit.at > 3 * DAY;
     });
-    log(`Looking up parses for ${stale.length} raiders (${candidates.length - stale.length} cached).`);
+    log(
+      `Looking up parses for ${stale.length} raiders (${candidates.length - stale.length} cached).`,
+    );
 
     const bossEntries = Object.entries(encounters);
     for (let i = 0; i < stale.length; i += 6) {
@@ -327,7 +380,10 @@ export const createRecruitCrawler = ({
       const batch = stale.slice(i, i + 6);
       const fields = batch
         .map(
-          (c, n) => `c${n}: character(name: ${JSON.stringify(c.name)}, serverSlug: ${JSON.stringify(serverSlug(c.server))}, serverRegion: ${JSON.stringify(settings.region.toUpperCase())}) {
+          (
+            c,
+            n,
+          ) => `c${n}: character(name: ${JSON.stringify(c.name)}, serverSlug: ${JSON.stringify(serverSlug(c.server))}, serverRegion: ${JSON.stringify(settings.region.toUpperCase())}) {
             ${bossEntries.map(([, id], b) => `e${b}: encounterRankings(encounterID: ${id}, difficulty: ${settings.difficulty}, metric: dps)`).join('\n')}
           }`,
         )
@@ -344,7 +400,9 @@ export const createRecruitCrawler = ({
           cache[c.parseKey] = { at: Date.now(), byBoss };
         });
       } catch (error) {
-        log(`Parse lookup failed for ${batch.map((c) => c.name).join(', ')}: ${error.message}`);
+        log(
+          `Parse lookup failed for ${batch.map((c) => c.name).join(', ')}: ${error.message}`,
+        );
       }
       // eslint-disable-next-line no-await-in-loop
       if (i % 60 === 0) await writeJson(file('parses.json'), cache);
@@ -357,17 +415,24 @@ export const createRecruitCrawler = ({
 
   const inGroup = (player, group) => {
     if (group.role) {
-      return (player.role || roleForSpec(player.className, player.spec)) === group.role;
+      return (
+        (player.role || roleForSpec(player.className, player.spec)) ===
+        group.role
+      );
     }
     return (
       norm(player.className) === norm(group.className) &&
-      (!group.specs?.length || group.specs.some((s) => norm(s) === norm(player.spec)))
+      (!group.specs?.length ||
+        group.specs.some((s) => norm(s) === norm(player.spec)))
     );
   };
 
   const run = async ({ guildLimit = 0 } = {}) => {
     if (status.running) return false;
-    if (!wcl.configured) throw new Error('Warcraft Logs API credentials are not set on the server.');
+    if (!wcl.configured)
+      throw new Error(
+        'Warcraft Logs API credentials are not set on the server.',
+      );
     Object.assign(status, {
       running: true,
       phase: 'starting',
@@ -382,11 +447,17 @@ export const createRecruitCrawler = ({
 
     try {
       const settings = await getSettings();
-      log(`Crawl started${guildLimit ? ` (test: first ${guildLimit} guild${guildLimit === 1 ? '' : 's'})` : ''}.`);
+      log(
+        `Crawl started${guildLimit ? ` (test: first ${guildLimit} guild${guildLimit === 1 ? '' : 's'})` : ''}.`,
+      );
 
       status.phase = 'encounters';
       const { zoneId, encounters } = await resolveEncounters(settings);
-      log(`Zone ${zoneId}; bosses ${Object.entries(encounters).map(([n, id]) => `${n} (${id})`).join(', ')}.`);
+      log(
+        `Zone ${zoneId}; bosses ${Object.entries(encounters)
+          .map(([n, id]) => `${n} (${id})`)
+          .join(', ')}.`,
+      );
 
       status.phase = 'guilds';
       let guilds = await fetchRaiderIoGuilds({
@@ -397,25 +468,30 @@ export const createRecruitCrawler = ({
         baseUrl: rioBaseUrl,
         log,
       });
-      log(`Raider.IO: ${guilds.length} ${settings.region.toUpperCase()} guilds ranked ${settings.minRank}-${settings.maxRank} world.`);
+      log(
+        `Raider.IO: ${guilds.length} ${settings.region.toUpperCase()} guilds ranked ${settings.minRank}-${settings.maxRank} world.`,
+      );
 
       // Your own guild, for comparison: look for it above the range first.
       const homeName = settings.homeGuild?.name || homeGuildName;
       const homeRealm = settings.homeGuild?.realm || '';
       let home = null;
       if (homeName) {
-        const above = settings.minRank > 1
-          ? await fetchRaiderIoGuilds({
-              raid: settings.raidSlug,
-              region: settings.region,
-              minRank: 1,
-              maxRank: settings.minRank - 1,
-              baseUrl: rioBaseUrl,
-              log,
-            })
-          : [];
+        const above =
+          settings.minRank > 1
+            ? await fetchRaiderIoGuilds({
+                raid: settings.raidSlug,
+                region: settings.region,
+                minRank: 1,
+                maxRank: settings.minRank - 1,
+                baseUrl: rioBaseUrl,
+                log,
+              })
+            : [];
         home = [...above, ...guilds].find(
-          (g) => norm(g.name) === norm(homeName) && (!homeRealm || norm(g.realm) === norm(homeRealm)),
+          (g) =>
+            norm(g.name) === norm(homeName) &&
+            (!homeRealm || norm(g.realm) === norm(homeRealm)),
         );
         if (!home && homeRealm) {
           home = {
@@ -431,9 +507,13 @@ export const createRecruitCrawler = ({
         }
         if (home) {
           guilds = guilds.filter((g) => g !== home);
-          log(`Your guild: ${home.name} (${home.realm})${home.worldRank ? `, #${home.worldRank} world` : ''}.`);
+          log(
+            `Your guild: ${home.name} (${home.realm})${home.worldRank ? `, #${home.worldRank} world` : ''}.`,
+          );
         } else {
-          log(`Your guild "${homeName}" isn't in Raider.IO's ${settings.region.toUpperCase()} rankings up to #${settings.maxRank}. Set its realm in Settings to include it.`);
+          log(
+            `Your guild "${homeName}" isn't in Raider.IO's ${settings.region.toUpperCase()} rankings up to #${settings.maxRank}. Set its realm in Settings to include it.`,
+          );
         }
       }
       // A test crawl keeps trying guilds until one has public logs on these
@@ -454,7 +534,9 @@ export const createRecruitCrawler = ({
         status.phase = 'reports';
         try {
           // Skip farm: only reports up to the last of the first kills.
-          const kills = settings.bosses.map((b) => guild.kills[b.rioSlug]?.firstDefeated).filter(Boolean);
+          const kills = settings.bosses
+            .map((b) => guild.kills[b.rioSlug]?.firstDefeated)
+            .filter(Boolean);
           const allKilled = kills.length === settings.bosses.length;
           const endTime = allKilled
             ? Math.max(...kills.map((d) => Date.parse(d))) + 2 * DAY
@@ -463,12 +545,25 @@ export const createRecruitCrawler = ({
           // eslint-disable-next-line no-await-in-loop
           const guildId = await resolveGuild(guild);
           if (!guildId) {
-            log(`${guild.name} (${guild.realm}): not found on Warcraft Logs, skipped.`);
-            guildResults.push({ name: guild.name, realm: guild.realm, worldRank: guild.worldRank, error: 'Not found on Warcraft Logs' });
+            log(
+              `${guild.name} (${guild.realm}): not found on Warcraft Logs, skipped.`,
+            );
+            guildResults.push({
+              name: guild.name,
+              realm: guild.realm,
+              worldRank: guild.worldRank,
+              error: 'Not found on Warcraft Logs',
+            });
             continue;
           }
           // eslint-disable-next-line no-await-in-loop
-          const reports = await findReports(guild, guildId, zoneId, endTime, settings);
+          const reports = await findReports(
+            guild,
+            guildId,
+            zoneId,
+            endTime,
+            settings,
+          );
           const entries = [];
           let sawBoss = false;
           let emptyRun = 0;
@@ -513,7 +608,13 @@ export const createRecruitCrawler = ({
               const ids = selected.get(item.code);
               if (!ids) continue;
               // eslint-disable-next-line no-await-in-loop
-              const part = await analyzeReport(item.entry, boss, ids, encounterId, settings);
+              const part = await analyzeReport(
+                item.entry,
+                boss,
+                ids,
+                encounterId,
+                settings,
+              );
               totals = mergeBossTotals(totals, part);
             }
             if (!totals) continue;
@@ -562,7 +663,11 @@ export const createRecruitCrawler = ({
                   boss.mechanics.map((m) => [
                     m.id,
                     {
-                      ...(p.mechanics[m.id] || { count: 0, pulls: 0, pullsDone: 0 }),
+                      ...(p.mechanics[m.id] || {
+                        count: 0,
+                        pulls: 0,
+                        pullsDone: 0,
+                      }),
                       raidAvg: averages[m.id],
                       label: m.label,
                       assignedShare: m.assignedShare || null,
@@ -574,12 +679,24 @@ export const createRecruitCrawler = ({
             });
           }
           guildResults.push(summary);
-          if (!guild.home && Object.keys(summary.bosses).length) guildsWithPulls += 1;
-          log(`${guild.name}: ${entries.length} reports, ${Object.entries(summary.bosses).map(([b, s]) => `${s.pulls} ${b} pulls`).join(', ') || 'no pulls on these bosses (private logs?)'}.`);
+          if (!guild.home && Object.keys(summary.bosses).length)
+            guildsWithPulls += 1;
+          log(
+            `${guild.name}: ${entries.length} reports, ${
+              Object.entries(summary.bosses)
+                .map(([b, s]) => `${s.pulls} ${b} pulls`)
+                .join(', ') || 'no pulls on these bosses (private logs?)'
+            }.`,
+          );
         } catch (error) {
           if (error.message === 'Stopped') throw error;
           log(`${guild.name}: skipped (${error.message}).`);
-          guildResults.push({ name: guild.name, realm: guild.realm, worldRank: guild.worldRank, error: error.message });
+          guildResults.push({
+            name: guild.name,
+            realm: guild.realm,
+            worldRank: guild.worldRank,
+            error: error.message,
+          });
         }
       }
 
@@ -589,7 +706,10 @@ export const createRecruitCrawler = ({
       const parses = await fetchParses(candidates, encounters, settings);
       candidates.forEach((c) => {
         Object.keys(c.bosses).forEach((bossName) => {
-          c.bosses[bossName].parse = parseSummary(parses[c.parseKey]?.byBoss?.[bossName], c.spec);
+          c.bosses[bossName].parse = parseSummary(
+            parses[c.parseKey]?.byBoss?.[bossName],
+            c.spec,
+          );
         });
       });
 
@@ -600,12 +720,21 @@ export const createRecruitCrawler = ({
         zoneId,
         encounters,
         guilds: guildResults,
-        home: home ? { name: home.name, realm: home.realm, worldRank: home.worldRank, regionRank: home.regionRank } : null,
+        home: home
+          ? {
+              name: home.name,
+              realm: home.realm,
+              worldRank: home.worldRank,
+              regionRank: home.regionRank,
+            }
+          : null,
         candidates,
         points: { ...wcl.usage },
       });
       status.phase = 'done';
-      log(`Done: ${candidates.length} candidates from ${guildResults.length} guilds; ${Math.round(wcl.usage.spentByUs)} points used, ${wcl.usage.queries} queries.`);
+      log(
+        `Done: ${candidates.length} candidates from ${guildResults.length} guilds; ${Math.round(wcl.usage.spentByUs)} points used, ${wcl.usage.queries} queries.`,
+      );
       return true;
     } catch (error) {
       status.error = error.message;

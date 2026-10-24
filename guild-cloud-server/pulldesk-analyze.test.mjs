@@ -19,7 +19,12 @@ const slice = () => {
 };
 
 test('splitArgs keeps quoted commas and nested lists', () => {
-  assert.deepEqual(splitArgs('A,"b, c",(1,2),[x]'), ['A', 'b, c', ['1', '2'], ['x']]);
+  assert.deepEqual(splitArgs('A,"b, c",(1,2),[x]'), [
+    'A',
+    'b, c',
+    ['1', '2'],
+    ['x'],
+  ]);
 });
 
 test('Mythic wipe: deaths, killing blows and wipe cause', () => {
@@ -59,7 +64,10 @@ test('Mythic wipe: deaths, killing blows and wipe cause', () => {
   report.avoidable.forEach((row) =>
     row.spells.forEach((spell) => {
       assert.ok(spell.times.length >= 1);
-      assert.equal(spell.times.reduce((n, m) => n + m.hits, 0), spell.hits);
+      assert.equal(
+        spell.times.reduce((n, m) => n + m.hits, 0),
+        spell.hits,
+      );
       spell.times.forEach((m, i) => {
         assert.ok(m.t >= 0 && m.t <= report.duration + 1);
         if (i > 0) assert.ok(m.t - spell.times[i - 1].t > 0);
@@ -102,22 +110,26 @@ test('MRT note names are matched against the roster', () => {
     '{time:1:00}|cff00ff98Zinic|r and Livs {spell:740}\n{time:0:10}Benchguy {spell:1}',
     ['Zinic', 'Livs'],
   );
-  assert.deepEqual(
-    parsed.assignments.map((a) => a.name).sort(),
-    ['Livs', 'Zinic'],
-  );
+  assert.deepEqual(parsed.assignments.map((a) => a.name).sort(), [
+    'Livs',
+    'Zinic',
+  ]);
   assert.equal(parsed.unmatched, 1);
 });
 
 test('avoidable by name catches every spell ID an ability hits as', () => {
   // Wrong ID, right name: still counted (Venom Roar casts as one ID, hits as two).
-  const byName = analyzePull(slice(), { avoidable: [{ id: 1, name: 'Voidlight Convergence' }] });
+  const byName = analyzePull(slice(), {
+    avoidable: [{ id: 1, name: 'Voidlight Convergence' }],
+  });
   const byId = analyzePull(slice(), { avoidable: [1241932] });
   const total = (r) => r.avoidable.reduce((n, row) => n + row.hits, 0);
   assert.ok(total(byId) > 0);
   // By name also catches the other IDs it hits as.
   assert.ok(total(byName) >= total(byId));
-  const ids = new Set(byName.avoidable.flatMap((r) => r.spells.map((s) => s.spellId)));
+  const ids = new Set(
+    byName.avoidable.flatMap((r) => r.spells.map((s) => s.spellId)),
+  );
   assert.ok(ids.has(1241932));
   // Every enemy spell that hit the raid is listed with its ID and totals.
   const vc = byId.damageTaken.find((d) => d.spellId === 1241932);
@@ -128,25 +140,47 @@ test('avoidable by name catches every spell ID an ability hits as', () => {
 test('combat potions by name are counted per raider, not as defensives', () => {
   const text = slice();
   // Pretend one raider cast a combat potion.
-  const line = text.split('\n').find((l) => l.includes('  SPELL_CAST_SUCCESS,Player-'));
+  const line = text
+    .split('\n')
+    .find((l) => l.includes('  SPELL_CAST_SUCCESS,Player-'));
   const fields = line.split(',');
   fields[10] = '"Light\'s Potential"';
   const withPotion = text.replace(line, fields.join(','));
-  const report = analyzePull(withPotion, { combatPotions: ["Light's Potential"] });
+  const report = analyzePull(withPotion, {
+    combatPotions: ["Light's Potential"],
+  });
   const user = report.defensives.players.find((p) => p.combatPotions > 0);
   assert.ok(user, 'someone has a combat potion');
   assert.equal(user.combatPotions, 1);
-  assert.ok(user.uses.some((u) => u.kind === 'combatPotion' && u.ability === "Light's Potential"));
+  assert.ok(
+    user.uses.some(
+      (u) => u.kind === 'combatPotion' && u.ability === "Light's Potential",
+    ),
+  );
   // Not listed as something that was "ready" at a death.
-  report.deaths.forEach((d) => (d.available || []).forEach((a) => assert.notEqual(a.kind, 'combatPotion')));
+  report.deaths.forEach((d) =>
+    (d.available || []).forEach((a) => assert.notEqual(a.kind, 'combatPotion')),
+  );
 });
 
 test("meters come from the app's line after ENCOUNTER_END", () => {
-  const meters = { v: 2, source: 'app', bucketSeconds: 5, duration: 172, damage: [{ name: 'Evi', total: 100, abilities: [] }], healing: [], taken: [], mitigation: [] };
+  const meters = {
+    v: 2,
+    source: 'app',
+    bucketSeconds: 5,
+    duration: 172,
+    damage: [{ name: 'Evi', total: 100, abilities: [] }],
+    healing: [],
+    taken: [],
+    mitigation: [],
+  };
   const withMeters = `${slice()}\nROOMFORTY_METERS ${JSON.stringify(meters)}\n`;
   assert.deepEqual(analyzePull(withMeters, {}).meters, meters);
   // Older apps: no meters line, no meters (the log alone is filtered).
   assert.equal(analyzePull(slice(), {}).meters, undefined);
   // A cut-off line is ignored.
-  assert.equal(analyzePull(`${slice()}\nROOMFORTY_METERS {"v":2,"so`, {}).meters, undefined);
+  assert.equal(
+    analyzePull(`${slice()}\nROOMFORTY_METERS {"v":2,"so`, {}).meters,
+    undefined,
+  );
 });
