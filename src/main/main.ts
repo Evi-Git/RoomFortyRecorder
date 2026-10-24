@@ -611,6 +611,12 @@ const trackIconCall = async <T>(
   }
 };
 
+// [RoomFortyRecorder] A spell icon image as a data: URL (the Logs page's
+// first image source; the rficon:// protocol stalled in Chromium's queue).
+ipcMain.handle('iconImage', async (_event, args) =>
+  PullDesk.getInstance().iconDataUrl(String(args?.[0] ?? '')),
+);
+
 ipcMain.handle('spellIcons', async (_event, args) => {
   const ids = Array.isArray(args[0]) ? (args[0] as unknown[]).map(Number) : [];
   return trackIconCall(
