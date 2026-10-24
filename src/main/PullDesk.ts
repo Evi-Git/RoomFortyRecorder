@@ -324,15 +324,17 @@ export default class PullDesk {
     if (known) return known.then((r) => r.clone());
     // Never leave an image request hanging: give up after 30 s.
     const started = Date.now();
+    let timer: NodeJS.Timeout | undefined;
     const job = Promise.race([
       this.loadIcon(name),
-      new Promise<Response>((resolve) =>
-        setTimeout(() => {
+      new Promise<Response>((resolve) => {
+        timer = setTimeout(() => {
           console.warn(`[SpellIcons] Image ${name} timed out after 30 s`);
           resolve(new Response(null, { status: 504 }));
-        }, 30000),
-      ),
+        }, 30000);
+      }),
     ]).then((response) => {
+      clearTimeout(timer);
       const ms = Date.now() - started;
       if (!response.ok || ms > 3000) {
         console.info(
@@ -363,7 +365,8 @@ export default class PullDesk {
       new Response(Buffer.from(bytes), {
         headers: { 'Content-Type': types[ext] },
       });
-    const dir = path.join(app.getPath('userData'), 'icons');
+    // icons-v2: icons-pack PNGs saved before 1.9.48 could be invisible.
+    const dir = path.join(app.getPath('userData'), 'icons-v2');
     const save = async (bytes: Uint8Array, ext: string) => {
       try {
         await fs.promises.mkdir(dir, { recursive: true });
