@@ -1,5 +1,5 @@
 import React from 'react';
-import { Ctx, rowOf, scan } from './query';
+import { abilityOk, Ctx, enemyOk, rowOf, scan } from './query';
 import { F, K, KIND_NAMES, MISS_TYPES, POWER_NAMES, PullStore } from './store';
 import { classColor, compact, ENEMY_COLOR, mmssms, thousands } from './format';
 
@@ -91,14 +91,12 @@ export const matchEvents = (ctx: Ctx, tab: EventTab, who: string | null) => {
           break;
       }
       if (ctx.filters.enemy) {
-        const name = ctx.filters.enemy;
-        if (p.units[s]?.name !== name && p.units[d]?.name !== name) return;
+        const enemyS = s >= 0 && !p.units[p.units[s].root].raider;
+        const enemyD = d >= 0 && !p.units[p.units[d].root].raider;
+        if (!(enemyS && enemyOk(ctx, p, s)) && !(enemyD && enemyOk(ctx, p, d)))
+          return;
       }
-      if (
-        ctx.filters.ability !== null &&
-        p.spells[p.sp[i]]?.id !== ctx.filters.ability
-      )
-        return;
+      if (!abilityOk(ctx, p.spells[p.sp[i]]?.id)) return;
       if (who) {
         const by =
           tab === 'taken' ||

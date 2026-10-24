@@ -77,6 +77,7 @@ export const DAMAGE_REDUCTION: Record<
   374227: { r: 0.2, name: 'Zephyr' },
   145629: { r: 0.2, name: 'Anti-Magic Zone', magicOnly: true, castId: 51052 },
   98007: { r: 0.1, name: 'Spirit Link Totem' },
+  465: { r: 0.03, name: 'Devotion Aura' },
   // Personal (credited to whoever wore it).
   363916: { r: 0.3, name: 'Obsidian Scales', personal: true },
   48792: { r: 0.3, name: 'Icebound Fortitude', personal: true },
@@ -97,6 +98,8 @@ export const DAMAGE_REDUCTION: Record<
   122783: { r: 0.6, name: 'Diffuse Magic', magicOnly: true, personal: true },
   414658: { r: 0.7, name: 'Ice Cold', personal: true },
   65116: { r: 0.1, name: 'Stoneform', personal: true },
+  86659: { r: 0.5, name: 'Guardian of Ancient Kings', personal: true },
+  193065: { r: 0.1, name: 'Protective Light', personal: true },
 };
 
 const DAMAGE_EVENTS = new Set([

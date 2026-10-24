@@ -103,6 +103,12 @@ export type Unit = {
   specId: number;
   /** In the raid (COMBATANT_INFO), or a friendly player. */
   raider: boolean;
+  /** Creature ID from the GUID (0 for players). */
+  npcId: number;
+  /** Highest max health seen (bosses have the most). */
+  maxHp: number;
+  /** Seconds into the pull it first showed up (spawn waves). */
+  first: number;
 };
 
 export type Spell = { id: number; name: string; school: number };
@@ -284,7 +290,7 @@ export class StoreBuilder {
     this.cap *= 2;
   }
 
-  private unit(guid: string, name: string, flags: number) {
+  private unit(guid: string, name: string, flags: number, t = 0) {
     if (!guid || guid === NO_GUID) return -1;
     let i = this.unitIndex.get(guid);
     if (i === undefined) {
@@ -300,6 +306,10 @@ export class StoreBuilder {
         root: i,
         specId: 0,
         raider: false,
+        // Creature-0-1631-3004-15747-259854-00000F39DE: field 5.
+        npcId: player ? 0 : Number(guid.split('-')[5]) || 0,
+        maxHp: 0,
+        first: t,
       });
     } else if (name && !this.units[i].name) {
       this.units[i].name = isPlayerGuid(guid) ? shortName(name) : name;
@@ -356,8 +366,13 @@ export class StoreBuilder {
     this.lastT = t;
     if (Number.isFinite(at)) this.end = Math.max(this.end, at);
 
-    const src = this.unit(e.src, e.srcName, e.srcFlags);
-    const dst = this.unit(e.dst, e.dstName, e.dstFlags);
+    const src = this.unit(e.src, e.srcName, e.srcFlags, t);
+    const dst = this.unit(e.dst, e.dstName, e.dstFlags, t);
+    if (e.infoMaxHp > 0) {
+      const who = e.info === e.src ? src : e.info === e.dst ? dst : -1;
+      if (who >= 0 && e.infoMaxHp > this.units[who].maxHp)
+        this.units[who].maxHp = e.infoMaxHp;
+    }
     if (e.info !== NO_GUID && e.infoOwner !== NO_GUID) {
       const pet = this.unit(e.info, '', 0);
       const owner = this.unit(e.infoOwner, '', 0);

@@ -71,3 +71,25 @@ test('filter expressions', () => {
   );
   expect(() => compileExpression('bogus = 1')).toThrow(/Unknown field/);
 });
+
+test('active time never passes the fight, enemy filters and multi-ability filter', () => {
+  const p = build();
+  const ctx = makeCtx([p], DEFAULT_FILTERS);
+  const rows = meterRows(ctx, 'damage');
+  rows.forEach((r) =>
+    expect(r.active).toBeLessThanOrEqual(viewSeconds(ctx) + 0.001),
+  );
+  const total = (f: Partial<typeof DEFAULT_FILTERS>) =>
+    meterRows(makeCtx([p], { ...DEFAULT_FILTERS, ...f }), 'damage').reduce(
+      (n, r) => n + r.total,
+      0,
+    );
+  const all = total({});
+  const bosses = total({ enemy: { kind: 'bosses' } });
+  const adds = total({ enemy: { kind: 'adds' } });
+  expect(bosses).toBeGreaterThan(0);
+  expect(Math.round(bosses + adds)).toBe(Math.round(all));
+  const [a, b] = [...rows[0].abilities.values()].map((x) => x.spellId);
+  const one = total({ abilities: [a] });
+  expect(total({ abilities: [a, b] })).toBeGreaterThan(one);
+});

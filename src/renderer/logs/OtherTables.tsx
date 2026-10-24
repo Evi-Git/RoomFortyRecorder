@@ -21,6 +21,8 @@ import {
   thousands,
 } from './format';
 import TimeChart from './TimeChart';
+import SpellIcon from './SpellIcon';
+import { sortRows, SortTh, useSort } from './sort';
 
 /**
  * [RoomFortyRecorder] Logs page: Summary, Interrupts, Dispels, Resources
@@ -231,7 +233,12 @@ export const CountView = ({
           <tbody>
             {rows.map((r) => (
               <tr key={r.spellId} className="border-b border-card/40">
-                <td className={`${td} text-foreground-lighter`}>{r.name}</td>
+                <td className={`${td} text-foreground-lighter`}>
+                  <span className="inline-flex items-center gap-x-2">
+                    <SpellIcon spellId={r.spellId} name={r.name} />
+                    {r.name}
+                  </span>
+                </td>
                 <td className={`${td} text-right`}>{r.total}</td>
                 <td className="px-2 py-1 text-xs">
                   {r.by.map(([ref, n], i) => (
@@ -432,6 +439,7 @@ export const CastView = ({
   onWatch?: (t: number, name: string | null) => void;
 }) => {
   const rows = React.useMemo(() => castRows(ctx), [ctx]);
+  const [sort, onSort] = useSort('count');
   const seconds = viewSeconds(ctx);
   const minutes = seconds / 60;
   const selected = rows.find((r) => r.key === who) ?? null;
@@ -461,19 +469,46 @@ export const CastView = ({
           <table className="w-full text-sm">
             <thead className="text-xs text-foreground border-b border-card bg-card/30">
               <tr>
-                <th className={`${th} text-left`}>Spell</th>
-                <th className={`${th} text-right`}>Casts</th>
-                <th className={`${th} text-right`}>Per minute</th>
+                <SortTh
+                  label="Spell"
+                  column="name"
+                  state={sort}
+                  onSort={onSort}
+                  numeric={false}
+                  className={`${th} text-left`}
+                />
+                <SortTh
+                  label="Casts"
+                  column="count"
+                  state={sort}
+                  onSort={onSort}
+                  className={`${th} text-right`}
+                />
+                <SortTh
+                  label="Per minute"
+                  column="count"
+                  state={sort}
+                  onSort={onSort}
+                  className={`${th} text-right`}
+                />
                 <th className={`${th} text-left w-[50%]`}>When</th>
               </tr>
             </thead>
             <tbody>
-              {selected.spells.map((s) => (
+              {sortRows(selected.spells, sort, {
+                name: (x) => x.name,
+                count: (x) => x.count,
+              }).map((s) => (
                 <tr
                   key={s.spellId}
                   className="border-b border-card/40 hover:bg-card/30"
                 >
-                  <td className={`${td} text-foreground-lighter`}>{s.name}</td>
+                  <td className={`${td} text-foreground-lighter`}>
+                    <span className="inline-flex items-center gap-x-2">
+                      <SpellIcon spellId={s.spellId} name={s.name} />
+                      {s.name}
+                    </span>
+                  </td>
                   <td className={`${td} text-right`}>{s.count}</td>
                   <td className={`${td} text-right`}>
                     {(s.count / minutes).toFixed(1)}
@@ -511,14 +546,36 @@ export const CastView = ({
       <table className="w-full text-sm">
         <thead className="text-xs text-foreground border-b border-card bg-card/30">
           <tr>
-            <th className={`${th} text-left`}>Name</th>
-            <th className={`${th} text-left w-[45%]`}>Casts</th>
-            <th className={`${th} text-right`}>Per minute</th>
+            <SortTh
+              label="Name"
+              column="name"
+              state={sort}
+              onSort={onSort}
+              numeric={false}
+              className={`${th} text-left`}
+            />
+            <SortTh
+              label="Casts"
+              column="count"
+              state={sort}
+              onSort={onSort}
+              className={`${th} text-left w-[45%]`}
+            />
+            <SortTh
+              label="Per minute"
+              column="count"
+              state={sort}
+              onSort={onSort}
+              className={`${th} text-right`}
+            />
             <th className={`${th} text-left`}>Most cast</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {sortRows(rows, sort, {
+            name: (x) => x.name,
+            count: (x) => x.total,
+          }).map((r) => (
             <tr
               key={r.key}
               className="border-b border-card/40 hover:bg-card/30"
