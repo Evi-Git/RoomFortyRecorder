@@ -170,7 +170,7 @@ export const journalAbilities = (journal) => {
   return out;
 };
 
-export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
+export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) => {
   const dir = path.join(storage, 'journal');
   const clientId = env.GUILD_CLOUD_BLIZZARD_CLIENT_ID || '';
   const clientSecret = env.GUILD_CLOUD_BLIZZARD_CLIENT_SECRET || '';
@@ -361,28 +361,59 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     }
   };
 
+  // Warcraft Logs' game data knows every spell's icon (needs WCL set up).
+  const wclSpell = async (id) => {
+    if (!wcl?.configured) return null;
+    try {
+      const data = await wcl.query(`{ gameData { ability(id: ${Number(id)}) { id name icon } } }`, {}, { quiet: true });
+      const ability = data?.gameData?.ability;
+      const icon = /^([a-z0-9_-]+)(\.(jpg|png))?$/i.exec(String(ability?.icon || ''))?.[1]?.toLowerCase() || null;
+      if (!icon || icon === 'inv_misc_questionmark') return ability?.name ? { id, name: ability.name, text: '', icon: null } : null;
+      return { id, name: ability?.name || null, text: '', icon };
+    } catch {
+      return null;
+    }
+  };
+
   const inFlight = new Map();
   const fetchSpell = async (id, difficultyId) => {
     const fromWowhead = await fetchWowhead(id, difficultyId);
-    // Wowhead's answer, unless it was busy (null) or had no icon.
-    if (fromWowhead?.missing || fromWowhead?.icon) return fromWowhead;
-    const fromBlizzard = await blizzardSpell(id);
-    if (fromBlizzard) {
+    if (fromWowhead?.icon) return { ...fromWowhead, checkedAt: Date.now() };
+    // No icon from Wowhead (busy, blocked or doesn't know it): Blizzard's
+    // spell data, then Warcraft Logs'.
+    const others = [await blizzardSpell(id)];
+    if (!others[0]?.icon) others.push(await wclSpell(id));
+    const withIcon = others.find((o) => o?.icon);
+    const any = withIcon || others.find(Boolean);
+    if (any) {
       return {
-        ...fromBlizzard,
-        name: fromWowhead?.name || fromBlizzard.name,
-        text: fromWowhead?.text || fromBlizzard.text,
+        id,
+        name: fromWowhead?.name || withIcon?.name || any.name || null,
+        text: fromWowhead?.text || others.find((o) => o?.text)?.text || '',
+        icon: withIcon?.icon || null,
+        checkedAt: Date.now(),
       };
     }
-    return fromWowhead;
+    if (fromWowhead) return { ...fromWowhead, checkedAt: Date.now() };
+    return null;
   };
+  // Answers without an icon are asked again once a day.
+  const stale = (hit) => !hit.icon && Date.now() - (hit.checkedAt || 0) > DAY;
+  const wowheadWarned = new Set();
   const fetchWowhead = async (id, difficultyId) => {
     await slot();
     try {
       const url = `${wowheadBase}/${id}?dataEnv=1&locale=0${difficultyId ? `&dd=${difficultyId}` : ''}`;
       const response = await fetchImpl(url, { signal: AbortSignal.timeout(10000) });
       if (response.status === 404) return { missing: true };
-      if (!response.ok) return null; // try again another time
+      if (!response.ok) {
+        // Say so once per status, so a blocked Wowhead shows in the log.
+        if (!wowheadWarned.has(response.status)) {
+          wowheadWarned.add(response.status);
+          console.warn(`[journal] Wowhead tooltips answered ${response.status}; using Blizzard / Warcraft Logs for spell icons.`);
+        }
+        return null; // try again another time
+      }
       const body = await response.json();
       return {
         id,
@@ -404,7 +435,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     const dd = Number(difficultyId) || 0;
     const key = `${id}:${dd}`;
     const cache = await spellsLoaded();
-    if (cache[key]) return cache[key].missing ? null : cache[key];
+    if (cache[key] && !stale(cache[key])) return cache[key].missing ? null : cache[key];
     if (!inFlight.has(key)) {
       inFlight.set(
         key,
@@ -413,8 +444,12 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
           if (value) {
             cache[key] = value;
             await saveSpells();
+          } else if (cache[key]) {
+            // Nobody answered: keep what we had, ask again tomorrow.
+            cache[key].checkedAt = Date.now();
           }
-          return value && !value.missing ? value : null;
+          const kept = value || cache[key];
+          return kept && !kept.missing ? kept : null;
         }),
       );
     }
@@ -434,7 +469,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     const todo = [];
     ids.forEach((id) => {
       const hit = cache[`${id}:${dd}`];
-      if (hit) {
+      if (hit && !stale(hit)) {
         if (!hit.missing) out[id] = hit;
       } else todo.push(id);
     });

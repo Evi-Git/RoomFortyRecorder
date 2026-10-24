@@ -143,9 +143,6 @@ export const createPullDesk = (options) => {
     Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
-  // Blizzard's Encounter Journal, for the Journal view and ability cards.
-  const journal = options.journal || createJournal({ storage: options.storage, env });
-
   // Warcraft Logs, for importing pulls the app didn't capture.
   const wcl = options.wcl ||
     createWclClient({
@@ -153,6 +150,10 @@ export const createPullDesk = (options) => {
       clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
       baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
     });
+
+  // Blizzard's Encounter Journal, for the Journal view and ability cards.
+  // Warcraft Logs is a last source for spell icons.
+  const journal = options.journal || createJournal({ storage: options.storage, env, wcl });
 
   const trackedDifficulties = new Set(
     String(env.GUILD_CLOUD_PULLDESK_DIFFICULTIES ?? 'mythic')
