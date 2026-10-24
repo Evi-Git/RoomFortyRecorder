@@ -19,25 +19,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import {
-  analyzePull,
-  formatTime,
-  METERS_LINE_PREFIX,
-  parseNote,
-} from './pulldesk-analyze.mjs';
-import {
-  abilityStats,
-  summarizeNight,
-  summarizeProgression,
-  wipeCause,
-} from './pulldesk-summary.mjs';
+import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
+import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
-import {
-  fetchFightMeters,
-  fetchReportExtras,
-  fetchReportPulls,
-  reportCode,
-} from './pulldesk-import.mjs';
+import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
@@ -79,13 +64,7 @@ const MAX_NOTE_CHARS = 100 * 1024;
 
 // 233 is flex Mythic (raids like Kith'ix whose Mythic takes 10-30 players):
 // tracked and labelled as Mythic.
-const DIFFICULTY_NAMES = {
-  14: 'normal',
-  15: 'heroic',
-  16: 'mythic',
-  17: 'lfr',
-  233: 'mythic',
-};
+const DIFFICULTY_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr', 233: 'mythic' };
 
 const parseChannelMap = (value) => {
   const map = {};
@@ -110,8 +89,7 @@ const readRawBody = async (req, maxBytes) => {
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > maxBytes)
-      throw Object.assign(new Error('Request body too large'), { status: 413 });
+    if (length > maxBytes) throw Object.assign(new Error('Request body too large'), { status: 413 });
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
@@ -124,23 +102,17 @@ const readRawBody = async (req, maxBytes) => {
  * all reclears.
  */
 export const splitAtFirstKill = (pulls, killedBefore) => {
-  const ordered = [...pulls].sort(
-    (a, b) => (a.startedAt || 0) - (b.startedAt || 0),
-  );
+  const ordered = [...pulls].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
   if (killedBefore) return { progression: [], reclear: ordered };
   const firstKill = new Map();
   ordered.forEach((pull) => {
-    if (pull.result === 'kill' && !firstKill.has(pull.difficultyId))
-      firstKill.set(pull.difficultyId, pull.startedAt || 0);
+    if (pull.result === 'kill' && !firstKill.has(pull.difficultyId)) firstKill.set(pull.difficultyId, pull.startedAt || 0);
   });
   const progression = [];
   const reclear = [];
   ordered.forEach((pull) => {
     const kill = firstKill.get(pull.difficultyId);
-    (kill === undefined || (pull.startedAt || 0) <= kill
-      ? progression
-      : reclear
-    ).push(pull);
+    (kill === undefined || (pull.startedAt || 0) <= kill ? progression : reclear).push(pull);
   });
   return { progression, reclear };
 };
@@ -168,21 +140,14 @@ export const createPullDesk = (options) => {
   const fullFile = (id) => path.join(dir, 'full', `${id}.log.gz`);
   // Everything the app can send for a pull is here.
   const complete = (pull) =>
-    Boolean(
-      pull?.hasLog &&
-        pull.appMeters &&
-        (pull.metersV || 2) >= METERS_VERSION &&
-        pull.hasFull,
-    );
+    Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
-  const journal =
-    options.journal || createJournal({ storage: options.storage, env });
+  const journal = options.journal || createJournal({ storage: options.storage, env });
 
   // Warcraft Logs, for importing pulls the app didn't capture.
-  const wcl =
-    options.wcl ||
+  const wcl = options.wcl ||
     createWclClient({
       clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
       clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
@@ -198,31 +163,22 @@ export const createPullDesk = (options) => {
   // Who can edit notes, avoidable spells and channels. Defaults to the live
   // viewer roles, which already means "raider+ and officers" here.
   const editorRoles = String(
-    env.GUILD_CLOUD_PULLDESK_EDITOR_ROLES ??
-      env.GUILD_CLOUD_LIVE_VIEWER_ROLES ??
-      'Raider+,Officer',
+    env.GUILD_CLOUD_PULLDESK_EDITOR_ROLES ?? env.GUILD_CLOUD_LIVE_VIEWER_ROLES ?? 'Raider+,Officer',
   )
     .split(',')
     .map((role) => role.trim().toLowerCase())
     .filter(Boolean);
   const envChannels = parseChannelMap(env.GUILD_CLOUD_PULLDESK_CHANNELS);
-  const defaultChannel = String(
-    env.GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL || '',
-  ).trim();
+  const defaultChannel = String(env.GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL || '').trim();
   // Per-pull Discord posts are off by default: the app's Pull desk page has
   // the detail, and Discord gets the nightly summary and coaching clips.
-  const postPulls = /^(1|true|yes|on)$/i.test(
-    String(env.GUILD_CLOUD_PULLDESK_POST_PULLS || '').trim(),
-  );
-  const logRetentionDays = Number.parseFloat(
-    env.GUILD_CLOUD_PULLDESK_LOG_DAYS || '30',
-  );
+  const postPulls = /^(1|true|yes|on)$/i.test(String(env.GUILD_CLOUD_PULLDESK_POST_PULLS || '').trim());
+  const logRetentionDays = Number.parseFloat(env.GUILD_CLOUD_PULLDESK_LOG_DAYS || '30');
   // Only overridden by tests.
-  const discordApi =
-    env.GUILD_CLOUD_PULLDESK_DISCORD_API || 'https://discord.com/api/v10';
+  const discordApi = env.GUILD_CLOUD_PULLDESK_DISCORD_API || 'https://discord.com/api/v10';
 
   // Guild-wide analysis settings (editable by the owner in the admin view).
-  // Midnight's combat potions, by spell name (every quality and the
+    // Midnight's combat potions, by spell name (every quality and the
   // cauldron version share it). Kept in code; a saved list adds to it.
   const COMBAT_POTIONS = [
     "Light's Potential",
@@ -246,24 +202,11 @@ export const createPullDesk = (options) => {
       const parsed = JSON.parse(await fsp.readFile(indexFile, 'utf8'));
       index = {
         pulls: Array.isArray(parsed.pulls) ? parsed.pulls : [],
-        bosses:
-          parsed.bosses && typeof parsed.bosses === 'object'
-            ? parsed.bosses
-            : {},
-        settings: {
-          ...DEFAULT_SETTINGS,
-          ...(parsed.settings && typeof parsed.settings === 'object'
-            ? parsed.settings
-            : {}),
-        },
+        bosses: parsed.bosses && typeof parsed.bosses === 'object' ? parsed.bosses : {},
+        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}) },
       };
       index.settings.combatPotions = [
-        ...new Set([
-          ...COMBAT_POTIONS,
-          ...(Array.isArray(index.settings.combatPotions)
-            ? index.settings.combatPotions
-            : []),
-        ]),
+        ...new Set([...COMBAT_POTIONS, ...(Array.isArray(index.settings.combatPotions) ? index.settings.combatPotions : [])]),
       ];
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -274,14 +217,8 @@ export const createPullDesk = (options) => {
     loaded ??= load().then(() => {
       const n = recheckForPrep();
       if (n) console.info(`[pulldesk] Rechecking ${n} pulls for consumables`);
-      const w = queueWclExtras(
-        (pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION,
-        true,
-      );
-      if (w)
-        console.info(
-          `[pulldesk] Fetching consumables and avoidable hits for ${w} imported pulls`,
-        );
+      const w = queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
+      if (w) console.info(`[pulldesk] Fetching consumables and avoidable hits for ${w} imported pulls`);
     });
     return loaded;
   };
@@ -294,8 +231,7 @@ export const createPullDesk = (options) => {
     if (hit && hit.version === indexVersion) return hit.data;
     const data = await build();
     summaryCache.set(key, { version: indexVersion, data });
-    if (summaryCache.size > 50)
-      summaryCache.delete(summaryCache.keys().next().value);
+    if (summaryCache.size > 50) summaryCache.delete(summaryCache.keys().next().value);
     return data;
   };
   const withReports = (pulls) =>
@@ -304,9 +240,7 @@ export const createPullDesk = (options) => {
         let report = null;
         if (pull.status === 'ready') {
           try {
-            report = JSON.parse(
-              await fsp.readFile(reportFile(pull.id), 'utf8'),
-            );
+            report = JSON.parse(await fsp.readFile(reportFile(pull.id), 'utf8'));
           } catch {
             report = null;
           }
@@ -324,9 +258,7 @@ export const createPullDesk = (options) => {
         await fsp.writeFile(temp, snapshot, 'utf8');
         await fsp.rename(temp, indexFile);
       })
-      .catch((error) =>
-        console.error('[pulldesk] Failed to save index', error),
-      );
+      .catch((error) => console.error('[pulldesk] Failed to save index', error));
     return saveQueue;
   };
 
@@ -340,9 +272,7 @@ export const createPullDesk = (options) => {
   // Owner-only tools (whole-tier import). Without the permissions module
   // (tests), editors.
   const ownerOnly = async (req) =>
-    options.isOwner
-      ? options.isOwner(req.cloudUserId) && !req.headers?.['x-view-as-role']
-      : canEdit(req);
+    options.isOwner ? options.isOwner(req.cloudUserId) && !req.headers?.['x-view-as-role'] : canEdit(req);
   const canEdit = async (req) => {
     if (can) return can(req, 'analysisEdit');
     if (editorRoles.length === 0) return true;
@@ -379,8 +309,7 @@ export const createPullDesk = (options) => {
   const countedPulls = () => {
     const now = Date.now();
     return index.pulls.filter(
-      (pull) =>
-        pull.status !== 'claimed' || now - pull.createdAt > STALE_CLAIM_MS,
+      (pull) => pull.status !== 'claimed' || now - pull.createdAt > STALE_CLAIM_MS,
     );
   };
 
@@ -388,12 +317,8 @@ export const createPullDesk = (options) => {
   // overall. Needed after an import fills in earlier pulls.
   const renumber = (encounterId, difficultyId) => {
     const pulls = index.pulls
-      .filter(
-        (p) => p.encounterId === encounterId && p.difficultyId === difficultyId,
-      )
-      .sort(
-        (a, b) => (a.startedAt ?? a.createdAt) - (b.startedAt ?? b.createdAt),
-      );
+      .filter((p) => p.encounterId === encounterId && p.difficultyId === difficultyId)
+      .sort((a, b) => (a.startedAt ?? a.createdAt) - (b.startedAt ?? b.createdAt));
     const perNight = {};
     pulls.forEach((p, i) => {
       perNight[p.night] = (perNight[p.night] || 0) + 1;
@@ -423,24 +348,16 @@ export const createPullDesk = (options) => {
     if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId])) {
       return json(res, 200, { skip: true });
     }
-    const bossPercent = Number.isFinite(Number(body.bossPercent))
-      ? Number(body.bossPercent)
-      : null;
+    const bossPercent = Number.isFinite(Number(body.bossPercent)) ? Number(body.bossPercent) : null;
     let pull = index.pulls.find(
       (p) =>
         p.encounterId === encounterId &&
         p.difficultyId === difficultyId &&
         Math.abs((p.startedAt ?? p.createdAt) - startedAt) <= IMPORT_MATCH_MS,
     );
-    if (complete(pull))
-      return json(res, 200, { pullId: pull.id, upload: false });
+    if (complete(pull)) return json(res, 200, { pullId: pull.id, upload: false });
     const who = String(req.cloudUserId || req.cloudUserName);
-    if (
-      pull &&
-      pull.backfillBy &&
-      pull.backfillBy !== who &&
-      Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS
-    ) {
+    if (pull && pull.backfillBy && pull.backfillBy !== who && Date.now() - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) {
       return json(res, 200, { pullId: pull.id, upload: false, busy: true });
     }
 
@@ -448,9 +365,7 @@ export const createPullDesk = (options) => {
       pull = {
         id: `${Math.round(startedAt).toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
         encounterId,
-        encounterName: String(
-          body.encounterName || `Encounter ${encounterId}`,
-        ).slice(0, 100),
+        encounterName: String(body.encounterName || `Encounter ${encounterId}`).slice(0, 100),
         difficultyId,
         night: nightOf(startedAt),
         createdAt: startedAt,
@@ -468,11 +383,7 @@ export const createPullDesk = (options) => {
       index.pulls.push(pull);
       index.pulls.sort((a, b) => a.createdAt - b.createdAt);
       renumber(encounterId, difficultyId);
-    } else if (
-      pull.appBossPercent == null &&
-      bossPercent !== null &&
-      !body.result
-    ) {
+    } else if (pull.appBossPercent == null && bossPercent !== null && !body.result) {
       pull.appBossPercent = bossPercent;
     }
     pull.backfillBy = who;
@@ -485,9 +396,7 @@ export const createPullDesk = (options) => {
   // need a log for? Lets the app's automatic backfill upload only those.
   const backfillCheck = async (req, res) => {
     const body = await readBody(req, 256 * 1024);
-    const pulls = Array.isArray(body?.pulls)
-      ? body.pulls.slice(0, MAX_BACKFILL_CHECK)
-      : [];
+    const pulls = Array.isArray(body?.pulls) ? body.pulls.slice(0, MAX_BACKFILL_CHECK) : [];
     const who = String(req.cloudUserId || req.cloudUserName);
     const now = Date.now();
     const missing = [];
@@ -495,11 +404,7 @@ export const createPullDesk = (options) => {
       const encounterId = Number(item?.encounterId);
       const difficultyId = Number(item?.difficultyId);
       const startedAt = Number(item?.startedAt);
-      if (
-        !trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId]) ||
-        !Number.isFinite(startedAt)
-      )
-        return;
+      if (!trackedDifficulties.has(DIFFICULTY_NAMES[difficultyId]) || !Number.isFinite(startedAt)) return;
       const pull = index.pulls.find(
         (p) =>
           p.encounterId === encounterId &&
@@ -509,19 +414,9 @@ export const createPullDesk = (options) => {
       // Has a log, current meters and the full log: nothing to send.
       if (complete(pull)) return;
       // Another raider's app is sending it right now.
-      if (
-        pull?.backfillBy &&
-        pull.backfillBy !== who &&
-        now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS
-      )
-        return;
+      if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
       // A live pull still in its claim window: the live upload will come.
-      if (
-        pull &&
-        pull.status === 'claimed' &&
-        now - pull.createdAt < STALE_CLAIM_MS
-      )
-        return;
+      if (pull && pull.status === 'claimed' && now - pull.createdAt < STALE_CLAIM_MS) return;
       missing.push(i);
     });
     return json(res, 200, { missing });
@@ -529,12 +424,7 @@ export const createPullDesk = (options) => {
 
   const importReports = async (codes) => {
     if (!wcl.configured) {
-      throw Object.assign(
-        new Error(
-          'Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).',
-        ),
-        { status: 400 },
-      );
+      throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
     }
     const gameDifficulties = new Set(
       Object.entries(DIFFICULTY_NAMES)
@@ -558,12 +448,7 @@ export const createPullDesk = (options) => {
       for (const item of fetched.pulls) {
         // Warcraft Logs calls flex Mythic plain Mythic: keep it with the
         // app's own pulls of that boss (difficulty 233).
-        if (
-          item.difficultyId === 16 &&
-          index.pulls.some(
-            (p) => p.encounterId === item.encounterId && p.difficultyId === 233,
-          )
-        ) {
+        if (item.difficultyId === 16 && index.pulls.some((p) => p.encounterId === item.encounterId && p.difficultyId === 233)) {
           item.difficultyId = 233;
           item.report.difficultyId = 233;
         }
@@ -571,8 +456,7 @@ export const createPullDesk = (options) => {
           (p) =>
             p.encounterId === item.encounterId &&
             p.difficultyId === item.difficultyId &&
-            Math.abs((p.startedAt ?? p.createdAt) - item.startedAt) <=
-              IMPORT_MATCH_MS,
+            Math.abs((p.startedAt ?? p.createdAt) - item.startedAt) <= IMPORT_MATCH_MS,
         );
         // Already here with a report (from the app, or imported before).
         if (same && same.status !== 'claimed') {
@@ -606,13 +490,7 @@ export const createPullDesk = (options) => {
         // eslint-disable-next-line no-await-in-loop
         await fsp.writeFile(
           reportFile(pull.id),
-          JSON.stringify({
-            ...item.report,
-            id: pull.id,
-            night: pull.night,
-            startedAt: pull.startedAt,
-            bossPercent: pull.bossPercent,
-          }),
+          JSON.stringify({ ...item.report, id: pull.id, night: pull.night, startedAt: pull.startedAt, bossPercent: pull.bossPercent }),
         );
         if (same) filled += 1;
         else {
@@ -622,14 +500,7 @@ export const createPullDesk = (options) => {
         touched.add(`${item.encounterId}:${item.difficultyId}`);
       }
       const bosses = [...new Set(fetched.pulls.map((p) => p.encounterName))];
-      results.push({
-        code,
-        title: fetched.title,
-        bosses,
-        added,
-        filled,
-        skipped,
-      });
+      results.push({ code, title: fetched.title, bosses, added, filled, skipped });
     }
     touched.forEach((key) => {
       const [encounterId, difficultyId] = key.split(':').map(Number);
@@ -647,23 +518,9 @@ export const createPullDesk = (options) => {
   // The guild's reports on Warcraft Logs, grouped by raid zone.
   const guildReportsByZone = async ({ name, realm, region, months }) => {
     if (!wcl.configured) {
-      throw Object.assign(
-        new Error(
-          'Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).',
-        ),
-        { status: 400 },
-      );
+      throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
     }
-    const slugs = [
-      ...new Set(
-        [
-          serverSlug(realm),
-          String(realm || '')
-            .toLowerCase()
-            .replace(/\s+/g, '-'),
-        ].filter(Boolean),
-      ),
-    ];
+    const slugs = [...new Set([serverSlug(realm), String(realm || '').toLowerCase().replace(/\s+/g, '-')].filter(Boolean))];
     let guildId = null;
     for (const slug of slugs) {
       try {
@@ -680,16 +537,9 @@ export const createPullDesk = (options) => {
       if (guildId) break;
     }
     if (!guildId) {
-      throw Object.assign(
-        new Error(
-          `${name}-${realm} (${String(region).toUpperCase()}) isn't on Warcraft Logs. Check the realm and region.`,
-        ),
-        { status: 404 },
-      );
+      throw Object.assign(new Error(`${name}-${realm} (${String(region).toUpperCase()}) isn't on Warcraft Logs. Check the realm and region.`), { status: 404 });
     }
-    const since =
-      Date.now() -
-      Math.min(Math.max(Number(months) || 4, 1), 12) * 30 * 86400000;
+    const since = Date.now() - Math.min(Math.max(Number(months) || 4, 1), 12) * 30 * 86400000;
     const zones = new Map();
     for (let page = 1; page <= 40; page += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -702,13 +552,7 @@ export const createPullDesk = (options) => {
       const result = data.reportData?.reports;
       (result?.data || []).forEach((r) => {
         if (!r.zone?.id) return;
-        const z = zones.get(r.zone.id) || {
-          zoneId: r.zone.id,
-          zoneName: r.zone.name,
-          codes: [],
-          first: r.startTime,
-          last: r.startTime,
-        };
+        const z = zones.get(r.zone.id) || { zoneId: r.zone.id, zoneName: r.zone.name, codes: [], first: r.startTime, last: r.startTime };
         z.codes.push(r.code);
         z.first = Math.min(z.first, r.startTime);
         z.last = Math.max(z.last, r.startTime);
@@ -720,27 +564,10 @@ export const createPullDesk = (options) => {
   };
 
   // One import at a time, in the background; the app polls its progress.
-  let tierJob = {
-    running: false,
-    total: 0,
-    done: 0,
-    added: 0,
-    skipped: 0,
-    errors: [],
-    finishedAt: null,
-  };
+  let tierJob = { running: false, total: 0, done: 0, added: 0, skipped: 0, errors: [], finishedAt: null };
   const startTierImport = (codes) => {
     if (tierJob.running) return false;
-    tierJob = {
-      running: true,
-      total: codes.length,
-      done: 0,
-      added: 0,
-      skipped: 0,
-      errors: [],
-      finishedAt: null,
-      startedAt: Date.now(),
-    };
+    tierJob = { running: true, total: codes.length, done: 0, added: 0, skipped: 0, errors: [], finishedAt: null, startedAt: Date.now() };
     backgroundQueue = backgroundQueue.then(async () => {
       for (let i = 0; i < codes.length; i += 5) {
         try {
@@ -766,9 +593,7 @@ export const createPullDesk = (options) => {
 
   const runAnalysis = async (pull) => {
     const gz = await fsp.readFile(logFile(pull.id));
-    const text = zlib
-      .gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES })
-      .toString('utf8');
+    const text = zlib.gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES }).toString('utf8');
     const settings = bossSettings(pull.encounterId);
     const report = analyzePull(text, {
       note: settings.note,
@@ -782,11 +607,7 @@ export const createPullDesk = (options) => {
       report.prep = await namePrep(report);
     } catch (error) {
       console.warn('[pulldesk] Consumables lookup failed', error.message);
-      report.prep = buildPrep(
-        report,
-        (id) => auraInfo(report, {}, id),
-        index.settings.combatPotions,
-      );
+      report.prep = buildPrep(report, (id) => auraInfo(report, {}, id), index.settings.combatPotions);
     }
 
     // The app knows encounter-specific progress (phases, rebirths) that a
@@ -835,10 +656,7 @@ export const createPullDesk = (options) => {
       deaths: report.deaths.length,
       wipeText: report.wipe?.text || null,
       plan: report.plan.items.length > 0 ? report.plan.summary : null,
-      avoidableHits: report.avoidable.reduce(
-        (total, row) => total + row.hits,
-        0,
-      ),
+      avoidableHits: report.avoidable.reduce((total, row) => total + row.hits, 0),
     });
     if (namesChanged) await persist();
     return report;
@@ -877,23 +695,12 @@ export const createPullDesk = (options) => {
 
   const namePrep = async (report) => {
     const ids = [
-      ...new Set(
-        (report.prepRaw?.players || []).flatMap((p) =>
-          p.auras.map(([, id]) => id),
-        ),
-      ),
+      ...new Set((report.prepRaw?.players || []).flatMap((p) => p.auras.map(([, id]) => id))),
     ].filter((id) => !KNOWN_AURAS.has(id));
     // Wowhead tooltips (no Blizzard keys needed, but tests run without
     // either, so only when the journal is set up).
-    const looked =
-      journal.configured && ids.length
-        ? (await journal.spells(ids, 0, ids.length)).spells
-        : {};
-    return buildPrep(
-      report,
-      (id) => auraInfo(report, looked, id),
-      index.settings.combatPotions,
-    );
+    const looked = journal.configured && ids.length ? (await journal.spells(ids, 0, ids.length)).spells : {};
+    return buildPrep(report, (id) => auraInfo(report, looked, id), index.settings.combatPotions);
   };
 
   /**
@@ -916,55 +723,35 @@ export const createPullDesk = (options) => {
       byReport.set(report.wclReport, list);
     }
     for (const [code, items] of byReport) {
-      const avoid = [...new Set(items.map((i) => i.pull.encounterId))].flatMap(
-        (id) => bossSettings(id).avoidable,
-      );
+      const avoid = [...new Set(items.map((i) => i.pull.encounterId))].flatMap((id) => bossSettings(id).avoidable);
       let extras;
       try {
         // eslint-disable-next-line no-await-in-loop
-        extras = await fetchReportExtras(
-          wcl,
-          code,
-          items.map((i) => i.report.wclFight),
-          {
-            abilityIds: avoid.map((a) => a.id),
-            abilityNames: avoid.map((a) => a.name).filter(Boolean),
-            potionNames: index.settings.combatPotions,
-          },
-        );
+        extras = await fetchReportExtras(wcl, code, items.map((i) => i.report.wclFight), {
+          abilityIds: avoid.map((a) => a.id),
+          abilityNames: avoid.map((a) => a.name).filter(Boolean),
+          potionNames: index.settings.combatPotions,
+        });
       } catch (error) {
-        console.warn(
-          `[pulldesk] Warcraft Logs extras for ${code} failed`,
-          error.message,
-        );
+        console.warn(`[pulldesk] Warcraft Logs extras for ${code} failed`, error.message);
         continue;
       }
       // Meters for Trends, for pulls without the app's own.
       let meters = new Map();
-      const needMeters = items
-        .filter((i) => !i.pull.appMeters)
-        .map((i) => i.report.wclFight);
+      const needMeters = items.filter((i) => !i.pull.appMeters).map((i) => i.report.wclFight);
       if (needMeters.length) {
         try {
           // eslint-disable-next-line no-await-in-loop
           meters = await fetchFightMeters(wcl, code, needMeters);
         } catch (error) {
-          console.warn(
-            `[pulldesk] Warcraft Logs meters for ${code} failed`,
-            error.message,
-          );
+          console.warn(`[pulldesk] Warcraft Logs meters for ${code} failed`, error.message);
         }
       }
       for (const { pull, report } of items) {
         const x = extras.get(report.wclFight);
         if (!x) continue;
         report.prepRaw = {
-          players: x.players.map((p) => ({
-            guid: p.guid,
-            name: p.name,
-            specId: p.specId,
-            ...rawPrep(p.args),
-          })),
+          players: x.players.map((p) => ({ guid: p.guid, name: p.name, specId: p.specId, ...rawPrep(p.args) })),
           auraNames: x.auraNames,
           sourceNames: x.sourceNames,
         };
@@ -974,11 +761,7 @@ export const createPullDesk = (options) => {
           // eslint-disable-next-line no-await-in-loop
           report.prep = await namePrep(report);
         } catch {
-          report.prep = buildPrep(
-            report,
-            (id) => auraInfo(report, {}, id),
-            index.settings.combatPotions,
-          );
+          report.prep = buildPrep(report, (id) => auraInfo(report, {}, id), index.settings.combatPotions);
         }
         // eslint-disable-next-line no-await-in-loop
         await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
@@ -986,16 +769,9 @@ export const createPullDesk = (options) => {
         if (m && !pull.appMeters && (m.damage.length || m.healing.length)) {
           const specOf = new Map(x.players.map((p) => [p.name, p.specId]));
           const rows = (list) =>
-            list.map((r) => ({
-              name: r.name,
-              specId: specOf.get(r.name) || 0,
-              total: r.total,
-              abilities: [],
-            }));
+            list.map((r) => ({ name: r.name, specId: specOf.get(r.name) || 0, total: r.total, abilities: [] }));
           // eslint-disable-next-line no-await-in-loop
-          await fsp.mkdir(path.dirname(metersFile(pull.id)), {
-            recursive: true,
-          });
+          await fsp.mkdir(path.dirname(metersFile(pull.id)), { recursive: true });
           // eslint-disable-next-line no-await-in-loop
           await fsp.writeFile(
             metersFile(pull.id),
@@ -1020,15 +796,10 @@ export const createPullDesk = (options) => {
   // `onlyMissing`: skip pulls that got their extras while this waited.
   const queueWclExtras = (filter = () => true, onlyMissing = false) => {
     if (!wcl.configured) return 0;
-    const pulls = index.pulls.filter(
-      (pull) =>
-        pull.source === 'wcl' && pull.status === 'ready' && filter(pull),
-    );
+    const pulls = index.pulls.filter((pull) => pull.source === 'wcl' && pull.status === 'ready' && filter(pull));
     if (!pulls.length) return 0;
     backgroundQueue = backgroundQueue.then(async () => {
-      const todo = onlyMissing
-        ? pulls.filter((p) => (p.wclExtras || 0) < WCL_EXTRAS_VERSION)
-        : pulls;
+      const todo = onlyMissing ? pulls.filter((p) => (p.wclExtras || 0) < WCL_EXTRAS_VERSION) : pulls;
       if (!todo.length) return;
       try {
         await fetchWclExtras(todo);
@@ -1043,11 +814,7 @@ export const createPullDesk = (options) => {
   // Pulls analyzed before consumables existed, with their logs still kept.
   const recheckForPrep = () => {
     const pulls = index.pulls.filter(
-      (pull) =>
-        pull.status === 'ready' &&
-        pull.hasLog &&
-        pull.source !== 'wcl' &&
-        (pull.prepVersion || 0) < PREP_VERSION,
+      (pull) => pull.status === 'ready' && pull.hasLog && pull.source !== 'wcl' && (pull.prepVersion || 0) < PREP_VERSION,
     );
     if (!pulls.length) return 0;
     backgroundQueue = backgroundQueue.then(async () => {
@@ -1099,11 +866,7 @@ export const createPullDesk = (options) => {
       KINDS.forEach((kind) => {
         (meters[kind] || []).forEach((row) => {
           night.raid[kind] = (night.raid[kind] || 0) + row.total;
-          const r = raiders.get(row.name) || {
-            name: row.name,
-            specId: row.specId || 0,
-            nights: {},
-          };
+          const r = raiders.get(row.name) || { name: row.name, specId: row.specId || 0, nights: {} };
           const n = r.nights[pull.night] || { seconds: 0, pulls: 0 };
           if (!present.has(row.name)) {
             n.seconds += seconds;
@@ -1118,12 +881,8 @@ export const createPullDesk = (options) => {
       nights.set(pull.night, night);
     }
     return {
-      nights: [...nights.values()].sort((a, b) =>
-        a.night.localeCompare(b.night),
-      ),
-      raiders: [...raiders.values()].sort((a, b) =>
-        a.name.localeCompare(b.name),
-      ),
+      nights: [...nights.values()].sort((a, b) => a.night.localeCompare(b.night)),
+      raiders: [...raiders.values()].sort((a, b) => a.name.localeCompare(b.name)),
     };
   };
 
@@ -1131,11 +890,7 @@ export const createPullDesk = (options) => {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const pulls = index.pulls.filter(
       (pull) =>
-        pull.status === 'ready' &&
-        pull.hasLog &&
-        pull.source !== 'wcl' &&
-        pull.createdAt < cutoff &&
-        filter(pull),
+        pull.status === 'ready' && pull.hasLog && pull.source !== 'wcl' && pull.createdAt < cutoff && filter(pull),
     );
     backgroundQueue = backgroundQueue.then(async () => {
       for (const pull of pulls) {
@@ -1154,9 +909,7 @@ export const createPullDesk = (options) => {
   // ---- Discord -----------------------------------------------------------------
 
   const channelFor = (encounterId) =>
-    bossSettings(encounterId).channelId ||
-    envChannels[String(encounterId)] ||
-    defaultChannel;
+    bossSettings(encounterId).channelId || envChannels[String(encounterId)] || defaultChannel;
 
   const discordPost = async (pull, report) => {
     const channelId = channelFor(pull.encounterId);
@@ -1175,12 +928,8 @@ export const createPullDesk = (options) => {
           (death) =>
             `\`${formatTime(death.t)}\` ${death.name} · ${death.killingBlow?.spellName || 'unknown'}`,
         );
-      if (report.deaths.length > 6)
-        lines.push(`…and ${report.deaths.length - 6} more`);
-      fields.push({
-        name: `Deaths (${report.deaths.length})`,
-        value: lines.join('\n'),
-      });
+      if (report.deaths.length > 6) lines.push(`…and ${report.deaths.length - 6} more`);
+      fields.push({ name: `Deaths (${report.deaths.length})`, value: lines.join('\n') });
     }
 
     if (report.plan.items.length > 0) {
@@ -1218,13 +967,8 @@ export const createPullDesk = (options) => {
           title,
           description: kill ? 'Boss down.' : report.wipe?.text || undefined,
           color: kill ? 0x2ecc71 : 0xe74c3c,
-          fields: fields.map((field) => ({
-            ...field,
-            value: field.value.slice(0, 1024),
-          })),
-          footer: {
-            text: `Uploaded by ${pull.uploadedBy || 'unknown'} · open the Pull desk in the app for details`,
-          },
+          fields: fields.map((field) => ({ ...field, value: field.value.slice(0, 1024) })),
+          footer: { text: `Uploaded by ${pull.uploadedBy || 'unknown'} · open the Pull desk in the app for details` },
         },
       ],
       allowed_mentions: { parse: [] },
@@ -1235,10 +979,7 @@ export const createPullDesk = (options) => {
         `${discordApi}/channels/${encodeURIComponent(channelId)}/messages`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bot ${botToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(10000),
         },
@@ -1258,9 +999,7 @@ export const createPullDesk = (options) => {
   const pruneLogs = async () => {
     if (!(logRetentionDays > 0)) return;
     const cutoff = Date.now() - logRetentionDays * 24 * 60 * 60 * 1000;
-    const old = index.pulls.filter(
-      (pull) => pull.createdAt < cutoff && (pull.hasLog || pull.hasFull),
-    );
+    const old = index.pulls.filter((pull) => pull.createdAt < cutoff && (pull.hasLog || pull.hasFull));
     for (const pull of old) {
       await fsp.unlink(logFile(pull.id)).catch(() => {});
       await fsp.unlink(fullFile(pull.id)).catch(() => {});
@@ -1277,11 +1016,7 @@ export const createPullDesk = (options) => {
     const encounterId = Number(body.encounterId);
     const difficultyId = Number(body.difficultyId);
     const duration = Number(body.duration);
-    if (
-      !Number.isInteger(encounterId) ||
-      !Number.isInteger(difficultyId) ||
-      !Number.isFinite(duration)
-    ) {
+    if (!Number.isInteger(encounterId) || !Number.isInteger(difficultyId) || !Number.isFinite(duration)) {
       return fail(res, 400, 'Invalid pull');
     }
 
@@ -1302,28 +1037,19 @@ export const createPullDesk = (options) => {
     if (!pull) {
       const night = nightOf(now);
       const sameBoss = index.pulls.filter(
-        (entry) =>
-          entry.encounterId === encounterId &&
-          entry.difficultyId === difficultyId,
+        (entry) => entry.encounterId === encounterId && entry.difficultyId === difficultyId,
       );
-      const bossPercent = Number.isFinite(Number(body.bossPercent))
-        ? Number(body.bossPercent)
-        : null;
+      const bossPercent = Number.isFinite(Number(body.bossPercent)) ? Number(body.bossPercent) : null;
       pull = {
         id: `${now.toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
         encounterId,
-        encounterName: String(
-          body.encounterName || `Encounter ${encounterId}`,
-        ).slice(0, 100),
+        encounterName: String(body.encounterName || `Encounter ${encounterId}`).slice(0, 100),
         difficultyId,
         night,
-        pullNumber:
-          sameBoss.filter((other) => other.night === night).length + 1,
+        pullNumber: sameBoss.filter((other) => other.night === night).length + 1,
         totalPullNumber: sameBoss.length + 1,
         createdAt: now,
-        startedAt: Number.isFinite(Number(body.startedAt))
-          ? Number(body.startedAt)
-          : null,
+        startedAt: Number.isFinite(Number(body.startedAt)) ? Number(body.startedAt) : null,
         claimDuration: duration,
         windowEndsAt: now + CLAIM_WINDOW_MS,
         candidates: {},
@@ -1348,17 +1074,12 @@ export const createPullDesk = (options) => {
       at: previous?.at ?? now,
     };
     // The app's boss % only comes from raiders recording the fight; keep any.
-    if (
-      pull.appBossPercent === null &&
-      Number.isFinite(Number(body.bossPercent)) &&
-      !body.result
-    ) {
+    if (pull.appBossPercent === null && Number.isFinite(Number(body.bossPercent)) && !body.result) {
       pull.appBossPercent = Number(body.bossPercent);
       pull.bossPercent = pull.appBossPercent;
     }
 
-    const reply = (decision) =>
-      json(res, 200, { pullId: pull.id, ...decision });
+    const reply = (decision) => json(res, 200, { pullId: pull.id, ...decision });
 
     if (pull.hasLog) return reply({ upload: false });
 
@@ -1377,8 +1098,7 @@ export const createPullDesk = (options) => {
         if (
           !best ||
           candidate.lines > best.candidate.lines ||
-          (candidate.lines === best.candidate.lines &&
-            candidate.at < best.candidate.at)
+          (candidate.lines === best.candidate.lines && candidate.at < best.candidate.at)
         ) {
           best = { id, candidate };
         }
@@ -1393,11 +1113,7 @@ export const createPullDesk = (options) => {
   };
 
   const uploadLog = async (req, res, pull) => {
-    if (
-      pull.hasLog &&
-      pull.appMeters &&
-      (pull.metersV || 2) >= METERS_VERSION
-    ) {
+    if (pull.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION) {
       return json(res, 200, { status: pull.status });
     }
 
@@ -1405,17 +1121,13 @@ export const createPullDesk = (options) => {
     // Validate before storing: it must gunzip and contain an encounter.
     let text;
     try {
-      text = zlib
-        .gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES })
-        .toString('utf8');
+      text = zlib.gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES }).toString('utf8');
     } catch {
       return fail(res, 400, 'Upload is not a gzipped log');
     }
-    if (!text.includes('ENCOUNTER_START'))
-      return fail(res, 400, 'Log has no ENCOUNTER_START');
+    if (!text.includes('ENCOUNTER_START')) return fail(res, 400, 'Log has no ENCOUNTER_START');
     // A pull that already has a log only takes a new one that brings meters.
-    if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`))
-      return json(res, 200, { status: pull.status });
+    if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`)) return json(res, 200, { status: pull.status });
 
     await fsp.writeFile(logFile(pull.id), gz);
     pull.hasLog = true;
@@ -1471,32 +1183,19 @@ export const createPullDesk = (options) => {
       return fail(res, 400, 'Invalid avoidable list');
     }
     const settings = bossSettings(encounterId);
-    const known = new Map(
-      settings.avoidable.map((spell) => [spell.id, spell.name]),
-    );
+    const known = new Map(settings.avoidable.map((spell) => [spell.id, spell.name]));
     settings.avoidable = body.spells
       .map((spell) => ({
         id: Number(typeof spell === 'object' ? spell.id : spell),
-        name:
-          typeof spell === 'object' && typeof spell.name === 'string'
-            ? spell.name.slice(0, 100)
-            : null,
+        name: typeof spell === 'object' && typeof spell.name === 'string' ? spell.name.slice(0, 100) : null,
       }))
       .filter((spell) => Number.isInteger(spell.id) && spell.id > 0)
-      .map((spell) => ({
-        id: spell.id,
-        name: spell.name || known.get(spell.id) || null,
-      }));
+      .map((spell) => ({ id: spell.id, name: spell.name || known.get(spell.id) || null }));
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
     const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
     const imported = queueWclExtras((pull) => pull.encounterId === encounterId);
-    return json(res, 200, {
-      reanalyzed,
-      older,
-      imported,
-      avoidable: settings.avoidable,
-    });
+    return json(res, 200, { reanalyzed, older, imported, avoidable: settings.avoidable });
   };
 
   // One ability on or off a boss's avoidable list (the Journal view and
@@ -1504,27 +1203,20 @@ export const createPullDesk = (options) => {
   const toggleAvoidable = async (req, res, encounterId) => {
     const body = await readBody(req, 4 * 1024);
     const id = Number(body.spellId);
-    if (!Number.isInteger(id) || id <= 0)
-      return fail(res, 400, 'Invalid spell ID');
+    if (!Number.isInteger(id) || id <= 0) return fail(res, 400, 'Invalid spell ID');
     const settings = bossSettings(encounterId);
     const name = typeof body.name === 'string' ? body.name.slice(0, 100) : null;
     // Off removes the ability under any of its IDs (the journal's cast ID
     // and the IDs it hits as share a name).
     const same = (spell) =>
-      spell.id === id ||
-      (!body.on && name && spell.name && norm(spell.name) === norm(name));
+      spell.id === id || (!body.on && name && spell.name && norm(spell.name) === norm(name));
     const without = settings.avoidable.filter((spell) => !same(spell));
     settings.avoidable = body.on ? [...without, { id, name }] : without;
     await persist();
     const reanalyzed = await reanalyzeRecent(encounterId);
     const older = reanalyzeOlder((pull) => pull.encounterId === encounterId);
     const imported = queueWclExtras((pull) => pull.encounterId === encounterId);
-    return json(res, 200, {
-      reanalyzed,
-      older,
-      imported,
-      avoidable: settings.avoidable,
-    });
+    return json(res, 200, { reanalyzed, older, imported, avoidable: settings.avoidable });
   };
 
   const setJournalId = async (req, res, encounterId) => {
@@ -1540,18 +1232,13 @@ export const createPullDesk = (options) => {
   // Pulls on one boss (and difficulty) with their reports, for ability stats.
   const bossStats = async (encounterId, difficultyId) => {
     const pulls = countedPulls().filter(
-      (p) =>
-        p.encounterId === encounterId &&
-        (!difficultyId || p.difficultyId === difficultyId),
+      (p) => p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
     );
-    return cached(`abilities:${encounterId}:${difficultyId}`, async () =>
-      abilityStats(await withReports(pulls)),
-    );
+    return cached(`abilities:${encounterId}:${difficultyId}`, async () => abilityStats(await withReports(pulls)));
   };
 
   const bossName = (encounterId) =>
-    index.pulls.find((p) => p.encounterId === encounterId)?.encounterName ||
-    null;
+    index.pulls.find((p) => p.encounterId === encounterId)?.encounterName || null;
 
   // Journal routes: /journal/boss/:encounterId, /journal/spell/:spellId,
   // /journal/spells, /journal/raw/:journalId.
@@ -1568,11 +1255,7 @@ export const createPullDesk = (options) => {
       let error = '';
       if (journal.configured && name) {
         try {
-          data = await journal.encounter({
-            name,
-            journalId: settings.journalId || null,
-            refresh: q('refresh') === '1',
-          });
+          data = await journal.encounter({ name, journalId: settings.journalId || null, refresh: q('refresh') === '1' });
         } catch (e) {
           error = e.message;
         }
@@ -1589,11 +1272,7 @@ export const createPullDesk = (options) => {
       });
     }
 
-    if (
-      kind === 'spell' &&
-      /^\d+$/.test(idText || '') &&
-      req.method === 'GET'
-    ) {
+    if (kind === 'spell' && /^\d+$/.test(idText || '') && req.method === 'GET') {
       const spellId = Number(idText);
       const encounterId = Number(q('encounterId')) || null;
       const difficultyId = Number(q('difficulty')) || null;
@@ -1605,17 +1284,12 @@ export const createPullDesk = (options) => {
         if (journal.configured && encounterId) {
           const name = bossName(encounterId);
           const j = name
-            ? await journal.encounter({
-                name,
-                journalId: bossSettings(encounterId).journalId || null,
-              })
+            ? await journal.encounter({ name, journalId: bossSettings(encounterId).journalId || null })
             : null;
           const abilities = journalAbilities(j);
           section =
             abilities.find((a) => a.spellId === spellId) ||
-            (wantedName
-              ? abilities.find((a) => norm(a.title) === norm(wantedName))
-              : null) ||
+            (wantedName ? abilities.find((a) => norm(a.title) === norm(wantedName)) : null) ||
             null;
         }
         // Tooltip text for this difficulty (Wowhead; works without Blizzard keys).
@@ -1623,19 +1297,13 @@ export const createPullDesk = (options) => {
       } catch (e) {
         error = e.message;
       }
-      const stats = encounterId
-        ? await bossStats(encounterId, difficultyId)
-        : [];
+      const stats = encounterId ? await bossStats(encounterId, difficultyId) : [];
       const stat =
         stats.find((s) => s.spellId === spellId) ||
-        (wantedName
-          ? stats.find((s) => norm(s.name) === norm(wantedName))
-          : null) ||
+        (wantedName ? stats.find((s) => norm(s.name) === norm(wantedName)) : null) ||
         null;
       const avoidable = encounterId ? bossSettings(encounterId).avoidable : [];
-      const cardNames = [section?.title, info?.name, wantedName]
-        .filter(Boolean)
-        .map(norm);
+      const cardNames = [section?.title, info?.name, wantedName].filter(Boolean).map(norm);
       return json(res, 200, {
         configured: journal.configured,
         spellId,
@@ -1649,8 +1317,7 @@ export const createPullDesk = (options) => {
         // On the list by this ID, or by name (added from the journal under
         // its cast ID while this card is for an ID it hits as).
         avoidable: avoidable.some(
-          (a) =>
-            a.id === spellId || (a.name && cardNames.includes(norm(a.name))),
+          (a) => a.id === spellId || (a.name && cardNames.includes(norm(a.name))),
         ),
         error,
       });
@@ -1661,16 +1328,11 @@ export const createPullDesk = (options) => {
     if (kind === 'spells' && req.method === 'POST') {
       const body = await readBody(req, 32 * 1024);
       const ids = Array.isArray(body?.ids) ? body.ids : [];
-      return json(
-        res,
-        200,
-        await journal.spells(ids, Number(body?.difficulty) || null),
-      );
+      return json(res, 200, await journal.spells(ids, Number(body?.difficulty) || null));
     }
 
     if (kind === 'raw' && /^\d+$/.test(idText || '') && req.method === 'GET') {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const raw = await journal.raw(idText);
       return raw ? json(res, 200, raw) : fail(res, 404, 'Not fetched yet');
     }
@@ -1681,8 +1343,7 @@ export const createPullDesk = (options) => {
   const setChannel = async (req, res, encounterId) => {
     const body = await readBody(req, 4 * 1024);
     const channelId = String(body.channelId ?? '').trim();
-    if (channelId && !/^\d{5,25}$/.test(channelId))
-      return fail(res, 400, 'Invalid channel ID');
+    if (channelId && !/^\d{5,25}$/.test(channelId)) return fail(res, 400, 'Invalid channel ID');
     bossSettings(encounterId).channelId = channelId;
     await persist();
     return json(res, 200, {});
@@ -1703,9 +1364,7 @@ export const createPullDesk = (options) => {
         owner: await ownerOnly(req),
         trackedDifficulties: [...trackedDifficulties],
         // Non-Mythic bosses shown in Progression / Reclears (null: not set).
-        progressionShown: Array.isArray(index.settings.progressionShown)
-          ? index.settings.progressionShown
-          : null,
+        progressionShown: Array.isArray(index.settings.progressionShown) ? index.settings.progressionShown : null,
       });
     }
 
@@ -1713,10 +1372,7 @@ export const createPullDesk = (options) => {
 
     // Reading reports and summaries needs "See Analysis"; sending logs
     // (claims, uploads, backfill) works for everyone signed in.
-    if (
-      (req.method === 'GET' || first === 'journal') &&
-      !(await canView(req))
-    ) {
+    if ((req.method === 'GET' || first === 'journal') && !(await canView(req))) {
       return fail(res, 403, 'Your Discord role cannot see Analysis');
     }
 
@@ -1726,63 +1382,41 @@ export const createPullDesk = (options) => {
       return json(res, 200, index.settings);
     }
     if (first === 'settings' && req.method === 'PUT') {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 16 * 1024);
       if (body.combatPotions !== undefined) {
-        if (
-          !Array.isArray(body.combatPotions) ||
-          body.combatPotions.length > 50
-        ) {
+        if (!Array.isArray(body.combatPotions) || body.combatPotions.length > 50) {
           return fail(res, 400, 'Expected a list of up to 50 potion names');
         }
         index.settings.combatPotions = [
-          ...new Set(
-            body.combatPotions
-              .map((n) => String(n).trim().slice(0, 80))
-              .filter(Boolean),
-          ),
+          ...new Set(body.combatPotions.map((n) => String(n).trim().slice(0, 80)).filter(Boolean)),
         ];
       }
       await persist();
       // Recount potions in every report whose log is still kept.
       const day = Date.now() - 24 * 60 * 60 * 1000;
       const recent = index.pulls.filter(
-        (p) =>
-          p.status === 'ready' &&
-          p.hasLog &&
-          p.source !== 'wcl' &&
-          p.createdAt >= day,
+        (p) => p.status === 'ready' && p.hasLog && p.source !== 'wcl' && p.createdAt >= day,
       );
       recent.forEach((p) => {
-        backgroundQueue = backgroundQueue.then(() =>
-          runAnalysis(p).catch(() => {}),
-        );
+        backgroundQueue = backgroundQueue.then(() => runAnalysis(p).catch(() => {}));
       });
       const older = reanalyzeOlder(() => true);
-      return json(res, 200, {
-        settings: index.settings,
-        rechecking: recent.length + older,
-      });
+      return json(res, 200, { settings: index.settings, rechecking: recent.length + older });
     }
 
-    if (first === 'backfill' && second === 'check' && req.method === 'POST')
-      return backfillCheck(req, res);
-    if (first === 'backfill' && !second && req.method === 'POST')
-      return backfill(req, res);
+    if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
+    if (first === 'backfill' && !second && req.method === 'POST') return backfill(req, res);
 
     if (first === 'progression-list' && req.method === 'PUT') {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 16 * 1024);
       const list = Array.isArray(body?.shown) ? body.shown : [];
       index.settings.progressionShown = [
         ...new Set(list.map(String).filter((k) => /^\d+:\d+$/.test(k))),
       ].slice(0, 200);
       await persist();
-      return json(res, 200, {
-        progressionShown: index.settings.progressionShown,
-      });
+      return json(res, 200, { progressionShown: index.settings.progressionShown });
     }
 
     // Logs trends: each raider's rates night by night on one boss.
@@ -1793,17 +1427,13 @@ export const createPullDesk = (options) => {
       // kill, so weeks compare like with like.
       const all = countedPulls().filter(
         (p) =>
-          p.result === 'kill' &&
-          p.encounterId === encounterId &&
-          (!difficultyId || p.difficultyId === difficultyId),
+          p.result === 'kill' && p.encounterId === encounterId && (!difficultyId || p.difficultyId === difficultyId),
       );
       const { progression } = splitAtFirstKill(all, false);
       const firstKills = new Set(progression.map((p) => p.id));
       // App meters, or Warcraft Logs' tables for imported pulls.
       const pulls = all.filter((p) => p.appMeters || p.wclMeters);
-      const data = await cached(`trends4:${encounterId}:${difficultyId}`, () =>
-        metersTrends(pulls, firstKills),
-      );
+      const data = await cached(`trends4:${encounterId}:${difficultyId}`, () => metersTrends(pulls, firstKills));
       return json(res, 200, data);
     }
 
@@ -1815,43 +1445,21 @@ export const createPullDesk = (options) => {
     }
     if (first === 'import' && second === 'guild' && req.method === 'GET') {
       return json(res, 200, {
-        guild: index.settings.wclGuild || {
-          name: env.GUILD_CLOUD_GUILD || 'Room Forty',
-          realm: '',
-          region: 'us',
-        },
+        guild: index.settings.wclGuild || { name: env.GUILD_CLOUD_GUILD || 'Room Forty', realm: '', region: 'us' },
         job: tierJob,
       });
     }
-    if (
-      first === 'import' &&
-      second === 'guild' &&
-      third === 'scan' &&
-      req.method === 'POST'
-    ) {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+    if (first === 'import' && second === 'guild' && third === 'scan' && req.method === 'POST') {
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 4 * 1024);
       const guild = {
-        name: String(body?.name || '')
-          .trim()
-          .slice(0, 60),
-        realm: String(body?.realm || '')
-          .trim()
-          .slice(0, 60),
-        region: ['us', 'eu', 'kr', 'tw', 'cn'].includes(
-          String(body?.region).toLowerCase(),
-        )
-          ? String(body.region).toLowerCase()
-          : 'us',
+        name: String(body?.name || '').trim().slice(0, 60),
+        realm: String(body?.realm || '').trim().slice(0, 60),
+        region: ['us', 'eu', 'kr', 'tw', 'cn'].includes(String(body?.region).toLowerCase()) ? String(body.region).toLowerCase() : 'us',
       };
-      if (!guild.name || !guild.realm)
-        return fail(res, 400, 'Enter the guild name and realm');
+      if (!guild.name || !guild.realm) return fail(res, 400, 'Enter the guild name and realm');
       try {
-        const zones = await guildReportsByZone({
-          ...guild,
-          months: body?.months,
-        });
+        const zones = await guildReportsByZone({ ...guild, months: body?.months });
         index.settings.wclGuild = guild;
         await persist();
         return json(res, 200, { guild, zones });
@@ -1860,37 +1468,20 @@ export const createPullDesk = (options) => {
       }
     }
     if (first === 'import' && second === 'tier' && req.method === 'POST') {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 256 * 1024);
-      const codes = [
-        ...new Set(
-          (Array.isArray(body?.codes) ? body.codes : [])
-            .map(reportCode)
-            .filter(Boolean),
-        ),
-      ].slice(0, 500);
+      const codes = [...new Set((Array.isArray(body?.codes) ? body.codes : []).map(reportCode).filter(Boolean))].slice(0, 500);
       if (!codes.length) return fail(res, 400, 'No reports picked');
-      if (!startTierImport(codes))
-        return fail(res, 409, 'An import is already running');
+      if (!startTierImport(codes)) return fail(res, 409, 'An import is already running');
       return json(res, 200, { job: tierJob });
     }
 
     if (first === 'import' && !second && req.method === 'POST') {
-      if (!(await canEdit(req)))
-        return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+      if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
       const body = await readBody(req, 64 * 1024);
-      const codes = [
-        ...new Set(
-          (Array.isArray(body?.reports) ? body.reports : [])
-            .map(reportCode)
-            .filter(Boolean),
-        ),
-      ];
-      if (!codes.length)
-        return fail(res, 400, 'Paste one or more Warcraft Logs report links');
-      if (codes.length > MAX_IMPORT_REPORTS)
-        return fail(res, 400, `Up to ${MAX_IMPORT_REPORTS} reports at a time`);
+      const codes = [...new Set((Array.isArray(body?.reports) ? body.reports : []).map(reportCode).filter(Boolean))];
+      if (!codes.length) return fail(res, 400, 'Paste one or more Warcraft Logs report links');
+      if (codes.length > MAX_IMPORT_REPORTS) return fail(res, 400, `Up to ${MAX_IMPORT_REPORTS} reports at a time`);
       try {
         return json(res, 200, { results: await importReports(codes) });
       } catch (error) {
@@ -1899,19 +1490,11 @@ export const createPullDesk = (options) => {
     }
 
     if (first === 'pulls' && !second && req.method === 'GET') {
-      const days = Math.min(
-        Math.max(Number(url?.searchParams.get('days')) || 7, 1),
-        120,
-      );
+      const days = Math.min(Math.max(Number(url?.searchParams.get('days')) || 7, 1), 120);
       const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
       const pulls = index.pulls
         // Imported pulls have no app report; they show in the summaries.
-        .filter(
-          (pull) =>
-            pull.createdAt >= cutoff &&
-            pull.status !== 'claimed' &&
-            pull.source !== 'wcl',
-        )
+        .filter((pull) => pull.createdAt >= cutoff && pull.status !== 'claimed' && pull.source !== 'wcl')
         .map(summaryOf)
         .reverse();
       return json(res, 200, { pulls });
@@ -1925,8 +1508,7 @@ export const createPullDesk = (options) => {
         try {
           return await uploadLog(req, res, pull);
         } catch (error) {
-          if (error.status === 413)
-            return fail(res, 413, 'Log upload too large');
+          if (error.status === 413) return fail(res, 413, 'Log upload too large');
           throw error;
         }
       }
@@ -1940,10 +1522,8 @@ export const createPullDesk = (options) => {
           if (error.status === 413) return fail(res, 413, 'Full log too large');
           throw error;
         }
-        if (gz.length < 20 || gz[0] !== 0x1f || gz[1] !== 0x8b)
-          return fail(res, 400, 'Upload is not a gzipped log');
-        if (pull.hasFull && (pull.fullBytes || 0) >= gz.length)
-          return json(res, 200, { status: 'kept' });
+        if (gz.length < 20 || gz[0] !== 0x1f || gz[1] !== 0x8b) return fail(res, 400, 'Upload is not a gzipped log');
+        if (pull.hasFull && (pull.fullBytes || 0) >= gz.length) return json(res, 200, { status: 'kept' });
         await fsp.mkdir(path.dirname(fullFile(pull.id)), { recursive: true });
         const temp = `${fullFile(pull.id)}.tmp`;
         await fsp.writeFile(temp, gz);
@@ -1971,17 +1551,13 @@ export const createPullDesk = (options) => {
           await persist();
           return fail(res, 404, "This pull's full log is gone");
         }
-        res.writeHead(200, {
-          'Content-Type': 'application/gzip',
-          'Content-Length': stat.size,
-        });
+        res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': stat.size });
         fs.createReadStream(fullFile(pull.id)).pipe(res);
         return undefined;
       }
 
       if (third === 'reanalyze' && req.method === 'POST') {
-        if (!(await canEdit(req)))
-          return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+        if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
         if (!pull.hasLog) return fail(res, 409, 'This pull has no stored log');
         await runAnalysis(pull);
         await persist();
@@ -1999,21 +1575,13 @@ export const createPullDesk = (options) => {
           );
         }
         try {
-          const meters = JSON.parse(
-            await fsp.readFile(metersFile(pull.id), 'utf8'),
-          );
+          const meters = JSON.parse(await fsp.readFile(metersFile(pull.id), 'utf8'));
           // What the Logs page needs besides the meters: when the pull
           // started (to open recordings) and who died when.
           let deaths = [];
           try {
-            const report = JSON.parse(
-              await fsp.readFile(reportFile(pull.id), 'utf8'),
-            );
-            deaths = (report.deaths || []).map((d) => ({
-              t: d.t,
-              name: d.name,
-              spell: d.killingBlow?.spellName || null,
-            }));
+            const report = JSON.parse(await fsp.readFile(reportFile(pull.id), 'utf8'));
+            deaths = (report.deaths || []).map((d) => ({ t: d.t, name: d.name, spell: d.killingBlow?.spellName || null }));
           } catch {
             // No report: no death markers.
           }
@@ -2030,19 +1598,12 @@ export const createPullDesk = (options) => {
             deaths,
           });
         } catch {
-          return fail(
-            res,
-            404,
-            pull.source === 'wcl'
-              ? "Meters need the app's own log; this pull was imported from Warcraft Logs"
-              : 'No meters for this pull yet',
-          );
+          return fail(res, 404, pull.source === 'wcl' ? 'Meters need the app\'s own log; this pull was imported from Warcraft Logs' : 'No meters for this pull yet');
         }
       }
 
       if (!third && req.method === 'GET') {
-        if (pull.status !== 'ready')
-          return json(res, 200, { pending: true, ...summaryOf(pull) });
+        if (pull.status !== 'ready') return json(res, 200, { pending: true, ...summaryOf(pull) });
         try {
           const body = await fsp.readFile(reportFile(pull.id));
           res.writeHead(200, {
@@ -2075,10 +1636,7 @@ export const createPullDesk = (options) => {
           if (pull.result === 'kill') {
             boss.kills += 1;
             // When it first died that night (orders bosses by first kill).
-            boss.firstKillAt = Math.min(
-              boss.firstKillAt ?? Infinity,
-              pull.startedAt || pull.createdAt || Infinity,
-            );
+            boss.firstKillAt = Math.min(boss.firstKillAt ?? Infinity, pull.startedAt || pull.createdAt || Infinity);
           }
           night.set(key, boss);
           nights.set(pull.night, night);
@@ -2086,32 +1644,21 @@ export const createPullDesk = (options) => {
         return json(res, 200, {
           nights: [...nights.entries()]
             .sort((a, b) => b[0].localeCompare(a[0]))
-            .map(([night, bosses]) => ({
-              night,
-              bosses: [...bosses.values()],
-            })),
+            .map(([night, bosses]) => ({ night, bosses: [...bosses.values()] })),
         });
       }
       if (second === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(third || '')) {
         const data = await cached(`night:${third}`, async () =>
-          summarizeNight(
-            await withReports(counted.filter((pull) => pull.night === third)),
-          ),
+          summarizeNight(await withReports(counted.filter((pull) => pull.night === third))),
         );
         return json(res, 200, { night: third, bosses: data });
       }
       if (second === 'boss' && /^\d+$/.test(third || '')) {
         const encounterId = Number(third);
-        const difficultyId =
-          Number(url?.searchParams.get('difficulty')) || null;
-        const phase =
-          url?.searchParams.get('phase') === 'reclear'
-            ? 'reclear'
-            : 'progression';
+        const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
+        const phase = url?.searchParams.get('phase') === 'reclear' ? 'reclear' : 'progression';
         const pulls = counted.filter(
-          (pull) =>
-            pull.encounterId === encounterId &&
-            (!difficultyId || pull.difficultyId === difficultyId),
+          (pull) => pull.encounterId === encounterId && (!difficultyId || pull.difficultyId === difficultyId),
         );
         if (!pulls.length) return fail(res, 404, 'No pulls on that boss yet');
         // The old "killed before we tracked it" setting is retired: imports
@@ -2126,39 +1673,24 @@ export const createPullDesk = (options) => {
           .slice(0, 50);
         const meta = {
           phase,
-          counts: {
-            progression: split.progression.length,
-            reclear: split.reclear.length,
-          },
+          counts: { progression: split.progression.length, reclear: split.reclear.length },
           excludedCauses: excluded,
         };
-        if (!chosen.length)
-          return json(res, 200, {
-            ...meta,
-            empty: true,
-            encounterId,
-            difficultyId,
-            causeOptions: [],
+        if (!chosen.length) return json(res, 200, { ...meta, empty: true, encounterId, difficultyId, causeOptions: [] });
+        const data = await cached(`boss:${encounterId}:${difficultyId}:${phase}:${excluded.join('|')}`, async () => {
+          const all = await withReports(chosen);
+          const counts = new Map();
+          const kept = all.filter((p) => {
+            const cause = wipeCause(p.summary, p.report);
+            if (cause) counts.set(cause, (counts.get(cause) || 0) + 1);
+            return !cause || !excluded.includes(cause);
           });
-        const data = await cached(
-          `boss:${encounterId}:${difficultyId}:${phase}:${excluded.join('|')}`,
-          async () => {
-            const all = await withReports(chosen);
-            const counts = new Map();
-            const kept = all.filter((p) => {
-              const cause = wipeCause(p.summary, p.report);
-              if (cause) counts.set(cause, (counts.get(cause) || 0) + 1);
-              return !cause || !excluded.includes(cause);
-            });
-            return {
-              ...summarizeProgression(kept.length ? kept : all),
-              causeOptions: [...counts.entries()]
-                .map(([name, count]) => ({ name, count }))
-                .sort((a, b) => b.count - a.count),
-              excludedPulls: all.length - kept.length,
-            };
-          },
-        );
+          return {
+            ...summarizeProgression(kept.length ? kept : all),
+            causeOptions: [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+            excludedPulls: all.length - kept.length,
+          };
+        });
         return json(res, 200, { ...data, ...meta });
       }
       return fail(res, 404, 'Unknown summary');
@@ -2182,22 +1714,18 @@ export const createPullDesk = (options) => {
       }
 
       if (req.method === 'PUT') {
-        if (!(await canEdit(req)))
-          return fail(res, 403, 'Your Discord role cannot edit the pull desk');
+        if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
         if (third === 'note') return setNote(req, res, encounterId);
         if (third === 'avoidable') return setAvoidable(req, res, encounterId);
         if (third === 'channel') return setChannel(req, res, encounterId);
-        if (third === 'avoidable-toggle')
-          return toggleAvoidable(req, res, encounterId);
+        if (third === 'avoidable-toggle') return toggleAvoidable(req, res, encounterId);
         if (third === 'journal') return setJournalId(req, res, encounterId);
         if (third === 'killed-before') {
           // "We killed it before the app tracked it": every pull is a reclear.
           const body = await readBody(req, 1024);
           bossSettings(encounterId).killedBefore = Boolean(body?.on);
           await persist();
-          return json(res, 200, {
-            killedBefore: bossSettings(encounterId).killedBefore,
-          });
+          return json(res, 200, { killedBefore: bossSettings(encounterId).killedBefore });
         }
       }
     }

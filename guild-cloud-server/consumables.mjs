@@ -18,10 +18,7 @@ export const RAID_BUFFS = [
   {
     key: 'bronze',
     name: 'Blessing of the Bronze',
-    ids: [
-      381732, 381741, 381746, 381748, 381749, 381750, 381751, 381752, 381753,
-      381754, 381756, 381757, 381758,
-    ],
+    ids: [381732, 381741, 381746, 381748, 381749, 381750, 381751, 381752, 381753, 381754, 381756, 381757, 381758],
   },
 ];
 
@@ -63,8 +60,7 @@ export const rawPrep = (args) => {
     const spellId = num(auraList[i + 1]);
     if (spellId) auras.push([String(auraList[i]), spellId]);
   }
-  const item = (index) =>
-    Array.isArray(gear[index]) && num(gear[index][0]) ? gear[index] : null;
+  const item = (index) => (Array.isArray(gear[index]) && num(gear[index][0]) ? gear[index] : null);
   const enchants = ENCHANT_SLOTS.map(({ index, slot }) => {
     const it = item(index);
     if (!it) return { slot, ok: null }; // nothing equipped there
@@ -78,9 +74,7 @@ export const rawPrep = (args) => {
     return { slot, count, equipped: Boolean(it) };
   });
   const weapon = item(MAIN_HAND);
-  const weaponOil = weapon
-    ? Array.isArray(weapon[2]) && num(weapon[2][1]) > 0
-    : null;
+  const weaponOil = weapon ? Array.isArray(weapon[2]) && num(weapon[2][1]) > 0 : null;
   return { auras, enchants, gems, weaponOil };
 };
 
@@ -94,21 +88,13 @@ export const classifyAura = (info, combatPotionNames = new Set()) => {
   if (/^vantus rune/i.test(name)) return 'vantus';
   // Augment runes: "Augment Rune." in the tooltip, or a name like
   // "Ethereal Augmentation" / "Void-Touched" (the rune's buff).
-  if (/augment rune/i.test(text) || /augment rune|augmentation$/i.test(name))
-    return 'augment';
+  if (/augment rune/i.test(text) || /augment rune|augmentation$/i.test(name)) return 'augment';
   if (/well fed/i.test(name) || /well fed/i.test(text)) return 'food';
-  if (
-    /^(flask|phial)\b/i.test(name) ||
-    /lasts 1 hour and through death/i.test(text)
-  )
-    return 'flask';
+  if (/^(flask|phial)\b/i.test(name) || /lasts 1 hour and through death/i.test(text)) return 'flask';
   return null;
 };
 
-const normName = (name) =>
-  String(name || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+const normName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
  * Named prep data for a report.
@@ -127,34 +113,17 @@ export const buildPrep = (report, infoOf, combatPotions = []) => {
   const duration = Number(report.duration) || 0;
   const possible = 1 + Math.floor(duration / 300);
   const usedInCombat = new Map(
-    (report.defensives?.players || []).map((p) => [
-      p.name,
-      p.combatPotions || 0,
-    ]),
+    (report.defensives?.players || []).map((p) => [p.name, p.combatPotions || 0]),
   );
   // Imported pulls: potion casts counted from Warcraft Logs.
-  Object.entries(report.combatPotionsUsed || {}).forEach(([name, n]) =>
-    usedInCombat.set(name, n),
-  );
+  Object.entries(report.combatPotionsUsed || {}).forEach(([name, n]) => usedInCombat.set(name, n));
 
   const players = raw.players.map((p) => {
-    const found = {
-      food: null,
-      flask: null,
-      augment: null,
-      vantus: null,
-      potion: null,
-    };
+    const found = { food: null, flask: null, augment: null, vantus: null, potion: null };
     p.auras.forEach(([, spellId]) => {
       const info = infoOf(spellId);
-      const kind =
-        classifyAura(info, potionNames) ||
-        (potionNames.has(normName(report.spellNames?.[spellId]))
-          ? 'potion'
-          : null);
-      if (kind && !found[kind])
-        found[kind] =
-          info?.name || report.spellNames?.[spellId] || `Spell ${spellId}`;
+      const kind = classifyAura(info, potionNames) || (potionNames.has(normName(report.spellNames?.[spellId])) ? 'potion' : null);
+      if (kind && !found[kind]) found[kind] = info?.name || report.spellNames?.[spellId] || `Spell ${spellId}`;
     });
     const prepot = Boolean(found.potion);
     const potsUsed = (prepot ? 1 : 0) + (usedInCombat.get(p.name) || 0);
@@ -187,33 +156,18 @@ export const buildPrep = (report, infoOf, combatPotions = []) => {
         if (from) providers.add(from);
       }
     });
-    return {
-      key: buff.key,
-      name: buff.name,
-      have,
-      of: raw.players.length,
-      providers: [...providers],
-    };
+    return { key: buff.key, name: buff.name, have, of: raw.players.length, providers: [...providers] };
   });
 
   return { players, raidBuffs };
 };
 
 // What everyone should have, in the order the views show it.
-export const CHECKS = [
-  'food',
-  'flask',
-  'augment',
-  'weaponOil',
-  'vantus',
-  'prepot',
-];
+export const CHECKS = ['food', 'flask', 'augment', 'weaponOil', 'vantus', 'prepot'];
 
 const mostCommon = (values) => {
   const counts = new Map();
-  values
-    .filter(Boolean)
-    .forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
+  values.filter(Boolean).forEach((v) => counts.set(v, (counts.get(v) || 0) + 1));
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 };
 
@@ -249,20 +203,13 @@ export const consumablesOf = (pulls) => {
       r.pulls += 1;
       total.pulls += 1;
       CHECKS.forEach((k) => {
-        const has =
-          k === 'prepot'
-            ? p.prepot
-            : k === 'weaponOil'
-              ? p.weaponOil === true
-              : Boolean(p[k]);
+        const has = k === 'prepot' ? p.prepot : k === 'weaponOil' ? p.weaponOil === true : Boolean(p[k]);
         if (has) {
           r[k] += 1;
           total[k] += 1;
         }
       });
-      ['food', 'flask', 'augment', 'vantus'].forEach((k) =>
-        r.names[k].push(p[k]),
-      );
+      ['food', 'flask', 'augment', 'vantus'].forEach((k) => r.names[k].push(p[k]));
       r.potsUsed += p.potsUsed;
       r.potsPossible += p.potsPossible;
       total.potsUsed += p.potsUsed;
@@ -280,13 +227,9 @@ export const consumablesOf = (pulls) => {
     raiders: [...raiders.values()]
       .map((r) => ({
         ...r,
-        names: Object.fromEntries(
-          Object.entries(r.names).map(([k, v]) => [k, mostCommon(v)]),
-        ),
-        enchantsMissing: (r.enchants || []).filter((e) => e.ok === false)
-          .length,
-        gemsMissing: (r.gems || []).filter((g) => g.equipped && g.count === 0)
-          .length,
+        names: Object.fromEntries(Object.entries(r.names).map(([k, v]) => [k, mostCommon(v)])),
+        enchantsMissing: (r.enchants || []).filter((e) => e.ok === false).length,
+        gemsMissing: (r.gems || []).filter((g) => g.equipped && g.count === 0).length,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   };

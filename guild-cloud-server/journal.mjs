@@ -61,11 +61,7 @@ const ICON_FLAGS = {
 
 const tagsOf = (section) => {
   const raw =
-    section.icon_flags ??
-    section.iconFlags ??
-    section.flags ??
-    section.header_icons ??
-    null;
+    section.icon_flags ?? section.iconFlags ?? section.flags ?? section.header_icons ?? null;
   if (!raw) return [];
   const list = Array.isArray(raw) ? raw : [raw];
   return [
@@ -86,29 +82,23 @@ export const tooltipText = (html) => {
   if (typeof html !== 'string' || !html) return '';
   // The description sits in <div class="q"> blocks; else take everything
   // after the header table (name, range, cast time).
-  const blocks = [
-    ...html.matchAll(/<div class="q[^"]*"[^>]*>([\s\S]*?)<\/div>/g),
-  ].map((m) => m[1]);
-  const body = blocks.length
-    ? blocks.join('<br>')
-    : html.replace(/^[\s\S]*?<\/table>/, '');
-  return (
-    body
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#0?39;|&apos;/g, "'")
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      // 1250110 -> 1,250,110
-      .replace(/\b\d{5,}\b/g, (n) => Number(n).toLocaleString('en-US'))
-      .replace(/[ \t]+/g, ' ')
-      .replace(/ *\n */g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-  );
+  const blocks = [...html.matchAll(/<div class="q[^"]*"[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1]);
+  const body = blocks.length ? blocks.join('<br>') : html.replace(/^[\s\S]*?<\/table>/, '');
+  return body
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    // 1250110 -> 1,250,110
+    .replace(/\b\d{5,}\b/g, (n) => Number(n).toLocaleString('en-US'))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 };
 
 /**
@@ -120,9 +110,7 @@ export const tooltipText = (html) => {
 export const mergeVariants = (nodes) => {
   const out = [];
   nodes.forEach((node) => {
-    const same = out.find(
-      (o) => o.title === node.title && o.spellId === node.spellId,
-    );
+    const same = out.find((o) => o.title === node.title && o.spellId === node.spellId);
     if (!same) {
       out.push({ ...node, children: mergeVariants(node.children) });
       return;
@@ -154,12 +142,7 @@ export const journalFromApi = (encounter) => {
         children: walk(s.sections || [], depth + 1),
       };
       if (spellId && !spells[spellId]) {
-        spells[spellId] = {
-          title: node.title,
-          text: node.text,
-          sectionId: node.id,
-          tags: node.tags,
-        };
+        spells[spellId] = { title: node.title, text: node.text, sectionId: node.id, tags: node.tags };
       }
       return node;
     });
@@ -191,10 +174,8 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   const clientId = env.GUILD_CLOUD_BLIZZARD_CLIENT_ID || '';
   const clientSecret = env.GUILD_CLOUD_BLIZZARD_CLIENT_SECRET || '';
   const region = String(env.GUILD_CLOUD_BLIZZARD_REGION || 'us').toLowerCase();
-  const apiBase =
-    env.GUILD_CLOUD_BLIZZARD_API || `https://${region}.api.blizzard.com`;
-  const oauthUrl =
-    env.GUILD_CLOUD_BLIZZARD_OAUTH || 'https://oauth.battle.net/token';
+  const apiBase = env.GUILD_CLOUD_BLIZZARD_API || `https://${region}.api.blizzard.com`;
+  const oauthUrl = env.GUILD_CLOUD_BLIZZARD_OAUTH || 'https://oauth.battle.net/token';
   const configured = Boolean(clientId && clientSecret);
 
   let token = null;
@@ -238,14 +219,11 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
 
   /** GET a Game Data API path (static namespace, English). */
   const api = async (route, params = {}) => {
-    if (!configured)
-      throw new Error('Blizzard API keys are not set in the server .env.');
+    if (!configured) throw new Error('Blizzard API keys are not set in the server .env.');
     const url = new URL(`${apiBase}${route}`);
     url.searchParams.set('namespace', `static-${region}`);
     url.searchParams.set('locale', 'en_US');
-    Object.entries(params).forEach(([k, v]) =>
-      url.searchParams.set(k, String(v)),
-    );
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
     for (let attempt = 1; ; attempt += 1) {
       // eslint-disable-next-line no-await-in-loop
       const bearer = await getToken();
@@ -258,21 +236,13 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
         token = null;
         continue;
       }
-      if (
-        (response.status === 429 ||
-          response.status >= 500 ||
-          response.status === 0) &&
-        attempt < 3
-      ) {
+      if ((response.status === 429 || response.status >= 500 || response.status === 0) && attempt < 3) {
         // eslint-disable-next-line no-await-in-loop
         await new Promise((r) => setTimeout(r, 1500 * attempt));
         continue;
       }
       if (response.status === 404) return null;
-      if (!response.ok)
-        throw new Error(
-          `Blizzard API ${route} failed (${response.status || response.error?.message})`,
-        );
+      if (!response.ok) throw new Error(`Blizzard API ${route} failed (${response.status || response.error?.message})`);
       return response.json();
     }
   };
@@ -295,9 +265,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   // it's shown (merging difficulty copies, text cleanup) apply right away.
   const stored = async (id) => {
     const rawCopy = await readJson(`raw-${id}.json`, null);
-    return rawCopy
-      ? journalFromApi(rawCopy)
-      : readJson(`encounter-${id}.json`, null);
+    return rawCopy ? journalFromApi(rawCopy) : readJson(`encounter-${id}.json`, null);
   };
 
   /**
@@ -308,8 +276,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     const index = await readJson('index.json', {});
     const key = journalId ? `id:${journalId}` : `name:${norm(name)}`;
     const entry = index[key];
-    const fresh =
-      entry && Date.now() - entry.at < (entry.id ? JOURNAL_TTL : NOT_FOUND_TTL);
+    const fresh = entry && Date.now() - entry.at < (entry.id ? JOURNAL_TTL : NOT_FOUND_TTL);
     if (entry && fresh && !refresh) {
       return entry.id ? stored(entry.id) : null;
     }
@@ -320,9 +287,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
         await writeJson('index.json', index);
         return null;
       }
-      const raw = await api(
-        `/data/wow/journal-encounter/${encodeURIComponent(id)}`,
-      );
+      const raw = await api(`/data/wow/journal-encounter/${encodeURIComponent(id)}`);
       if (!raw) {
         index[key] = { id: null, at: Date.now() };
         await writeJson('index.json', index);
@@ -349,9 +314,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   // its tooltip widget uses: once per spell per difficulty, cached for good
   // and shared by the whole guild, a few requests at a time.
 
-  const wowheadBase =
-    env.GUILD_CLOUD_WOWHEAD_TOOLTIP ||
-    'https://nether.wowhead.com/tooltip/spell';
+  const wowheadBase = env.GUILD_CLOUD_WOWHEAD_TOOLTIP || 'https://nether.wowhead.com/tooltip/spell';
   let spellCache = null; // "id:difficulty" -> { id, name, text, icon } | { missing: true }
   let spellSave = Promise.resolve();
   const spellsLoaded = async () => {
@@ -359,9 +322,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     return spellCache;
   };
   const saveSpells = () => {
-    spellSave = spellSave
-      .then(() => writeJson('spells.json', spellCache))
-      .catch(() => {});
+    spellSave = spellSave.then(() => writeJson('spells.json', spellCache)).catch(() => {});
     return spellSave;
   };
 
@@ -390,17 +351,10 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
         api(`/data/wow/spell/${id}`).catch(() => null),
         api(`/data/wow/media/spell/${id}`).catch(() => null),
       ]);
-      const iconUrl =
-        (media?.assets || []).find((a) => a.key === 'icon')?.value || '';
-      const icon =
-        /\/([a-z0-9_-]+)\.jpg$/i.exec(iconUrl)?.[1]?.toLowerCase() || null;
+      const iconUrl = (media?.assets || []).find((a) => a.key === 'icon')?.value || '';
+      const icon = /\/([a-z0-9_-]+)\.jpg$/i.exec(iconUrl)?.[1]?.toLowerCase() || null;
       if (!info?.name && !icon) return null;
-      return {
-        id,
-        name: info?.name || null,
-        text: info?.description || '',
-        icon,
-      };
+      return { id, name: info?.name || null, text: info?.description || '', icon };
     } catch {
       return null;
     }
@@ -425,9 +379,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     await slot();
     try {
       const url = `${wowheadBase}/${id}?dataEnv=1&locale=0${difficultyId ? `&dd=${difficultyId}` : ''}`;
-      const response = await fetchImpl(url, {
-        signal: AbortSignal.timeout(10000),
-      });
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(10000) });
       if (response.status === 404) return { missing: true };
       if (!response.ok) return null; // try again another time
       const body = await response.json();
@@ -435,10 +387,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
         id,
         name: typeof body.name === 'string' ? body.name : null,
         text: tooltipText(body.tooltip),
-        icon:
-          typeof body.icon === 'string' && /^[a-z0-9_-]+$/i.test(body.icon)
-            ? body.icon.toLowerCase()
-            : null,
+        icon: typeof body.icon === 'string' && /^[a-z0-9_-]+$/i.test(body.icon) ? body.icon.toLowerCase() : null,
       };
     } catch {
       return null;
@@ -477,11 +426,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
    * few calls instead of waiting on a whole raid's worth.
    */
   const spells = async (spellIds, difficultyId = null, budget = 24) => {
-    const ids = [
-      ...new Set(
-        spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0),
-      ),
-    ].slice(0, 400);
+    const ids = [...new Set(spellIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 400);
     const dd = Number(difficultyId) || 0;
     const cache = await spellsLoaded();
     const out = {};

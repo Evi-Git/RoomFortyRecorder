@@ -87,10 +87,7 @@ export const parseLine = (raw) => {
 
 // ---- Helpers ------------------------------------------------------------------
 
-const normName = (value) =>
-  String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+const normName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Avoidable hits: a hit within this many seconds of the previous one is the
 // same moment (standing in it, ticking), so it gets one Watch button. At most
@@ -203,9 +200,7 @@ export const parseNote = (noteText, rosterNames) => {
   };
   if (!noteText) return result;
 
-  const byLower = new Map(
-    rosterNames.map((name) => [name.toLowerCase(), name]),
-  );
+  const byLower = new Map(rosterNames.map((name) => [name.toLowerCase(), name]));
   const roster = rosterNames
     .map((name) => ({ name, lower: name.toLowerCase() }))
     .sort((a, b) => b.lower.length - a.lower.length);
@@ -233,10 +228,9 @@ export const parseNote = (noteText, rosterNames) => {
       seconds = Number(nsrt[1]);
       if (nsrtPhase) phase = Number(nsrtPhase[1]);
     } else if (mrt) {
-      seconds =
-        mrt[2] !== undefined
-          ? Number(mrt[1]) * 60 + Number(mrt[2])
-          : Number(mrt[1]);
+      seconds = mrt[2] !== undefined
+        ? Number(mrt[1]) * 60 + Number(mrt[2])
+        : Number(mrt[1]);
       if (mrt[3]) phase = Number(mrt[3]);
     }
     if (seconds === null || !Number.isFinite(seconds)) continue;
@@ -314,9 +308,7 @@ export const analyzePull = (logText, options = {}) => {
   // other spell IDs than the one the journal lists (Venom Roar is cast as
   // 1302884 but hits as 1302914 and 1302917), so the name catches them all.
   const avoidable = new Set(
-    (options.avoidable || [])
-      .map((a) => Number(typeof a === 'object' ? a?.id : a))
-      .filter(Boolean),
+    (options.avoidable || []).map((a) => Number(typeof a === 'object' ? a?.id : a)).filter(Boolean),
   );
   const avoidableNames = new Set(
     (options.avoidable || [])
@@ -324,13 +316,10 @@ export const analyzePull = (logText, options = {}) => {
       .filter(Boolean),
   );
   const isAvoidable = (spellId, spellName) =>
-    avoidable.has(spellId) ||
-    (avoidableNames.size > 0 && avoidableNames.has(normName(spellName)));
+    avoidable.has(spellId) || (avoidableNames.size > 0 && avoidableNames.has(normName(spellName)));
   // Combat potions by spell name: every crafted rank and cauldron version
   // of a potion casts the same spell.
-  const combatPotions = new Set(
-    (options.combatPotions || []).map(normName).filter(Boolean),
-  );
+  const combatPotions = new Set((options.combatPotions || []).map(normName).filter(Boolean));
   // Damage players took from enemies, per spell: for "hits as" IDs and totals.
   const damageTaken = new Map();
 
@@ -359,12 +348,7 @@ export const analyzePull = (logText, options = {}) => {
     if (at >= 0 && (at === 0 || text[at - 1] === '\n')) {
       const endAt = text.indexOf('\n', at);
       try {
-        const parsed = JSON.parse(
-          text.slice(
-            at + METERS_LINE_PREFIX.length,
-            endAt < 0 ? undefined : endAt,
-          ),
-        );
+        const parsed = JSON.parse(text.slice(at + METERS_LINE_PREFIX.length, endAt < 0 ? undefined : endAt));
         if (parsed && parsed.source === 'app') appMeters = parsed;
       } catch {
         // A cut-off meters line: no meters, the report still works.
@@ -457,36 +441,19 @@ export const analyzePull = (logText, options = {}) => {
         recentHits.set(hit.destGuid, list);
 
         if (!isPlayerGuid(hit.sourceGuid)) {
-          const taken = damageTaken.get(hit.spellId) || {
-            spellId: hit.spellId,
-            spellName: hit.spellName,
-            hits: 0,
-            damage: 0,
-          };
+          const taken = damageTaken.get(hit.spellId) || { spellId: hit.spellId, spellName: hit.spellName, hits: 0, damage: 0 };
           taken.hits += 1;
           taken.damage += hit.amount;
           damageTaken.set(hit.spellId, taken);
         }
 
-        if (
-          isAvoidable(hit.spellId, hit.spellName) &&
-          !isPlayerGuid(hit.sourceGuid)
-        ) {
+        if (isAvoidable(hit.spellId, hit.spellName) && !isPlayerGuid(hit.sourceGuid)) {
           const name = shortName(hit.destName);
-          const stats = avoidableHits.get(name) || {
-            hits: 0,
-            damage: 0,
-            bySpell: {},
-            spells: {},
-          };
+          const stats = avoidableHits.get(name) || { hits: 0, damage: 0, bySpell: {}, spells: {} };
           stats.hits += 1;
           stats.damage += hit.amount;
           stats.bySpell[hit.spellId] = (stats.bySpell[hit.spellId] || 0) + 1;
-          const spell = stats.spells[hit.spellId] || {
-            hits: 0,
-            damage: 0,
-            times: [],
-          };
+          const spell = stats.spells[hit.spellId] || { hits: 0, damage: 0, times: [] };
           spell.hits += 1;
           spell.damage += hit.amount;
           // When each hit landed, for the Watch buttons. A tick within
@@ -497,11 +464,7 @@ export const analyzePull = (logText, options = {}) => {
             last.damage += hit.amount;
             last.end = Math.round(t * 10) / 10;
           } else if (spell.times.length < AVOIDABLE_MAX_TIMES) {
-            spell.times.push({
-              t: Math.round(t * 10) / 10,
-              hits: 1,
-              damage: hit.amount,
-            });
+            spell.times.push({ t: Math.round(t * 10) / 10, hits: 1, damage: hit.amount });
           }
           stats.spells[hit.spellId] = spell;
           avoidableHits.set(name, stats);
@@ -517,11 +480,7 @@ export const analyzePull = (logText, options = {}) => {
         npcHp.set(npcId, { t, current: hit.currentHp, max: hit.maxHp });
         const last = hpSamples.findLast?.((sample) => sample[1] === npcId);
         if (!last || t - last[0] >= 5) {
-          hpSamples.push([
-            t,
-            npcId,
-            Math.round((100 * hit.currentHp) / hit.maxHp),
-          ]);
+          hpSamples.push([t, npcId, Math.round((100 * hit.currentHp) / hit.maxHp)]);
         }
       }
       continue;
@@ -558,19 +517,11 @@ export const analyzePull = (logText, options = {}) => {
         // Channels (Tranquility, Divine Hymn) log a cast per tick: keep the
         // first of a burst.
         const repeat = defensiveUses.some(
-          (use) =>
-            use.name === name &&
-            use.entry.name === entry.name &&
-            t - use.t < 10,
+          (use) => use.name === name && use.entry.name === entry.name && t - use.t < 10,
         );
         if (!repeat) {
           const target = isPlayerGuid(args[5]) ? shortName(args[6]) : '';
-          defensiveUses.push({
-            t,
-            name,
-            entry,
-            target: target === name ? '' : target,
-          });
+          defensiveUses.push({ t, name, entry, target: target === name ? '' : target });
         }
       }
       continue;
@@ -617,9 +568,7 @@ export const analyzePull = (logText, options = {}) => {
   if (!start) throw new Error('No ENCOUNTER_START in log');
 
   const duration = end
-    ? end.fightMs > 0
-      ? end.fightMs / 1000
-      : (end.ms - start.ms) / 1000
+    ? (end.fightMs > 0 ? end.fightMs / 1000 : (end.ms - start.ms) / 1000)
     : hpSamples.at(-1)?.[0] || 0;
 
   // The boss is the NPC with the highest max HP (same rule as the app).
@@ -628,9 +577,7 @@ export const analyzePull = (logText, options = {}) => {
     if (bossNpcId === null || max > npcMaxHp.get(bossNpcId)) bossNpcId = npcId;
   }
   const bossHp = bossNpcId !== null ? npcHp.get(bossNpcId) : null;
-  let bossPercent = bossHp
-    ? Math.round((100 * bossHp.current) / bossHp.max)
-    : null;
+  let bossPercent = bossHp ? Math.round((100 * bossHp.current) / bossHp.max) : null;
   if (end?.success) bossPercent = 0;
   const bossHpCurve = hpSamples
     .filter((sample) => sample[1] === bossNpcId)
@@ -662,20 +609,13 @@ export const analyzePull = (logText, options = {}) => {
   defensiveUses.forEach((use) => {
     usesBy.set(use.name, [...(usesBy.get(use.name) || []), use]);
   });
-  const warlockInRaid = roster.some((player) =>
-    [265, 266, 267].includes(player.specId),
-  );
+  const warlockInRaid = roster.some((player) => [265, 266, 267].includes(player.specId));
   const firstDeathAt = new Map();
   deaths.forEach((death) => {
     if (!firstDeathAt.has(death.name)) firstDeathAt.set(death.name, death.t);
     const player = roster.find((p) => p.name === death.name);
     death.available = player
-      ? availabilityAt(
-          player,
-          usesBy.get(death.name) || [],
-          death.t,
-          warlockInRaid,
-        )
+      ? availabilityAt(player, usesBy.get(death.name) || [], death.t, warlockInRaid)
       : [];
   });
   const round1 = (value) => Math.round(value * 10) / 10;
@@ -689,15 +629,12 @@ export const analyzePull = (logText, options = {}) => {
           kind: use.entry.kind,
           target: use.target || undefined,
         }));
-        const count = (kinds) =>
-          uses.filter((use) => kinds.includes(use.kind)).length;
+        const count = (kinds) => uses.filter((use) => kinds.includes(use.kind)).length;
         return {
           name: player.name,
           role: player.role,
           specId: player.specId,
-          diedAt: firstDeathAt.has(player.name)
-            ? round1(firstDeathAt.get(player.name))
-            : null,
+          diedAt: firstDeathAt.has(player.name) ? round1(firstDeathAt.get(player.name)) : null,
           personal: count(['personal', 'immunity']),
           external: count(['external']),
           raid: count(['raid']),
@@ -709,11 +646,7 @@ export const analyzePull = (logText, options = {}) => {
       }),
     raid: defensiveUses
       .filter((use) => use.entry.kind === 'raid')
-      .map((use) => ({
-        t: round1(use.t),
-        name: use.name,
-        ability: use.entry.name,
-      })),
+      .map((use) => ({ t: round1(use.t), name: use.name, ability: use.entry.name })),
     warlockInRaid,
   };
 
@@ -721,15 +654,11 @@ export const analyzePull = (logText, options = {}) => {
   let wipe = null;
   if (end && !end.success) {
     const firstDeath = deaths[0] || null;
-    const firstKey =
-      deaths.find((d) => d.role === 'tank' || d.role === 'healer') || null;
+    const firstKey = deaths.find((d) => d.role === 'tank' || d.role === 'healer') || null;
     let cascade = null;
     for (let i = 0; i + 2 < deaths.length; i += 1) {
       if (deaths[i + 2].t - deaths[i].t <= 10) {
-        cascade = {
-          t: deaths[i].t,
-          names: deaths.slice(i, i + 3).map((d) => d.name),
-        };
+        cascade = { t: deaths[i].t, names: deaths.slice(i, i + 3).map((d) => d.name) };
         break;
       }
     }
@@ -739,28 +668,16 @@ export const analyzePull = (logText, options = {}) => {
     for (let i = 0; i < deaths.length && !massDeath; i += 1) {
       const spell = deaths[i].killingBlow?.spellName;
       const group = deaths.filter(
-        (d) =>
-          d.t >= deaths[i].t &&
-          d.t - deaths[i].t <= 2 &&
-          d.killingBlow?.spellName === spell,
+        (d) => d.t >= deaths[i].t && d.t - deaths[i].t <= 2 && d.killingBlow?.spellName === spell,
       );
       if (spell && group.length >= 5) {
-        massDeath = {
-          t: deaths[i].t,
-          spellName: spell,
-          spellId: deaths[i].killingBlow?.spellId ?? null,
-          count: group.length,
-        };
+        massDeath = { t: deaths[i].t, spellName: spell, spellId: deaths[i].killingBlow?.spellId ?? null, count: group.length };
       }
     }
 
     const parts = [];
     if (deaths.length === 0) {
-      parts.push(
-        duration < 20
-          ? 'Reset or early wipe, no deaths.'
-          : 'Wipe with no player deaths.',
-      );
+      parts.push(duration < 20 ? 'Reset or early wipe, no deaths.' : 'Wipe with no player deaths.');
     } else {
       const describe = (death) =>
         `${death.name}${death.role !== 'dps' ? ` (${death.role})` : ''} to ${
@@ -772,15 +689,10 @@ export const analyzePull = (logText, options = {}) => {
         );
       }
       parts.push(`First death: ${describe(firstDeath)}.`);
-      if (
-        firstKey &&
-        firstKey !== firstDeath &&
-        (!massDeath || firstKey.t < massDeath.t)
-      ) {
+      if (firstKey && firstKey !== firstDeath && (!massDeath || firstKey.t < massDeath.t)) {
         parts.push(`First tank or healer death: ${describe(firstKey)}.`);
       }
-      if (cascade && !massDeath)
-        parts.push(`3 deaths inside 10 s from ${formatTime(cascade.t)}.`);
+      if (cascade && !massDeath) parts.push(`3 deaths inside 10 s from ${formatTime(cascade.t)}.`);
     }
 
     wipe = {
@@ -793,15 +705,9 @@ export const analyzePull = (logText, options = {}) => {
   }
 
   // Plan check.
-  const note = parseNote(
-    options.note || '',
-    roster.map((player) => player.name),
-  );
+  const note = parseNote(options.note || '', roster.map((player) => player.name));
   const planItems = note.assignments
-    .filter(
-      (item) =>
-        item.t <= duration && (inPull.size === 0 || inPull.has(item.name)),
-    )
+    .filter((item) => item.t <= duration && (inPull.size === 0 || inPull.has(item.name)))
     .map((item) => {
       const spellName = spellNames.get(item.spellId) || null;
       const diedAt = deadAt.get(item.name);
@@ -823,8 +729,7 @@ export const analyzePull = (logText, options = {}) => {
       if (best === null) {
         for (const cast of playerCasts) {
           const delta = cast.t - item.t;
-          if (nearest === null || Math.abs(delta) < Math.abs(nearest))
-            nearest = delta;
+          if (nearest === null || Math.abs(delta) < Math.abs(nearest)) nearest = delta;
         }
       }
       let status = 'missed';
@@ -877,10 +782,7 @@ export const analyzePull = (logText, options = {}) => {
     deaths: deaths.map((death) => ({
       ...death,
       t: Math.round(death.t * 10) / 10,
-      lastHits: death.lastHits.map((h) => ({
-        ...h,
-        t: Math.round(h.t * 10) / 10,
-      })),
+      lastHits: death.lastHits.map((h) => ({ ...h, t: Math.round(h.t * 10) / 10 })),
     })),
     wipe,
     plan: {
@@ -908,19 +810,10 @@ export const analyzePull = (logText, options = {}) => {
     // Raw gear and auras at the pull; named by consumables.buildPrep.
     prepRaw: {
       players: [...prep.entries()]
-        .map(([guid, p]) => ({
-          guid,
-          name: players.get(guid)?.name || null,
-          specId: players.get(guid)?.specId || 0,
-          ...p,
-        }))
+        .map(([guid, p]) => ({ guid, name: players.get(guid)?.name || null, specId: players.get(guid)?.specId || 0, ...p }))
         .filter((p) => p.name && (inPull.size === 0 || inPull.has(p.name))),
       auraNames: Object.fromEntries(
-        [
-          ...new Set(
-            [...prep.values()].flatMap((p) => p.auras.map(([, id]) => id)),
-          ),
-        ]
+        [...new Set([...prep.values()].flatMap((p) => p.auras.map(([, id]) => id)))]
           .filter((id) => spellNames.has(id))
           .map((id) => [id, spellNames.get(id)]),
       ),

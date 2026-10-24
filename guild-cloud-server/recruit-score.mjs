@@ -27,10 +27,7 @@ const stdev = (values) => {
 };
 
 /** Raw metrics for one candidate. */
-export const metricsFor = (
-  candidate,
-  { parseKind = 'median', minMechanicPulls = 5 } = {},
-) => {
+export const metricsFor = (candidate, { parseKind = 'median', minMechanicPulls = 5 } = {}) => {
   const bosses = Object.entries(candidate.bosses || {});
   let pulls = 0;
   let earlyDeaths = 0;
@@ -67,8 +64,7 @@ const zScorer = (values) => {
   const present = values.filter((v) => typeof v === 'number');
   const m = mean(present);
   const s = stdev(present);
-  return (v) =>
-    typeof v !== 'number' || m === null || s === 0 ? 0 : (v - m) / s;
+  return (v) => (typeof v !== 'number' || m === null || s === 0 ? 0 : (v - m) / s);
 };
 
 /**
@@ -110,8 +106,7 @@ export const rankCandidates = (candidates, options = {}) => {
   rows.sort((a, b) => b.score - a.score);
   rows.forEach((r, i) => {
     r.rank = i + 1;
-    r.percentile =
-      rows.length > 1 ? Math.round(100 * (1 - i / (rows.length - 1))) : 100;
+    r.percentile = rows.length > 1 ? Math.round(100 * (1 - i / (rows.length - 1))) : 100;
     r.reasons = reasonsFor(r);
   });
   return rows;
@@ -123,14 +118,11 @@ const pct = (v) => `${Math.round(v)}`;
 export const reasonsFor = (row) => {
   const out = [];
   const { metrics, z } = row;
-  if (z.parse >= 1)
-    out.push(`parses well above the group (${pct(metrics.parse)})`);
-  else if (z.parse <= -1)
-    out.push(`parses below the group (${pct(metrics.parse)})`);
+  if (z.parse >= 1) out.push(`parses well above the group (${pct(metrics.parse)})`);
+  else if (z.parse <= -1) out.push(`parses below the group (${pct(metrics.parse)})`);
   if (z.deaths >= 1) out.push('dies early far less than the group');
   else if (z.deaths <= -1) out.push('dies early more than the group');
-  if (metrics.assigned.length)
-    out.push(`on assigned mechanics: ${metrics.assigned.join(', ')}`);
+  if (metrics.assigned.length) out.push(`on assigned mechanics: ${metrics.assigned.join(', ')}`);
   else if (z.mechanics >= 1) out.push('does more mechanics than their raid');
   return out;
 };

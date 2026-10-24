@@ -17,13 +17,7 @@ export const createWclClient = ({
 }) => {
   let token = null;
   let tokenExpires = 0;
-  const usage = {
-    limitPerHour: null,
-    spentThisHour: 0,
-    resetIn: 0,
-    queries: 0,
-    spentByUs: 0,
-  };
+  const usage = { limitPerHour: null, spentThisHour: 0, resetIn: 0, queries: 0, spentByUs: 0 };
   let stopRequested = false;
 
   const getToken = async () => {
@@ -52,9 +46,7 @@ export const createWclClient = ({
     if (!usage.limitPerHour) return;
     if (usage.spentThisHour < usage.limitPerHour * budgetShare) return;
     const waitS = Math.max(5, usage.resetIn + 5);
-    log(
-      `Used ${Math.round(usage.spentThisHour)} of ${usage.limitPerHour} points this hour; pausing ${Math.round(waitS / 60)} min.`,
-    );
+    log(`Used ${Math.round(usage.spentThisHour)} of ${usage.limitPerHour} points this hour; pausing ${Math.round(waitS / 60)} min.`);
     const until = Date.now() + waitS * 1000;
     while (Date.now() < until) {
       if (stopRequested) throw new Error('Stopped');
@@ -79,46 +71,31 @@ export const createWclClient = ({
       // eslint-disable-next-line no-await-in-loop
       const response = await fetchImpl(`${baseUrl}/api/v2/client`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: withRate, variables }),
         signal: AbortSignal.timeout(60000),
       }).catch((error) => ({ ok: false, status: 0, error }));
 
-      if (
-        response.status === 429 ||
-        response.status >= 500 ||
-        response.status === 0
-      ) {
+      if (response.status === 429 || response.status >= 500 || response.status === 0) {
         if (attempt >= 5) {
-          throw new Error(
-            `Warcraft Logs request failed (${response.status || response.error?.message}).`,
-          );
+          throw new Error(`Warcraft Logs request failed (${response.status || response.error?.message}).`);
         }
-        const waitMs =
-          response.status === 429 ? 60000 * attempt : 5000 * attempt;
-        log(
-          `Warcraft Logs ${response.status === 429 ? 'rate limit' : 'error'} (${response.status}); retrying in ${Math.round(waitMs / 1000)} s.`,
-        );
+        const waitMs = response.status === 429 ? 60000 * attempt : 5000 * attempt;
+        log(`Warcraft Logs ${response.status === 429 ? 'rate limit' : 'error'} (${response.status}); retrying in ${Math.round(waitMs / 1000)} s.`);
         // eslint-disable-next-line no-await-in-loop
         await sleep(waitMs);
         continue;
       }
       if (response.status === 401) {
         token = null;
-        if (attempt >= 2)
-          throw new Error('Warcraft Logs rejected the API credentials.');
+        if (attempt >= 2) throw new Error('Warcraft Logs rejected the API credentials.');
         continue;
       }
 
       // eslint-disable-next-line no-await-in-loop
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(
-          `Warcraft Logs request failed (${response.status}): ${JSON.stringify(body).slice(0, 300)}`,
-        );
+        throw new Error(`Warcraft Logs request failed (${response.status}): ${JSON.stringify(body).slice(0, 300)}`);
       }
       const rate = body.data?.rateLimitData;
       if (rate) {
@@ -126,22 +103,14 @@ export const createWclClient = ({
         usage.limitPerHour = rate.limitPerHour;
         usage.spentThisHour = rate.pointsSpentThisHour;
         usage.resetIn = rate.pointsResetIn;
-        if (rate.pointsSpentThisHour >= before)
-          usage.spentByUs += rate.pointsSpentThisHour - before;
+        if (rate.pointsSpentThisHour >= before) usage.spentByUs += rate.pointsSpentThisHour - before;
       }
       usage.queries += 1;
       if (body.errors?.length && !body.data) {
-        throw new Error(
-          `Warcraft Logs query error: ${body.errors.map((e) => e.message).join('; ')}`,
-        );
+        throw new Error(`Warcraft Logs query error: ${body.errors.map((e) => e.message).join('; ')}`);
       }
       if (body.errors?.length && !quiet) {
-        log(
-          `Warcraft Logs warning: ${body.errors
-            .map((e) => e.message)
-            .join('; ')
-            .slice(0, 300)}`,
-        );
+        log(`Warcraft Logs warning: ${body.errors.map((e) => e.message).join('; ').slice(0, 300)}`);
       }
       return body.data || {};
     }
@@ -182,9 +151,7 @@ export const fetchRaiderIoGuilds = async ({
     for (let attempt = 1; attempt <= 4 && !data; attempt += 1) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        const response = await fetchImpl(url, {
-          signal: AbortSignal.timeout(90000),
-        });
+        const response = await fetchImpl(url, { signal: AbortSignal.timeout(90000) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         // eslint-disable-next-line no-await-in-loop
         data = await response.json();
@@ -194,35 +161,23 @@ export const fetchRaiderIoGuilds = async ({
         await sleep(3000 * attempt);
       }
     }
-    if (!data)
-      throw new Error(`Raider.IO rankings page ${page} could not be loaded.`);
+    if (!data) throw new Error(`Raider.IO rankings page ${page} could not be loaded.`);
     const rows = data.raidRankings || [];
     rows.forEach((row) => {
       if (row.rank < minRank || row.rank > maxRank) return;
       const g = row.guild || {};
       const regionSlug = String(
-        typeof g.region === 'string'
-          ? g.region
-          : g.region?.slug || g.region?.short_name || '',
+        typeof g.region === 'string' ? g.region : g.region?.slug || g.region?.short_name || '',
       ).toLowerCase();
       if (region && regionSlug !== region.toLowerCase()) return;
-      const realm =
-        typeof g.realm === 'string'
-          ? { name: g.realm, slug: g.realm }
-          : g.realm || {};
+      const realm = typeof g.realm === 'string' ? { name: g.realm, slug: g.realm } : g.realm || {};
       const kills = {};
       (row.encountersDefeated || []).forEach((e) => {
-        kills[e.slug] = {
-          firstDefeated: e.firstDefeated,
-          lastDefeated: e.lastDefeated,
-        };
+        kills[e.slug] = { firstDefeated: e.firstDefeated, lastDefeated: e.lastDefeated };
       });
       const pulled = {};
       (row.encountersPulled || []).forEach((e) => {
-        pulled[e.slug] = {
-          numPulls: e.numPulls ?? null,
-          bestPercent: e.bestPercent ?? null,
-        };
+        pulled[e.slug] = { numPulls: e.numPulls ?? null, bestPercent: e.bestPercent ?? null };
       });
       guilds.push({
         name: g.name,

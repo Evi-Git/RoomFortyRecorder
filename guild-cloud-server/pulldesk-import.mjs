@@ -9,13 +9,7 @@
 // Warcraft Logs difficulty -> game difficulty ID.
 // 233 = flex Mythic (Kith'ix), in case Warcraft Logs passes it through.
 const WCL_TO_GAME = { 1: 17, 3: 14, 4: 15, 5: 16, 233: 233 };
-const GAME_NAMES = {
-  14: 'normal',
-  15: 'heroic',
-  16: 'mythic',
-  17: 'lfr',
-  233: 'mythic',
-};
+const GAME_NAMES = { 14: 'normal', 15: 'heroic', 16: 'mythic', 17: 'lfr', 233: 'mythic' };
 
 /** "https://www.warcraftlogs.com/reports/AbC123xyz#fight=3" -> "AbC123xyz". */
 export const reportCode = (value) => {
@@ -31,27 +25,19 @@ const massDeathOf = (deaths) => {
     const spell = deaths[i].killingBlow?.spellName;
     if (!spell) continue;
     const group = deaths.filter(
-      (d) =>
-        d.t >= deaths[i].t &&
-        d.t - deaths[i].t <= 2 &&
-        d.killingBlow?.spellName === spell,
+      (d) => d.t >= deaths[i].t && d.t - deaths[i].t <= 2 && d.killingBlow?.spellName === spell,
     );
-    if (group.length >= 5)
-      return { t: deaths[i].t, spellName: spell, count: group.length };
+    if (group.length >= 5) return { t: deaths[i].t, spellName: spell, count: group.length };
   }
   return null;
 };
 
 const roleSets = (playerDetails) => {
-  const details =
-    playerDetails?.data?.playerDetails || playerDetails?.playerDetails || {};
+  const details = playerDetails?.data?.playerDetails || playerDetails?.playerDetails || {};
   const roles = new Map();
   ['tanks', 'healers', 'dps'].forEach((key) => {
     (details[key] || []).forEach((p) => {
-      roles.set(
-        p.name,
-        key === 'tanks' ? 'tank' : key === 'healers' ? 'healer' : 'dps',
-      );
+      roles.set(p.name, key === 'tanks' ? 'tank' : key === 'healers' ? 'healer' : 'dps');
     });
   });
   return roles;
@@ -64,20 +50,12 @@ const roleSets = (playerDetails) => {
  * @param {Set<number>} gameDifficulties  difficulties to keep (game IDs)
  */
 export const pullsFromReport = (report, deathEvents, gameDifficulties) => {
-  const actors = new Map(
-    (report.masterData?.actors || []).map((a) => [a.id, a.name]),
-  );
-  const abilities = new Map(
-    (report.masterData?.abilities || []).map((a) => [a.gameID, a.name]),
-  );
+  const actors = new Map((report.masterData?.actors || []).map((a) => [a.id, a.name]));
+  const abilities = new Map((report.masterData?.abilities || []).map((a) => [a.gameID, a.name]));
   const roles = roleSets(report.playerDetails);
 
   return (report.fights || [])
-    .filter(
-      (fight) =>
-        fight.encounterID > 0 &&
-        gameDifficulties.has(WCL_TO_GAME[fight.difficulty]),
-    )
+    .filter((fight) => fight.encounterID > 0 && gameDifficulties.has(WCL_TO_GAME[fight.difficulty]))
     .map((fight) => {
       const duration = Math.round((fight.endTime - fight.startTime) / 100) / 10;
       const roster = (fight.friendlyPlayers || [])
@@ -101,9 +79,7 @@ export const pullsFromReport = (report, deathEvents, gameDifficulties) => {
         });
       const kill = Boolean(fight.kill);
       const raw = Number(fight.fightPercentage ?? 100);
-      const bossPercent = kill
-        ? 0
-        : Math.round((raw > 100 ? raw / 100 : raw) * 10) / 10;
+      const bossPercent = kill ? 0 : Math.round((raw > 100 ? raw / 100 : raw) * 10) / 10;
       const massDeath = kill ? null : massDeathOf(deaths);
       return {
         startedAt: report.startTime + fight.startTime,
@@ -147,10 +123,7 @@ export const fetchReportPulls = async (wcl, code, gameDifficulties) => {
   const report = data.reportData?.report;
   if (!report) throw new Error(`Report ${code} not found (is it private?)`);
   const fightIds = (report.fights || [])
-    .filter(
-      (f) =>
-        f.encounterID > 0 && gameDifficulties.has(WCL_TO_GAME[f.difficulty]),
-    )
+    .filter((f) => f.encounterID > 0 && gameDifficulties.has(WCL_TO_GAME[f.difficulty]))
     .map((f) => f.id);
   if (!fightIds.length) return { title: report.title, pulls: [] };
 
@@ -175,10 +148,7 @@ export const fetchReportPulls = async (wcl, code, gameDifficulties) => {
     if (!events?.nextPageTimestamp) break;
     start = events.nextPageTimestamp;
   }
-  return {
-    title: report.title,
-    pulls: pullsFromReport(report, deaths, gameDifficulties),
-  };
+  return { title: report.title, pulls: pullsFromReport(report, deaths, gameDifficulties) };
 };
 
 export { GAME_NAMES };
@@ -190,13 +160,9 @@ const quoted = (name) => `"${String(name).replace(/["\\]/g, '')}"`;
 /** A Warcraft Logs filter expression matching abilities by ID or name. */
 export const abilityFilter = (ids = [], names = []) => {
   const parts = [];
-  const cleanIds = [
-    ...new Set(ids.map(Number).filter((n) => Number.isInteger(n) && n > 0)),
-  ];
+  const cleanIds = [...new Set(ids.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
   if (cleanIds.length) parts.push(`ability.id in (${cleanIds.join(', ')})`);
-  [...new Set(names.filter(Boolean))].forEach((n) =>
-    parts.push(`ability.name = ${quoted(n)}`),
-  );
+  [...new Set(names.filter(Boolean))].forEach((n) => parts.push(`ability.name = ${quoted(n)}`));
   return parts.join(' or ');
 };
 
@@ -212,16 +178,9 @@ export const combatantArgs = (event) => {
     String(g?.itemLevel || 0),
     [String(g?.permanentEnchant || 0), String(g?.temporaryEnchant || 0), '0'],
     (g?.bonusIDs || []).map(String),
-    (g?.gems || []).flatMap((gem) => [
-      String(gem?.id || 0),
-      String(gem?.itemLevel || 0),
-    ]),
+    (g?.gems || []).flatMap((gem) => [String(gem?.id || 0), String(gem?.itemLevel || 0)]),
   ]);
-  args[29] = (event.auras || []).flatMap((a) => [
-    String(a.source ?? ''),
-    String(a.ability || 0),
-    String(a.stacks || 1),
-  ]);
+  args[29] = (event.auras || []).flatMap((a) => [String(a.source ?? ''), String(a.ability || 0), String(a.stacks || 1)]);
   return args;
 };
 
@@ -258,18 +217,10 @@ export const fetchFightMeters = async (wcl, code, fightIds) => {
   for (let i = 0; i < fightIds.length; i += 6) {
     const chunk = fightIds.slice(i, i + 6);
     const fields = chunk
-      .flatMap((id) =>
-        KINDS.map(
-          ([k, type]) =>
-            `${k}${id}: table(dataType: ${type}, fightIDs: [${Number(id)}])`,
-        ),
-      )
+      .flatMap((id) => KINDS.map(([k, type]) => `${k}${id}: table(dataType: ${type}, fightIDs: [${Number(id)}])`))
       .join('\n');
     // eslint-disable-next-line no-await-in-loop
-    const result = await wcl.query(
-      `query($code: String!) { reportData { report(code: $code) { ${fields} } } }`,
-      { code },
-    );
+    const result = await wcl.query(`query($code: String!) { reportData { report(code: $code) { ${fields} } } }`, { code });
     const report = result.reportData?.report || {};
     chunk.forEach((id) => {
       const fight = { seconds: 0, damage: [], healing: [], taken: [] };
@@ -283,11 +234,7 @@ export const fetchFightMeters = async (wcl, code, fightIds) => {
           }
         }
         const data = table?.data || table || {};
-        if (data.totalTime)
-          fight.seconds = Math.max(
-            fight.seconds,
-            Number(data.totalTime) / 1000,
-          );
+        if (data.totalTime) fight.seconds = Math.max(fight.seconds, Number(data.totalTime) / 1000);
         fight[key] = (data.entries || [])
           .filter((e) => e && e.name && Number(e.total) > 0)
           .map((e) => ({ name: String(e.name), total: Number(e.total) || 0 }));
@@ -303,12 +250,7 @@ export const fetchFightMeters = async (wcl, code, fightIds) => {
  * potions cast, for fights of one Warcraft Logs report.
  * @returns {Map<number, { players, auraNames, avoidable, potions }>} by fight ID
  */
-export const fetchReportExtras = async (
-  wcl,
-  code,
-  fightIds,
-  { abilityIds = [], abilityNames = [], potionNames = [] } = {},
-) => {
+export const fetchReportExtras = async (wcl, code, fightIds, { abilityIds = [], abilityNames = [], potionNames = [] } = {}) => {
   const meta = await wcl.query(
     `query($code: String!) { reportData { report(code: $code) {
       fights { id startTime }
@@ -318,21 +260,12 @@ export const fetchReportExtras = async (
   );
   const report = meta.reportData?.report;
   if (!report) throw new Error(`Report ${code} not found (is it private?)`);
-  const actors = new Map(
-    (report.masterData?.actors || []).map((a) => [a.id, a.name]),
-  );
-  const abilities = new Map(
-    (report.masterData?.abilities || []).map((a) => [a.gameID, a.name]),
-  );
-  const fightStart = new Map(
-    (report.fights || []).map((f) => [f.id, f.startTime]),
-  );
+  const actors = new Map((report.masterData?.actors || []).map((a) => [a.id, a.name]));
+  const abilities = new Map((report.masterData?.abilities || []).map((a) => [a.gameID, a.name]));
+  const fightStart = new Map((report.fights || []).map((f) => [f.id, f.startTime]));
 
   const byFight = new Map(
-    fightIds.map((id) => [
-      id,
-      { players: [], auraNames: {}, avoidable: new Map(), potions: {} },
-    ]),
+    fightIds.map((id) => [id, { players: [], auraNames: {}, avoidable: new Map(), potions: {} }]),
   );
 
   const infos = await allEvents(wcl, code, fightIds, 'CombatantInfo');
@@ -340,12 +273,7 @@ export const fetchReportExtras = async (
     const slot = byFight.get(e.fight);
     const name = actors.get(e.sourceID);
     if (!slot || !name || slot.players.some((p) => p.name === name)) return;
-    slot.players.push({
-      guid: String(e.sourceID),
-      name,
-      specId: Number(e.specID) || 0,
-      args: combatantArgs(e),
-    });
+    slot.players.push({ guid: String(e.sourceID), name, specId: Number(e.specID) || 0, args: combatantArgs(e) });
     (e.auras || []).forEach((a) => {
       const auraName = a.name || abilities.get(a.ability);
       if (auraName) slot.auraNames[a.ability] = auraName;
@@ -362,21 +290,14 @@ export const fetchReportExtras = async (
       if (!slot || !name || actors.has(e.sourceID)) return; // players only, from enemies
       const spellId = e.abilityGameID;
       const amount = Number(e.amount) || 0;
-      const row = slot.avoidable.get(name) || {
-        name,
-        hits: 0,
-        damage: 0,
-        bySpell: {},
-        spells: {},
-      };
+      const row = slot.avoidable.get(name) || { name, hits: 0, damage: 0, bySpell: {}, spells: {} };
       row.hits += 1;
       row.damage += amount;
       row.bySpell[spellId] = (row.bySpell[spellId] || 0) + 1;
       const spell = row.spells[spellId] || { hits: 0, damage: 0, times: [] };
       spell.hits += 1;
       spell.damage += amount;
-      const t =
-        Math.round((e.timestamp - (fightStart.get(e.fight) || 0)) / 100) / 10;
+      const t = Math.round((e.timestamp - (fightStart.get(e.fight) || 0)) / 100) / 10;
       const last = spell.times[spell.times.length - 1];
       if (!last || t - (last.end ?? last.t) > 5) {
         if (spell.times.length < 40) spell.times.push({ t, end: t });
@@ -403,9 +324,7 @@ export const fetchReportExtras = async (
       players: slot.players,
       auraNames: slot.auraNames,
       // Who cast buffs, for raiders without their own combatant info.
-      sourceNames: Object.fromEntries(
-        [...actors.entries()].map(([id, n]) => [String(id), n]),
-      ),
+      sourceNames: Object.fromEntries([...actors.entries()].map(([id, n]) => [String(id), n])),
       potions: slot.potions,
       avoidable: [...slot.avoidable.values()]
         .map((row) => ({

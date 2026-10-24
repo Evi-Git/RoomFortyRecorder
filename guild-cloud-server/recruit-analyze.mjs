@@ -52,27 +52,12 @@ export const DEFAULT_BOSSES = [
   },
 ];
 
-const norm = (value) =>
-  String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+const norm = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Tank and healer specs; every other spec is DPS. Used when a report's
 // playerDetails didn't say (older cached analyses).
-const TANK_SPECS = new Set([
-  'blood',
-  'vengeance',
-  'guardian',
-  'brewmaster',
-  'protection',
-]);
-const HEALER_SPECS = new Set([
-  'restoration',
-  'mistweaver',
-  'holy',
-  'discipline',
-  'preservation',
-]);
+const TANK_SPECS = new Set(['blood', 'vengeance', 'guardian', 'brewmaster', 'protection']);
+const HEALER_SPECS = new Set(['restoration', 'mistweaver', 'holy', 'discipline', 'preservation']);
 
 /** 'tank' | 'healer' | 'dps' | '' from a spec name (and class for Holy/Protection). */
 export const roleForSpec = (className, spec) => {
@@ -97,14 +82,10 @@ export const playerKey = (name, server) => `${name}-${serverSlug(server)}`;
 
 // Field names have varied between API versions; read whichever is present.
 const deathAbility = (event) =>
-  event.killingAbilityGameID ??
-  event.killingAbility?.guid ??
-  event.abilityGameID ??
-  null;
+  event.killingAbilityGameID ?? event.killingAbility?.guid ?? event.abilityGameID ?? null;
 const interruptedAbility = (event) =>
   event.extraAbilityGameID ?? event.extraAbility?.guid ?? null;
-const eventAbility = (event) =>
-  event.abilityGameID ?? event.ability?.guid ?? null;
+const eventAbility = (event) => event.abilityGameID ?? event.ability?.guid ?? null;
 const eventTarget = (event) => event.targetID ?? event.target?.id ?? null;
 const eventSource = (event) => event.sourceID ?? event.source?.id ?? null;
 
@@ -162,10 +143,8 @@ export const analyzeBossReport = ({
         mechanics: {},
       };
     }
-    if (!players[key].spec && specs?.get(actorId))
-      players[key].spec = specs.get(actorId);
-    if (!players[key].role && roles?.get(actorId))
-      players[key].role = roles.get(actorId);
+    if (!players[key].spec && specs?.get(actorId)) players[key].spec = specs.get(actorId);
+    if (!players[key].role && roles?.get(actorId)) players[key].role = roles.get(actorId);
     return players[key];
   };
 
@@ -186,10 +165,7 @@ export const analyzeBossReport = ({
     if (event.type && event.type !== 'death') return;
     const fight = fightById.get(event.fight);
     if (!fight) return;
-    deathsByFight.set(fight.id, [
-      ...(deathsByFight.get(fight.id) || []),
-      event,
-    ]);
+    deathsByFight.set(fight.id, [...(deathsByFight.get(fight.id) || []), event]);
   });
   deathsByFight.forEach((list, fightId) => {
     const fight = fightById.get(fightId);
@@ -233,8 +209,7 @@ export const analyzeBossReport = ({
       let actorId;
       if (mechanic.kind === 'interrupt') {
         if (event.type && event.type !== 'interrupt') return;
-        if (!wanted.has(norm(abilityName.get(interruptedAbility(event)))))
-          return;
+        if (!wanted.has(norm(abilityName.get(interruptedAbility(event))))) return;
         actorId = eventSource(event);
       } else {
         if (event.type && event.type !== 'applydebuff') return;
@@ -260,11 +235,7 @@ export const analyzeBossReport = ({
       (fight.friendlyPlayers || []).forEach((id) => {
         const player = playerFor(id);
         if (!player) return;
-        const m = player.mechanics[mechanic.id] || {
-          count: 0,
-          pulls: 0,
-          pullsDone: 0,
-        };
+        const m = player.mechanics[mechanic.id] || { count: 0, pulls: 0, pullsDone: 0 };
         const n = counts.get(player.key) || 0;
         m.count += n;
         m.pulls += 1;
@@ -292,11 +263,9 @@ export const mergeBossTotals = (total, part) => {
     }
     if (!t.spec && p.spec) t.spec = p.spec;
     if (!t.role && p.role) t.role = p.role;
-    ['pulls', 'kills', 'earlyDeaths', 'excusedDeaths', 'lateDeaths'].forEach(
-      (f) => {
-        t[f] += p[f];
-      },
-    );
+    ['pulls', 'kills', 'earlyDeaths', 'excusedDeaths', 'lateDeaths'].forEach((f) => {
+      t[f] += p[f];
+    });
     Object.entries(p.deathCauses).forEach(([cause, n]) => {
       t.deathCauses[cause] = (t.deathCauses[cause] || 0) + n;
     });
@@ -340,8 +309,7 @@ export const progressionFights = (reports) => {
   let firstKill = Infinity;
   reports.forEach((report) => {
     report.fights.forEach((fight) => {
-      if (fight.kill)
-        firstKill = Math.min(firstKill, report.reportStart + fight.startTime);
+      if (fight.kill) firstKill = Math.min(firstKill, report.reportStart + fight.startTime);
     });
   });
   const selected = new Map();
@@ -357,13 +325,10 @@ export const progressionFights = (reports) => {
 /** Spec name per actor from report.playerDetails JSON. */
 export const specsFromPlayerDetails = (details) => {
   const specs = new Map();
-  const data =
-    details?.data?.playerDetails || details?.playerDetails || details || {};
+  const data = details?.data?.playerDetails || details?.playerDetails || details || {};
   ['tanks', 'healers', 'dps'].forEach((role) => {
     (data[role] || []).forEach((player) => {
-      const top = [...(player.specs || [])].sort(
-        (a, b) => (b.count || 0) - (a.count || 0),
-      )[0];
+      const top = [...(player.specs || [])].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
       const spec = top?.spec || player.spec || '';
       if (player.id !== undefined && spec) specs.set(player.id, spec);
     });
@@ -374,13 +339,8 @@ export const specsFromPlayerDetails = (details) => {
 /** Role per actor ('tank' | 'healer' | 'dps') from report.playerDetails JSON. */
 export const rolesFromPlayerDetails = (details) => {
   const roles = new Map();
-  const data =
-    details?.data?.playerDetails || details?.playerDetails || details || {};
-  [
-    ['tanks', 'tank'],
-    ['healers', 'healer'],
-    ['dps', 'dps'],
-  ].forEach(([key, role]) => {
+  const data = details?.data?.playerDetails || details?.playerDetails || details || {};
+  [['tanks', 'tank'], ['healers', 'healer'], ['dps', 'dps']].forEach(([key, role]) => {
     (data[key] || []).forEach((player) => {
       if (player.id !== undefined) roles.set(player.id, role);
     });
@@ -399,22 +359,14 @@ export const parseSummary = (rankings, specName) => {
     .sort((a, b) => a - b);
   if (!percents.length) {
     return {
-      best:
-        typeof rankings?.bestRank?.rankPercent === 'number'
-          ? rankings.bestRank.rankPercent
-          : null,
-      median:
-        typeof rankings?.medianPerformance === 'number'
-          ? rankings.medianPerformance
-          : null,
+      best: typeof rankings?.bestRank?.rankPercent === 'number' ? rankings.bestRank.rankPercent : null,
+      median: typeof rankings?.medianPerformance === 'number' ? rankings.medianPerformance : null,
       kills: rankings?.totalKills ?? 0,
     };
   }
   const mid = Math.floor(percents.length / 2);
   const median =
-    percents.length % 2
-      ? percents[mid]
-      : (percents[mid - 1] + percents[mid]) / 2;
+    percents.length % 2 ? percents[mid] : (percents[mid - 1] + percents[mid]) / 2;
   return {
     best: percents[percents.length - 1],
     median,
