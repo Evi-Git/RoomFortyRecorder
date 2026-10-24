@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.39] - Unreleased
+### Fixed
+- The server updater didn't install `icon-pack.mjs`, so updating the server to 1.9.38 failed and rolled back. It's in the updater's file list now, and a test checks that every file the server needs is on that list.
+
 ## [1.9.38] - Unreleased
 ### Added
 - **HD icon packs on the guild server:** point `GUILD_CLOUD_ICON_DIR` at an unzipped icon pack, such as Clean Icons - Mechagnome Edition, and every raider's app shows those icons. The server reads the game's own formats (BLP and TGA) and turns each icon into a PNG the first time it's asked for. The folder can be laid out any way, and a pack added later is picked up without a restart.
