@@ -52,6 +52,40 @@ const fakeBlizzard = () => {
       return ok({ results: [{ data: { id: 1999, name: { en_US: "Kith'ix (old)" } } }, { data: { id: 2896, name: { en_US: "Kith'ix" } } }] });
     }
     if (u.includes('/journal-encounter/2896')) return ok(KITHIX);
+    if (u.includes('/talent-tree/index')) {
+      return ok({
+        spec_talent_trees: [
+          { key: { href: 'https://api.example/data/wow/talent-tree/786/playable-specialization/262?namespace=static-us' } },
+          { key: { href: 'https://api.example/data/wow/talent-tree/786/playable-specialization/264?namespace=static-us' } },
+        ],
+      });
+    }
+    if (u.includes('/talent-tree/786/playable-specialization/264')) {
+      return ok({
+        class_talent_nodes: [
+          {
+            id: 80978,
+            ranks: [
+              { rank: 1, tooltip: { talent: { id: 101844 }, spell_tooltip: { spell: { id: 381650, name: 'Elemental Warding' }, description: 'Reduces all magic damage taken by 2%.' } } },
+              { rank: 2, tooltip: { talent: { id: 101844 }, spell_tooltip: { spell: { id: 381650, name: 'Elemental Warding' }, description: 'Reduces all magic damage taken by 4%.' } } },
+            ],
+          },
+          {
+            id: 80990,
+            ranks: [
+              {
+                rank: 1,
+                choice_of_tooltips: [
+                  { talent: { id: 101861 }, spell_tooltip: { spell: { id: 1, name: 'Choice A' }, description: 'A.' } },
+                  { talent: { id: 101862 }, spell_tooltip: { spell: { id: 2, name: 'Choice B' }, description: 'B.' } },
+                ],
+              },
+            ],
+          },
+        ],
+        spec_talent_nodes: [],
+      });
+    }
     if (u.includes('/media/spell/')) {
       const id = /spell\/(\d+)/.exec(u)[1];
       return ok({ assets: [{ key: 'icon', value: `https://render.example/icons/56/${id}.jpg` }] });
@@ -197,4 +231,23 @@ test('pull desk journal routes: boss view, ability card, avoidable toggle, journ
 
   const set = await call('PUT', ['bosses', '3500', 'journal'], { journalId: 'https://wowjournal.example/#encounter=2896' });
   assert.equal(set.body.journalId, 2896);
+});
+
+test('talent trees: node and entry IDs to spells, fetched once per spec', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  const { calls, fetchImpl } = fakeBlizzard();
+  const journal = createJournal({ storage, env, fetchImpl });
+  const tree = await journal.talents(264);
+  assert.equal(tree.nodes[80978][1].options[0].text, 'Reduces all magic damage taken by 4%.');
+  assert.deepEqual(
+    tree.nodes[80990][0].options.map((o) => [o.entryId, o.name]),
+    [
+      [101861, 'Choice A'],
+      [101862, 'Choice B'],
+    ],
+  );
+  const before = calls.length;
+  await journal.talents(264);
+  assert.equal(calls.length, before);
+  assert.deepEqual((await journal.talents(999)).nodes, {});
 });

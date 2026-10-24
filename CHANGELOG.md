@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.36] - Unreleased
+### Added
+- **Passive reduction talents in damage prevented** (Healing, with "Damage prevented" and "+ passives" on): each raider's talents are read from the combat log and looked up in Blizzard's talent data (by the guild server, once per spec, kept for a week). Talents that always reduce damage taken, like Elemental Warding and Elemental Resistance, get their own rows at the percentage their description gives, for the damage schools they cover. What's left of the raider's usual cut of magic damage shows as "Versatility & other passives (estimate)".
+- Talents whose reduction only applies sometimes ("for 8 sec", "while...", area damage) are left out; cooldowns are still counted from their auras.
+
 ## [1.9.35] - Unreleased
 ### Changed
 - **Trends count kills only:** the first kill on each boss, then every reclear kill. Wipes are left out.

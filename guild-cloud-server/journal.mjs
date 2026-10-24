@@ -448,5 +448,82 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   /** The untouched API answer, for checking what Blizzard sends. */
   const raw = (journalId) => readJson(`raw-${Number(journalId)}.json`, null);
 
-  return { configured, encounter, spell, spells, raw };
+  // ---- Talent trees: what COMBATANT_INFO's talent IDs are ------------------
+  //
+  // The combat log lists each raider's talents as (node ID, entry ID, rank).
+  // Blizzard's talent tree for their spec says which spell (and description,
+  // with that rank's numbers) each node and entry is. Fetched once per spec
+  // and kept for a week (talents change with patches).
+
+  const TALENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const talentInFlight = new Map();
+
+  /** Every node with its rank tooltips, wherever the API nests them. */
+  const talentNodes = (tree) => {
+    const out = {};
+    const tooltipOf = (t) => {
+      const spell = t?.spell_tooltip?.spell;
+      if (!spell?.id) return null;
+      return {
+        entryId: Number(t?.talent?.id) || 0,
+        spellId: Number(spell.id),
+        name: spell.name || t?.talent?.name || '',
+        text: String(t?.spell_tooltip?.description || ''),
+      };
+    };
+    const walk = (value) => {
+      if (Array.isArray(value)) {
+        value.forEach(walk);
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+      if (Number.isInteger(value.id) && Array.isArray(value.ranks)) {
+        const ranks = value.ranks
+          .map((r) => {
+            const options = [r.tooltip, ...(r.choice_of_tooltips || [])].map(tooltipOf).filter(Boolean);
+            return options.length ? { rank: Number(r.rank) || 1, options } : null;
+          })
+          .filter(Boolean);
+        if (ranks.length) out[value.id] = ranks;
+      }
+      Object.values(value).forEach(walk);
+    };
+    walk(tree);
+    return out;
+  };
+
+  const fetchTalents = async (specId) => {
+    const index = await api('/data/wow/talent-tree/index');
+    const hrefs = JSON.stringify(index || {}).match(/talent-tree\/\d+\/playable-specialization\/\d+/g) || [];
+    const route = hrefs.find((h) => h.endsWith(`/playable-specialization/${specId}`));
+    if (!route) return { specId, nodes: {} };
+    const tree = await api(`/data/wow/${route}`);
+    return { specId, nodes: talentNodes(tree) };
+  };
+
+  /** A spec's talent nodes: node ID -> ranks -> spells (with descriptions). */
+  const talents = async (specIdValue) => {
+    const specId = Number(specIdValue);
+    if (!Number.isInteger(specId) || specId <= 0) return null;
+    if (!configured) return null;
+    const file = `talents-${specId}.json`;
+    const cached = await readJson(file, null);
+    if (cached && Date.now() - (cached.at || 0) < TALENT_TTL_MS) return cached;
+    if (!talentInFlight.has(specId)) {
+      talentInFlight.set(
+        specId,
+        fetchTalents(specId)
+          .then(async (data) => {
+            const value = { ...data, at: Date.now() };
+            if (Object.keys(data.nodes).length) await writeJson(file, value);
+            return value;
+          })
+          .catch(() => cached)
+          .finally(() => talentInFlight.delete(specId)),
+      );
+    }
+    return talentInFlight.get(specId);
+  };
+
+  return { configured, encounter, spell, spells, raw, talents };
 };
