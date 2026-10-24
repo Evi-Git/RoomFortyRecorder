@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.38] - Unreleased
+### Added
+- **HD icon packs on the guild server:** point `GUILD_CLOUD_ICON_DIR` at an unzipped icon pack, such as Clean Icons - Mechagnome Edition, and every raider's app shows those icons. The server reads the game's own formats (BLP and TGA) and turns each icon into a PNG the first time it's asked for. The folder can be laid out any way, and a pack added later is picked up without a restart.
+- Icons the app saved earlier are checked with the server once a day, so a pack added later replaces them.
+
 ## [1.9.37] - Unreleased
 ### Added
 - **Buffs that cut damage taken count as mitigations**, credited to whoever cast them: Elemental Resistance (from Healing Stream Totem) and any other raider buff whose description says it reduces damage taken. The percentage and damage schools come from the buff's description, or from the caster's talent of the same name; it counts only while the buff is up. Talents already counted as always-on passives aren't counted twice.

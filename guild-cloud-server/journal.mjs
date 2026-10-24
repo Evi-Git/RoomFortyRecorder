@@ -12,6 +12,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { toPng } from './icon-pack.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const JOURNAL_TTL = DAY;
@@ -451,10 +452,13 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   // kept under journal/icons/ for good, so raiders' apps load them from this
   // server instead of each reaching Blizzard's or Wowhead's image servers.
   // Sources, first that has it:
-  //   GUILD_CLOUD_ICON_DIR       a folder of icons on this machine (e.g. an
-  //                              upscaled HD pack), files named <icon>.png/.jpg
-  //   GUILD_CLOUD_ICON_PACK_URL  a URL template, {name} = icon name, e.g. a
-  //                              GitHub raw link to an HD pack
+  //   GUILD_CLOUD_ICON_DIR       a folder of icons on this machine, e.g. an
+  //                              upscaled HD pack's ICONS folder. Any layout;
+  //                              files named <icon>.blp/.tga/.png/.jpg (game
+  //                              formats are turned into PNGs once, kept in
+  //                              journal/icons-pack/)
+  //   GUILD_CLOUD_ICON_PACK_URL  a URL template, {name} = icon name, for a
+  //                              pack hosted as separate image files
   //   Blizzard's render server, then Wowhead's icon CDN.
   const ICON_TYPES = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
   const iconDir = path.join(dir, 'icons');
@@ -471,6 +475,59 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
     if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpg';
     if (bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP') return 'webp';
     return null;
+  };
+  // The pack folder's files by icon name, read again when a name isn't
+  // there and the last look was a while ago (a pack added without a restart).
+  const PACK_EXTS = ['png', 'jpg', 'webp', 'blp', 'tga'];
+  let packIndex = null;
+  let packIndexedAt = 0;
+  const indexPack = async () => {
+    const found = new Map();
+    const walk = async (folder, depth) => {
+      let entries = [];
+      try {
+        entries = await fsp.readdir(folder, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const full = path.join(folder, entry.name);
+        if (entry.isDirectory()) {
+          if (depth < 4) await walk(full, depth + 1);
+          continue;
+        }
+        const m = /^(.+)\.([a-z]+)$/i.exec(entry.name);
+        const ext = m?.[2].toLowerCase();
+        if (!m || !PACK_EXTS.includes(ext)) continue;
+        const key = m[1].toLowerCase();
+        const known = found.get(key);
+        // Browser formats first, then BLP, then TGA.
+        if (!known || PACK_EXTS.indexOf(ext) < PACK_EXTS.indexOf(known.ext)) found.set(key, { file: full, ext });
+      }
+    };
+    await walk(packDir, 0);
+    packIndex = found;
+    packIndexedAt = Date.now();
+  };
+  const packCacheDir = path.join(dir, 'icons-pack');
+  const readPack = async (name) => {
+    if (!packDir) return null;
+    const cached = await readIcon(packCacheDir, name);
+    if (cached) return cached;
+    if (!packIndex || (!packIndex.has(name) && Date.now() - packIndexedAt > 10 * 60 * 1000)) await indexPack();
+    const hit = packIndex.get(name);
+    if (!hit) return null;
+    try {
+      const bytes = await fsp.readFile(hit.file);
+      const png = ICON_TYPES[hit.ext] ? (imageType(bytes) ? bytes : null) : toPng(bytes, hit.ext);
+      if (!png) return null;
+      const ext = imageType(png);
+      await fsp.mkdir(packCacheDir, { recursive: true });
+      await fsp.writeFile(path.join(packCacheDir, `${name}.${ext}`), png);
+      return { bytes: png, type: ICON_TYPES[ext] };
+    } catch {
+      return null;
+    }
   };
   const readIcon = async (folder, name) => {
     for (const ext of Object.keys(ICON_TYPES)) {
@@ -505,7 +562,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch }) => {
   const icon = async (rawName) => {
     const name = String(rawName || '').toLowerCase();
     if (!/^[a-z0-9_-]{1,120}$/.test(name)) return null;
-    const local = (packDir && (await readIcon(packDir, name))) || (await readIcon(iconDir, name));
+    const local = (await readPack(name)) || (await readIcon(iconDir, name));
     if (local) return local;
     if (Date.now() - (iconMissing.get(name) || 0) < NOT_FOUND_TTL) return null;
     if (!iconFlight.has(name)) {
