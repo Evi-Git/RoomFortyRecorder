@@ -282,6 +282,15 @@ contextBridge.exposeInMainWorld('electron', {
       return ipcRenderer.invoke('createDiagsBundle');
     },
 
+    getLogDiagnostics(): Promise<{
+      dir: string;
+      files: string[];
+      lines: string[];
+      error?: string;
+    }> {
+      return ipcRenderer.invoke('getLogDiagnostics');
+    },
+
     openSystemExplorer(path: string) {
       ipcRenderer.send('systemExplorer', path);
     },

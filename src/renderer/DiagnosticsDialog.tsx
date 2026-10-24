@@ -8,7 +8,7 @@ import {
 import { Button } from './components/Button/Button';
 import { Dispatch, ReactNode, SetStateAction, useState } from 'react';
 import { AppState } from 'main/types';
-import { ExternalLink, FileText, Package } from 'lucide-react';
+import { ClipboardCopy, ExternalLink, FileText, Package } from 'lucide-react';
 import Spinner from './components/Spinner/Spinner';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
@@ -27,6 +27,42 @@ const DiagnosticsDialog = (props: IProps) => {
   const [open, setOpen] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [bundlePath, setBundlePath] = useState('');
+  const [logDir, setLogDir] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
+
+  const loadLogDir = async () => {
+    try {
+      const result = await ipc.getLogDiagnostics();
+      setLogDir(result.dir);
+    } catch {
+      setLogDir('');
+    }
+  };
+
+  const copyIconLogLines = async () => {
+    setCopyStatus('Reading logs…');
+    try {
+      const result = await ipc.getLogDiagnostics();
+      setLogDir(result.dir);
+      if (result.error) {
+        setCopyStatus(`Could not read the logs: ${result.error}`);
+        return;
+      }
+      const text = [
+        `Log folder: ${result.dir}`,
+        `Files: ${result.files.join(', ') || '(none)'}`,
+        ...result.lines,
+      ].join('\n');
+      ipc.sendMessage('writeClipboard', [text]);
+      setCopyStatus(
+        result.lines.length
+          ? `Copied ${result.lines.length} lines. Paste them into the chat.`
+          : 'Copied, but no icon lines were found yet. Open a raider breakdown first.',
+      );
+    } catch (error) {
+      setCopyStatus(`Could not read the logs: ${String(error)}`);
+    }
+  };
 
   const openLogPath = () => {
     ipc.sendMessage('logPath', ['open']);
@@ -112,6 +148,8 @@ const DiagnosticsDialog = (props: IProps) => {
         if (open) {
           setZipping(false);
           setBundlePath('');
+          setCopyStatus('');
+          void loadLogDir();
         }
       }}
     >
@@ -130,6 +168,26 @@ const DiagnosticsDialog = (props: IProps) => {
         <div className="flex flex-row items-start gap-4 w-full items-center justify-center">
           {renderOpenLogFolder()}
           {bundlePath ? renderOpenBundleLocation() : renderCreateDiagsBundle()}
+        </div>
+
+        <div className="flex flex-col items-center gap-2 w-full">
+          <Button
+            id="copy-icon-log-button"
+            type="button"
+            variant="outline"
+            onClick={() => void copyIconLogLines()}
+          >
+            <ClipboardCopy size={20} className="mr-2" />
+            Copy icon log lines
+          </Button>
+          {copyStatus && (
+            <p className="text-sm text-foreground text-center">{copyStatus}</p>
+          )}
+          {logDir && (
+            <p className="text-xs text-foreground-lighter break-all select-text text-center">
+              {logDir}
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.44] - Unreleased
+### Fixed
+- **Open Log Folder works again:** the diagnostics dialog's button now opens the log folder directly (creating it if needed) instead of asking Explorer to highlight it, which did nothing on some PCs.
+
+### Added
+- **Copy icon log lines** in the diagnostics dialog (page icon at the bottom of the sidebar): copies the recent spell icon and Logs page lines from the newest app logs to the clipboard, ready to paste. The dialog also shows the log folder's path.
+
 ## [1.9.43] - Unreleased
 ### Fixed
 - **Spell lookups no longer wait on Warcraft Logs' hourly limit:** when the guild's Warcraft Logs points ran low, its client paused for up to an hour, and spell icon and name lookups that reached it waited with it. They now give up after 8 seconds and try again later.

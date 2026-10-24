@@ -98,6 +98,12 @@ declare global {
         clipVideo(video: RendererVideo, offset: number, duration: number): void;
         getHardwareAcceleration(): boolean;
         createDiagsBundle(): Promise<string>;
+        getLogDiagnostics(): Promise<{
+          dir: string;
+          files: string[];
+          lines: string[];
+          error?: string;
+        }>;
         openSystemExplorer(path: string): void;
         setOpenInstantReplayFile(path: string | null): void;
         refreshCombatLogStatus(): void;

@@ -11,6 +11,7 @@ import {
   protocol,
 } from 'electron';
 import os from 'os';
+import fs from 'fs';
 import { uIOhook } from 'uiohook-napi';
 import assert from 'assert';
 import { getLocalePhrase, Language } from 'localisation/translations';
@@ -440,7 +441,56 @@ ipcMain.handle('selectImage', async () => {
 ipcMain.on('logPath', (_event, args) => {
   if (args[0] === 'open') {
     const logDir = getApplicationLogDir();
-    openSystemExplorer(logDir);
+    // `explorer /select` on a folder silently does nothing in some setups,
+    // so open the folder itself (making sure it exists) and fall back.
+    fs.promises
+      .mkdir(logDir, { recursive: true })
+      .then(() => shell.openPath(logDir))
+      .then((error) => {
+        if (!error) return;
+        console.warn('[Main] Could not open log folder', logDir, error);
+        openSystemExplorer(logDir);
+      })
+      .catch((error) => {
+        console.warn('[Main] Could not open log folder', logDir, error);
+        openSystemExplorer(logDir);
+      });
+  }
+});
+
+/**
+ * Where the application logs are, plus the recent icon/Logs-page lines from
+ * the newest log files, so they can be copied without hunting for files.
+ */
+ipcMain.handle('getLogDiagnostics', async () => {
+  const dir = getApplicationLogDir();
+  const pattern = /\[(SpellIcons|PullDesk|Logging)\]|rficon|journal/;
+  try {
+    const names = (await fs.promises.readdir(dir)).filter(
+      (name) => name.startsWith('RoomFortyRecorder') && name.endsWith('.log'),
+    );
+    const stats = await Promise.all(
+      names.map(async (name) => ({
+        file: path.join(dir, name),
+        mtime: (await fs.promises.stat(path.join(dir, name))).mtimeMs,
+      })),
+    );
+    stats.sort((a, b) => b.mtime - a.mtime);
+    const newest = stats.slice(0, 3).reverse();
+    const lines: string[] = [];
+    for (const { file } of newest) {
+      const text = await fs.promises.readFile(file, 'utf8');
+      for (const line of text.split(/\r?\n/)) {
+        if (pattern.test(line)) lines.push(line);
+      }
+    }
+    return {
+      dir,
+      files: newest.map((f) => path.basename(f.file)),
+      lines: lines.slice(-400),
+    };
+  } catch (error) {
+    return { dir, files: [], lines: [], error: String(error) };
   }
 });
 
