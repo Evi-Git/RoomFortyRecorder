@@ -345,3 +345,101 @@ export const AbilityPicker = ({
     </div>
   );
 };
+
+/**
+ * Healing: raiders whose healing received is left out ("exclude healing
+ * to"), as many as wanted.
+ */
+export const ExcludeTargetsPicker = ({
+  value,
+  options,
+  onChange,
+}: {
+  value: string[];
+  options: { guid: string; name: string; color: string }[];
+  onChange: (guids: string[]) => void;
+}) => {
+  const { open, setOpen, box } = usePopover();
+  const [search, setSearch] = React.useState('');
+  const names = new Map(options.map((o) => [o.guid, o.name]));
+  const label = !value.length
+    ? 'Healing to everyone'
+    : value.length === 1
+      ? `Not to ${names.get(value[0]) ?? '?'}`
+      : `Not to ${value.length} raiders`;
+  const shown = options.filter((o) =>
+    o.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const toggle = (guid: string) =>
+    onChange(
+      value.includes(guid) ? value.filter((v) => v !== guid) : [...value, guid],
+    );
+  return (
+    <div className="relative" ref={box}>
+      <button
+        type="button"
+        className={`${button} ${value.length ? 'border-brand/60' : ''}`}
+        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Leave out healing done to some raiders"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown size={13} className="shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-40 w-[280px] rounded-md border border-card bg-background shadow-xl text-xs">
+          <div className="flex items-center gap-x-2 p-2 border-b border-card">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search raiders"
+              className="flex-1 bg-card rounded px-2 h-7 text-xs text-foreground-lighter border border-background"
+              aria-label="Search raiders"
+            />
+            {value.length > 0 && (
+              <button
+                type="button"
+                className="text-brand hover:underline"
+                onClick={() => onChange([])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-[360px] overflow-y-auto">
+            {shown.map((o) => {
+              const on = value.includes(o.guid);
+              return (
+                <button
+                  key={o.guid}
+                  type="button"
+                  onClick={() => toggle(o.guid)}
+                  className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${on ? 'bg-brand/10' : 'hover:bg-card/40'}`}
+                  aria-pressed={on}
+                >
+                  <span
+                    className={`w-3.5 h-3.5 shrink-0 rounded-sm border flex items-center justify-center ${on ? 'border-brand bg-brand/30' : 'border-card'}`}
+                  >
+                    {on && <X size={10} />}
+                  </span>
+                  <span className="truncate" style={{ color: o.color }}>
+                    {o.name}
+                  </span>
+                </button>
+              );
+            })}
+            {!shown.length && (
+              <p className="m-0 p-2 text-foreground">No raiders match.</p>
+            )}
+          </div>
+          <div className="px-2 py-1 text-[10px] text-foreground border-t border-card">
+            Healing received by ticked raiders is left out of every table and
+            chart.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

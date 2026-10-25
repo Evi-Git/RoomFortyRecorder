@@ -20,6 +20,8 @@ export type Filters = {
   enemy: EnemyFilter | null;
   /** Abilities (spell IDs); empty = all. */
   abilities: number[];
+  /** Healing: leave out what went to these raiders (GUIDs). */
+  healExclude: string[];
   /** Stop counting each pull after this many raider deaths (0 = off). */
   deathCutoff: number;
   /** Extra condition from the filter expression. */
@@ -32,6 +34,7 @@ export const DEFAULT_FILTERS: Filters = {
   pets: false,
   enemy: null,
   abilities: [],
+  healExclude: [],
   deathCutoff: 0,
   expr: null,
 };
@@ -364,6 +367,13 @@ const newAbility = (
 });
 
 /** Does event i belong in this meter, and whose row (by unit) is it. */
+/** Healing to this unit (or its owner) is left out of the view. */
+export const excludedTarget = (ctx: Ctx, p: PullStore, unit: number) => {
+  const list = ctx.filters.healExclude;
+  if (!list.length || unit < 0) return false;
+  return list.includes(p.units[p.units[unit].root].guid);
+};
+
 const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
   const { side, enemy } = ctx.filters;
   const kind = p.k[i];
@@ -386,6 +396,7 @@ const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
     if (side === 'friendly' ? !isRaiderSide(p, s) : !isEnemy(p, s)) return -1;
     if (kind === K.HEAL && side === 'friendly' && !p.units[d]?.friendly)
       return -1;
+    if (excludedTarget(ctx, p, d)) return -1;
     if (enemy && side === 'enemy' && !enemyOk(ctx, p, s)) return -1;
     return s;
   }
@@ -1361,6 +1372,7 @@ export const preventedRows = (
       const d = p.d[i];
       if (d < 0 || !p.units[d].raider) continue;
       if (NOT_REDUCED.has(p.spells[p.sp[i]]?.id ?? 0)) continue;
+      if (excludedTarget(ctx, p, d)) continue;
       const list = spans.get(d) ?? [];
       if (!list.length && !opts.passive) continue;
       if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
