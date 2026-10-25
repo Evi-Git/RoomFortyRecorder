@@ -941,6 +941,163 @@ export const auraRows = (
     .sort((a, b) => b.uptime - a.uptime);
 };
 
+export type AuraTarget = RowRef & {
+  /** [start, end, stacks] on the combined timeline. */
+  spans: [number, number, number][];
+  uptime: number;
+  count: number;
+  /** When it went on (combined timeline). */
+  starts: number[];
+  maxStacks: number;
+};
+
+export type AuraDetail = {
+  spellId: number;
+  name: string;
+  targets: AuraTarget[];
+  /** Who put it on, with counts. */
+  sources: [RowRef, number][];
+  maxStacks: number;
+  /** Seconds per value in the series below. */
+  step: number;
+  /** How many of the targets had it, and their stacks added up. */
+  holders: Float64Array;
+  stacks: Float64Array;
+};
+
+/**
+ * One buff or debuff: who had it when (with stacks), who put it on, and how
+ * many had it over time. Same choice of auras as auraRows (`debuffs`, the
+ * side, `who`); the slice is ignored so the whole fight can be drawn.
+ */
+export const auraDetail = (
+  ctxIn: Ctx,
+  spellId: number,
+  opts: { debuffs: boolean; who: string | null },
+): AuraDetail => {
+  const ctx = { ...ctxIn, filters: { ...ctxIn.filters, range: null } };
+  const onEnemy = ctx.filters.side === 'enemy';
+  const step = 0.25;
+  const n = Math.max(1, Math.ceil(ctx.total / step));
+  const holders = new Float64Array(n);
+  const stacks = new Float64Array(n);
+  const targets = new Map<string, AuraTarget>();
+  const sources = new Map<string, [RowRef, number]>();
+  let name = '';
+  let maxStacks = 1;
+  ctx.pulls.forEach((p, pi) => {
+    const [from, to] = window_(ctx, pi);
+    const off = ctx.offsets[pi];
+    const { bosses } = enemyInfo(p);
+    const spellIdx = new Set<number>();
+    p.spells.forEach((sp, i) => {
+      if (sp.id === spellId) spellIdx.add(i);
+    });
+    if (!spellIdx.size) return;
+    // Stack changes: target -> [t, stacks].
+    const doses = new Map<number, [number, number][]>();
+    for (let i = 0; i < p.n; i += 1) {
+      if (p.k[i] !== K.DOSE || !spellIdx.has(p.sp[i])) continue;
+      const list = doses.get(p.d[i]) ?? [];
+      list.push([p.t[i], p.x[i]]);
+      doses.set(p.d[i], list);
+    }
+    p.auras.forEach((a) => {
+      if (!spellIdx.has(a.spell) || a.debuff !== opts.debuffs) return;
+      const target = a.dst >= 0 ? p.units[a.dst] : null;
+      if (!target) return;
+      if (onEnemy) {
+        if (!isEnemy(p, a.dst)) return;
+        if (ctx.filters.enemy) {
+          if (!enemyOk(ctx, p, a.dst)) return;
+        } else if (!bosses.has(p.units[target.root].npcId)) return;
+        if (a.src < 0 || !isRaiderSide(p, a.src)) return;
+      } else {
+        if (!target.raider) return;
+        if (opts.who && target.guid !== opts.who) return;
+      }
+      const s0 = Math.max(from, a.start);
+      const e0 = Math.min(to, a.end);
+      if (e0 <= s0) return;
+      name = p.spells[a.spell].name;
+      const ref = rowOf(p, a.dst, true);
+      if (!ref) return;
+      // Enemies with one name are one row; each instance would be noise.
+      let row = targets.get(ref.key);
+      if (!row) {
+        row = {
+          ...ref,
+          spans: [],
+          uptime: 0,
+          count: 0,
+          starts: [],
+          maxStacks: 1,
+        };
+        targets.set(ref.key, row);
+      }
+      if (a.start >= from) {
+        row.count += 1;
+        row.starts.push(off + a.start);
+      }
+      const caster = a.src >= 0 ? rowOf(p, a.src, false) : null;
+      if (caster) {
+        const known = sources.get(caster.key) ?? [caster, 0];
+        known[1] += 1;
+        sources.set(caster.key, known);
+      }
+      // Pieces with their stack count, clipped to what's in view.
+      const target_ = row;
+      const piece = (x: number, y: number, c: number) => {
+        const lo = Math.max(x, s0);
+        const hi = Math.min(y, e0);
+        if (hi > lo) target_.spans.push([off + lo, off + hi, c]);
+      };
+      let at = a.start;
+      let count = 1;
+      (doses.get(a.dst) ?? []).forEach(([t, c]) => {
+        if (t <= a.start || t >= a.end) return;
+        piece(at, t, count);
+        at = t;
+        count = Math.max(1, c);
+        target_.maxStacks = Math.max(target_.maxStacks, count);
+      });
+      piece(at, a.end, count);
+    });
+  });
+  targets.forEach((row) => {
+    row.spans.sort((x, y) => x[0] - y[0]);
+    row.uptime = mergeSpans(row.spans.map(([s0, e0]) => [s0, e0])).reduce(
+      (sum, [s0, e0]) => sum + e0 - s0,
+      0,
+    );
+    maxStacks = Math.max(maxStacks, row.maxStacks);
+    // Each target counts once at a moment, with its highest stack then.
+    const own = new Float64Array(n);
+    row.spans.forEach(([s0, e0, c]) => {
+      for (let i = Math.floor(s0 / step); i < Math.min(n, e0 / step); i += 1)
+        own[i] = Math.max(own[i], c);
+    });
+    own.forEach((c, i) => {
+      if (c > 0) {
+        holders[i] += 1;
+        stacks[i] += c;
+      }
+    });
+  });
+  return {
+    spellId,
+    name,
+    targets: [...targets.values()].sort(
+      (x, y) => y.uptime - x.uptime || x.name.localeCompare(y.name),
+    ),
+    sources: [...sources.values()].sort((x, y) => y[1] - x[1]),
+    maxStacks,
+    step,
+    holders,
+    stacks,
+  };
+};
+
 /* ------------------------------------------------------------------ */
 /* Interrupts, dispels, casts, resources, deaths                       */
 /* ------------------------------------------------------------------ */

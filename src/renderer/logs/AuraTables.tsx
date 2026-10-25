@@ -3,6 +3,7 @@ import { AuraCategory, auraRows, AuraRow, Ctx, viewSeconds } from './query';
 import { pct, thousands } from './format';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
+import AuraDetail from './AuraDetail';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables grouped
@@ -91,6 +92,7 @@ const Section = ({
   bands,
   debuffs,
   onPick,
+  onOpen,
 }: {
   title: string;
   rows: AuraRow[];
@@ -99,6 +101,7 @@ const Section = ({
   bands: [number, number][];
   debuffs: boolean;
   onPick?: (t: number) => void;
+  onOpen: (spellId: number) => void;
 }) => {
   const [all, setAll] = React.useState(false);
   const [sort, onSort] = useSort('uptime');
@@ -155,10 +158,15 @@ const Section = ({
                 className="border-b border-card/40 hover:bg-card/30"
               >
                 <td className={`${td} text-foreground-lighter truncate`}>
-                  <span className="inline-flex items-center gap-x-2 max-w-full">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(r.spellId)}
+                    className="inline-flex items-center gap-x-2 max-w-full hover:underline text-left"
+                    title="See who had it, when, and its stacks"
+                  >
                     <SpellIcon spellId={r.spellId} name={r.name} />
                     <span className="truncate">{r.name}</span>
-                  </span>
+                  </button>
                 </td>
                 <td className={`${td} text-right`}>{thousands(r.count)}</td>
                 {debuffs && <td className={`${td} text-right`}>{r.targets}</td>}
@@ -207,19 +215,47 @@ const AuraTables = ({
   debuffs,
   who,
   bands,
+  boundaries,
+  range,
+  setRange,
   onPick,
 }: {
   ctx: Ctx;
   debuffs: boolean;
   who: string | null;
   bands: [number, number][];
+  boundaries: { t: number; label: string }[];
+  range: [number, number] | null;
+  setRange: (r: [number, number] | null) => void;
   onPick?: (t: number) => void;
 }) => {
   const rows = React.useMemo(
     () => auraRows(ctx, { debuffs, who }),
     [ctx, debuffs, who],
   );
+  // The aura opened up (per tab and side).
+  const [opened, setOpened] = React.useState<{
+    key: string;
+    spellId: number;
+  } | null>(null);
+  const openKey = `${debuffs}|${ctx.filters.side}`;
   const seconds = viewSeconds(ctx);
+  if (opened && opened.key === openKey) {
+    return (
+      <AuraDetail
+        ctx={ctx}
+        spellId={opened.spellId}
+        debuffs={debuffs}
+        who={who}
+        bands={bands}
+        boundaries={boundaries}
+        range={range}
+        setRange={setRange}
+        onPick={onPick}
+        onBack={() => setOpened(null)}
+      />
+    );
+  }
   if (!rows.length) {
     return (
       <p className="text-sm text-foreground">
@@ -242,6 +278,7 @@ const AuraTables = ({
             bands={bands}
             debuffs={debuffs && ctx.filters.side === 'friendly'}
             onPick={onPick}
+            onOpen={(spellId) => setOpened({ key: openKey, spellId })}
           />
         );
       })}
@@ -249,7 +286,7 @@ const AuraTables = ({
         Uptime: time it was on {who ? 'them' : 'anyone'} in the part of the
         fight you&apos;re looking at. Cooldowns are spells their caster pressed
         now and then; raid cooldowns reached several raiders at once. Click a
-        bar to watch that moment.
+        bar to watch that moment, or a name to open it up.
       </p>
     </div>
   );
