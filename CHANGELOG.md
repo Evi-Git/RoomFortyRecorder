@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.84] - Unreleased
+### Fixed
+- **Buffs from before the pull** (flask, food, augment rune, vantus, raid buffs) now show on the Buffs tab, up the whole fight. The log only lists them by spell ID at the pull, so their names come from the spell lookup.
+- **Buff uses count like Warcraft Logs:** every stack gained and every refresh that didn't come with a stack change, not just each time the buff went on (Twist of Fate 5 → 127, matching WCL).
+- **Compare with Warcraft Logs:** buffs pair by spell ID (same-named buffs no longer add up past 100%), same-named rows of ours add up instead of replacing each other, a 1-use difference no longer counts as a difference, and Compare everything skips whole-raid buffs (WCL adds uptime over everyone who had a buff).
+
 ## [1.9.83] - Unreleased
 ### Fixed
 Checked against Warcraft Logs on the Mythic Kith'ix kill: raid healing now matches to the point, damage taken within 0.01%, and every raider's damage within 0.5% (most exact).
