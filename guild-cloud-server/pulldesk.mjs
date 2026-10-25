@@ -138,6 +138,69 @@ export const createPullDesk = (options) => {
   // meters are the bulk of one.
   const metersFile = (id) => path.join(dir, 'meters', `${id}.json`);
   const fullFile = (id) => path.join(dir, 'full', `${id}.log.gz`);
+
+  // The Logs page's mitigations read buff descriptions (Wowhead, a few a
+  // second) and talent trees (Blizzard). Fetched on first open, that took a
+  // minute or two; done here when the full log arrives, the page finds them
+  // cached. Buffs: friendly casters on players. Specs: from COMBATANT_INFO.
+  const warmFullLog = async (gz) => {
+    const buffs = new Set();
+    const specs = new Set();
+    let rest = '';
+    const take = (line) => {
+      const at = line.indexOf('  ');
+      if (at < 0) return;
+      const body = line.slice(at + 2);
+      if (body.startsWith('SPELL_AURA_APPLIED,')) {
+        const f = body.split(',', 14);
+        // src flags: friendly (0x10); dst a player; a buff.
+        if (!(Number(f[3]) & 0x10) || !f[5]?.startsWith('Player-')) return;
+        if (!/,BUFF(,|$)/.test(body)) return;
+        const id = Number(f[9]);
+        if (id > 1) buffs.add(id);
+      } else if (body.startsWith('COMBATANT_INFO,')) {
+        const spec = Number(body.split(',', 26)[25]);
+        if (spec > 0) specs.add(spec);
+      }
+    };
+    await new Promise((resolve, reject) => {
+      const stream = zlib.createGunzip();
+      stream.on('data', (chunk) => {
+        const lines = (rest + chunk.toString('utf8')).split('\n');
+        rest = lines.pop() ?? '';
+        lines.forEach((l) => take(l.endsWith('\r') ? l.slice(0, -1) : l));
+      });
+      stream.on('end', () => {
+        if (rest) take(rest);
+        resolve();
+      });
+      stream.on('error', reject);
+      stream.end(gz);
+    });
+    await Promise.all([...specs].map((id) => journal.talents(id).catch(() => null)));
+    const ids = [...buffs];
+    // The same lookup the app makes (no difficulty), all of it, at the
+    // journal's own pace.
+    for (let i = 0; i < ids.length; i += 400) {
+      await journal.spells(ids.slice(i, i + 400), 0, 400, Infinity);
+    }
+    console.log(`[pulldesk] Warmed ${ids.length} buff descriptions and ${specs.size} talent trees`);
+  };
+
+  // At start-up, the last few days' full logs: pulls sent before this
+  // warm-up existed, and any whose warm-up a restart cut short. Already
+  // cached lookups cost nothing, so this is quick after the first time.
+  const warmRecent = async () => {
+    const since = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const recent = index.pulls.filter((pull) => pull.hasFull && pull.createdAt >= since);
+    for (const pull of recent) {
+      try {
+        await warmFullLog(await fsp.readFile(fullFile(pull.id)));
+      } catch {
+        // Gone or unreadable: the page looks it up when opened.
+      }
+    }
+  };
   // Everything the app can send for a pull is here.
   const complete = (pull) =>
     Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
@@ -220,6 +283,7 @@ export const createPullDesk = (options) => {
       if (n) console.info(`[pulldesk] Rechecking ${n} pulls for consumables`);
       const w = queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
       if (w) console.info(`[pulldesk] Fetching consumables and avoidable hits for ${w} imported pulls`);
+      warmRecent().catch(() => {});
     });
     return loaded;
   };
@@ -1560,6 +1624,8 @@ export const createPullDesk = (options) => {
         pull.hasFull = true;
         pull.fullBytes = gz.length;
         await persist();
+        // Look up what the Logs page will ask for while nobody is waiting.
+        warmFullLog(gz).catch((error) => console.warn(`[pulldesk] Warm-up for ${pull.id} failed: ${error.message}`));
         return json(res, 200, { status: 'stored' });
       }
       if (third === 'full' && req.method === 'GET') {

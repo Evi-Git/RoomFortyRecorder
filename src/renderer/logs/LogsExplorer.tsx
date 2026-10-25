@@ -620,6 +620,13 @@ const LogsExplorer = ({
               + passives
             </label>
           )}
+          {meter === 'healing' &&
+            prevented &&
+            (!auraDrs || (passive && !talentDrs)) && (
+              <span className="text-xs text-foreground animate-pulse">
+                Looking up buffs and talents…
+              </span>
+            )}
           {(meter === 'damage' || meter === 'healing' || tab === 'casts') && (
             <label className="flex items-center gap-x-1.5 text-xs text-foreground">
               <Switch
