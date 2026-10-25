@@ -1,5 +1,5 @@
 import React from 'react';
-import { auraRows, AuraRow, Ctx, viewSeconds } from './query';
+import { auraRows, AuraRow, CONSUMABLE, Ctx, viewSeconds } from './query';
 import {
   AuraSection,
   SECTION_ORDER,
@@ -233,9 +233,27 @@ const AuraTables = ({
   /** Look at one raider's auras (null: everyone's). */
   setWho?: (guid: string | null) => void;
 }) => {
-  const rows = React.useMemo(
+  const rawRows = React.useMemo(
     () => auraRows(ctx, { debuffs, who }),
     [ctx, debuffs, who],
+  );
+  // Buffs from before the pull come with no name in the log; the spell
+  // lookup fills them in (and a flask or food then lands in Consumables).
+  const [names, setNames] = React.useState<Map<number, string>>(new Map());
+  const rows = React.useMemo(
+    () =>
+      rawRows.map((r) => {
+        if (r.name) return r;
+        const name = names.get(r.spellId) || `Spell ${r.spellId}`;
+        return {
+          ...r,
+          name,
+          category: CONSUMABLE.test(name)
+            ? ('consumable' as const)
+            : r.category,
+        };
+      }),
+    [rawRows, names],
   );
   // Sections go by the whole raid: one raider's Rallying Cry is still a
   // group cooldown.
@@ -244,10 +262,12 @@ const AuraTables = ({
       new Map(
         (who ? auraRows(ctx, { debuffs, who: null }) : rows).map((r) => [
           r.spellId,
-          r.category,
+          !r.name && CONSUMABLE.test(names.get(r.spellId) ?? '')
+            ? 'consumable'
+            : r.category,
         ]),
       ),
-    [ctx, debuffs, who, rows],
+    [ctx, debuffs, who, rows, names],
   );
   // Buff descriptions, to sort the rest into damage, defensive, healing...
   const [texts, setTexts] = React.useState<Map<number, string>>(new Map());
@@ -265,6 +285,13 @@ const AuraTables = ({
         const next = new Map(old);
         ids.split(',').forEach((id) => {
           next.set(Number(id), found.get(Number(id))?.text ?? '');
+        });
+        return next;
+      });
+      setNames((old) => {
+        const next = new Map(old);
+        found.forEach((info, id) => {
+          if (info.name) next.set(id, info.name);
         });
         return next;
       });

@@ -1023,7 +1023,7 @@ export type AuraRow = {
   targets: number;
 };
 
-const CONSUMABLE =
+export const CONSUMABLE =
   /flask|phial|well fed|augment|^rune of|potion|light's potential|feast|\bfood\b|\boil\b|vantus|healthstone|\bdrink\b|nourish/i;
 
 /**
@@ -1111,7 +1111,7 @@ export const auraRows = (
         };
         aggs.set(spell.id, agg);
       }
-      if (a.start >= from) agg.count += 1;
+      if (a.start >= from) agg.count += 1 + (a.bumps ?? 0);
       if (e > s) agg.spans.push([off + s, off + e]);
       const caster = a.src >= 0 ? rowOf(p, a.src, false) : null;
       const casterName = caster?.player ? caster.name : caster?.name || '';

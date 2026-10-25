@@ -131,25 +131,44 @@ export const pairLines = (
     parts: string[];
     uses?: number;
     note?: string;
+    key?: string;
   }[],
-  wcl: { name: string; value: number; parts: string[]; uses?: number }[],
+  wcl: {
+    name: string;
+    value: number;
+    parts: string[];
+    uses?: number;
+    key?: string;
+  }[],
 ): CompareLine[] => {
+  // Buffs pair by spell ID (Warcraft Logs lists same-named buffs apart);
+  // everything else by name. Same-named rows on one side are added up.
   const lines = new Map<string, CompareLine>();
   ours.forEach((o) => {
-    lines.set(norm(o.name), {
+    const key = o.key ?? norm(o.name);
+    const line = lines.get(key);
+    if (line) {
+      line.ours = (line.ours ?? 0) + o.value;
+      line.oursParts.push(...o.parts);
+      if (o.uses !== undefined) line.oursUses = (line.oursUses ?? 0) + o.uses;
+      return;
+    }
+    lines.set(key, {
       name: o.name,
       ours: o.value,
       wcl: null,
-      oursParts: o.parts,
+      oursParts: [...o.parts],
       wclParts: [],
       oursUses: o.uses,
       note: o.note,
     });
   });
   wcl.forEach((w) => {
-    const key = norm(w.name);
+    const key = w.key ?? norm(w.name);
     const line = lines.get(key);
     if (line) {
+      // A buff from before the pull may have no name of ours.
+      if (!line.name) line.name = w.name;
       line.wcl = (line.wcl ?? 0) + w.value;
       line.wclParts.push(...w.parts);
       if (w.uses !== undefined) line.wclUses = (line.wclUses ?? 0) + w.uses;
@@ -191,7 +210,12 @@ const linesText = (lines: CompareLine[], uptime: boolean, onlyGaps = false) => {
       const g = pctGap(l);
       if (uptime) {
         const du = Math.abs((l.ours ?? 0) - (l.wcl ?? 0));
-        return g === null || du > 2 || (l.oursUses ?? -1) !== (l.wclUses ?? -1);
+        // A use either way is noise (a refresh at the pull's edge).
+        return (
+          g === null ||
+          du > 2 ||
+          Math.abs((l.oursUses ?? -99) - (l.wclUses ?? -99)) > 1
+        );
       }
       return g === null || Math.abs(g) > 2;
     })
@@ -284,6 +308,7 @@ const ourSide = (
         name: r.name,
         value: (r.uptime / seconds) * 100,
         parts: [`${r.spellId}`],
+        key: `id:${r.spellId}`,
         uses: r.count,
         note: why ? `${SECTION_TITLES[why.section]} (${why.why})` : undefined,
       };
@@ -300,6 +325,7 @@ const wclSide = (table: WclTable, tab: string, seconds: number) => {
       name: String(a.name ?? '?'),
       value: ((a.totalUptime ?? 0) / 1000 / Math.max(1, total)) * 100,
       parts: [`${a.guid ?? ''}`],
+      key: a.guid ? `id:${a.guid}` : undefined,
       uses: a.totalUses ?? 0,
     }));
   }
@@ -495,7 +521,10 @@ const WclCompare = ({
       enemies: boolean;
     };
     const jobs: Job[] = [];
-    ['damage', 'healing', 'taken', 'casts', 'buffs', 'debuffs'].forEach((t) =>
+    // Whole-raid buffs aren't compared: Warcraft Logs adds each buff's
+    // uptime up over everyone who had it (often past 100%); each raider's
+    // own buffs are compared below.
+    ['damage', 'healing', 'taken', 'casts', 'debuffs'].forEach((t) =>
       jobs.push({
         title: `${t} · whole raid`,
         tab: t,
@@ -581,7 +610,7 @@ const WclCompare = ({
     await Promise.all([work(), work(), work()]);
     const p = fights.fights.find((f) => f.id === fight);
     const text = [
-      'Compare everything with Warcraft Logs. Rows within 2% are left out; buff rows within 2 points of uptime with the same uses are left out.',
+      'Compare everything with Warcraft Logs. Rows within 2% are left out; buff rows within 2 points of uptime and 1 use are left out. Buffs pair by spell ID.',
       `Pull: ${meta?.label ?? metas.map((m) => m.label).join(' + ')} (encounter ${meta?.encounterId ?? '?'})`,
       `WCL: ${fights.code} fight ${fight}${p ? ` (${p.name}, ${p.seconds}s, ${p.kill ? 'kill' : 'wipe'})` : ''}`,
       'Whole fight, no filters, pets counted for their owner.',

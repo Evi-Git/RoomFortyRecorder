@@ -267,6 +267,9 @@ export type AuraSpan = {
   start: number;
   end: number;
   debuff: boolean;
+  /** Refreshes and stacks added while it was up (Warcraft Logs counts
+   * each as a use). */
+  bumps?: number;
 };
 
 export type Death = {
@@ -363,6 +366,7 @@ const WANTED = new Set([
   'SPELL_AURA_REMOVED',
   'SPELL_AURA_APPLIED_DOSE',
   'SPELL_AURA_REMOVED_DOSE',
+  'SPELL_AURA_REFRESH',
   'UNIT_DIED',
   'SPELL_INTERRUPT',
   'SPELL_DISPEL',
@@ -425,6 +429,17 @@ export class StoreBuilder {
   private gear = new Map<string, GearItem[]>();
 
   private vers = new Map<string, number>();
+
+  /** Buffs each raider had at the pull (COMBATANT_INFO): [caster, spell]. */
+  private prepull = new Map<number, [number, number][]>();
+
+  /** When each aura (caster|target|spell) was refreshed or gained a stack. */
+  private refreshT = new Map<string, number[]>();
+
+  private stackT = new Map<string, number[]>();
+
+  /** When a stack fell off (a refresh then isn't a use either). */
+  private unstackT = new Map<string, number[]>();
 
   private power = new Map<number, [number, number, number, number][]>();
 
@@ -564,6 +579,8 @@ export class StoreBuilder {
       // First seen without a school (e.g. as an absorbed attack).
       this.spells[i].school = school;
     }
+    // First seen without a name (a buff from before the pull).
+    if (!this.spells[i].name && name) this.spells[i].name = RENAMED[id] ?? name;
     return i;
   }
 
@@ -605,6 +622,22 @@ export class StoreBuilder {
       } catch {
         // An odd line: no gear for them.
       }
+      // The last [...] is what they had on at the pull: caster, spell,
+      // stacks, ... (flask, food, rune, vantus, raid buffs).
+      const auraOpen = line.lastIndexOf('[');
+      const auraClose = line.indexOf(']', auraOpen);
+      if (auraOpen > close && auraClose > auraOpen) {
+        const parts = line.slice(auraOpen + 1, auraClose).split(',');
+        const who = this.unit(fields[1], '', 0);
+        const list: [number, number][] = [];
+        for (let k = 0; k + 1 < parts.length; k += 3) {
+          const caster = parts[k].trim();
+          const spellId = Number(parts[k + 1]);
+          if (!caster.includes('-') || !(spellId > 0)) continue;
+          list.push([this.unit(caster, '', 0), this.spell(spellId, '', 0)]);
+        }
+        if (who >= 0) this.prepull.set(who, list);
+      }
       return;
     }
     if (line.includes('_SUPPORT,')) {
@@ -633,6 +666,24 @@ export class StoreBuilder {
       if (pet >= 0 && owner >= 0 && !this.units[pet].player) {
         this.units[pet].owner = owner;
       }
+    }
+
+    if (
+      e.type === 'SPELL_AURA_REFRESH' ||
+      e.type === 'SPELL_AURA_APPLIED_DOSE' ||
+      e.type === 'SPELL_AURA_REMOVED_DOSE'
+    ) {
+      const key = `${src}|${dst}|${this.spell(e.spellId, e.spellName, e.school)}`;
+      const times =
+        e.type === 'SPELL_AURA_REFRESH'
+          ? this.refreshT
+          : e.type === 'SPELL_AURA_APPLIED_DOSE'
+            ? this.stackT
+            : this.unstackT;
+      const list = times.get(key) ?? [];
+      list.push(t);
+      times.set(key, list);
+      if (e.type === 'SPELL_AURA_REFRESH') return;
     }
 
     let kind: number;
@@ -904,6 +955,23 @@ export class StoreBuilder {
         seen.add(key);
       }
     }
+    // Buffs from before the pull that nothing in the log touched (flask,
+    // food, rune, vantus): up the whole fight.
+    this.prepull.forEach((list, dst) => {
+      list.forEach(([src, sp]) => {
+        const key = `${src}|${dst}|${sp}`;
+        if (seen.has(key) || open.has(key)) return;
+        seen.add(key);
+        auras.push({
+          spell: sp,
+          src,
+          dst,
+          start: 0,
+          end: duration,
+          debuff: false,
+        });
+      });
+    });
     // Debuff flag for still-open auras comes from their apply event.
     const openDebuff = new Map<string, boolean>();
     for (let i = 0; i < n; i += 1) {
@@ -923,6 +991,24 @@ export class StoreBuilder {
         end: duration,
         debuff: openDebuff.get(key) ?? false,
       });
+    });
+
+    // Uses, as Warcraft Logs counts them: each stack gained, and each
+    // refresh that didn't come with a stack, while the aura was up.
+    const keyOf = (a: AuraSpan) => `${a.src}|${a.dst}|${a.spell}`;
+    auras.forEach((a) => {
+      const stacks = (this.stackT.get(keyOf(a)) ?? []).filter(
+        (t) => t > a.start && t <= a.end,
+      );
+      const stackSet = new Set([
+        ...stacks,
+        ...(this.unstackT.get(keyOf(a)) ?? []),
+      ]);
+      const refreshes = (this.refreshT.get(keyOf(a)) ?? []).filter(
+        (t) => t >= a.start && t <= a.end && !stackSet.has(t),
+      );
+      const bumps = stacks.length + refreshes.length;
+      if (bumps) a.bumps = bumps;
     });
 
     // Raider deaths, with the last hit before each.
