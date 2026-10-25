@@ -4,7 +4,7 @@
 'use no memo';
 
 import React from 'react';
-import ReactDOM from 'react-dom';
+import FloatingCard, { Anchor, anchorOf } from './Floating';
 import { GameIcon } from '../AbilityCard';
 
 /**
@@ -210,57 +210,49 @@ const MELEE_ICON = 'inv_sword_04';
 /** A small spell icon; hover for its tooltip. */
 const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
   const info = useSpell(spellId);
-  const [at, setAt] = React.useState<{ x: number; y: number } | null>(null);
+  const [at, setAt] = React.useState<Anchor | null>(null);
   const icon = spellId === 1 ? MELEE_ICON : info?.icon;
   return (
     <span
       className="inline-flex shrink-0 align-middle"
-      onMouseEnter={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        setAt({ x: r.left, y: r.bottom + 6 });
-      }}
+      onMouseEnter={(e) => setAt(anchorOf(e.currentTarget))}
       onMouseLeave={() => setAt(null)}
     >
       <GameIcon
         icon={icon}
         className="w-[18px] h-[18px] rounded-[3px] border border-black/40"
       />
-      {at &&
-        ReactDOM.createPortal(
-          <div
-            className="fixed z-[100] w-[320px] rounded-md border border-card bg-background p-2.5 shadow-xl pointer-events-none text-xs"
-            style={{
-              left: Math.min(at.x, window.innerWidth - 336),
-              top: Math.min(at.y, window.innerHeight - 160),
-            }}
-          >
-            <div className="flex items-center gap-x-2 mb-1">
-              <GameIcon icon={icon} className="w-8 h-8 rounded" />
-              <div className="min-w-0">
-                <div className="font-semibold text-sm text-foreground-lighter truncate">
-                  {info?.name || name || 'Unknown spell'}
-                </div>
-                <div className="text-foreground">
-                  {spellId > 1
-                    ? `Spell ${spellId} · ${iconStatus(spellId)}`
-                    : 'Auto attack'}
-                </div>
+      {at && (
+        <FloatingCard
+          anchor={at}
+          className="z-[100] w-[320px] rounded-md border border-card bg-background p-2.5 shadow-xl text-xs"
+        >
+          <div className="flex items-center gap-x-2 mb-1">
+            <GameIcon icon={icon} className="w-8 h-8 rounded" />
+            <div className="min-w-0">
+              <div className="font-semibold text-sm text-foreground-lighter truncate">
+                {info?.name || name || 'Unknown spell'}
+              </div>
+              <div className="text-foreground">
+                {spellId > 1
+                  ? `Spell ${spellId} · ${iconStatus(spellId)}`
+                  : 'Auto attack'}
               </div>
             </div>
-            {info?.text ? (
-              <p className="m-0 text-foreground-lighter whitespace-pre-line leading-snug">
-                {info.text}
+          </div>
+          {info?.text ? (
+            <p className="m-0 text-foreground-lighter whitespace-pre-line leading-snug">
+              {info.text}
+            </p>
+          ) : (
+            spellId > 1 && (
+              <p className="m-0 text-foreground">
+                {known.has(spellId) ? 'No description.' : 'Loading…'}
               </p>
-            ) : (
-              spellId > 1 && (
-                <p className="m-0 text-foreground">
-                  {known.has(spellId) ? 'No description.' : 'Loading…'}
-                </p>
-              )
-            )}
-          </div>,
-          document.body,
-        )}
+            )
+          )}
+        </FloatingCard>
+      )}
     </span>
   );
 };
