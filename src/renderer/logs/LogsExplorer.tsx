@@ -630,7 +630,7 @@ const LogsExplorer = ({
           {meter === 'healing' && prevented && (
             <label
               className="flex items-center gap-x-1.5 text-xs text-foreground"
-              title="Also count what talents and versatility took off magic damage (Elemental Resistance and the like), for the raider who has them"
+              title="Also count what talents (Elemental Warding and the like) and versatility took off damage taken, for the raider who has them"
             >
               <Switch
                 checked={passive}

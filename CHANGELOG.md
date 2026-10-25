@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.60] - Unreleased
+### Changed
+- **Mitigations now match Warcraft Logs much more closely** (checked against Puzzlebox on the Mythic Kith'ix kill; every row within about 4% of WCL):
+  - **Elemental Warding** (and every other mitigation) no longer counts a killing blow's overkill. That one hit was why Elemental Warding came out ~14% high; it's now 2.35m against WCL's 2.33m.
+  - **Versatility** is now its own row, worked out from each raider's versatility rating in the log (54 rating per 1%, with the diminishing-returns brackets above 1620 rating) plus Mark of the Wild while it's up; half of versatility comes off damage taken. 1.59m against WCL's 1.64m. It replaces the old "Versatility & other passives (estimate)" row.
+  - Cooldowns and buffs are credited against the damage before every reduction (versatility included), talents before everything but versatility, and versatility on its own, which is how WCL's numbers come out.
+- The meters the app uploads for Trends leave out overkill the same way, for pulls recorded from now on.
+
 ## [1.9.59] - Unreleased
 ### Added
 - **Resources as graphs.** The Resources tab now opens on a chart of one resource (Mana first; pick Rage, Insanity, Holy Power and so on from the dropdown) for every raider who has it, as % of max or as the amount. For Mana it starts with just the healers; click names under the chart to show or hide lines. Click a raider in the table for each of their resources on its own chart (amount, scaled to the resource's maximum, drawn as steps), with the gained/wasted table under each.

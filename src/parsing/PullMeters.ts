@@ -359,7 +359,9 @@ export default class PullMeters {
         this.reductions.get(e.dst)?.forEach((caster, drId) => {
           const dr = DAMAGE_REDUCTION[drId];
           if (!dr || (dr.magicOnly && e.school === 1)) return;
-          const prevented = Math.round((amount * dr.r) / (1 - dr.r));
+          // A killing blow's overkill wasn't taken, so nothing was kept off.
+          const taken = Math.max(0, amount - (e.overkill > 0 ? e.overkill : 0));
+          const prevented = Math.round((taken * dr.r) / (1 - dr.r));
           this.add('mitigation', caster, bucket, drId, dr.name, prevented, {});
         });
       }

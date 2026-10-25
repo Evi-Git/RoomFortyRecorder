@@ -1232,7 +1232,36 @@ export const lustBands = (ctx: Ctx) => {
 /* Damage prevented (estimate)                                         */
 /* ------------------------------------------------------------------ */
 
-const PASSIVES_NAME = 'Versatility & other passives (estimate)';
+const VERSATILITY_NAME = 'Versatility';
+
+/** Buffs that add versatility percentage (not rating): spell ID -> %. */
+const VERS_BUFFS: Record<number, number> = {
+  1126: 3, // Mark of the Wild
+};
+
+/**
+ * Versatility percentage (damage done; damage taken is half of it) from
+ * rating at level 90: 54 rating a percent, less in the higher brackets.
+ */
+const VERS_PER_PCT = 54;
+const VERS_BRACKETS: [number, number][] = [
+  [1620, 1],
+  [2160, 0.9],
+  [2700, 0.8],
+  [3240, 0.7],
+  [3780, 0.6],
+  [10800, 0.5],
+];
+export const versPercent = (rating: number) => {
+  let pctSum = 0;
+  let from = 0;
+  for (const [to, keep] of VERS_BRACKETS) {
+    if (rating <= from) break;
+    pctSum += ((Math.min(rating, to) - from) * keep) / VERS_PER_PCT;
+    from = to;
+  }
+  return pctSum;
+};
 
 // Auras this weak that are up all fight (Devotion Aura) aren't cooldowns.
 const STEADY_R = 0.05;
@@ -1334,61 +1363,25 @@ export const preventedRows = (
       spans.set(a.dst, list);
     });
     if (!spans.size && !opts.passive) return;
-    // Passive reductions (talents, versatility): each raider's usual cut of
-    // magic damage when no cooldown is up, from the log's before-and-after
-    // amounts, above the raid's floor (what everyone gets: boss and raid-wide
-    // effects). Steady auras we count already (Devotion Aura) come off first.
     const cuts = (sp: Span, school: number) =>
       school ? (sp.schools & school) !== 0 : sp.schools === 127;
-    const steadyCut = (d: number, t: number, school: number) => {
-      let keep = 1;
-      (spans.get(d) ?? []).forEach((sp) => {
-        if (sp.steady && cuts(sp, school) && t >= sp.start && t < sp.end)
-          keep *= 1 - sp.r;
+    // Buffs that add versatility (a percentage, not rating), by raider.
+    const versBuffs = new Map<number, [number, number, number][]>();
+    if (opts.passive)
+      p.auras.forEach((a) => {
+        const pctUp = VERS_BUFFS[p.spells[a.spell]?.id ?? 0];
+        if (!pctUp || a.dst < 0 || a.debuff) return;
+        const list = versBuffs.get(a.dst) ?? [];
+        list.push([a.start, a.end, pctUp]);
+        versBuffs.set(a.dst, list);
       });
-      return keep;
+    const versAt = (d: number, t: number) => {
+      let v = versPercent(p.vers.get(p.units[d].guid) ?? 0);
+      (versBuffs.get(d) ?? []).forEach(([s0, e0, pctUp]) => {
+        if (t >= s0 && t < e0) v += pctUp;
+      });
+      return v;
     };
-    const cooldownUp = (d: number, t: number) =>
-      (spans.get(d) ?? []).some(
-        (sp) => !sp.steady && t >= sp.start && t < sp.end,
-      );
-    // This hit's cut (0..1) not explained by auras we count, or null.
-    const hitCut = (i: number) => {
-      const landed = p.a[i] + p.b[i];
-      if (!landed || p.x[i] <= landed) return null;
-      const school = p.spells[p.sp[i]]?.school ?? 1;
-      const cut = 1 - landed / p.x[i] / steadyCut(p.d[i], p.t[i], school);
-      return cut > 0 && cut < 0.6 ? cut : null;
-    };
-    const personal = new Map<number, number>();
-    if (opts.passive) {
-      const samples = new Map<number, number[]>();
-      for (let i = 0; i < p.n; i += 1) {
-        if (p.k[i] !== K.DMG) continue;
-        const d = p.d[i];
-        if (d < 0 || !p.units[d].raider) continue;
-        if ((p.spells[p.sp[i]]?.school ?? 1) & 1) continue;
-        if (cooldownUp(d, p.t[i])) continue;
-        const cut = hitCut(i);
-        if (cut === null) continue;
-        const list = samples.get(d) ?? [];
-        list.push(cut);
-        samples.set(d, list);
-      }
-      const medians = new Map<number, number>();
-      samples.forEach((list, d) => {
-        if (list.length < 8) return;
-        const sorted = [...list].sort((x, y) => x - y);
-        medians.set(d, sorted[Math.floor(sorted.length / 2)]);
-      });
-      const ordered = [...medians.values()].sort((x, y) => x - y);
-      const floor =
-        ordered.length >= 3 ? ordered[Math.floor(ordered.length * 0.15)] : 0;
-      medians.forEach((m, d) => {
-        const own = 1 - (1 - m) / (1 - floor);
-        if (own > 0.002) personal.set(d, own);
-      });
-    }
     const add = (
       caster: number,
       spellId: number,
@@ -1441,14 +1434,22 @@ export const preventedRows = (
       const list = spans.get(d) ?? [];
       if (!list.length && !opts.passive) continue;
       if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
-      const amount = p.a[i] + p.b[i];
+      // What the hit really took off (a killing blow's overkill wasn't
+      // damage taken, so it prevented nothing either).
+      const amount = Math.max(0, p.a[i] + p.b[i] - p.aux[i]);
       const school = p.spells[p.sp[i]]?.school ?? 1;
       // Every reduction known to be on this hit. Each is credited with its
       // share of the damage before all of them (as Warcraft Logs does), so
       // stacking doesn't shrink one cooldown's number because another was
       // up too.
-      const on: { caster: number; spellId: number; name: string; r: number }[] =
-        [];
+      const on: {
+        caster: number;
+        spellId: number;
+        name: string;
+        r: number;
+        talent?: boolean;
+      }[] = [];
+      let v = 0;
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
         if (!cuts(span, school)) return;
@@ -1457,33 +1458,45 @@ export const preventedRows = (
       if (opts.passive) {
         // Talents that always cut this school (Elemental Warding...), at the
         // percentage their description gives.
-        let keep = 1;
         (opts.talents?.get(p.units[d].guid) ?? []).forEach((dr) => {
           if (!(dr.schools & school) && !(school === 0 && dr.schools === 127))
             return;
-          keep *= 1 - dr.r;
-          on.push({ caster: d, spellId: dr.spellId, name: dr.name, r: dr.r });
+          on.push({
+            caster: d,
+            spellId: dr.spellId,
+            name: dr.name,
+            r: dr.r,
+            talent: true,
+          });
         });
-        // The rest of the raider's usual cut of magic damage (armour handles
-        // physical): versatility and whatever else, never more than this
-        // hit's own cut.
-        const own = personal.get(d);
-        const cutNow = own !== undefined && !(school & 1) ? hitCut(i) : null;
-        if (own !== undefined && cutNow !== null) {
-          const r = 1 - (1 - Math.min(own, cutNow)) / keep;
-          if (r > 0) on.push({ caster: d, spellId: 0, name: PASSIVES_NAME, r });
-        }
+        // Versatility: half its percentage off all damage taken.
+        v = versAt(d, t) / 200;
+        if (!(v > 0 && v < 1)) v = 0;
       }
+      // How each reduction is credited, matched to Warcraft Logs on a
+      // Mythic kill (within a few % for each): cooldowns and buffs get
+      // their share of the damage before every reduction (versatility
+      // included); talents, before everything but versatility; and
+      // versatility, before itself alone.
+      if (v > 0 && abilityOk(ctx, 0))
+        add(d, 0, VERSATILITY_NAME, (amount * v) / (1 - v), t, d);
       if (!on.length) continue;
       // Never more than the log says the hit was before any reduction.
-      const unmitigated = p.x[i] > amount ? p.x[i] : Infinity;
-      const before = Math.min(
-        unmitigated,
-        on.reduce((n, x) => n / (1 - x.r), amount),
-      );
+      const unmitigated =
+        p.x[i] - p.aux[i] > amount ? p.x[i] - p.aux[i] : Infinity;
+      const noVers = on.reduce((n, x) => n / (1 - x.r), amount);
+      const all = Math.min(unmitigated, noVers / (1 - v));
+      const forTalents = Math.min(unmitigated, noVers);
       on.forEach((x) => {
         if (abilityOk(ctx, x.spellId))
-          add(x.caster, x.spellId, x.name, before * x.r, t, d);
+          add(
+            x.caster,
+            x.spellId,
+            x.name,
+            (x.talent ? forTalents : all) * x.r,
+            t,
+            d,
+          );
       });
     }
   });
