@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.71] - Unreleased
+### Changed
+- **Done by ability nests like a raider's own abilities.** The same ability under several spell IDs is now one row (Fracture, Rampage, Death Sweep, Immolation Aura...), procs sit under what sets them off (Light of the Titans under Word of Glory), items' effects under the item, and pets' and guardians' spells under what summoned them. Click the arrow to open a row.
+
 ## [1.9.70] - Unreleased
 ### Added
 - **Done to enemy:** on Damage Done, Damage Taken and Healing, the Group by list now has a third choice beside Done by source (still the default) and Done by ability.

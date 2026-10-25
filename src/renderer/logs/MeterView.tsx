@@ -24,7 +24,7 @@ const wholeFight = (ctx: Ctx): Ctx =>
 import TimeChart, { ChartSeries } from './TimeChart';
 import FloatingCard, { Anchor, anchorOf } from './Floating';
 import SpellIcon, { useSpellLabels } from './SpellIcon';
-import { sortRows, SortTh, useSort } from './sort';
+import { sortRows, SortState, SortTh, useSort } from './sort';
 import {
   CATEGORICAL,
   classColor,
@@ -660,6 +660,173 @@ const Drill = ({
   );
 };
 
+/** Done by ability: the whole raid's abilities, nested like a raider's. */
+const ByAbilityTable = ({
+  rows,
+  meter,
+  sort,
+  sh,
+  seconds,
+  total,
+}: {
+  rows: MeterRow[];
+  meter: MeterKind;
+  sort: SortState;
+  sh: (label: string, column: string, left?: boolean) => React.ReactNode;
+  seconds: number;
+  total: number;
+}) => {
+  const columns: Record<string, (a: AbilityRow) => number | string> = {
+    name: (a) => a.name,
+    total: (a) => a.total,
+    rate: (a) => a.total,
+    casts: (a) => a.casts,
+    hits: (a) => a.hits,
+    crit: (a) => (a.hits ? a.crits / a.hits : 0),
+  };
+  const groups = sortRows(
+    byAbility(rows),
+    sort,
+    Object.fromEntries(
+      Object.entries(columns).map(([k, f]) => [
+        k,
+        (g: AbilityGroup) => f(g.head),
+      ]),
+    ),
+  );
+  const [open, setOpen] = React.useState<Set<string>>(() => new Set());
+  const opens = (g: AbilityGroup) => g.parts.length > 1 || g.nested;
+  const labels = useSpellLabels(
+    groups.flatMap((g) => (opens(g) ? g.parts.map((a) => a.spellId) : [])),
+  );
+  const max = Math.max(1, ...groups.map((g) => g.head.total));
+  const anyOpens = groups.some(opens);
+  const nameOf = (a: AbilityRow, child: boolean) => {
+    if (!child) return a.name;
+    const label = labels.get(a.spellId);
+    return label && label !== a.name ? label : a.name;
+  };
+  const who = (list: { name: string; specId: number; total: number }[]) => (
+    <>
+      {list
+        .sort((x, y) => y.total - x.total)
+        .slice(0, 4)
+        .map((u, i) => (
+          <span key={u.name} style={{ color: classColor(u.specId) }}>
+            {i ? ', ' : ''}
+            {u.name}
+          </span>
+        ))}
+      {list.length > 4 ? ` +${list.length - 4}` : ''}
+    </>
+  );
+  const line = (a: AbilityRow, child: boolean, g: (typeof groups)[number]) => (
+    <tr
+      key={a.key}
+      className={`border-b border-card/40 hover:bg-card/30 ${
+        child ? 'bg-card/10' : ''
+      }`}
+    >
+      <td className={`${td} text-foreground-lighter`}>
+        <span
+          className={`inline-flex items-center gap-x-2 ${child ? 'pl-6' : ''}`}
+        >
+          {!child && opens(g) ? (
+            <button
+              type="button"
+              aria-expanded={open.has(g.key)}
+              title={
+                g.nested
+                  ? `${a.name}: ${g.parts.map((x) => x.name).join(', ')}`
+                  : `${g.parts.length} spells named ${a.name}`
+              }
+              onClick={() =>
+                setOpen((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(g.key)) next.delete(g.key);
+                  else next.add(g.key);
+                  return next;
+                })
+              }
+              className="w-4 text-foreground hover:text-foreground-lighter"
+            >
+              {open.has(g.key) ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+            </button>
+          ) : (
+            !child && anyOpens && <span className="w-4" />
+          )}
+          <SpellIcon spellId={a.spellId} name={a.name} />
+          <span>
+            {nameOf(a, child)}
+            {a.by &&
+              a.by !== a.name &&
+              !(child && g.key.startsWith('pet:')) && (
+                <span className="text-foreground"> ({a.by})</span>
+              )}
+            {child && nameOf(a, child) === a.name && g.parts.length > 1 && (
+              <span className="text-foreground text-xs"> {a.spellId}</span>
+            )}
+          </span>
+        </span>
+      </td>
+      <td className={td}>
+        <AmountBar
+          parts={[{ value: a.total, look: 'solid', label: 'Amount' }]}
+          label={a.total}
+          max={max}
+          color="hsl(var(--brand))"
+          share={pct(a.total, total)}
+        />
+      </td>
+      {(meter === 'damage' || meter === 'healing') && (
+        <td className={`${td} text-right`}>{a.casts || '–'}</td>
+      )}
+      <td className={`${td} text-right`}>{thousands(a.hits)}</td>
+      {meter !== 'prevented' && (
+        <td className={`${td} text-right`}>{pct(a.crits, a.hits, 1)}</td>
+      )}
+      <td className={`${td} text-xs`}>
+        {child ? '' : who([...g.users.values()])}
+      </td>
+      <td className={`${td} text-right text-foreground-lighter`}>
+        {thousands(a.total / seconds)}
+      </td>
+    </tr>
+  );
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="text-xs text-foreground border-b border-card bg-card/30">
+          <tr>
+            {sh('Ability', 'name', true)}
+            {sh('Amount', 'total', true)}
+            {(meter === 'damage' || meter === 'healing') &&
+              sh('Casts', 'casts')}
+            {sh('Hits', 'hits')}
+            {meter !== 'prevented' && sh('Crit %', 'crit')}
+            <th className={`${th} text-left`}>
+              {meter === 'taken' ? 'Who took it' : 'Who'}
+            </th>
+            {sh(RATE[meter], 'rate')}
+          </tr>
+        </thead>
+        <tbody>
+          {groups.flatMap((g) => [
+            line(g.head, false, g),
+            ...(opens(g) && open.has(g.key)
+              ? sortRows(g.parts, sort, columns).map((a) => line(a, true, g))
+              : []),
+          ])}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 export type Group = 'source' | 'enemy' | 'ability';
 
 /** Everyone, by source, by target or by ability. */
@@ -961,89 +1128,17 @@ const MeterView = ({
   }
 
   if (group === 'ability') {
-    const abilities = sortRows(byAbility(rows), sort, {
-      name: (a) => a.name,
-      total: (a) => a.total,
-      rate: (a) => a.total,
-      casts: (a) => a.casts,
-      hits: (a) => a.hits,
-      crit: (a) => (a.hits ? a.crits / a.hits : 0),
-    });
-    const max = Math.max(1, ...abilities.map((a) => a.total));
     return (
       <div className="flex flex-col gap-y-3">
         {chart}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-foreground border-b border-card bg-card/30">
-              <tr>
-                {sh('Ability', 'name', true)}
-                {sh('Amount', 'total', true)}
-                {(meter === 'damage' || meter === 'healing') &&
-                  sh('Casts', 'casts')}
-                {sh('Hits', 'hits')}
-                {meter !== 'prevented' && sh('Crit %', 'crit')}
-                <th className={`${th} text-left`}>
-                  {meter === 'taken' ? 'Who took it' : 'Who'}
-                </th>
-                {sh(RATE[meter], 'rate')}
-              </tr>
-            </thead>
-            <tbody>
-              {abilities.map((a) => (
-                <tr
-                  key={a.key}
-                  className="border-b border-card/40 hover:bg-card/30"
-                >
-                  <td className={`${td} text-foreground-lighter`}>
-                    <span className="inline-flex items-center gap-x-2">
-                      <SpellIcon spellId={a.spellId} name={a.name} />
-                      {a.name}
-                    </span>
-                  </td>
-                  <td className={td}>
-                    <AmountBar
-                      parts={[
-                        { value: a.total, look: 'solid', label: 'Amount' },
-                      ]}
-                      label={a.total}
-                      max={max}
-                      color="hsl(var(--brand))"
-                      share={pct(a.total, total)}
-                    />
-                  </td>
-                  {(meter === 'damage' || meter === 'healing') && (
-                    <td className={`${td} text-right`}>{a.casts || '–'}</td>
-                  )}
-                  <td className={`${td} text-right`}>{thousands(a.hits)}</td>
-                  {meter !== 'prevented' && (
-                    <td className={`${td} text-right`}>
-                      {pct(a.crits, a.hits, 1)}
-                    </td>
-                  )}
-                  <td className={`${td} text-xs`}>
-                    {[...a.users.values()]
-                      .sort((x, y) => y.total - x.total)
-                      .slice(0, 4)
-                      .map((u, i) => (
-                        <span
-                          key={u.name}
-                          style={{ color: classColor(u.specId) }}
-                        >
-                          {i ? ', ' : ''}
-                          {u.name}
-                        </span>
-                      ))}
-                    {a.users.size > 4 ? ` +${a.users.size - 4}` : ''}
-                  </td>
-                  <td className={`${td} text-right text-foreground-lighter`}>
-                    {thousands(a.total / seconds)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ByAbilityTable
+          rows={rows}
+          meter={meter}
+          sort={sort}
+          sh={sh}
+          seconds={seconds}
+          total={total}
+        />
       </div>
     );
   }
