@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.68] - Unreleased
+### Changed
+- **Buff sections named and split like Warcraft Logs':** Major Group Cooldowns, Major Individual Cooldowns, Damage Buffs, Defensive Buffs, Healing Buffs, Movement Buffs, Raid Buffs, "Stances, Forms and Seals", Toy Buffs, and Uncategorized.
+  - Cooldowns and raid buffs are worked out from the log, as before.
+  - Stances, forms and seals go by name.
+  - The rest go by each buff's description from the guild server: what it does to damage taken, damage or stats, healing, or movement speed.
+  - Buffs with no description yet go under Uncategorized until it arrives.
+- Sections now go by the whole raid even with one raider picked. One raider's Rallying Cry is still a group cooldown.
+- Charts of a few raiders or stacks have whole-number ticks (0, 1, 2) instead of repeated ones.
+
 ## [1.9.67] - Unreleased
 ### Added
 - **Casts: open up a spell.** In a raider's casts, click a spell to see when it was cast: a lane per caster with a mark for each cast (click one to watch it), under a chart of casts over the fight. It slices and zooms like the other charts, and the lanes follow it.
