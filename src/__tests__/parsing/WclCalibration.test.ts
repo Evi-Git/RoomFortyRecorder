@@ -143,3 +143,13 @@ test('a nested parent groups every raider-side part, and heal + shield share a r
   expect(byName.get('Dominion of Argus')).toBe(15);
   expect(byName.get('Exhilarating Execution')).toBe(5);
 });
+
+test('buffs from before the pull (COMBATANT_INFO) last the whole fight', () => {
+  const p = store();
+  const lamp = p.units.findIndex((u) => u.name === 'Lamplightr');
+  const vantus = p.auras.find(
+    (a) => a.dst === lamp && p.spells[a.spell].id === 1303171,
+  );
+  expect(vantus?.start).toBe(0);
+  expect(vantus?.end).toBeCloseTo(p.duration, 1);
+});
