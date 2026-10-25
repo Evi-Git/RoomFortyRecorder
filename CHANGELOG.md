@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.69] - Unreleased
+### Changed
+- **Trends:** the Mitigations option is gone. Damage done, Healing and Damage taken stay.
+
 ## [1.9.68] - Unreleased
 ### Changed
 - **Buff sections named and split like Warcraft Logs':** Major Group Cooldowns, Major Individual Cooldowns, Damage Buffs, Defensive Buffs, Healing Buffs, Movement Buffs, Raid Buffs, "Stances, Forms and Seals", Toy Buffs, and Uncategorized.
