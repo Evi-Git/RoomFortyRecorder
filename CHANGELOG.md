@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.54] - Unreleased
+### Fixed
+- **Mitigation numbers now match Warcraft Logs much more closely** (checked against a Mythic Kith'ix kill):
+  - Each damage reduction is now credited against the damage before *all* the reductions known to be on that hit, the way Warcraft Logs does it, instead of as if it came last. Before, a cooldown counted for less whenever something else was up at the same time. Elemental Resistance went from 3.17m to 3.53m (Warcraft Logs: 3.57m), and Astral Shift from 1.33m to 1.67m (1.66m).
+  - **Spirit Link Totem's 10% damage reduction is counted** (it was looked up under the wrong spell ID). 1.29m against Warcraft Logs' 1.26m.
+  - **Spirit Link's health sharing no longer counts as damage that reductions cut**, so hit counts match Warcraft Logs exactly (Elemental Resistance 382 hits, Spirit Link Totem 93).
+  - **A shared Obsidian Scales counts for the evoker who shared it**, not the raider wearing it (it was showing up on a shaman).
+
 ## [1.9.53] - Unreleased
 ### Fixed
 - **Hover cards no longer run off the bottom of the window:** the "who it came from / who it hit" card on the Logs page and the spell tooltips now open above the row when there isn't room below, and stay inside the window at the edges.

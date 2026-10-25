@@ -1,4 +1,4 @@
-import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
+import { DAMAGE_REDUCTION, NOT_REDUCED } from '../../parsing/PullMeters';
 import { F, K, PullStore, Unit } from './store';
 import type { PassiveDr } from './talents';
 
@@ -1156,6 +1156,8 @@ export const lustBands = (ctx: Ctx) => {
 /* Damage prevented (estimate)                                         */
 /* ------------------------------------------------------------------ */
 
+const PASSIVES_NAME = 'Versatility & other passives (estimate)';
+
 // Auras this weak that are up all fight (Devotion Aura) aren't cooldowns.
 const STEADY_R = 0.05;
 
@@ -1225,10 +1227,13 @@ export const preventedRows = (
       }
       const dr = DAMAGE_REDUCTION[spell.id];
       if (!dr) return;
+      // Whoever put it on (a raider, or their totem); "personal" ones put on
+      // by nobody we know count for the wearer. An evoker can share
+      // Obsidian Scales, which is the evoker's, not the wearer's.
       let caster = -1;
-      if (dr.personal) caster = a.dst;
-      else if (a.src >= 0 && p.units[p.units[a.src].root].raider)
+      if (a.src >= 0 && p.units[p.units[a.src].root].raider)
         caster = p.units[a.src].root;
+      else if (dr.personal) caster = a.dst;
       else if (dr.castId) {
         const list = castsOf.get(dr.castId) ?? [];
         for (let j = list.length - 1; j >= 0; j -= 1) {
@@ -1355,41 +1360,54 @@ export const preventedRows = (
       if (p.k[i] !== K.DMG) continue;
       const d = p.d[i];
       if (d < 0 || !p.units[d].raider) continue;
+      if (NOT_REDUCED.has(p.spells[p.sp[i]]?.id ?? 0)) continue;
       const list = spans.get(d) ?? [];
       if (!list.length && !opts.passive) continue;
       if (ctx.filters.expr && !ctx.filters.expr(p, i)) continue;
       const amount = p.a[i] + p.b[i];
       const school = p.spells[p.sp[i]]?.school ?? 1;
+      // Every reduction known to be on this hit. Each is credited with its
+      // share of the damage before all of them (as Warcraft Logs does), so
+      // stacking doesn't shrink one cooldown's number because another was
+      // up too.
+      const on: { caster: number; spellId: number; name: string; r: number }[] =
+        [];
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
         if (!cuts(span, school)) return;
-        const prevented = (amount * span.r) / (1 - span.r);
-        if (!abilityOk(ctx, span.spellId)) return;
-        add(span.caster, span.spellId, span.name, prevented, t, d);
+        on.push(span);
       });
-      if (!opts.passive) continue;
-      // Talents that always cut this school (Elemental Warding...), at the
-      // percentage their description gives.
-      let byTalents = 0;
-      (opts.talents?.get(p.units[d].guid) ?? []).forEach((dr) => {
-        if (!(dr.schools & school) && !(school === 0 && dr.schools === 127))
-          return;
-        const prevented = (amount * dr.r) / (1 - dr.r);
-        byTalents += prevented;
-        if (abilityOk(ctx, dr.spellId))
-          add(d, dr.spellId, dr.name, prevented, t, d);
-      });
-      // The rest of the raider's usual cut of magic damage (armour handles
-      // physical): versatility and whatever else, never more than this
-      // hit's own cut.
-      const own = personal.get(d);
-      const cutNow = own !== undefined && !(school & 1) ? hitCut(i) : null;
-      if (own !== undefined && cutNow !== null && abilityOk(ctx, 0)) {
-        const cut = Math.min(own, cutNow);
-        const rest = amount / (1 - cut) - amount - byTalents;
-        if (rest > 0)
-          add(d, 0, 'Versatility & other passives (estimate)', rest, t, d);
+      if (opts.passive) {
+        // Talents that always cut this school (Elemental Warding...), at the
+        // percentage their description gives.
+        let keep = 1;
+        (opts.talents?.get(p.units[d].guid) ?? []).forEach((dr) => {
+          if (!(dr.schools & school) && !(school === 0 && dr.schools === 127))
+            return;
+          keep *= 1 - dr.r;
+          on.push({ caster: d, spellId: dr.spellId, name: dr.name, r: dr.r });
+        });
+        // The rest of the raider's usual cut of magic damage (armour handles
+        // physical): versatility and whatever else, never more than this
+        // hit's own cut.
+        const own = personal.get(d);
+        const cutNow = own !== undefined && !(school & 1) ? hitCut(i) : null;
+        if (own !== undefined && cutNow !== null) {
+          const r = 1 - (1 - Math.min(own, cutNow)) / keep;
+          if (r > 0) on.push({ caster: d, spellId: 0, name: PASSIVES_NAME, r });
+        }
       }
+      if (!on.length) continue;
+      // Never more than the log says the hit was before any reduction.
+      const unmitigated = p.x[i] > amount ? p.x[i] : Infinity;
+      const before = Math.min(
+        unmitigated,
+        on.reduce((n, x) => n / (1 - x.r), amount),
+      );
+      on.forEach((x) => {
+        if (abilityOk(ctx, x.spellId))
+          add(x.caster, x.spellId, x.name, before * x.r, t, d);
+      });
     }
   });
   return [...rows.values()].sort((a, b) => b.total - a.total);

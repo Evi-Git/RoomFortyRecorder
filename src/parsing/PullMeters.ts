@@ -56,6 +56,12 @@ type UnitStats = {
  * of damage it removes. Prevented damage = taken x r / (1 - r). An estimate:
  * talents and stacking can change the real number.
  */
+/**
+ * "Damage" that only moves health between raiders (Spirit Link Totem's
+ * redistribution): reductions don't apply, and Warcraft Logs leaves it out.
+ */
+export const NOT_REDUCED = new Set([98021]);
+
 export const DAMAGE_REDUCTION: Record<
   number,
   {
@@ -76,9 +82,13 @@ export const DAMAGE_REDUCTION: Record<
   357170: { r: 0.5, name: 'Time Dilation' },
   374227: { r: 0.2, name: 'Zephyr' },
   145629: { r: 0.2, name: 'Anti-Magic Zone', magicOnly: true, castId: 51052 },
+  // The totem's buff on raiders (cast by the totem, which belongs to the
+  // shaman). 98007 is the totem's own spell, kept for older logs.
+  325174: { r: 0.1, name: 'Spirit Link Totem' },
   98007: { r: 0.1, name: 'Spirit Link Totem' },
   465: { r: 0.03, name: 'Devotion Aura' },
-  // Personal (credited to whoever wore it).
+  // Personal (credited to whoever wore it, unless another raider put it
+  // there: an evoker can share Obsidian Scales).
   363916: { r: 0.3, name: 'Obsidian Scales', personal: true },
   48792: { r: 0.3, name: 'Icebound Fortitude', personal: true },
   212800: { r: 0.2, name: 'Blur', personal: true },
@@ -304,10 +314,15 @@ export default class PullMeters {
       );
       const dr = DAMAGE_REDUCTION[e.spellId];
       if (!dr || !isPlayer(e.dst)) return;
-      const caster = dr.personal
-        ? e.dst
-        : (this.ownerOf(e.src) ??
-          (dr.castId ? this.lastCaster.get(dr.castId) : undefined));
+      // Whoever put it on: a raider (or their totem); "personal" ones put
+      // on by nobody we know count for the wearer.
+      const caster =
+        this.ownerOf(e.src) ??
+        (dr.personal
+          ? e.dst
+          : dr.castId
+            ? this.lastCaster.get(dr.castId)
+            : undefined);
       if (!caster) return;
       const onTarget = this.reductions.get(e.dst) ?? new Map();
       if (applied) onTarget.set(e.spellId, caster);
@@ -338,7 +353,9 @@ export default class PullMeters {
           crit: e.crit,
           mitigated,
         });
-        // Damage a cooldown kept off this raider.
+        // Damage a cooldown kept off this raider. Spirit Link's
+        // redistribution only moves health around: nothing to reduce.
+        if (NOT_REDUCED.has(e.spellId)) return;
         this.reductions.get(e.dst)?.forEach((caster, drId) => {
           const dr = DAMAGE_REDUCTION[drId];
           if (!dr || (dr.magicOnly && e.school === 1)) return;
