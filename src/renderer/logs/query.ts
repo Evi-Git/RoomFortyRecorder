@@ -1098,6 +1098,71 @@ export const powerSeries = (ctx: Ctx, guid: string) => {
   return out;
 };
 
+/** Seconds per point in resource charts. */
+export const RESOURCE_STEP = 0.25;
+
+/** The resources each raider has (power type -> highest maximum seen). */
+export const resourceTypes = (ctx: Ctx) => {
+  const out = new Map<string, Map<number, number>>();
+  ctx.pulls.forEach((p) =>
+    p.powers.forEach((byType, unit) => {
+      const u = p.units[unit];
+      if (!u?.raider) return;
+      const mine = out.get(u.guid) ?? new Map<number, number>();
+      byType.forEach((list, type) => {
+        let max = mine.get(type) ?? 0;
+        let moved = false;
+        list.forEach(([, cur, m]) => {
+          max = Math.max(max, m);
+          if (cur !== list[0][1]) moved = true;
+        });
+        // A resource that never moved isn't one they use.
+        if (moved || list.length > 1) mine.set(type, max);
+      });
+      if (mine.size) out.set(u.guid, mine);
+    }),
+  );
+  return out;
+};
+
+/**
+ * A raider's resource level on the combined timeline, every RESOURCE_STEP
+ * seconds (as a % of its maximum when `pct`). Before the first reading of
+ * a pull: that reading.
+ */
+export const resourceLevels = (
+  ctx: Ctx,
+  guid: string,
+  type: number,
+  pct = false,
+) => {
+  const values = new Float64Array(
+    Math.max(1, Math.ceil(ctx.total / RESOURCE_STEP)),
+  );
+  ctx.pulls.forEach((p, pi) => {
+    const unit = p.units.findIndex((u) => u.guid === guid);
+    const list = unit >= 0 ? p.powers.get(unit)?.get(type) : undefined;
+    const off = ctx.offsets[pi];
+    const first = Math.floor(off / RESOURCE_STEP);
+    const last = Math.min(
+      values.length,
+      Math.ceil((off + p.duration) / RESOURCE_STEP),
+    );
+    if (!list?.length) return;
+    let j = 0;
+    let cur = list[0];
+    for (let i = first; i < last; i += 1) {
+      const t = i * RESOURCE_STEP - off;
+      while (j < list.length && list[j][0] <= t) {
+        cur = list[j];
+        j += 1;
+      }
+      values[i] = pct ? (cur[2] ? (cur[1] / cur[2]) * 100 : 0) : cur[1];
+    }
+  });
+  return values;
+};
+
 export type DeathRow = {
   at: number;
   pull: string;

@@ -803,7 +803,18 @@ const LogsExplorer = ({
           {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}
           {tab === 'dispels' && <CountView ctx={ctx} kind="dispel" />}
           {tab === 'resources' && (
-            <ResourceView ctx={ctx} who={who} setWho={setWho} />
+            <ResourceView
+              ctx={ctx}
+              who={who}
+              setWho={setWho}
+              extras={{
+                range: filters.range,
+                setRange: (r) => patch({ range: r }),
+                onPick: onWatch,
+                bands,
+                boundaries,
+              }}
+            />
           )}
           {tab === 'casts' && (
             <CastView ctx={ctx} who={who} setWho={setWho} onWatch={onWatch} />

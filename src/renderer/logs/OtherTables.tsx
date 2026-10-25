@@ -6,9 +6,11 @@ import {
   Ctx,
   deathRows,
   meterRows,
-  powerSeries,
   raiders,
+  RESOURCE_STEP,
+  resourceLevels,
   resourceRows,
+  resourceTypes,
   viewSeconds,
 } from './query';
 import { POWER_NAMES } from './store';
@@ -279,33 +281,162 @@ export const CountView = ({
 
 /* ---------------- Resources ---------------- */
 
+export type ResourceChartExtras = {
+  range: [number, number] | null;
+  setRange: (r: [number, number] | null) => void;
+  onPick?: (seconds: number, name: string | null) => void;
+  bands: [number, number][];
+  boundaries: { t: number; label: string }[];
+};
+
+const HEALER_SPECS = new Set([65, 105, 256, 257, 264, 270, 1468]);
+
+const DASHES = [undefined, '6 3', '2 3', '8 3 2 3'];
+
+const powerName = (t: number) => POWER_NAMES[t] ?? `Resource ${t}`;
+
+/** Gained / wasted by ability, for one resource. */
+const ResourceAbilities = ({
+  entry,
+}: {
+  entry: { abilities: Map<string, [number, number]> };
+}) => (
+  <table className="w-full text-sm">
+    <thead className="text-xs text-foreground border-b border-card">
+      <tr>
+        <th className={`${th} text-left`}>Ability</th>
+        <th className={`${th} text-right`}>Gained</th>
+        <th className={`${th} text-right`}>Wasted</th>
+        <th className={`${th} text-right`}>Waste %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {[...entry.abilities.entries()]
+        .sort((a, b) => b[1][0] - a[1][0])
+        .map(([name, [g, w]]) => (
+          <tr key={name} className="border-b border-card/40">
+            <td className={`${td} text-foreground-lighter`}>{name}</td>
+            <td className={`${td} text-right`}>{thousands(g)}</td>
+            <td className={`${td} text-right`}>{thousands(w)}</td>
+            <td className={`${td} text-right`}>{pct(w, g + w, 1)}</td>
+          </tr>
+        ))}
+    </tbody>
+  </table>
+);
+
+const pctLabel = (v: number) => `${Math.round(v)}%`;
+const amountLabel = (v: number) => (v >= 10000 ? compact(v) : thousands(v));
+
 export const ResourceView = ({
   ctx,
   who,
   setWho,
+  extras,
 }: {
   ctx: Ctx;
   who: string | null;
   setWho: (k: string | null) => void;
+  extras: ResourceChartExtras;
 }) => {
   const rows = React.useMemo(() => resourceRows(ctx), [ctx]);
+  const types = React.useMemo(() => resourceTypes(ctx), [ctx]);
+  const roster = React.useMemo(() => raiders(ctx), [ctx]);
+  // Resources anyone has, most common first (Mana usually).
+  const allTypes = React.useMemo(() => {
+    const count = new Map<number, number>();
+    types.forEach((m) =>
+      m.forEach((_, t) => count.set(t, (count.get(t) ?? 0) + 1)),
+    );
+    return [...count.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .map(([t]) => t);
+  }, [types]);
+  const [type, setType] = React.useState<number | null>(null);
+  const shownType =
+    type !== null && allTypes.includes(type) ? type : allTypes[0];
+  const [asPct, setAsPct] = React.useState(true);
+  // Raiders hidden from the overview chart (click a name to toggle).
+  // Null: the default (for mana, only healers; else everyone).
+  const [hiddenSet, setHidden] = React.useState<Set<string> | null>(null);
   const selected = rows.find((r) => r.key === who) ?? null;
-  const samples = React.useMemo(
-    () => (selected ? powerSeries(ctx, selected.key) : []),
-    [ctx, selected],
+  const pick = extras.onPick;
+
+  const chartProps = {
+    duration: ctx.total,
+    range: extras.range,
+    onRange: extras.setRange,
+    bands: extras.bands,
+    boundaries: extras.boundaries,
+    smoothing: 0,
+    step: RESOURCE_STEP,
+    zoomable: true,
+    showZero: true,
+    stepped: true,
+  };
+
+  // Everyone with this resource, one line each.
+  const holders = React.useMemo(
+    () =>
+      shownType === undefined
+        ? []
+        : roster.filter((r) => types.get(r.guid)?.has(shownType)),
+    [roster, types, shownType],
   );
+  const hidden = React.useMemo(() => {
+    if (hiddenSet) return hiddenSet;
+    if (shownType !== 0) return new Set<string>();
+    const healers = holders.filter((r) => HEALER_SPECS.has(r.specId));
+    if (!healers.length) return new Set<string>();
+    return new Set(
+      holders.filter((r) => !HEALER_SPECS.has(r.specId)).map((r) => r.guid),
+    );
+  }, [hiddenSet, shownType, holders]);
+  const overview = React.useMemo(() => {
+    if (selected || shownType === undefined) return [];
+    const seen = new Map<string, number>();
+    return holders.map((r) => {
+      const c = classColor(r.specId);
+      const n = seen.get(c) ?? 0;
+      seen.set(c, n + 1);
+      return {
+        key: r.guid,
+        name: r.name,
+        color: c,
+        dash: DASHES[n % DASHES.length],
+        width: 1.5,
+        values: hidden.has(r.guid)
+          ? new Float64Array(0)
+          : resourceLevels(ctx, r.guid, shownType, asPct),
+      };
+    });
+  }, [selected, shownType, holders, hidden, ctx, asPct]);
+  const shared =
+    shownType === undefined
+      ? 0
+      : Math.max(
+          0,
+          ...holders.map((r) => types.get(r.guid)?.get(shownType) ?? 0),
+        );
+
+  // One raider: each of their resources on its own chart.
+  const mine = React.useMemo(() => {
+    if (!selected) return [];
+    const have = types.get(selected.key) ?? new Map<number, number>();
+    const list = new Set<number>([...have.keys(), ...selected.types.keys()]);
+    return [...list]
+      .sort((a, b) => (a === 0 ? 1 : 0) - (b === 0 ? 1 : 0) || a - b)
+      .map((t) => ({
+        type: t,
+        max: have.get(t) ?? 0,
+        values: have.has(t)
+          ? resourceLevels(ctx, selected.key, t, false)
+          : null,
+        entry: selected.types.get(t),
+      }));
+  }, [selected, types, ctx]);
+
   if (selected) {
-    const values = new Float64Array(Math.max(1, Math.ceil(ctx.total)));
-    let last = samples[0]?.pct ?? 0;
-    let j = 0;
-    for (let s = 0; s < values.length; s += 1) {
-      while (j < samples.length && samples[j].t <= s) {
-        last = samples[j].pct;
-        j += 1;
-      }
-      values[s] = last;
-    }
-    const type = samples[0]?.type;
     return (
       <div className="flex flex-col gap-y-3">
         <div className="flex items-center gap-x-3">
@@ -323,104 +454,193 @@ export const ResourceView = ({
             {selected.name}
           </span>
         </div>
-        {samples.length > 0 && (
-          <div className="rounded-md border border-card bg-background/40 p-3">
-            <div className="text-xs text-foreground mb-1">
-              {POWER_NAMES[type ?? -1] ?? 'Primary resource'} (% of max) over
-              the fight
-            </div>
-            <TimeChart
-              duration={ctx.total}
-              series={[
-                { key: 'p', name: '%', color: 'hsl(var(--brand))', values },
-              ]}
-              rateLabel="%"
-              range={null}
-              smoothing={1}
-              height={160}
-            />
-          </div>
-        )}
-        {[...selected.types.entries()].map(([t, e]) => (
+        {mine.map((m) => (
           <Box
-            key={t}
-            title={`${POWER_NAMES[t] ?? `Resource ${t}`}: ${thousands(e.gained)} gained, ${thousands(e.wasted)} wasted`}
+            key={m.type}
+            title={`${powerName(m.type)}${m.entry ? ` · ${thousands(m.entry.gained)} gained, ${thousands(m.entry.wasted)} wasted (${pct(m.entry.wasted, m.entry.gained + m.entry.wasted, 1)})` : ''}`}
           >
-            <table className="w-full text-sm">
-              <thead className="text-xs text-foreground border-b border-card">
-                <tr>
-                  <th className={`${th} text-left`}>Ability</th>
-                  <th className={`${th} text-right`}>Gained</th>
-                  <th className={`${th} text-right`}>Wasted</th>
-                  <th className={`${th} text-right`}>Waste %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...e.abilities.entries()]
-                  .sort((a, b) => b[1][0] - a[1][0])
-                  .map(([name, [g, w]]) => (
-                    <tr key={name} className="border-b border-card/40">
-                      <td className={`${td} text-foreground-lighter`}>
-                        {name}
-                      </td>
-                      <td className={`${td} text-right`}>{thousands(g)}</td>
-                      <td className={`${td} text-right`}>{thousands(w)}</td>
-                      <td className={`${td} text-right`}>{pct(w, g + w, 1)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+            {m.values && (
+              <div className="px-3 pt-2">
+                <TimeChart
+                  {...chartProps}
+                  series={[
+                    {
+                      key: `r${m.type}`,
+                      name: powerName(m.type),
+                      color: color(selected),
+                      values: m.values,
+                    },
+                  ]}
+                  rateLabel={powerName(m.type)}
+                  onPick={pick ? (t) => pick(t, selected.name) : undefined}
+                  yMax={m.max || undefined}
+                  format={amountLabel}
+                  height={170}
+                />
+              </div>
+            )}
+            {m.entry && <ResourceAbilities entry={m.entry} />}
           </Box>
         ))}
+        {!mine.length && (
+          <p className="text-sm text-foreground m-0">
+            No resource readings for {selected.name} in this view.
+          </p>
+        )}
       </div>
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-xs text-foreground border-b border-card bg-card/30">
-          <tr>
-            <th className={`${th} text-left`}>Name</th>
-            <th className={`${th} text-left`}>Resource</th>
-            <th className={`${th} text-right`}>Gained</th>
-            <th className={`${th} text-right`}>Wasted</th>
-            <th className={`${th} text-right`}>Waste %</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.flatMap((r) =>
-            [...r.types.entries()]
-              .sort((a, b) => b[1].gained - a[1].gained)
-              .map(([t, e], i) => (
-                <tr
-                  key={`${r.key}${t}`}
-                  className={`${i ? '' : 'border-t'} border-card/40 hover:bg-card/30`}
+    <div className="flex flex-col gap-y-3">
+      {shownType !== undefined && (
+        <div className="rounded-md border border-card bg-background/40 p-3">
+          <div className="flex items-center gap-x-2 mb-2 flex-wrap">
+            <select
+              className="bg-card text-foreground-lighter rounded px-2 h-7 text-xs border border-background"
+              value={shownType}
+              onChange={(e) => {
+                setType(Number(e.target.value));
+                setHidden(null);
+              }}
+              aria-label="Resource"
+            >
+              {allTypes.map((t) => (
+                <option key={t} value={t}>
+                  {powerName(t)}
+                </option>
+              ))}
+            </select>
+            <div className="inline-flex rounded border border-card text-xs overflow-hidden">
+              {[
+                [true, '% of max'],
+                [false, 'Amount'],
+              ].map(([v, label]) => (
+                <button
+                  key={String(v)}
+                  type="button"
+                  onClick={() => setAsPct(v as boolean)}
+                  className={`px-2 h-7 ${asPct === v ? 'bg-brand/20 text-foreground-lighter' : 'text-foreground hover:text-foreground-lighter'}`}
                 >
-                  <td className={td}>
-                    {i === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setWho(r.key)}
-                        className="font-semibold hover:underline"
-                        style={{ color: color(r) }}
-                      >
-                        {r.name}
-                      </button>
-                    )}
-                  </td>
-                  <td className={`${td} text-foreground-lighter`}>
-                    {POWER_NAMES[t] ?? `Resource ${t}`}
-                  </td>
-                  <td className={`${td} text-right`}>{thousands(e.gained)}</td>
-                  <td className={`${td} text-right`}>{thousands(e.wasted)}</td>
-                  <td className={`${td} text-right`}>
-                    {pct(e.wasted, e.gained + e.wasted, 1)}
-                  </td>
-                </tr>
-              )),
-          )}
-        </tbody>
-      </table>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-foreground">
+              {powerName(shownType)} over the fight · drag to slice, Zoom to
+              look closer
+            </span>
+          </div>
+          <TimeChart
+            {...chartProps}
+            series={overview.filter((o) => !hidden.has(o.key))}
+            rateLabel={powerName(shownType)}
+            onPick={pick ? (t) => pick(t, null) : undefined}
+            yMax={asPct ? 100 : shared || undefined}
+            format={asPct ? pctLabel : amountLabel}
+            height={240}
+          />
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] mt-1">
+            {overview.map((sr) => {
+              const off = hidden.has(sr.key);
+              return (
+                <button
+                  key={sr.key}
+                  type="button"
+                  onClick={() => {
+                    const next = new Set(hidden);
+                    if (off) next.delete(sr.key);
+                    else next.add(sr.key);
+                    setHidden(next);
+                  }}
+                  className={`inline-flex items-center gap-x-1 ${off ? 'opacity-40' : ''}`}
+                  title={off ? 'Show this line' : 'Hide this line'}
+                >
+                  <svg width="18" height="6" aria-hidden>
+                    <line
+                      x1="0"
+                      x2="18"
+                      y1="3"
+                      y2="3"
+                      stroke={sr.color}
+                      strokeWidth="2"
+                      strokeDasharray={sr.dash}
+                    />
+                  </svg>
+                  <span style={{ color: sr.color }}>{sr.name}</span>
+                </button>
+              );
+            })}
+            {overview.length > 1 && (
+              <button
+                type="button"
+                className="text-brand hover:underline"
+                onClick={() =>
+                  setHidden(
+                    hidden.size
+                      ? new Set()
+                      : new Set(overview.map((o) => o.key)),
+                  )
+                }
+              >
+                {hidden.size ? 'Show all' : 'Hide all'}
+              </button>
+            )}
+            <span className="text-foreground">
+              Click a name in the table for all of their resources.
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-foreground border-b border-card bg-card/30">
+            <tr>
+              <th className={`${th} text-left`}>Name</th>
+              <th className={`${th} text-left`}>Resource</th>
+              <th className={`${th} text-right`}>Gained</th>
+              <th className={`${th} text-right`}>Wasted</th>
+              <th className={`${th} text-right`}>Waste %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.flatMap((r) =>
+              [...r.types.entries()]
+                .sort((a, b) => b[1].gained - a[1].gained)
+                .map(([t, e], i) => (
+                  <tr
+                    key={`${r.key}${t}`}
+                    className={`${i ? '' : 'border-t'} border-card/40 hover:bg-card/30`}
+                  >
+                    <td className={td}>
+                      {i === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setWho(r.key)}
+                          className="font-semibold hover:underline"
+                          style={{ color: color(r) }}
+                        >
+                          {r.name}
+                        </button>
+                      )}
+                    </td>
+                    <td className={`${td} text-foreground-lighter`}>
+                      {powerName(t)}
+                    </td>
+                    <td className={`${td} text-right`}>
+                      {thousands(e.gained)}
+                    </td>
+                    <td className={`${td} text-right`}>
+                      {thousands(e.wasted)}
+                    </td>
+                    <td className={`${td} text-right`}>
+                      {pct(e.wasted, e.gained + e.wasted, 1)}
+                    </td>
+                  </tr>
+                )),
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
