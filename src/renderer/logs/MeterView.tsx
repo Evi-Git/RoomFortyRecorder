@@ -398,6 +398,7 @@ const Drill = ({
       <div className="rounded-md border border-card bg-background/40 p-3">
         <TimeChart
           duration={ctx.total}
+          zoomable
           series={series}
           stacked={meter !== 'prevented'}
           rateLabel={RATE[meter]}
@@ -754,6 +755,7 @@ const MeterView = ({
     <div className="rounded-md border border-card bg-background/40 p-3">
       <TimeChart
         duration={ctx.total}
+        zoomable
         series={series}
         rateLabel={RATE[meter]}
         range={extras.range}

@@ -43,6 +43,11 @@ export type LogEvent = {
   infoPowerType: number;
   infoPower: number;
   infoMaxPower: number;
+  /** Every power the unit has, as the log's pipe lists ("0|8" and so on). */
+  infoPowerTypes: string;
+  infoPowers: string;
+  infoMaxPowers: string;
+  infoPowerCosts: string;
   /** Damage: what landed. Heal: the raw heal (overheal included). */
   amount: number;
   /** Damage before armour and reductions (0 when the log doesn't say). */
@@ -129,6 +134,10 @@ const blank = (): LogEvent => ({
   infoPowerType: -1,
   infoPower: 0,
   infoMaxPower: 0,
+  infoPowerTypes: '',
+  infoPowers: '',
+  infoMaxPowers: '',
+  infoPowerCosts: '',
   amount: 0,
   base: 0,
   overkill: 0,
@@ -227,6 +236,10 @@ export const parseLine = (
       e.infoPowerType = int(first(args[pos - 4]));
       e.infoPower = int(first(args[pos - 3]));
       e.infoMaxPower = int(first(args[pos - 2]));
+      e.infoPowerTypes = args[pos - 4] ?? '';
+      e.infoPowers = args[pos - 3] ?? '';
+      e.infoMaxPowers = args[pos - 2] ?? '';
+      e.infoPowerCosts = args[pos - 1] ?? '';
       at = pos + 5;
     }
   }

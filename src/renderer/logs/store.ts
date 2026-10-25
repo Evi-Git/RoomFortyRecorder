@@ -2,6 +2,7 @@ import {
   isFriendlyFlags,
   isPlayerGuid,
   NO_GUID,
+  LogEvent,
   parseLine,
   shortName,
 } from '../../parsing/LogEvents';
@@ -166,6 +167,11 @@ export type PullStore = PullMeta & {
   auras: AuraSpan[];
   /** Raider power over the pull: unit -> [t, current, max, type] once a second. */
   power: Map<number, [number, number, number, number][]>;
+  /**
+   * Raider resources, every type they have: unit -> power type -> [t,
+   * current, max], one point each time the value changes.
+   */
+  powers: Map<number, Map<number, [number, number, number][]>>;
   deaths: Death[];
   /** The enemy the raid hit hardest. */
   boss: number;
@@ -265,9 +271,70 @@ export class StoreBuilder {
 
   private power = new Map<number, [number, number, number, number][]>();
 
+  private powers = new Map<number, Map<number, [number, number, number][]>>();
+
   private fightSeconds = 0;
 
   private lastT = 0;
+
+  /** A resource level at time t (a point when it changes). */
+  private setPower(
+    who: number,
+    type: number,
+    t: number,
+    cur: number,
+    max: number,
+  ) {
+    let byType = this.powers.get(who);
+    if (!byType) {
+      byType = new Map();
+      this.powers.set(who, byType);
+    }
+    const list = byType.get(type) ?? [];
+    const last = list[list.length - 1];
+    if (last && last[1] === cur && last[2] === max) return;
+    const at = Math.round(t * 100) / 100;
+    // Several changes in one moment: keep the latest.
+    if (last && last[0] >= at) {
+      last[1] = cur;
+      last[2] = max;
+    } else list.push([at, cur, max]);
+    byType.set(type, list);
+  }
+
+  /**
+   * Resource levels. The advanced block reads out the resource an event is
+   * about (mana on most, holy power on a spender), as it was before the
+   * event's cost; between readings, gains are added and casts' costs taken
+   * off, so resources read out rarely (combo points, holy power) still
+   * follow every change.
+   */
+  private notePowers(who: number, t: number, e: LogEvent, cast: boolean) {
+    const types = e.infoPowerTypes.split('|');
+    const curs = e.infoPowers.split('|');
+    const maxes = e.infoMaxPowers.split('|');
+    const costs = e.infoPowerCosts.split('|');
+    for (let j = 0; j < types.length; j += 1) {
+      const type = Number(types[j]);
+      const cur = Number(curs[j]);
+      const max = Number(maxes[j]);
+      if (!Number.isFinite(type) || type < 0) continue;
+      if (!Number.isFinite(cur) || !(max > 0)) continue;
+      this.setPower(who, type, t, cur, max);
+      const cost = Number(costs[j]);
+      if (cast && cost > 0)
+        this.setPower(who, type, t + 0.01, Math.max(0, cur - cost), max);
+    }
+  }
+
+  /** A gain between readings (never past the last known maximum). */
+  private gainPower(who: number, type: number, t: number, amount: number) {
+    const list = this.powers.get(who)?.get(type);
+    const last = list?.[list.length - 1];
+    if (!last) return;
+    const next = Math.min(last[2], Math.max(0, last[1] + amount));
+    this.setPower(who, type, t, next, last[2]);
+  }
 
   private alloc(cap: number) {
     return {
@@ -461,6 +528,8 @@ export class StoreBuilder {
     } else if (type.endsWith('_ENERGIZE')) {
       kind = K.ENERGIZE;
       a = e.amount;
+      if (dst >= 0 && e.powerType >= 0)
+        this.gainPower(dst, e.powerType, t, e.amount);
       x = e.over;
       aux = e.powerType;
     } else if (type === 'SPELL_SUMMON') {
@@ -481,6 +550,13 @@ export class StoreBuilder {
     // Raider power, once a second.
     if (e.infoMaxPower > 0 && isPlayerGuid(e.info)) {
       const who = this.unitIndex.get(e.info);
+      if (who !== undefined)
+        this.notePowers(
+          who,
+          t,
+          e,
+          e.type === 'SPELL_CAST_SUCCESS' && e.src === e.info,
+        );
       if (who !== undefined) {
         const list = this.power.get(who) ?? [];
         const last = list[list.length - 1];
@@ -660,6 +736,7 @@ export class StoreBuilder {
       hp: cut(c.hp),
       auras,
       power: this.power,
+      powers: this.powers,
       deaths,
       boss,
     };

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.59] - Unreleased
+### Added
+- **Resources as graphs.** The Resources tab now opens on a chart of one resource (Mana first; pick Rage, Insanity, Holy Power and so on from the dropdown) for every raider who has it, as % of max or as the amount. For Mana it starts with just the healers; click names under the chart to show or hide lines. Click a raider in the table for each of their resources on its own chart (amount, scaled to the resource's maximum, drawn as steps), with the gained/wasted table under each.
+- Resources the log only reads out now and then (holy power, combo points, soul shards...) are followed between readings from what was gained and what each cast cost, so the line moves with every change.
+- **Zoom to slice** on Logs page charts (damage, healing, taken and resources): drag a slice, then press Zoom to slice in the chart's corner to see just that stretch; "Show the whole fight" or a right-click goes back.
+
 ## [1.9.58] - Unreleased
 ### Added
 - **Healing: leave out healing to chosen raiders.** A new dropdown next to the ability picker ("Healing to everyone") lets you tick as many raiders as you like; healing they received is left out of the table, the chart, the per-ability numbers and the Pull by pull table. Handy for "how much did this healer put on others, not themselves or the tank". It also applies to Mitigations when that's on, and only on the Healing tab (other tabs ignore it).

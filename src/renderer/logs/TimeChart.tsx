@@ -65,6 +65,12 @@ const TimeChart = ({
   boundaries = [],
   smoothing,
   height = H,
+  step = 1,
+  yMax,
+  zoomable = false,
+  format = compact,
+  showZero = false,
+  stepped = false,
 }: {
   duration: number;
   series: ChartSeries[];
@@ -78,6 +84,17 @@ const TimeChart = ({
   boundaries?: { t: number; label: string }[];
   smoothing?: number;
   height?: number;
+  /** Seconds per value in each series' `values` (default 1). */
+  step?: number;
+  /** Fixed top of the scale (e.g. a resource's maximum). */
+  yMax?: number;
+  /** Offer "Zoom to slice": the chart then shows only the slice. */
+  zoomable?: boolean;
+  format?: (v: number) => string;
+  /** List zero values in the hover card too. */
+  showZero?: boolean;
+  /** Draw levels as steps (resources, stacks) instead of slopes. */
+  stepped?: boolean;
 }) => {
   const svgRef = React.useRef<SVGSVGElement>(null);
   const dragRef = React.useRef<{ a: number; b: number } | null>(null);
@@ -95,27 +112,42 @@ const TimeChart = ({
     return () => observer.disconnect();
   }, []);
 
+  const [zoomOn, setZoomOn] = React.useState(false);
   const span = W - LEFT - RIGHT;
   const total = Math.max(1, duration);
-  const w = smoothing ?? Math.max(3, Math.round(total / 60));
+  // What the chart shows: the whole fight, or the slice when zoomed in.
+  const zoomed = zoomable && zoomOn && range !== null;
+  const v0 = zoomed && range ? range[0] : 0;
+  const v1 = zoomed && range ? Math.max(range[0] + 0.5, range[1]) : total;
+  const len = v1 - v0;
+  const w = Math.max(
+    1,
+    Math.round((smoothing ?? Math.max(3, Math.round(total / 60))) / step),
+  );
   const rates = React.useMemo(
-    () => series.map((s) => smooth(s.values, w)),
+    () => series.map((s) => (w > 1 ? smooth(s.values, w) : s.values)),
     [series, w],
   );
   // One point per ~2px.
-  const points = Math.max(2, Math.min(Math.ceil(total), Math.floor(span / 2)));
-  const step = total / points;
+  const points = Math.max(
+    2,
+    Math.min(Math.ceil(len / step), Math.floor(span / 2)),
+  );
+  const pointSeconds = len / points;
   const sampled = React.useMemo(
     () =>
       rates.map((r) => {
         const out = new Float64Array(points);
         for (let i = 0; i < points; i += 1) {
-          const at = Math.min(r.length - 1, Math.floor((i + 0.5) * step));
+          const at = Math.min(
+            r.length - 1,
+            Math.floor((v0 + (i + 0.5) * pointSeconds) / step),
+          );
           out[i] = at >= 0 ? r[at] : 0;
         }
         return out;
       }),
-    [rates, points, step],
+    [rates, points, pointSeconds, v0, step],
   );
   const stacks = React.useMemo(() => {
     if (!stacked) return sampled;
@@ -131,10 +163,11 @@ const TimeChart = ({
   }, [sampled, stacked, points]);
 
   let max = 1;
-  stacks.forEach((s) => s.forEach((v) => (max = Math.max(max, v))));
+  if (yMax && yMax > 0) max = yMax;
+  else stacks.forEach((s) => s.forEach((v) => (max = Math.max(max, v))));
   const plotH = height - TOP - BOTTOM;
   const x = (t: number) =>
-    LEFT + (Math.min(total, Math.max(0, t)) / total) * span;
+    LEFT + ((Math.min(v1, Math.max(v0, t)) - v0) / len) * span;
   const xi = (i: number) => LEFT + ((i + 0.5) / points) * span;
   const y = (v: number) => TOP + (1 - v / max) * plotH;
   // Seconds under a screen x, pinned to the chart's edges.
@@ -142,7 +175,7 @@ const TimeChart = ({
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return 0;
     const px = ((clientX - rect.left) / rect.width) * W;
-    return Math.min(total, Math.max(0, ((px - LEFT) / span) * total));
+    return Math.min(v1, Math.max(v0, v0 + ((px - LEFT) / span) * len));
   };
   const secondsAt = (e: React.MouseEvent<SVGSVGElement>) =>
     secondsAtX(e.clientX);
@@ -165,7 +198,7 @@ const TimeChart = ({
       const a = Math.min(d.a, d.b);
       const b = Math.max(d.a, d.b);
       // A click (barely moved): open a recording there.
-      if ((b - a) / total < 0.005) {
+      if ((b - a) / len < 0.005) {
         if (onPick) onPick(d.a);
         return;
       }
@@ -183,11 +216,30 @@ const TimeChart = ({
   }, [dragging]);
   const shown = drag
     ? ([Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)] as [number, number])
-    : range;
-  const ticks = [0, 0.5, 1].map((f) => f * max);
+    : zoomed
+      ? null
+      : range;
+  // Small whole-number scales (combo points, stacks): every value.
+  const ticks =
+    yMax && yMax <= 10 && Number.isInteger(yMax)
+      ? Array.from({ length: yMax + 1 }, (_, i) => i)
+      : [0, 0.5, 1].map((f) => f * max);
+  const linePoints = (s: Float64Array) => {
+    if (!stepped) return Array.from(s, (v, i) => `${xi(i)},${y(v)}`).join(' ');
+    const out: string[] = [];
+    for (let i = 0; i < s.length; i += 1) {
+      const left = LEFT + (i / points) * span;
+      if (i > 0 && s[i] !== s[i - 1]) out.push(`${left},${y(s[i - 1])}`);
+      out.push(`${left},${y(s[i])}`);
+    }
+    out.push(`${LEFT + span},${y(s[s.length - 1])}`);
+    return out.join(' ');
+  };
   const timeTicks = 6;
   const hoverIndex =
-    hover === null ? null : Math.min(points - 1, Math.floor(hover / step));
+    hover === null
+      ? null
+      : Math.min(points - 1, Math.floor((hover - v0) / pointSeconds));
 
   return (
     <div className="relative select-none" ref={box}>
@@ -215,16 +267,18 @@ const TimeChart = ({
           onRange(null);
         }}
       >
-        {bands.map(([s, e]) => (
-          <rect
-            key={`b${s}`}
-            x={x(s)}
-            y={TOP}
-            width={Math.max(2, x(e) - x(s))}
-            height={plotH}
-            fill="hsl(200 70% 55% / 0.13)"
-          />
-        ))}
+        {bands
+          .filter(([s, e]) => e > v0 && s < v1)
+          .map(([s, e]) => (
+            <rect
+              key={`b${s}`}
+              x={x(s)}
+              y={TOP}
+              width={Math.max(2, x(e) - x(s))}
+              height={plotH}
+              fill="hsl(200 70% 55% / 0.13)"
+            />
+          ))}
         {ticks.map((v) => (
           <g key={`t${v}`}>
             <line
@@ -241,13 +295,13 @@ const TimeChart = ({
               fontSize="11"
               fill="hsl(var(--foreground))"
             >
-              {compact(v)}
+              {format(v)}
             </text>
           </g>
         ))}
         {Array.from(
           { length: timeTicks + 1 },
-          (_, i) => (i / timeTicks) * total,
+          (_, i) => v0 + (i / timeTicks) * len,
         ).map((t, i) => (
           <text
             key={`x${t}`}
@@ -260,25 +314,27 @@ const TimeChart = ({
             {mmss(t)}
           </text>
         ))}
-        {boundaries.map((b) => (
-          <g key={`p${b.t}`}>
-            <line
-              x1={x(b.t)}
-              x2={x(b.t)}
-              y1={TOP}
-              y2={TOP + plotH}
-              stroke="hsl(var(--foreground) / 0.35)"
-            />
-            <text
-              x={x(b.t) + 4}
-              y={TOP + 11}
-              fontSize="10"
-              fill="hsl(var(--foreground))"
-            >
-              {b.label}
-            </text>
-          </g>
-        ))}
+        {boundaries
+          .filter((b) => b.t >= v0 && b.t <= v1)
+          .map((b) => (
+            <g key={`p${b.t}`}>
+              <line
+                x1={x(b.t)}
+                x2={x(b.t)}
+                y1={TOP}
+                y2={TOP + plotH}
+                stroke="hsl(var(--foreground) / 0.35)"
+              />
+              <text
+                x={x(b.t) + 4}
+                y={TOP + 11}
+                fontSize="10"
+                fill="hsl(var(--foreground))"
+              >
+                {b.label}
+              </text>
+            </g>
+          ))}
         {stacked
           ? stacks
               .map((s, si) => {
@@ -311,21 +367,23 @@ const TimeChart = ({
                   series[si].dash ?? (series[si].dashed ? '4 3' : undefined)
                 }
                 strokeLinejoin="round"
-                points={Array.from(s, (v, i) => `${xi(i)},${y(v)}`).join(' ')}
+                points={linePoints(s)}
               />
             ))}
-        {markers.map((m) => (
-          <line
-            key={`m${m.t}${m.label}`}
-            x1={x(m.t)}
-            x2={x(m.t)}
-            y1={TOP}
-            y2={TOP + plotH}
-            stroke={m.color ?? 'rgb(248 113 113 / 0.6)'}
-            strokeDasharray={m.color ? undefined : '3 3'}
-            strokeOpacity={m.color ? 0.75 : 1}
-          />
-        ))}
+        {markers
+          .filter((m) => m.t >= v0 && m.t <= v1)
+          .map((m) => (
+            <line
+              key={`m${m.t}${m.label}`}
+              x1={x(m.t)}
+              x2={x(m.t)}
+              y1={TOP}
+              y2={TOP + plotH}
+              stroke={m.color ?? 'rgb(248 113 113 / 0.6)'}
+              strokeDasharray={m.color ? undefined : '3 3'}
+              strokeOpacity={m.color ? 0.75 : 1}
+            />
+          ))}
         {shown && (
           <g>
             <rect
@@ -373,6 +431,15 @@ const TimeChart = ({
           />
         )}
       </svg>
+      {zoomable && range && (
+        <button
+          type="button"
+          onClick={() => setZoomOn(!zoomed)}
+          className="absolute top-1 right-3 rounded border border-card bg-background/90 px-2 py-0.5 text-[11px] text-brand hover:underline"
+        >
+          {zoomed ? 'Show the whole fight' : 'Zoom to slice'}
+        </button>
+      )}
       {hover !== null && hoverIndex !== null && !drag && (
         <div
           className="absolute top-1 pointer-events-none rounded-md border border-card bg-background px-2 py-1 text-xs shadow-lg z-10 max-w-[260px]"
@@ -386,7 +453,7 @@ const TimeChart = ({
         >
           <div className="text-foreground">{mmss(hover)}</div>
           {markers
-            .filter((m) => Math.abs(m.t - hover) <= Math.max(1, step))
+            .filter((m) => Math.abs(m.t - hover) <= Math.max(1, pointSeconds))
             .map((m) => (
               <div key={`h${m.t}${m.label}`} className="text-red-400">
                 {m.label}
@@ -394,7 +461,7 @@ const TimeChart = ({
             ))}
           {series
             .map((s, si) => ({ s, v: sampled[si][hoverIndex] }))
-            .filter(({ v }) => v > 0)
+            .filter(({ v }) => showZero || v > 0)
             .sort((a, b) => b.v - a.v)
             .slice(0, 10)
             .map(({ s, v }) => (
@@ -407,7 +474,7 @@ const TimeChart = ({
                   {s.name}
                 </span>
                 <span className="ml-auto pl-2 tabular-nums text-foreground-lighter">
-                  {compact(v)}
+                  {format(v)}
                 </span>
               </div>
             ))}
