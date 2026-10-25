@@ -91,7 +91,8 @@ const askIcon = (id: number) => {
 const flush = async () => {
   timer = null;
   if (busy) return;
-  const ids = [...wanted].slice(0, 120);
+  // The server answers up to 400 at once from its cache.
+  const ids = [...wanted].slice(0, 400);
   if (!ids.length) return;
   busy = true;
   try {

@@ -134,7 +134,8 @@ export const usePassiveTalents = (
   } | null>(null);
   const key = stores.map((s) => s.id).join(',');
   React.useEffect(() => {
-    if (!enabled || !stores.length) return undefined;
+    // Loaded as soon as the pulls are, so switching it on is instant.
+    if (!stores.length) return undefined;
     let cancelled = false;
     const raiders = new Map<
       string,
@@ -172,7 +173,7 @@ export const usePassiveTalents = (
     };
     // `key` stands for the pulls; `skip` is a fixed table lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key]);
   return enabled && result?.key === key ? result.drs : null;
 };
 
@@ -200,7 +201,8 @@ export const useAuraDrs = (
   } | null>(null);
   const key = stores.map((s) => s.id).join(',');
   React.useEffect(() => {
-    if (!enabled || !stores.length) return undefined;
+    // Loaded as soon as the pulls are, so switching it on is instant.
+    if (!stores.length) return undefined;
     let cancelled = false;
     // Buff spell -> name and the raiders who cast it.
     const buffs = new Map<number, { name: string; casters: Set<string> }>();
@@ -273,6 +275,6 @@ export const useAuraDrs = (
     };
     // `key` stands for the pulls; `skip` is a fixed table lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key]);
   return enabled && result?.key === key ? result.drs : null;
 };
