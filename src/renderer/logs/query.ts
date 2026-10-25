@@ -1207,6 +1207,9 @@ export const castRows = (ctx: Ctx): CastRow[] => {
       const friendly = isRaiderSide(p, s);
       if ((ctx.filters.side === 'friendly') !== friendly) return;
       if (!friendly && !isEnemy(p, s)) return;
+      // Pets' casts only with Pets on (as their own rows): counted for
+      // their owner they'd swamp a warlock's casts.
+      if (friendly && s !== p.units[s].root && !ctx.filters.pets) return;
       const ref = rowOf(p, s, ctx.filters.pets);
       if (!ref) return;
       const spell = p.spells[p.sp[i]];
