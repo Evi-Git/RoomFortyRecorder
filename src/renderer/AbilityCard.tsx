@@ -1,3 +1,8 @@
+// Read live from module-level caches that fill in after a render, so the
+// React Compiler must not memoize here: it would keep the first (empty)
+// answer per spell, leaving icons blank until a row is remounted.
+'use no memo';
+
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { Check, Copy, Plus } from 'lucide-react';

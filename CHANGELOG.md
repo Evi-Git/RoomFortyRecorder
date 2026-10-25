@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.51] - Unreleased
+### Fixed
+- **Blank spell icons and "No description." on the Logs page (root cause):** the app's build tool caches parts of each screen to save work, and it cached the first, empty answer for each spell's icon and description. Rows drawn before the answer arrived kept showing nothing, while rows drawn later (collapsing and reopening a group) were fine. The icon and tooltip code now always reads the latest answer.
+
 ## [1.9.50] - Unreleased
 ### Fixed
 - **Icons that appeared only after reopening a row:** an icon drawn before its spell's icon name was known never picked the name up when it arrived, while icons drawn afterwards worked (which is why collapsing and reopening a group showed its children's icons). Each icon now starts fresh as soon as its name arrives.

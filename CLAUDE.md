@@ -48,12 +48,22 @@ live only in the server's `.env` (see `guild-cloud-server/.env.example`).
 
 A new server module must be added to `server-files.txt` (a test checks).
 
+## React Compiler (renderer)
+
+The renderer build runs the React Compiler (`react-compiler-webpack`). It
+memoizes reads of module-level mutable state (a `Map` filled later) by the
+component's props, so a component that reads such a cache during render
+never sees updates, even when it re-renders. Use `'use no memo'` in those
+files (as `logs/SpellIcon.tsx` and `AbilityCard.tsx` do), or
+`useSyncExternalStore`. A browser test harness must run the compiler too
+(babel-plugin-react-compiler) or it won't reproduce these bugs.
+
 ## Spell icons (how they flow)
 
 Combat logs have spell IDs, not icon names. Icon name: app `SpellIcons`
 (disk cache) -> guild server `POST /journal/spells` (Wowhead, Blizzard API,
 Warcraft Logs; cached in `journal/spells.json`) -> Wowhead from the PC.
-Image: `rficon://icon/<name>` -> app `userData/icons` -> server
+Image (Logs page): `iconImage` IPC -> data: URL from app `userData/icons-v2` -> server
 `GET /journal/icon/:name` (icon pack in `GUILD_CLOUD_ICON_DIR` first, then
 Blizzard/Wowhead CDNs) -> CDNs directly. App log lines start
 `[SpellIcons]` / `[PullDesk]`; server lines start `[journal]`.
