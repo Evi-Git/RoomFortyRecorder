@@ -12,7 +12,6 @@ import { ClipboardCopy, ExternalLink, FileText, Package } from 'lucide-react';
 import Spinner from './components/Spinner/Spinner';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
-import { iconDebugLines } from './AbilityCard';
 
 type IProps = {
   children: ReactNode;
@@ -40,7 +39,7 @@ const DiagnosticsDialog = (props: IProps) => {
     }
   };
 
-  const copyIconLogLines = async () => {
+  const copyLogLines = async () => {
     setCopyStatus('Reading logs…');
     try {
       const result = await ipc.getLogDiagnostics();
@@ -53,13 +52,12 @@ const DiagnosticsDialog = (props: IProps) => {
         `Log folder: ${result.dir}`,
         `Files: ${result.files.join(', ') || '(none)'}`,
         ...result.lines,
-        ...iconDebugLines(),
       ].join('\n');
       ipc.sendMessage('writeClipboard', [text]);
       setCopyStatus(
         result.lines.length
           ? `Copied ${result.lines.length} lines. Paste them into the chat.`
-          : 'Copied, but no icon lines were found yet. Open a raider breakdown first.',
+          : 'Copied, but no matching log lines were found yet.',
       );
     } catch (error) {
       setCopyStatus(`Could not read the logs: ${String(error)}`);
@@ -174,13 +172,13 @@ const DiagnosticsDialog = (props: IProps) => {
 
         <div className="flex flex-col items-center gap-2 w-full">
           <Button
-            id="copy-icon-log-button"
+            id="copy-log-lines-button"
             type="button"
             variant="outline"
-            onClick={() => void copyIconLogLines()}
+            onClick={() => void copyLogLines()}
           >
             <ClipboardCopy size={20} className="mr-2" />
-            Copy icon log lines
+            Copy log lines
           </Button>
           {copyStatus && (
             <p className="text-sm text-foreground text-center">{copyStatus}</p>

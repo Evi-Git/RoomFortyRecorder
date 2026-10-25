@@ -199,13 +199,6 @@ export const useSpell = (id: number): SpellInfo | null => {
     : null;
 };
 
-/** What the icon lookup knows, for the tooltip. */
-const iconStatus = (id: number) => {
-  if (icons.has(id)) return `icon ${icons.get(id)}`;
-  if (iconWanted.has(id)) return 'icon: looking up';
-  return 'no icon found';
-};
-
 const MELEE_ICON = 'inv_sword_04';
 
 /** A small spell icon; hover for its tooltip. */
@@ -235,9 +228,7 @@ const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
                 {info?.name || name || 'Unknown spell'}
               </div>
               <div className="text-foreground">
-                {spellId > 1
-                  ? `Spell ${spellId} · ${iconStatus(spellId)}`
-                  : 'Auto attack'}
+                {spellId > 1 ? `Spell ${spellId}` : 'Auto attack'}
               </div>
             </div>
           </div>

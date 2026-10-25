@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.57] - Unreleased
+### Changed
+- **Icon troubleshooting removed** now that icons work: the app no longer writes a summary of icon lookups to its log every minute, and spell tooltips no longer show where the icon came from (they still show the spell ID). The Diagnostics dialog's button is now **Copy log lines**: it copies recent Analysis, Logs page, updater and live-stream lines, plus warnings and errors, for pasting into a chat.
+
 ## [1.9.56] - Unreleased
 ### Changed
 - **Updates no longer look like a crash:** after the brief "Updating" screen, the installer's progress window now stays on screen while the update installs and until it reopens the app. Before, the install ran hidden, so nothing was on screen for several seconds.
