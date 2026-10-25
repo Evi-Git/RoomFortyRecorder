@@ -6,6 +6,8 @@ import {
   FileText,
   HardHat,
   MonitorCog,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   Radio,
   ScrollText,
@@ -42,6 +44,7 @@ import { VideoCategory } from '../types/VideoCategory';
 import { setConfigValue } from './useSettings';
 import { getCategoryIndex } from './rendererutils';
 import Menu from './components/Menu';
+import { SidebarRailContext } from './components/Menu/Menu';
 import Separator from './components/Separator/Separator';
 import TestButton from './TestButton';
 import BugButton from './BugButton';
@@ -100,6 +103,24 @@ const SideMenu = (props: IProps) => {
   } = props;
 
   const [appVersion, setAppVersion] = useState<string>();
+  // [RoomFortyRecorder] The sidebar folds down to an icon strip; the page
+  // next to it takes the room.
+  const [rail, setRail] = useState(() => {
+    try {
+      return localStorage.getItem('rf-sidebar-rail') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleRail = () =>
+    setRail((was) => {
+      try {
+        localStorage.setItem('rf-sidebar-rail', was ? '0' : '1');
+      } catch {
+        // Not remembered.
+      }
+      return !was;
+    });
   const { category, language } = appState;
   const lastManualStartStopClickRef = useRef(0);
 
@@ -184,7 +205,10 @@ const SideMenu = (props: IProps) => {
     }
 
     return (
-      <Menu.Item value={tabCategory}>
+      <Menu.Item
+        value={tabCategory}
+        label={getLocaleCategoryLabel(language, tabCategory)}
+      >
         <Menu.Item.Icon>
           {typeof tabIcon === 'string' ? (
             <img
@@ -210,7 +234,7 @@ const SideMenu = (props: IProps) => {
 
   // [RoomFortyRecorder] Meters from our own logs (Warcraft Logs-style).
   const renderLogsTab = () => (
-    <Menu.Item value={Pages.Logs}>
+    <Menu.Item value={Pages.Logs} label="Logs">
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
           <ScrollText size={18} />
@@ -221,7 +245,7 @@ const SideMenu = (props: IProps) => {
   );
 
   const renderAdminTab = () => (
-    <Menu.Item value={Pages.Admin}>
+    <Menu.Item value={Pages.Admin} label="Admin">
       <Menu.Item.Icon>
         <ShieldCheck size={18} />
       </Menu.Item.Icon>
@@ -231,7 +255,10 @@ const SideMenu = (props: IProps) => {
 
   const renderSettingsTab = () => {
     return (
-      <Menu.Item value={Pages.Settings}>
+      <Menu.Item
+        value={Pages.Settings}
+        label={getLocalePhrase(language, Phrase.GeneralButtonText)}
+      >
         <Menu.Item.Icon>
           <Cog size={18} />
         </Menu.Item.Icon>
@@ -242,7 +269,10 @@ const SideMenu = (props: IProps) => {
 
   const renderSceneTab = () => {
     return (
-      <Menu.Item value={Pages.SceneEditor}>
+      <Menu.Item
+        value={Pages.SceneEditor}
+        label={getLocalePhrase(language, Phrase.SceneButtonText)}
+      >
         <Menu.Item.Icon>
           <MonitorCog size={18} />
         </Menu.Item.Icon>
@@ -272,7 +302,11 @@ const SideMenu = (props: IProps) => {
       : getLocalePhrase(language, Phrase.InstantReplayLabel);
 
     return (
-      <Menu.Item value={Pages.InstantReplay} disabled={disabled}>
+      <Menu.Item
+        value={Pages.InstantReplay}
+        disabled={disabled}
+        label={tooltip}
+      >
         <Tooltip content={tooltip}>
           <span className={spanClassName}>
             <Menu.Item.Icon>
@@ -318,7 +352,10 @@ const SideMenu = (props: IProps) => {
     const someoneLive = liveCount > 0;
 
     return (
-      <Menu.Item value={Pages.Live}>
+      <Menu.Item
+        value={Pages.Live}
+        label={someoneLive ? `Watch live (${liveCount} live)` : 'Watch live'}
+      >
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
             <Tv size={18} className={someoneLive ? 'text-brand' : ''} />
@@ -336,7 +373,7 @@ const SideMenu = (props: IProps) => {
 
   // [RoomFortyRecorder] Per-pull wipe reports from the guild server.
   const renderPullDeskTab = () => (
-    <Menu.Item value={Pages.PullDesk}>
+    <Menu.Item value={Pages.PullDesk} label="Dashboard">
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
           <ClipboardList size={18} />
@@ -393,112 +430,140 @@ const SideMenu = (props: IProps) => {
   const raidsIcon = <Swords size={ICON} />;
 
   return (
-    <div className="flex flex-col h-full bg-background w-60 shrink-0 px-3 items-center pt-[44px] pb-2 border-r border-card/60">
-      <ApplicationStatusCard
-        recorderStatus={recorderStatus}
-        activityStatus={activityStatus}
-        error={error}
-        micStatus={micStatus}
-        errorReports={errorReports}
-        savingStatus={savingStatus}
-        config={config}
-        appState={appState}
-        combatLoggingStatus={combatLoggingStatus}
-        setPreviewEnabled={setPreviewEnabled}
-      />
-      <LiveButton />
-
-      <ScrollArea
-        className="w-full flex-1 min-h-0"
-        withScrollIndicators={false}
+    <SidebarRailContext.Provider value={rail}>
+      <div
+        className={`flex flex-col h-full bg-background shrink-0 items-center pt-[44px] pb-2 border-r border-card/60 transition-[width] duration-150 ${
+          rail ? 'w-14 px-1.5' : 'w-60 px-3'
+        }`}
       >
-        <>
-          <Menu
-            className="mt-3"
-            initialValue={
-              appState.page === Pages.InstantReplay ||
-              appState.page === Pages.Live
-                ? appState.page
-                : false
-            }
-            onChange={handleChangePage}
-          >
-            {renderInstantReplayTab()}
-            {allows(permissions, 'liveWatch') && renderLiveTab()}
-          </Menu>
-          {allows(permissions, 'analysisView') && (
+        <ApplicationStatusCard
+          compact={rail}
+          recorderStatus={recorderStatus}
+          activityStatus={activityStatus}
+          error={error}
+          micStatus={micStatus}
+          errorReports={errorReports}
+          savingStatus={savingStatus}
+          config={config}
+          appState={appState}
+          combatLoggingStatus={combatLoggingStatus}
+          setPreviewEnabled={setPreviewEnabled}
+        />
+        <LiveButton compact={rail} />
+
+        <ScrollArea
+          className="w-full flex-1 min-h-0"
+          withScrollIndicators={false}
+        >
+          <>
             <Menu
-              className="mt-5"
+              className="mt-3"
               initialValue={
-                appState.page === Pages.PullDesk || appState.page === Pages.Logs
+                appState.page === Pages.InstantReplay ||
+                appState.page === Pages.Live
                   ? appState.page
                   : false
               }
               onChange={handleChangePage}
             >
-              <Menu.Label>Analysis</Menu.Label>
-              {renderPullDeskTab()}
-              {renderLogsTab()}
+              {renderInstantReplayTab()}
+              {allows(permissions, 'liveWatch') && renderLiveTab()}
             </Menu>
-          )}
-        </>
+            {allows(permissions, 'analysisView') && (
+              <Menu
+                className="mt-5"
+                initialValue={
+                  appState.page === Pages.PullDesk ||
+                  appState.page === Pages.Logs
+                    ? appState.page
+                    : false
+                }
+                onChange={handleChangePage}
+                label="Analysis"
+                foldKey="analysis"
+              >
+                {renderPullDeskTab()}
+                {renderLogsTab()}
+              </Menu>
+            )}
+          </>
 
-        <Menu
-          initialValue={appState.page === Pages.None ? category : false}
-          onChange={handleChangeCategory}
-          className="mt-5"
-        >
-          <Menu.Label>
-            {getLocalePhrase(language, Phrase.RecordingsHeading)}
-          </Menu.Label>
-          {renderCategoryTab(VideoCategory.MythicPlus, mythicPlusIcon)}
-          {renderCategoryTab(VideoCategory.Raids, raidsIcon)}
-          {renderCategoryTab(VideoCategory.Clips, <Clapperboard size={ICON} />)}
-          {renderCategoryTab(VideoCategory.Manual, <HardHat size={ICON} />)}
-        </Menu>
-        <Menu
-          className="mt-5"
-          initialValue={
-            appState.page === Pages.Settings ||
-            appState.page === Pages.SceneEditor ||
-            appState.page === Pages.Admin
-              ? appState.page
-              : false
-          }
-          onChange={handleChangePage}
-        >
-          <Menu.Label>
-            {getLocalePhrase(language, Phrase.SettingsHeading)}
-          </Menu.Label>
-          {renderSettingsTab()}
-          {renderSceneTab()}
-          {permissions?.owner && renderAdminTab()}
-        </Menu>
-      </ScrollArea>
-      <div className="mt-auto w-full">
-        <Separator className="mb-4" />
-        <div className="flex items-center justify-center gap-x-4">
-          <UpdateNotifier
-            updateAvailable={updateAvailable}
-            appState={appState}
-          />
-          <DiagnosticsDialog
-            appState={appState}
-            setPreviewEnabled={setPreviewEnabled}
+          <Menu
+            initialValue={appState.page === Pages.None ? category : false}
+            onChange={handleChangeCategory}
+            className="mt-5"
+            label={getLocalePhrase(language, Phrase.RecordingsHeading)}
+            foldKey="recordings"
           >
-            <Button variant="ghost" size="icon">
-              <FileText size={20} />
-            </Button>
-          </DiagnosticsDialog>
-          <TestButton recorderStatus={recorderStatus} appState={appState} />
-          <BugButton appState={appState} />
+            {renderCategoryTab(VideoCategory.MythicPlus, mythicPlusIcon)}
+            {renderCategoryTab(VideoCategory.Raids, raidsIcon)}
+            {renderCategoryTab(
+              VideoCategory.Clips,
+              <Clapperboard size={ICON} />,
+            )}
+            {renderCategoryTab(VideoCategory.Manual, <HardHat size={ICON} />)}
+          </Menu>
+          <Menu
+            className="mt-5"
+            initialValue={
+              appState.page === Pages.Settings ||
+              appState.page === Pages.SceneEditor ||
+              appState.page === Pages.Admin
+                ? appState.page
+                : false
+            }
+            onChange={handleChangePage}
+            label={getLocalePhrase(language, Phrase.SettingsHeading)}
+            foldKey="settings"
+          >
+            {renderSettingsTab()}
+            {renderSceneTab()}
+            {permissions?.owner && renderAdminTab()}
+          </Menu>
+        </ScrollArea>
+        <div className="mt-auto w-full">
+          <Separator className="mb-4" />
+          <div
+            className={`flex items-center justify-center ${
+              rail ? 'flex-col gap-y-1' : 'gap-x-3'
+            }`}
+          >
+            <UpdateNotifier
+              updateAvailable={updateAvailable}
+              appState={appState}
+            />
+            <DiagnosticsDialog
+              appState={appState}
+              setPreviewEnabled={setPreviewEnabled}
+            >
+              <Button variant="ghost" size="icon">
+                <FileText size={20} />
+              </Button>
+            </DiagnosticsDialog>
+            <TestButton recorderStatus={recorderStatus} appState={appState} />
+            <BugButton appState={appState} />
+            <Tooltip
+              content={rail ? 'Show the sidebar' : 'Fold the sidebar'}
+              side="top"
+            >
+              <Button variant="ghost" size="icon" onClick={toggleRail}>
+                {rail ? (
+                  <PanelLeftOpen size={20} />
+                ) : (
+                  <PanelLeftClose size={20} />
+                )}
+              </Button>
+            </Tooltip>
+          </div>
+          {!rail && (
+            <UpdateCheck
+              versionLabel={getLocalePhrase(language, Phrase.Version)}
+              version={appVersion}
+            />
+          )}
         </div>
-        <UpdateCheck
-          versionLabel={getLocalePhrase(language, Phrase.Version)}
-          version={appVersion}
-        />
       </div>
-    </div>
+    </SidebarRailContext.Provider>
   );
 };
 

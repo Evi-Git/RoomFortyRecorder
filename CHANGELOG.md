@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.82] - Unreleased
+### Added
+- **The sidebar folds.** The button at the bottom right of the sidebar folds it down to a strip of icons (names on hover) and the page next to it widens to fill the space; the same button brings it back. The app remembers which way you left it.
+- **Sidebar sections fold.** Click a section heading (Analysis, Recordings, Settings) to fold it away; click again to open it.
+- **The Logs page's pull list folds** to a thin strip (showing the pull or how many are picked), giving the logs the whole width. The arrows above the list fold it; click the strip to open it again.
+
 ## [1.9.81] - Unreleased
 ### Changed
 - **Bug button** replaces the Discord button at the bottom of the sidebar (which only linked to another server). It opens a small box; what you write goes to the bug channel in our Discord with your name, the app version and the page you were on. Ctrl+Enter sends.

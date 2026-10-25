@@ -300,13 +300,13 @@ const Status = ({
     >
       <HoverCardTrigger>
         {/* [RoomFortyRecorder] Compact row: dot + status, details on hover. */}
-        <div className="w-full flex items-center gap-x-2 hover:cursor-pointer">
+        <div className="w-full flex items-center gap-x-2 hover:cursor-pointer py-1">
           <StatusLight
             wrapperClasses={`${statusLightsClasses} shrink-0`}
             foregroundClasses={`border-none ${statusLightsClasses}`}
             variant={statusIndicatorVariant}
           />
-          <div className="min-w-0 font-sans flex flex-col">
+          <div className="rf-status-text min-w-0 font-sans flex flex-col">
             <div
               className={cn(
                 'flex items-center text-foreground-lighter font-semibold text-xs whitespace-nowrap',
