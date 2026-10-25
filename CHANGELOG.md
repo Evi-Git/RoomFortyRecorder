@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.85] - Unreleased
+### Fixed
+- **Healing showed only shields** in 1.9.84 (about a fifth of the real total). Reading pre-pull buffs made raiders before their first event without "friendly" flags, so heals on them were dropped. Raiders are always friendly now; the Kith'ix kill's raid healing matches Warcraft Logs exactly again.
+- A pet's copy of a spell under its own name (Dancing Rune Weapon's Vampiric Strike) stays in the pet's row instead of the death knight's, as on Warcraft Logs.
+
 ## [1.9.84] - Unreleased
 ### Fixed
 - **Buffs from before the pull** (flask, food, augment rune, vantus, raid buffs) now show on the Buffs tab, up the whole fight. The log only lists them by spell ID at the pull, so their names come from the spell lookup.

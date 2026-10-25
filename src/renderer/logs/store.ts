@@ -555,7 +555,12 @@ export class StoreBuilder {
         first: t,
       });
     } else if (name && !this.units[i].name) {
-      this.units[i].name = isPlayerGuid(guid) ? shortName(name) : name;
+      // Made earlier without a name or flags (COMBATANT_INFO's buff list,
+      // a support line): the first real sighting fills them in.
+      const u = this.units[i];
+      u.name = isPlayerGuid(guid) ? shortName(name) : name;
+      if (flags) u.friendly = isFriendlyFlags(flags);
+      u.first = t;
     }
     return i;
   }
@@ -879,6 +884,8 @@ export class StoreBuilder {
       if (spec !== undefined) {
         u.specId = spec;
         u.raider = true;
+        // In our raid (COMBATANT_INFO), whatever flags it was first seen with.
+        u.friendly = true;
         u.talents = this.talents.get(u.guid);
         u.gear = this.gear.get(u.guid);
       }

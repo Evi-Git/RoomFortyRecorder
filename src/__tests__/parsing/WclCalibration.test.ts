@@ -153,3 +153,45 @@ test('buffs from before the pull (COMBATANT_INFO) last the whole fight', () => {
   expect(vantus?.start).toBe(0);
   expect(vantus?.end).toBeCloseTo(p.duration, 1);
 });
+
+test('raiders stay friendly when their buff list names them first', () => {
+  const p = store();
+  p.units.filter((u) => u.raider).forEach((u) => expect(u.friendly).toBe(true));
+  expect(row('healing', 'Azraelus')?.total).toBeGreaterThan(0);
+});
+
+test("a pet's copy of a spell with its own name stays with the pet", () => {
+  const base = {
+    casts: 0,
+    hits: 1,
+    crits: 0,
+    ticks: 0,
+    misses: 0,
+    overheal: 0,
+    absorbed: 0,
+    mitigated: 0,
+    uptime: 0,
+  };
+  const groups = groupAbilities([
+    {
+      ...base,
+      key: 'a',
+      spellId: 433895,
+      name: 'Vampiric Strike',
+      by: '',
+      total: 10,
+    },
+    {
+      ...base,
+      key: 'b',
+      spellId: 433895,
+      name: 'Vampiric Strike',
+      by: 'Dancing Rune Weapon',
+      total: 4,
+    },
+  ] as never);
+  const own = groups.find(
+    (g) => !g.head.by && g.head.name === 'Vampiric Strike',
+  );
+  expect(own?.head.total).toBe(10);
+});
