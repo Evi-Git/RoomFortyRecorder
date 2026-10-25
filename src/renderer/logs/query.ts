@@ -375,6 +375,7 @@ const newAbility = (
 const HEALING_COSTS = new Set([
   98021, // Spirit Link (damage evening out health)
   448005, // Light of the Martyr (healing the paladin doesn't get)
+  469704, // Tempered in Battle (the paladin's health it hands out)
 ]);
 
 /** Healing to this unit (or its owner) is left out of the view. */
@@ -1503,9 +1504,28 @@ export const preventedRows = (
       name: string;
     };
     const spans = new Map<number, Span[]>();
+    // Stack counts of stacking reductions (Sentinel): "unit|spell" -> [t, n].
+    const doses = new Map<string, [number, number][]>();
+    for (let i = 0; i < p.n; i += 1) {
+      if (p.k[i] !== K.DOSE) continue;
+      if (!DAMAGE_REDUCTION[p.spells[p.sp[i]]?.id ?? 0]?.perStack) continue;
+      const key = `${p.d[i]}|${p.sp[i]}`;
+      const list = doses.get(key) ?? [];
+      list.push([p.t[i], p.x[i]]);
+      doses.set(key, list);
+    }
+    // Auras another one put on alongside it (Gift of the Golden Val'kyr's
+    // Guardian of Ancient Kings): "unit|spell ID|start".
+    const doubled = new Set<string>();
+    p.auras.forEach((a) => {
+      const by = DAMAGE_REDUCTION[p.spells[a.spell]?.id ?? 0]?.replaces;
+      if (by) doubled.add(`${a.dst}|${by}|${Math.round(a.start * 10)}`);
+    });
     p.auras.forEach((a) => {
       const spell = p.spells[a.spell];
       if (!spell || a.dst < 0 || !p.units[a.dst].raider) return;
+      if (doubled.has(`${a.dst}|${spell.id}|${Math.round(a.start * 10)}`))
+        return;
       const fromText = DAMAGE_REDUCTION[spell.id]
         ? undefined
         : opts.auras?.get(spell.id);
@@ -1545,7 +1565,7 @@ export const preventedRows = (
       }
       if (caster < 0) return;
       const list = spans.get(a.dst) ?? [];
-      list.push({
+      const span = {
         start: a.start,
         end: a.end,
         r: dr.r,
@@ -1554,7 +1574,20 @@ export const preventedRows = (
         caster,
         spellId: spell.id,
         name: dr.name,
-      });
+      };
+      if (dr.perStack) {
+        // One piece per stack count, as the stacks wear off.
+        let at = a.start;
+        let stacks = dr.stacks ?? 1;
+        (doses.get(`${a.dst}|${a.spell}`) ?? []).forEach(([t, n]) => {
+          if (t <= a.start || t >= a.end) return;
+          list.push({ ...span, start: at, end: t, r: stacks * dr.perStack! });
+          at = t;
+          stacks = n;
+        });
+        if (stacks > 0)
+          list.push({ ...span, start: at, r: stacks * dr.perStack });
+      } else list.push(span);
       spans.set(a.dst, list);
     });
     if (!spans.size && !opts.passive) return;
@@ -1756,6 +1789,8 @@ export const NESTED_UNDER: Record<number, { name: string; icon: number }> = {
   414019: { name: 'Judgment', icon: 275773 }, // Greater Judgment
   461546: { name: 'Judgment', icon: 275773 }, // Truth Prevails
   461529: { name: 'Judgment', icon: 275773 }, // Truth Prevails
+  85673: { name: 'Word of Glory', icon: 85673 },
+  378412: { name: 'Word of Glory', icon: 85673 }, // Light of the Titans
   // Items
   1307578: { name: 'Soulcoiler Ritual Vessel', icon: 1291894 }, // Soulcoil Barrier
   1263002: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Unleashed Fire
@@ -1829,7 +1864,8 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       Boolean(parent) &&
       !(
         list.length < 2 &&
-        (key.startsWith('pet:') || list[0].name === parent?.name)
+        ((key.startsWith('pet:') && !list[0].summon) ||
+          list[0].name === parent?.name)
       );
     if (list.length === 1 && !nested)
       return { key, head: list[0], parts: list, nested: false };
