@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.75] - Unreleased
+### Added
+- **Summary: talents widget.** Pick a raider to see their talents drawn like the game's talent page (and Wowhead's calculator).
+  - It shows the class tree, the hero tree they picked and the spec tree, with every node.
+  - What they took is bright (brass when maxed, green when partly ranked, with ranks such as 1/2). What they didn't take is dimmed.
+  - Hover a node for its name, rank, which choice was picked, and its description.
+  - The tree's layout comes from Blizzard through the guild server, so it needs the server update. The server fetches each spec's tree again once to get the layout.
+
 ## [1.9.74] - Unreleased
 ### Added
 - **Summary: item level widget.** Every raider's equipped item level (worked out the way the game does), how many enchants they're missing, and how many gems they have, with the raid average.

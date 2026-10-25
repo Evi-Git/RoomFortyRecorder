@@ -28,6 +28,7 @@ import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import CastDetail from './CastDetail';
 import GearWidget from './GearWidget';
+import TalentWidget from './TalentWidget';
 
 /**
  * [RoomFortyRecorder] Logs page: Summary, Interrupts, Dispels, Resources
@@ -186,6 +187,7 @@ export const SummaryView = ({
         </Box>
       </div>
       <GearWidget ctx={ctx} />
+      <TalentWidget ctx={ctx} />
     </div>
   );
 };
