@@ -4,6 +4,7 @@ import { pct, thousands } from './format';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import AuraDetail from './AuraDetail';
+import { useViewWindow } from './zoom';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables grouped
@@ -35,54 +36,64 @@ const ORDER: AuraCategory[] = [
 const th = 'px-2 py-1.5 font-normal whitespace-nowrap';
 const td = 'px-2 py-1 tabular-nums whitespace-nowrap';
 
-/** The aura's time up, drawn across the whole (combined) fight. */
+/** The aura's time up, drawn across the fight (or the slice zoomed into). */
 const UptimeBar = ({
   spans,
   total,
   bands,
   onPick,
+  range,
 }: {
   spans: [number, number][];
   total: number;
   bands: [number, number][];
   onPick?: (t: number) => void;
-}) => (
-  <div
-    className={`relative h-3 w-full rounded-sm bg-card/40 ${onPick ? 'cursor-pointer' : ''}`}
-    onClick={(e) => {
-      if (!onPick) return;
-      const box = e.currentTarget.getBoundingClientRect();
-      onPick(((e.clientX - box.left) / box.width) * total);
-    }}
-    role={onPick ? 'button' : undefined}
-    tabIndex={onPick ? -1 : undefined}
-    aria-label={onPick ? 'Open a recording at this moment' : undefined}
-  >
-    {bands.map(([s, e]) => (
-      <span
-        key={`l${s}`}
-        className="absolute inset-y-0"
-        style={{
-          left: `${(s / total) * 100}%`,
-          width: `${Math.max(0.3, ((e - s) / total) * 100)}%`,
-          background: 'hsl(200 70% 55% / 0.18)',
-        }}
-      />
-    ))}
-    {spans.map(([s, e]) => (
-      <span
-        key={s}
-        className="absolute top-[2px] bottom-[2px] rounded-[2px]"
-        style={{
-          left: `${(s / total) * 100}%`,
-          width: `${Math.max(0.25, ((e - s) / total) * 100)}%`,
-          background: 'hsl(var(--brand))',
-          opacity: 0.85,
-        }}
-      />
-    ))}
-  </div>
-);
+  range: [number, number] | null;
+}) => {
+  const [v0, v1] = useViewWindow(range, total);
+  const len = v1 - v0;
+  const left = (t: number) => `${((Math.max(v0, t) - v0) / len) * 100}%`;
+  const width = (s: number, e: number) =>
+    `${Math.max(0.25, ((Math.min(v1, e) - Math.max(v0, s)) / len) * 100)}%`;
+  const inView = ([s, e]: [number, number]) => e > v0 && s < v1;
+  return (
+    <div
+      className={`relative h-3 w-full rounded-sm bg-card/40 ${onPick ? 'cursor-pointer' : ''}`}
+      onClick={(e) => {
+        if (!onPick) return;
+        const box = e.currentTarget.getBoundingClientRect();
+        onPick(v0 + ((e.clientX - box.left) / box.width) * len);
+      }}
+      role={onPick ? 'button' : undefined}
+      tabIndex={onPick ? -1 : undefined}
+      aria-label={onPick ? 'Open a recording at this moment' : undefined}
+    >
+      {bands.filter(inView).map(([s, e]) => (
+        <span
+          key={`l${s}`}
+          className="absolute inset-y-0"
+          style={{
+            left: left(s),
+            width: width(s, e),
+            background: 'hsl(200 70% 55% / 0.18)',
+          }}
+        />
+      ))}
+      {spans.filter(inView).map(([s, e]) => (
+        <span
+          key={s}
+          className="absolute top-[2px] bottom-[2px] rounded-[2px]"
+          style={{
+            left: left(s),
+            width: width(s, e),
+            background: 'hsl(var(--brand))',
+            opacity: 0.85,
+          }}
+        />
+      ))}
+    </div>
+  );
+};
 
 const Section = ({
   title,
@@ -93,7 +104,9 @@ const Section = ({
   debuffs,
   onPick,
   onOpen,
+  range,
 }: {
+  range: [number, number] | null;
   title: string;
   rows: AuraRow[];
   seconds: number;
@@ -147,7 +160,7 @@ const Section = ({
               {sh('Count', 'count')}
               {debuffs && sh('Raiders', 'targets')}
               {sh('Uptime', 'uptime')}
-              <th className={`${th} text-left`}>Over the fight</th>
+              <th className={`${th} text-left`}>Over time</th>
               {sh('Source', 'source', true)}
             </tr>
           </thead>
@@ -179,6 +192,7 @@ const Section = ({
                     total={total}
                     bands={bands}
                     onPick={onPick}
+                    range={range}
                   />
                 </td>
                 <td
@@ -293,6 +307,7 @@ const AuraTables = ({
             debuffs={debuffs && ctx.filters.side === 'friendly'}
             onPick={onPick}
             onOpen={(spellId) => setOpened({ key: openKey, spellId })}
+            range={range}
           />
         );
       })}

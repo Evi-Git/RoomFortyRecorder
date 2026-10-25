@@ -26,6 +26,7 @@ import EventsView, { EventTab } from './EventsView';
 import QueriesView from './QueriesView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
+import { ZoomContext } from './zoom';
 import { CATEGORICAL, classColor, compact, mmss } from './format';
 import { AbilityPicker, EnemyPicker, ExcludeTargetsPicker } from './Pickers';
 import { useAuraDrs, usePassiveTalents } from './talents';
@@ -244,6 +245,21 @@ const LogsExplorer = ({
   const [who, setWho] = React.useState<string | null>(null);
   const [auraWho, setAuraWho] = React.useState<string | null>(null);
   const [exprText, setExprText] = React.useState('');
+  // With a slice picked: show only it (zoomed in), or it within the fight.
+  const [zoomed, setZoomedState] = React.useState(
+    () =>
+      remembered<'in' | 'out'>('rf-logs-zoom', 'in', ['in', 'out']) === 'in',
+  );
+  const zoom = React.useMemo(
+    () => ({
+      zoomed,
+      setZoomed: (z: boolean) => {
+        setZoomedState(z);
+        remember('rf-logs-zoom', z ? 'in' : 'out');
+      },
+    }),
+    [zoomed],
+  );
   const [layers, setLayers] = React.useState<Layer[]>([]);
   const [layerMode, setLayerMode] = React.useState<'filter' | 'mark'>('filter');
   // Healing: count damage prevented as healing (and passive reductions).
@@ -495,360 +511,375 @@ const LogsExplorer = ({
   const fightSeconds = viewSeconds(ctx);
 
   return (
-    <div className="flex flex-col gap-y-3 min-w-0">
-      {missing.length > 0 && (
-        <p className="text-xs text-yellow-400 m-0">
-          Left out (full log not sent yet):{' '}
-          {missing.map((m) => m.label).join(', ')}.
-        </p>
-      )}
-      <div className="flex items-end gap-x-4 flex-wrap border-b border-card pb-0">
-        <div className="pb-2">{sideSwitch}</div>
-        <div className="ml-auto flex">
-          {MODES.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              onClick={() => setMode(m.key)}
-              className={`flex flex-col items-center gap-y-0.5 px-4 pb-2 pt-1 text-xs border-b-2 ${
-                mode === m.key
-                  ? 'border-brand text-foreground-lighter'
-                  : 'border-transparent text-foreground hover:text-foreground-lighter'
-              }`}
-            >
-              {m.icon}
-              {m.label}
-            </button>
-          ))}
+    <ZoomContext.Provider value={zoom}>
+      <div className="flex flex-col gap-y-3 min-w-0">
+        {missing.length > 0 && (
+          <p className="text-xs text-yellow-400 m-0">
+            Left out (full log not sent yet):{' '}
+            {missing.map((m) => m.label).join(', ')}.
+          </p>
+        )}
+        <div className="flex items-end gap-x-4 flex-wrap border-b border-card pb-0">
+          <div className="pb-2">{sideSwitch}</div>
+          <div className="ml-auto flex">
+            {MODES.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setMode(m.key)}
+                className={`flex flex-col items-center gap-y-0.5 px-4 pb-2 pt-1 text-xs border-b-2 ${
+                  mode === m.key
+                    ? 'border-brand text-foreground-lighter'
+                    : 'border-transparent text-foreground hover:text-foreground-lighter'
+                }`}
+              >
+                {m.icon}
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {mode !== 'queries' && mode !== 'timelines' && (
-        <div className="flex flex-wrap gap-x-1 border-b border-card">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${
-                tab === t.key
-                  ? 'border-brand text-foreground-lighter'
-                  : 'border-transparent text-foreground hover:text-foreground-lighter'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
+        {mode !== 'queries' && mode !== 'timelines' && (
+          <div className="flex flex-wrap gap-x-1 border-b border-card">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${
+                  tab === t.key
+                    ? 'border-brand text-foreground-lighter'
+                    : 'border-transparent text-foreground hover:text-foreground-lighter'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
-      {showFilters && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <EnemyPicker
-            value={filters.enemy}
-            options={enemies}
-            onChange={(enemy) => patch({ enemy })}
-          />
-          {meter && (
-            <AbilityPicker
-              value={filters.abilities}
-              options={abilities}
-              onChange={(ids) => patch({ abilities: ids })}
+        {showFilters && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <EnemyPicker
+              value={filters.enemy}
+              options={enemies}
+              onChange={(enemy) => patch({ enemy })}
             />
-          )}
-          {(meter === 'healing' || meter === 'prevented') &&
-            filters.side === 'friendly' && (
-              <ExcludeTargetsPicker
-                value={filters.healExclude}
-                options={roster.map((r) => ({
-                  guid: r.guid,
-                  name: r.name,
-                  color: classColor(r.specId),
-                }))}
-                onChange={(healExclude) => patch({ healExclude })}
+            {meter && (
+              <AbilityPicker
+                value={filters.abilities}
+                options={abilities}
+                onChange={(ids) => patch({ abilities: ids })}
               />
             )}
-          {(tab === 'buffs' || tab === 'debuffs') &&
-            filters.side === 'friendly' && (
+            {(meter === 'healing' || meter === 'prevented') &&
+              filters.side === 'friendly' && (
+                <ExcludeTargetsPicker
+                  value={filters.healExclude}
+                  options={roster.map((r) => ({
+                    guid: r.guid,
+                    name: r.name,
+                    color: classColor(r.specId),
+                  }))}
+                  onChange={(healExclude) => patch({ healExclude })}
+                />
+              )}
+            {(tab === 'buffs' || tab === 'debuffs') &&
+              filters.side === 'friendly' && (
+                <select
+                  className={field}
+                  value={auraWho ?? ''}
+                  onChange={(e) => setAuraWho(e.target.value || null)}
+                  aria-label="Raider"
+                >
+                  <option value="">All raiders</option>
+                  {roster.map((r) => (
+                    <option key={r.guid} value={r.guid}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            {meter && meter !== 'prevented' && (
               <select
                 className={field}
-                value={auraWho ?? ''}
-                onChange={(e) => setAuraWho(e.target.value || null)}
-                aria-label="Raider"
+                value={group}
+                onChange={(e) =>
+                  setGroup(e.target.value as 'source' | 'ability')
+                }
+                aria-label="Group by"
               >
-                <option value="">All raiders</option>
-                {roster.map((r) => (
-                  <option key={r.guid} value={r.guid}>
-                    {r.name}
-                  </option>
-                ))}
+                <option value="source">
+                  {meter === 'taken' ? 'By raider' : 'Done by source'}
+                </option>
+                <option value="ability">
+                  {meter === 'taken' ? 'By ability' : 'Done by ability'}
+                </option>
               </select>
             )}
-          {meter && meter !== 'prevented' && (
             <select
               className={field}
-              value={group}
-              onChange={(e) => setGroup(e.target.value as 'source' | 'ability')}
-              aria-label="Group by"
+              value={filters.deathCutoff}
+              onChange={(e) => patch({ deathCutoff: Number(e.target.value) })}
+              aria-label="Ignore events after player deaths"
             >
-              <option value="source">
-                {meter === 'taken' ? 'By raider' : 'Done by source'}
-              </option>
-              <option value="ability">
-                {meter === 'taken' ? 'By ability' : 'Done by ability'}
-              </option>
+              <option value={0}>Count every event</option>
+              {[1, 2, 3, 4, 5, 10].map((n) => (
+                <option key={n} value={n}>
+                  Ignore events after death {n}
+                </option>
+              ))}
             </select>
-          )}
-          <select
-            className={field}
-            value={filters.deathCutoff}
-            onChange={(e) => patch({ deathCutoff: Number(e.target.value) })}
-            aria-label="Ignore events after player deaths"
-          >
-            <option value={0}>Count every event</option>
-            {[1, 2, 3, 4, 5, 10].map((n) => (
-              <option key={n} value={n}>
-                Ignore events after death {n}
-              </option>
-            ))}
-          </select>
-          {meter === 'healing' && (
-            <label
-              className="flex items-center gap-x-1.5 text-xs text-foreground"
-              title="Count damage kept off raiders by damage-reduction cooldowns as healing, for whoever cast them"
-            >
-              <Switch
-                checked={prevented}
-                onCheckedChange={(v: boolean) => {
-                  setPrevented(v);
-                  if (v) setPassive(true);
-                }}
-              />
-              Mitigations
-            </label>
-          )}
-          {meter === 'healing' && prevented && (
-            <label
-              className="flex items-center gap-x-1.5 text-xs text-foreground"
-              title="Also count what talents (Elemental Warding and the like) and versatility took off damage taken, for the raider who has them"
-            >
-              <Switch
-                checked={passive}
-                onCheckedChange={(v: boolean) => setPassive(v)}
-              />
-              + passives
-            </label>
-          )}
-          {meter === 'healing' &&
-            prevented &&
-            (!auraDrs || (passive && !talentDrs)) && (
-              <span className="text-xs text-foreground animate-pulse">
-                Looking up buffs and talents…
-              </span>
+            {meter === 'healing' && (
+              <label
+                className="flex items-center gap-x-1.5 text-xs text-foreground"
+                title="Count damage kept off raiders by damage-reduction cooldowns as healing, for whoever cast them"
+              >
+                <Switch
+                  checked={prevented}
+                  onCheckedChange={(v: boolean) => {
+                    setPrevented(v);
+                    if (v) setPassive(true);
+                  }}
+                />
+                Mitigations
+              </label>
             )}
-          {(meter === 'damage' || meter === 'healing' || tab === 'casts') && (
-            <label className="flex items-center gap-x-1.5 text-xs text-foreground">
-              <Switch
-                checked={filters.pets}
-                onCheckedChange={(v: boolean) => patch({ pets: v })}
-              />
-              Pets
-            </label>
-          )}
-          <select
-            className={field}
-            value={layerMode}
-            onChange={(e) => setLayerMode(e.target.value as 'filter' | 'mark')}
-            aria-label="Add expressions as"
-            title="Enter adds the expression as a filter on the data, or as markers on the charts"
-          >
-            <option value="filter">Add as filter</option>
-            <option value="mark">Add as marker</option>
-          </select>
-          <ExpressionInput
-            value={exprText}
-            onChange={setExprText}
-            onApply={addLayer}
-            applyOnBlur={false}
-            vocab={vocab}
-            label="Filter expression"
-            placeholder='Expression, Enter to add, e.g. ability.name ~ "breath" (? for help)'
-            className={`${field} flex-1 font-mono`}
-          />
-        </div>
-      )}
-      {showFilters && layers.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          {layers.map((l) => (
-            <span
-              key={l.id}
-              className={`inline-flex items-center gap-x-1.5 rounded-md border px-1.5 py-0.5 ${
-                l.on ? 'border-card bg-card/60' : 'border-card/50 opacity-50'
-              }`}
+            {meter === 'healing' && prevented && (
+              <label
+                className="flex items-center gap-x-1.5 text-xs text-foreground"
+                title="Also count what talents (Elemental Warding and the like) and versatility took off damage taken, for the raider who has them"
+              >
+                <Switch
+                  checked={passive}
+                  onCheckedChange={(v: boolean) => setPassive(v)}
+                />
+                + passives
+              </label>
+            )}
+            {meter === 'healing' &&
+              prevented &&
+              (!auraDrs || (passive && !talentDrs)) && (
+                <span className="text-xs text-foreground animate-pulse">
+                  Looking up buffs and talents…
+                </span>
+              )}
+            {(meter === 'damage' || meter === 'healing' || tab === 'casts') && (
+              <label className="flex items-center gap-x-1.5 text-xs text-foreground">
+                <Switch
+                  checked={filters.pets}
+                  onCheckedChange={(v: boolean) => patch({ pets: v })}
+                />
+                Pets
+              </label>
+            )}
+            <select
+              className={field}
+              value={layerMode}
+              onChange={(e) =>
+                setLayerMode(e.target.value as 'filter' | 'mark')
+              }
+              aria-label="Add expressions as"
+              title="Enter adds the expression as a filter on the data, or as markers on the charts"
             >
-              <button
-                type="button"
-                onClick={() =>
-                  editLayer(l.id, {
-                    mode: l.mode === 'filter' ? 'mark' : 'filter',
-                  })
-                }
-                title="Switch between filtering the data and marking the charts"
-                className="rounded px-1 text-[10px] font-semibold"
-                style={{
-                  background:
-                    l.mode === 'mark' ? l.color : 'hsl(var(--brand) / 0.25)',
-                  color: l.mode === 'mark' ? '#111' : 'hsl(var(--brand))',
-                }}
-              >
-                {l.mode === 'filter' ? 'Filter' : 'Marker'}
-              </button>
+              <option value="filter">Add as filter</option>
+              <option value="mark">Add as marker</option>
+            </select>
+            <ExpressionInput
+              value={exprText}
+              onChange={setExprText}
+              onApply={addLayer}
+              applyOnBlur={false}
+              vocab={vocab}
+              label="Filter expression"
+              placeholder='Expression, Enter to add, e.g. ability.name ~ "breath" (? for help)'
+              className={`${field} flex-1 font-mono`}
+            />
+          </div>
+        )}
+        {showFilters && layers.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap text-xs">
+            {layers.map((l) => (
               <span
-                className="font-mono text-foreground-lighter max-w-[360px] truncate"
-                title={l.text}
+                key={l.id}
+                className={`inline-flex items-center gap-x-1.5 rounded-md border px-1.5 py-0.5 ${
+                  l.on ? 'border-card bg-card/60' : 'border-card/50 opacity-50'
+                }`}
               >
-                {l.text}
+                <button
+                  type="button"
+                  onClick={() =>
+                    editLayer(l.id, {
+                      mode: l.mode === 'filter' ? 'mark' : 'filter',
+                    })
+                  }
+                  title="Switch between filtering the data and marking the charts"
+                  className="rounded px-1 text-[10px] font-semibold"
+                  style={{
+                    background:
+                      l.mode === 'mark' ? l.color : 'hsl(var(--brand) / 0.25)',
+                    color: l.mode === 'mark' ? '#111' : 'hsl(var(--brand))',
+                  }}
+                >
+                  {l.mode === 'filter' ? 'Filter' : 'Marker'}
+                </button>
+                <span
+                  className="font-mono text-foreground-lighter max-w-[360px] truncate"
+                  title={l.text}
+                >
+                  {l.text}
+                </span>
+                <button
+                  type="button"
+                  aria-label={l.on ? 'Turn off' : 'Turn on'}
+                  title={l.on ? 'Turn off' : 'Turn on'}
+                  onClick={() => editLayer(l.id, { on: !l.on })}
+                  className="text-foreground hover:text-foreground-lighter"
+                >
+                  {l.on ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Remove"
+                  title="Remove"
+                  onClick={() =>
+                    setLayers((list) => list.filter((x) => x.id !== l.id))
+                  }
+                  className="text-foreground hover:text-red-400"
+                >
+                  <X size={13} />
+                </button>
               </span>
+            ))}
+            {layers.length > 1 && (
               <button
                 type="button"
-                aria-label={l.on ? 'Turn off' : 'Turn on'}
-                title={l.on ? 'Turn off' : 'Turn on'}
-                onClick={() => editLayer(l.id, { on: !l.on })}
-                className="text-foreground hover:text-foreground-lighter"
+                className="text-brand hover:underline"
+                onClick={() => setLayers([])}
               >
-                {l.on ? <Eye size={13} /> : <EyeOff size={13} />}
+                Clear all
               </button>
-              <button
-                type="button"
-                aria-label="Remove"
-                title="Remove"
-                onClick={() =>
-                  setLayers((list) => list.filter((x) => x.id !== l.id))
-                }
-                className="text-foreground hover:text-red-400"
-              >
-                <X size={13} />
-              </button>
-            </span>
-          ))}
-          {layers.length > 1 && (
+            )}
+          </div>
+        )}
+        {exprError && showFilters && (
+          <p className="text-xs text-red-400 m-0">{exprError}</p>
+        )}
+
+        <div className="flex items-center gap-x-3 flex-wrap text-xs text-foreground">
+          <span>
+            {multi ? `${stores.length} pulls added up` : stores[0].label} ·{' '}
+            {mmss(fightSeconds)}
+            {filters.range
+              ? ` (slice ${mmss(filters.range[0])}–${mmss(filters.range[1])})`
+              : ''}
+          </span>
+          {filters.range && (
             <button
               type="button"
               className="text-brand hover:underline"
-              onClick={() => setLayers([])}
+              onClick={() => patch({ range: null })}
             >
-              Clear all
+              Whole fight
             </button>
           )}
+          {filters.range && mode === 'tables' && (
+            <button
+              type="button"
+              className="text-brand hover:underline"
+              onClick={() => zoom.setZoomed(!zoomed)}
+            >
+              {zoomed ? 'Zoom out (see the slice in the fight)' : 'Zoom in'}
+            </button>
+          )}
+          {!filters.range && mode === 'tables' && meter && (
+            <span>Drag across the chart to zoom in on a slice.</span>
+          )}
+          {watch && <WatchHint can={watch.can} />}
+          {notice && <span className="text-yellow-400">{notice}</span>}
         </div>
-      )}
-      {exprError && showFilters && (
-        <p className="text-xs text-red-400 m-0">{exprError}</p>
-      )}
 
-      <div className="flex items-center gap-x-3 flex-wrap text-xs text-foreground">
-        <span>
-          {multi ? `${stores.length} pulls added up` : stores[0].label} ·{' '}
-          {mmss(fightSeconds)}
-          {filters.range
-            ? ` (slice ${mmss(filters.range[0])}–${mmss(filters.range[1])})`
-            : ''}
-        </span>
-        {filters.range && (
-          <button
-            type="button"
-            className="text-brand hover:underline"
-            onClick={() => patch({ range: null })}
-          >
-            Whole fight
-          </button>
+        {mode === 'tables' && (
+          <>
+            {tab === 'summary' && <SummaryView ctx={ctx} onWatch={onWatch} />}
+            {meter && (
+              <MeterView
+                ctx={ctx}
+                meter={meter}
+                rows={rows}
+                group={meter === 'prevented' ? 'source' : group}
+                who={who}
+                setWho={setWho}
+                extras={{
+                  range: filters.range,
+                  setRange: (r) => patch({ range: r }),
+                  onPick: onWatch,
+                  markers,
+                  bands,
+                  boundaries,
+                }}
+              />
+            )}
+            {(tab === 'buffs' || tab === 'debuffs') && (
+              <AuraTables
+                ctx={ctx}
+                debuffs={tab === 'debuffs'}
+                who={filters.side === 'friendly' ? auraWho : null}
+                bands={bands}
+                boundaries={boundaries}
+                range={filters.range}
+                setRange={(r) => patch({ range: r })}
+                onPick={onWatch ? (t) => onWatch(t, null) : undefined}
+                setWho={setAuraWho}
+              />
+            )}
+            {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}
+            {tab === 'dispels' && <CountView ctx={ctx} kind="dispel" />}
+            {tab === 'resources' && (
+              <ResourceView
+                ctx={ctx}
+                who={who}
+                setWho={setWho}
+                extras={{
+                  range: filters.range,
+                  setRange: (r) => patch({ range: r }),
+                  onPick: onWatch,
+                  bands,
+                  boundaries,
+                }}
+              />
+            )}
+            {tab === 'casts' && (
+              <CastView ctx={ctx} who={who} setWho={setWho} onWatch={onWatch} />
+            )}
+            {multi && meter && (
+              <PullByPull stores={stores} filters={filters} meter={meter} />
+            )}
+          </>
         )}
-        {!filters.range && mode === 'tables' && meter && (
-          <span>Drag across the chart to look at a slice.</span>
+
+        {mode === 'events' && (
+          <EventsView ctx={ctx} tab={tab} who={who} onWatch={onWatch} />
         )}
-        {watch && <WatchHint can={watch.can} />}
-        {notice && <span className="text-yellow-400">{notice}</span>}
+
+        {mode === 'queries' && (
+          <QueriesView ctx={ctx} vocab={vocab} onWatch={onWatch} />
+        )}
+
+        {mode === 'timelines' && (
+          <TimelineMode
+            stores={stores}
+            index={Math.min(timelinePull, stores.length - 1)}
+            setIndex={setTimelinePull}
+            onWatch={(pi, name, seconds) => {
+              if (watch?.can && !watch.open(stores[pi], name, seconds))
+                setNotice(`No recording of ${stores[pi].label} here.`);
+            }}
+          />
+        )}
       </div>
-
-      {mode === 'tables' && (
-        <>
-          {tab === 'summary' && <SummaryView ctx={ctx} onWatch={onWatch} />}
-          {meter && (
-            <MeterView
-              ctx={ctx}
-              meter={meter}
-              rows={rows}
-              group={meter === 'prevented' ? 'source' : group}
-              who={who}
-              setWho={setWho}
-              extras={{
-                range: filters.range,
-                setRange: (r) => patch({ range: r }),
-                onPick: onWatch,
-                markers,
-                bands,
-                boundaries,
-              }}
-            />
-          )}
-          {(tab === 'buffs' || tab === 'debuffs') && (
-            <AuraTables
-              ctx={ctx}
-              debuffs={tab === 'debuffs'}
-              who={filters.side === 'friendly' ? auraWho : null}
-              bands={bands}
-              boundaries={boundaries}
-              range={filters.range}
-              setRange={(r) => patch({ range: r })}
-              onPick={onWatch ? (t) => onWatch(t, null) : undefined}
-              setWho={setAuraWho}
-            />
-          )}
-          {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}
-          {tab === 'dispels' && <CountView ctx={ctx} kind="dispel" />}
-          {tab === 'resources' && (
-            <ResourceView
-              ctx={ctx}
-              who={who}
-              setWho={setWho}
-              extras={{
-                range: filters.range,
-                setRange: (r) => patch({ range: r }),
-                onPick: onWatch,
-                bands,
-                boundaries,
-              }}
-            />
-          )}
-          {tab === 'casts' && (
-            <CastView ctx={ctx} who={who} setWho={setWho} onWatch={onWatch} />
-          )}
-          {multi && meter && (
-            <PullByPull stores={stores} filters={filters} meter={meter} />
-          )}
-        </>
-      )}
-
-      {mode === 'events' && (
-        <EventsView ctx={ctx} tab={tab} who={who} onWatch={onWatch} />
-      )}
-
-      {mode === 'queries' && (
-        <QueriesView ctx={ctx} vocab={vocab} onWatch={onWatch} />
-      )}
-
-      {mode === 'timelines' && (
-        <TimelineMode
-          stores={stores}
-          index={Math.min(timelinePull, stores.length - 1)}
-          setIndex={setTimelinePull}
-          onWatch={(pi, name, seconds) => {
-            if (watch?.can && !watch.open(stores[pi], name, seconds))
-              setNotice(`No recording of ${stores[pi].label} here.`);
-          }}
-        />
-      )}
-    </div>
+    </ZoomContext.Provider>
   );
 };
 

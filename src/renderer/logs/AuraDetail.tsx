@@ -5,6 +5,7 @@ import { classColor, ENEMY_COLOR, mmss, pct, thousands } from './format';
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { AuraPicker } from './Pickers';
+import { useViewWindow } from './zoom';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs/Debuffs: one aura opened up. Who had
@@ -137,13 +138,11 @@ const AuraDetail = ({
     () => auraDetail(ctx, spellId, { debuffs, who }),
     [ctx, spellId, debuffs, who],
   );
-  const [zoomed, setZoomed] = React.useState(false);
   const [all, setAll] = React.useState(false);
   const onEnemy = ctx.filters.side === 'enemy';
   const total = Math.max(1, ctx.total);
-  const isZoomed = zoomed && range !== null;
-  const v0 = isZoomed && range ? range[0] : 0;
-  const v1 = isZoomed && range ? range[1] : total;
+  const [v0, v1] = useViewWindow(range, total);
+  const isZoomed = v1 - v0 < total;
   // Stats over the slice (zoomed or not), else the whole fight.
   const [s0, s1] = range ?? [0, total];
   const seconds = Math.max(1, s1 - s0);
@@ -252,9 +251,6 @@ const AuraDetail = ({
           smoothing={0}
           step={detail.step}
           stepped
-          zoomable
-          zoomed={zoomed}
-          onZoomed={setZoomed}
           format={(v) => thousands(Math.round(v))}
           height={180}
         />
@@ -268,9 +264,7 @@ const AuraDetail = ({
               {s.name}
             </span>
           ))}
-          <span>
-            Drag to slice; Zoom to slice makes the lanes below follow.
-          </span>
+          <span>Drag to zoom in; the lanes below follow the chart.</span>
         </div>
       </div>
       <section className="rounded-md border border-card bg-background/40 overflow-hidden">

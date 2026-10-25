@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.66] - Unreleased
+### Changed
+- **Drag to zoom in, like Warcraft Logs.** Dragging across any chart on the Logs page now zooms in: the slice fills the chart's full width, and everything else on the page follows it. That covers the buff and debuff lanes, the uptime bars, the casts' "When" bars and the cast lanes. Drag again to zoom in further.
+  - **Zoom out** beside the slice shows the slice inside the whole fight again. **Whole fight** clears it, and so does right-clicking a chart.
+  - The app remembers whether you were zoomed in or out.
+  - Zoomed-in charts are smoothed less, so short spikes show.
+- **Timelines can zoom too.** On Cooldowns and Buffs & debuffs, drag across any track to zoom in on that part of the pull, and click **Whole pull** to go back. A plain click still opens the recording at that moment.
+
 ## [1.9.65] - Unreleased
 ### Added
 - **Buffs and debuffs: open up one raider.** With a buff or debuff opened, click a raider's name to see only theirs, as on WCL. Their name shows with an ✖ to go back to everyone.

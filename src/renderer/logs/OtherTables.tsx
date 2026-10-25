@@ -1,4 +1,5 @@
 import React from 'react';
+import { useViewWindow } from './zoom';
 import { ArrowLeft } from 'lucide-react';
 import {
   castRows,
@@ -660,6 +661,7 @@ export const CastView = ({
 }) => {
   const rows = React.useMemo(() => castRows(ctx), [ctx]);
   const [sort, onSort] = useSort('count');
+  const [v0, v1] = useViewWindow(ctx.filters.range, ctx.total);
   const seconds = viewSeconds(ctx);
   const minutes = seconds / 60;
   const selected = rows.find((r) => r.key === who) ?? null;
@@ -734,22 +736,27 @@ export const CastView = ({
                     {(s.count / minutes).toFixed(1)}
                   </td>
                   <td className="px-2 py-1">
-                    <div className="relative h-3 rounded-sm bg-card/40">
-                      {s.times.map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          title={`${mmss(t)}${onWatch ? ' · click to watch' : ''}`}
-                          onClick={() =>
-                            onWatch?.(t, selected.player ? selected.name : null)
-                          }
-                          className="absolute top-0 h-3 w-[3px] -ml-[1px] rounded-[1px]"
-                          style={{
-                            left: `${(t / ctx.total) * 100}%`,
-                            background: color(selected),
-                          }}
-                        />
-                      ))}
+                    <div className="relative h-3 rounded-sm bg-card/40 overflow-hidden">
+                      {s.times
+                        .filter((t) => t >= v0 && t <= v1)
+                        .map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            title={`${mmss(t)}${onWatch ? ' · click to watch' : ''}`}
+                            onClick={() =>
+                              onWatch?.(
+                                t,
+                                selected.player ? selected.name : null,
+                              )
+                            }
+                            className="absolute top-0 h-3 w-[3px] -ml-[1px] rounded-[1px]"
+                            style={{
+                              left: `${((t - v0) / (v1 - v0)) * 100}%`,
+                              background: color(selected),
+                            }}
+                          />
+                        ))}
                     </div>
                   </td>
                 </tr>
