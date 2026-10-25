@@ -1,5 +1,6 @@
 import React from 'react';
 import { compact, mmss } from './format';
+import { ZoomContext } from './zoom';
 
 /**
  * [RoomFortyRecorder] Logs page chart: per-second amounts drawn as rates
@@ -67,7 +68,7 @@ const TimeChart = ({
   height = H,
   step = 1,
   yMax,
-  zoomable = false,
+  zoomable: zoomableProp,
   format = compact,
   showZero = false,
   stepped = false,
@@ -117,9 +118,12 @@ const TimeChart = ({
     return () => observer.disconnect();
   }, []);
 
-  const [zoomOwn, setZoomOwn] = React.useState(false);
-  const zoomOn = onZoomed ? Boolean(zoomedProp) : zoomOwn;
-  const setZoomOn = onZoomed ?? setZoomOwn;
+  // Zoom is the page's (every chart and lane together) unless the parent
+  // controls it. Any chart that can be sliced can zoom.
+  const page = React.useContext(ZoomContext);
+  const zoomable = zoomableProp ?? Boolean(onRange);
+  const zoomOn = onZoomed ? Boolean(zoomedProp) : page.zoomed;
+  const setZoomOn = onZoomed ?? page.setZoomed;
   const span = W - LEFT - RIGHT;
   const total = Math.max(1, duration);
   // What the chart shows: the whole fight, or the slice when zoomed in.
@@ -127,9 +131,10 @@ const TimeChart = ({
   const v0 = zoomed && range ? range[0] : 0;
   const v1 = zoomed && range ? Math.max(range[0] + 0.5, range[1]) : total;
   const len = v1 - v0;
+  // Smoothing follows what's in view, so zooming in shows the detail.
   const w = Math.max(
     1,
-    Math.round((smoothing ?? Math.max(3, Math.round(total / 60))) / step),
+    Math.round((smoothing ?? Math.max(1, Math.round(len / 60))) / step),
   );
   const rates = React.useMemo(
     () => series.map((s) => (w > 1 ? smooth(s.values, w) : s.values)),
@@ -444,7 +449,7 @@ const TimeChart = ({
           onClick={() => setZoomOn(!zoomed)}
           className="absolute top-1 right-3 rounded border border-card bg-background/90 px-2 py-0.5 text-[11px] text-brand hover:underline"
         >
-          {zoomed ? 'Show the whole fight' : 'Zoom to slice'}
+          {zoomed ? 'Zoom out' : 'Zoom to slice'}
         </button>
       )}
       {hover !== null && hoverIndex !== null && !drag && (
@@ -487,7 +492,7 @@ const TimeChart = ({
             ))}
           {onPick && (
             <div className="text-foreground mt-0.5">
-              Click to watch · drag to slice · right-click for the whole fight
+              Click to watch · drag to zoom in · right-click for the whole fight
             </div>
           )}
         </div>
