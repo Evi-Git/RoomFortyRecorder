@@ -378,6 +378,63 @@ const HEALING_COSTS = new Set([
   469704, // Tempered in Battle (the paladin's health it hands out)
 ]);
 
+/**
+ * Shields that are damage put off or sent elsewhere rather than healing:
+ * Warcraft Logs counts what they take as neither healing nor damage taken.
+ */
+export const DEFERRED_ABSORBS = new Set([
+  1309497, // Refractive Images (the mage's images take it)
+  410355, // Stretch Time (taken later, as Stretch Time ticks)
+]);
+
+/** Shields Warcraft Logs doesn't count as healing. */
+const NOT_HEALING_ABSORBS = new Set([
+  ...DEFERRED_ABSORBS,
+  47788, // Guardian Spirit (the save from a killing blow)
+  114556, // Purgatory (the death knight's own cheat death)
+]);
+
+/** Healer specs: Warcraft Logs leaves out their healing on others' pets. */
+const HEALER_SPECS = new Set([65, 105, 256, 257, 264, 270, 1468]);
+
+/**
+ * Warcraft Logs doesn't count a healer's healing on another raider's pet
+ * or guardian (a DPS's Halo on them still counts; checked on Kith'ix).
+ */
+const healerOnOthersPet = (p: PullStore, s: number, d: number) => {
+  if (s < 0 || d < 0) return false;
+  const target = p.units[d];
+  if (target.player || target.owner < 0) return false;
+  const healer = p.units[p.units[s].root];
+  return (
+    HEALER_SPECS.has(healer.specId ?? 0) && target.root !== p.units[s].root
+  );
+};
+
+/** Health moved between raiders, not damage taken (as on Warcraft Logs). */
+const NOT_TAKEN = new Set([
+  98021, // Spirit Link
+  469704, // Tempered in Battle
+]);
+
+/** A deferred shield's soak, taken off the hit it soaked (Damage Taken). */
+const deferredSoak = (p: PullStore, i: number, meter: Meter) =>
+  meter === 'taken' && p.k[i] === K.ABSORB;
+
+/** An event's amount for a meter. */
+export const meterAmount = (p: PullStore, i: number, meter: Meter) => {
+  const kind = p.k[i];
+  if (deferredSoak(p, i, meter)) return -p.a[i];
+  if (meter === 'healing' && kind === K.HEALABSORB) return -p.a[i];
+  if (meter === 'healing' && kind === K.DMG)
+    return -(p.a[i] + p.b[i] - p.aux[i]);
+  return kind === K.DMG || kind === K.HEAL ? p.a[i] + p.b[i] : p.a[i];
+};
+
+/** The ability an event counts under (a deferred soak: the hit it soaked). */
+export const meterSpell = (p: PullStore, i: number, meter: Meter) =>
+  p.spells[deferredSoak(p, i, meter) ? p.aux[i] : p.sp[i]];
+
 /** Healing to this unit (or its owner) is left out of the view. */
 export const excludedTarget = (ctx: Ctx, p: PullStore, unit: number) => {
   const list = ctx.filters.healExclude;
@@ -412,15 +469,30 @@ const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
       return s;
     }
     if (kind !== K.HEAL && kind !== K.ABSORB) return -1;
+    if (
+      kind === K.ABSORB &&
+      NOT_HEALING_ABSORBS.has(p.spells[p.sp[i]]?.id ?? 0)
+    )
+      return -1;
     if (side === 'friendly' ? !isRaiderSide(p, s) : !isEnemy(p, s)) return -1;
     if (kind === K.HEAL && side === 'friendly' && !p.units[d]?.friendly)
       return -1;
+    if (side === 'friendly' && healerOnOthersPet(p, s, d)) return -1;
     if (excludedTarget(ctx, p, d)) return -1;
     if (enemy && side === 'enemy' && !enemyOk(ctx, p, s)) return -1;
     return s;
   }
   // Taken: by who was hit.
+  if (kind === K.ABSORB) {
+    // A deferred shield's soak comes off the raider's damage taken.
+    if (!DEFERRED_ABSORBS.has(p.spells[p.sp[i]]?.id ?? 0)) return -1;
+    if (side !== 'friendly' || d < 0 || !p.units[d].raider) return -1;
+    const attacker = Math.round(p.x[i]);
+    if (enemy && attacker >= 0 && !enemyOk(ctx, p, attacker)) return -1;
+    return d;
+  }
   if (kind !== K.DMG) return -1;
+  if (NOT_TAKEN.has(p.spells[p.sp[i]]?.id ?? 0)) return -1;
   if (side === 'friendly') {
     if (d < 0 || !p.units[d].raider) return -1;
   } else if (!isEnemy(p, d)) return -1;
@@ -475,16 +547,8 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
       const kind = p.k[i];
       const cost =
         meter === 'healing' && (kind === K.DMG || kind === K.HEALABSORB);
-      const amount = cost
-        ? kind === K.HEALABSORB
-          ? -p.a[i]
-          : -(p.a[i] + p.b[i] - p.aux[i])
-        : kind === K.DMG
-          ? p.a[i] + p.b[i]
-          : kind === K.HEAL
-            ? p.a[i] + p.b[i]
-            : p.a[i];
-      const spell = p.spells[p.sp[i]];
+      const amount = meterAmount(p, i, meter);
+      const spell = meterSpell(p, i, meter);
       const fromPet =
         meter !== 'taken' && unit !== p.units[unit].root && !pets
           ? p.units[unit].name
@@ -502,8 +566,11 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         if (fromPet) ab.summon = p.units[unit].summon;
         row.abilities.set(aKey, ab);
       }
+      // A deferred shield's soak only takes its amount off the hit.
+      const soak = meter === 'taken' && kind === K.ABSORB;
       ab.total += amount;
-      ab.hits += 1;
+      if (soak) ab.absorbed += amount;
+      else ab.hits += 1;
       if (p.f[i] & F.CRIT) ab.crits += 1;
       if (p.f[i] & F.TICK) ab.ticks += 1;
       if (kind === K.DMG && !cost) {
@@ -517,7 +584,7 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         row.overheal += p.x[i];
         ab.kind = ab.kind === 'shield' ? 'shield' : 'heal';
       }
-      if (kind === K.ABSORB) {
+      if (kind === K.ABSORB && !soak) {
         row.shields += amount;
         if (!ab.kind) ab.kind = 'shield';
       }
@@ -650,7 +717,12 @@ export const byTarget = (ctx: Ctx, meter: Meter): TargetRow[] => {
       const cost =
         meter === 'healing' && (kind === K.DMG || kind === K.HEALABSORB);
       if (cost) return;
-      const otherIdx = meter === 'taken' ? p.s[i] : p.d[i];
+      const otherIdx =
+        meter === 'taken'
+          ? kind === K.ABSORB
+            ? Math.round(p.x[i])
+            : p.s[i]
+          : p.d[i];
       // No unit: falling, drowning, lava and the like.
       const other =
         otherIdx < 0 ? undefined : (p.units[otherIdx] as Unit | undefined);
@@ -688,8 +760,7 @@ export const byTarget = (ctx: Ctx, meter: Meter): TargetRow[] => {
         row.seen.add(id);
         row.units += 1;
       }
-      const amount =
-        kind === K.DMG || kind === K.HEAL ? p.a[i] + p.b[i] : p.a[i];
+      const amount = meterAmount(p, i, meter);
       row.total += amount;
       row.hits += 1;
       if (p.f[i] & F.CRIT) row.crits += 1;
@@ -803,10 +874,10 @@ export const abilitySplit = (
     (p, i) => {
       const unit = meterUnit(ctx, p, i, meter);
       if (unit < 0) return;
-      if (!ids.has(p.spells[p.sp[i]]?.id ?? -1)) return;
+      if (!ids.has(meterSpell(p, i, meter)?.id ?? -1)) return;
       const ref = rowOf(p, unit, pets);
       if (!ref || (rowKey && ref.key !== rowKey)) return;
-      const amount = p.a[i] + (p.k[i] === K.ABSORB ? 0 : p.b[i]);
+      const amount = meterAmount(p, i, meter);
       const src = p.units[p.s[i]]?.name ?? '?';
       const dst = p.units[p.d[i]]?.name ?? '?';
       sources.set(src, (sources.get(src) ?? 0) + amount);
@@ -842,7 +913,7 @@ export const abilitySeries = (
       if (!ref || ref.key !== rowKey) return;
       // Healing spells' own damage (Spirit Link) isn't drawn.
       if (meter === 'healing' && p.k[i] === K.DMG) return;
-      const spell = p.spells[p.sp[i]];
+      const spell = meterSpell(p, i, meter);
       // Nested the way the table nests: under the parent ability or item,
       // a pet's spells under what summoned it (totems' copies by name).
       const u = p.units[unit];
@@ -859,7 +930,7 @@ export const abilitySeries = (
         };
         by.set(id, entry);
       }
-      const amount = p.a[i] + (p.k[i] === K.ABSORB ? 0 : p.b[i]);
+      const amount = meterAmount(p, i, meter);
       entry.values[Math.min(points - 1, Math.floor(at / SERIES_STEP))] +=
         amount;
       entry.total += amount;
@@ -1927,7 +1998,111 @@ export const NESTED_UNDER: Record<number, { name: string; icon: number }> = {
   461529: { name: 'Judgment', icon: 275773 }, // Truth Prevails
   85673: { name: 'Word of Glory', icon: 85673 },
   378412: { name: 'Word of Glory', icon: 85673 }, // Light of the Titans
+  // Priest
+  1250581: { name: 'Holy Word: Serenity', icon: 2050 }, // Ultimate Serenity
+  2050: { name: 'Holy Word: Serenity', icon: 2050 },
+  1246798: { name: 'Prayer of Mending', icon: 33076 }, // Prompt Prognosis
+  1246768: { name: 'Prayer of Mending', icon: 33076 }, // Power Word: Shield
+  33110: { name: 'Prayer of Mending', icon: 33076 },
+  1264176: { name: 'Shadowy Apparition', icon: 413231 }, // Void Apparition
+  1264177: { name: 'Shadowy Apparition', icon: 413231 }, // Void Bolt
+  413231: { name: 'Shadowy Apparition', icon: 413231 },
+  // Evoker
+  441172: { name: 'Deep Breath', icon: 353759 }, // Melt Armor
+  1236970: { name: 'Deep Breath', icon: 353759 }, // Pyre
+  353759: { name: 'Deep Breath', icon: 353759 },
+  1265804: { name: 'Eternity Surge', icon: 359073 }, // Shattering Star
+  359077: { name: 'Eternity Surge', icon: 359073 },
+  // Rogue
+  462241: { name: 'Coup de Grace', icon: 441776 },
+  462242: { name: 'Coup de Grace', icon: 441776 },
+  462243: { name: 'Coup de Grace', icon: 441776 },
+  462244: { name: 'Coup de Grace', icon: 441776 },
+  462247: { name: 'Coup de Grace', icon: 441776 },
+  462248: { name: 'Coup de Grace', icon: 441776 },
+  // Warlock
+  434506: { name: 'Shadow Bolt', icon: 686 }, // Infernal Bolt
+  686: { name: 'Shadow Bolt', icon: 686 },
+  1276960: { name: 'Call Dreadstalkers', icon: 104316 }, // Blighted Maw
+  434636: { name: "Hand of Gul'dan", icon: 105174 }, // Ruination
+  86040: { name: "Hand of Gul'dan", icon: 105174 },
+  1280460: { name: 'Dominion of Argus', icon: 1280460 }, // Mind Sear
+  1282534: { name: 'Dominion of Argus', icon: 1280460 }, // Blaze
+  1282507: { name: 'Dominion of Argus', icon: 1280460 }, // Shadow Nova
+  1292391: { name: 'Dominion of Argus', icon: 1280460 }, // Soul Barrage
+  1269800: { name: 'Diabolic Ritual', icon: 434404 }, // Eye Explosion
+  434404: { name: 'Diabolic Ritual', icon: 434404 }, // Felseeker
+  432120: { name: 'Diabolic Ritual', icon: 434404 }, // Wicked Cleave
+  1269886: { name: 'Diabolic Ritual', icon: 434404 }, // Diabolic Gaze
+  1269892: { name: 'Diabolic Ritual', icon: 434404 }, // Diabolic Gaze
+  1269885: { name: 'Diabolic Ritual', icon: 434404 }, // Diabolic Gaze
+  432596: { name: 'Diabolic Ritual', icon: 434404 }, // Chaos Salvo
+  389372: { name: 'Soul Leech', icon: 108366 }, // Fel Synergy
+  386124: { name: 'Soul Leech', icon: 108366 }, // Fel Armor
+  108366: { name: 'Soul Leech', icon: 108366 },
+  // Shaman
+  378597: { name: 'Healing Rain', icon: 73920 }, // Acid Rain
+  // Demon Hunter
+  390181: { name: 'Throw Glaive', icon: 185123 }, // Soulscar
+  393035: { name: 'Throw Glaive', icon: 185123 },
+  337819: { name: 'Throw Glaive', icon: 185123 },
+  442788: { name: 'Consume Soul', icon: 228532 }, // Incorruptible Spirit
+  228532: { name: 'Consume Soul', icon: 228532 },
+  1256619: { name: 'Voidfall Meteor', icon: 1256305 }, // World Killer
+  1256305: { name: 'Voidfall Meteor', icon: 1256305 },
+  1264129: { name: 'Collapsing Star', icon: 1221162 }, // Meteor Shower
+  1221162: { name: 'Collapsing Star', icon: 1221162 },
+  // Hunter
+  1253836: { name: 'Rapid Fire', icon: 257044 }, // Sanctified Armaments
+  385540: { name: 'Exhilaration', icon: 109304 }, // Rejuvenating Wind
+  109304: { name: 'Exhilaration', icon: 109304 },
+  // Druid
+  1271222: { name: 'Starfire', icon: 194153 }, // Starsurge (Star Cascade)
+  194153: { name: 'Starfire', icon: 194153 },
+  1240913: { name: 'Starfall', icon: 191034 }, // Meteorites
+  191037: { name: 'Starfall', icon: 191034 },
+  1301742: { name: 'Starfall', icon: 191034 },
+  428682: { name: 'Fury of Elune', icon: 202770 }, // Boundless Moonlight
+  211545: { name: 'Fury of Elune', icon: 202770 },
+  394111: { name: 'Fury of Elune', icon: 202770 },
+  1263137: { name: 'Ascendant Eclipses', icon: 1263137 }, // Lunar Bolt
+  1261573: { name: 'Ascendant Eclipses', icon: 1263137 }, // Solar Bolt
+  // Paladin (protection)
+  433808: { name: 'Consecration', icon: 26573 }, // Divine Guidance
+  81297: { name: 'Consecration', icon: 26573 },
+  469882: { name: "Avenger's Shield", icon: 31935 }, // Refining Fire
+  1269175: { name: "Avenger's Shield", icon: 31935 }, // Glory of the Vanguard
+  31935: { name: "Avenger's Shield", icon: 31935 },
+  // Death Knight
+  1264083: { name: 'Obliterate', icon: 49020 }, // Obliterate Off-Hand
+  66198: { name: 'Obliterate', icon: 49020 }, // Obliterate Off-Hand
+  1264082: { name: 'Obliterate', icon: 49020 },
+  222024: { name: 'Obliterate', icon: 49020 },
+  66196: { name: 'Frost Strike', icon: 49143 }, // Frost Strike Off-Hand
+  222026: { name: 'Frost Strike', icon: 49143 },
+  456371: { name: 'Remorseless Winter', icon: 196771 }, // Cryogenic Chamber
+  196771: { name: 'Remorseless Winter', icon: 196771 },
+  435802: { name: "Reaper's Mark", icon: 439843 }, // Wave of Souls
+  439843: { name: "Reaper's Mark", icon: 439843 },
+  436304: { name: "Reaper's Mark", icon: 439843 },
+  439594: { name: "Reaper's Mark", icon: 439843 },
+  434144: { name: 'Vampiric Strike', icon: 433895 }, // Infliction of Sorrow
+  433895: { name: 'Vampiric Strike', icon: 433895 },
+  1264304: { name: 'Death Strike', icon: 49998 }, // Lifeblood
+  45470: { name: 'Death Strike', icon: 49998 },
+  // Warrior
+  315961: { name: 'Overpower', icon: 7384 }, // Dreadnaught
+  7384: { name: 'Overpower', icon: 7384 },
   // Items
+  1305374: { name: "Voracious Heart of Ula'tek", icon: 1305374 }, // Devour Morsel
+  1305395: { name: "Zatha'tek, Breath of Corruption", icon: 1305395 }, // Breath of Corruption
+  1243106: { name: "Idol of N'Zoth", icon: 1243106 }, // Vision of N'Zoth
+  1243105: { name: "Idol of N'Zoth", icon: 1243106 }, // Horrific Vision
+  1306639: { name: 'Venomfang', icon: 1306635 }, // Venomfang Burst
+  1306635: { name: 'Venomfang', icon: 1306635 },
+  1307222: { name: 'Font of Venomous Rage', icon: 1297908 }, // Venom Splatter
+  1297908: { name: 'Font of Venomous Rage', icon: 1297908 },
+  1287955: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Void-Tainted Shell
   1307578: { name: 'Soulcoiler Ritual Vessel', icon: 1291894 }, // Soulcoil Barrier
   1263002: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Unleashed Fire
   1287665: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Lingering
@@ -1975,7 +2150,9 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       // Negative healing (Spirit Link's damage): a row of its own.
       key = `cost:${a.spellId}|${a.by}`;
     } else if (nest) {
-      key = `nest:${nest.name}|${a.by}`;
+      // Everyone's share of one parent together (a warlock's demons'
+      // Dominion of Argus spells, a totem's Healing Rain).
+      key = `nest:${nest.name}`;
       parent = nest;
     } else if (a.by && isTotem(a.by) && own.has(a.name)) {
       key = `${a.name}||${a.kind ?? ''}`;
@@ -1986,7 +2163,11 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       parent = { name, icon: a.summon?.id ?? a.spellId };
     } else if (KEEP_APART.has(a.spellId)) {
       key = `id:${a.spellId}|${a.kind ?? ''}`;
-    } else key = `${a.name}|${a.by}|${a.kind ?? ''}`;
+    } else {
+      // A spell's heal and shield of the same name are one row
+      // (Exhilarating Execution), as on Warcraft Logs.
+      key = `${a.name}|${a.by}`;
+    }
     const g = groups.get(key) ?? { list: [] };
     g.list.push(a);
     if (parent) g.parent = parent;

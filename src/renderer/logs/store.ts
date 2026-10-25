@@ -95,6 +95,19 @@ export const NOT_CASTS = new Set([
   // Evoker
   395495, // Scornful Haste
   395498, // Scornful Haste
+  // Throw Glaive's and Reaver's Glaive's extra throws
+  393035, // Throw Glaive
+  337819, // Throw Glaive
+  444686, // Reaver's Glaive
+  // Death Knight
+  434144, // Infliction of Sorrow
+  // Evoker
+  1265991, // Twin Flame (Living Flame's second flame)
+  355941, // Dream Breath (its heal over time)
+  // Priest
+  64844, // Divine Hymn (each tick)
+  // Warrior
+  126664, // Charge (the impact)
   // Items and old effects
   324748, // Celestial Guidance
   324260, // Sinful Revelation
@@ -108,6 +121,11 @@ export const NOT_CASTS = new Set([
  * hits, Felblade's charge, The Hunt's impact).
  */
 const SAME_CAST_WINDOW = 0.75;
+
+/** Presses that can follow a same-named cast quickly (not part of it). */
+const ALWAYS_CASTS = new Set([
+  342247, // Alter Time (going back)
+]);
 
 export const MISS_TYPES = [
   '',
@@ -589,6 +607,10 @@ export class StoreBuilder {
       }
       return;
     }
+    if (line.includes('_SUPPORT,')) {
+      this.support(line);
+      return;
+    }
     const e = parseLine(line, WANTED);
     if (!e) return;
     const at = lineSeconds(line);
@@ -749,8 +771,47 @@ export class StoreBuilder {
   /** Last counted cast per caster and spell name: [time, spell ID]. */
   private lastCast = new Map<string, [number, number]>();
 
+  /**
+   * A *_DAMAGE_SUPPORT line: the hit just logged was added by another
+   * raider's buff (Bombardments, Ebon Might, Prescience...), so it counts
+   * as their damage, the way Warcraft Logs credits it. The supporter is the
+   * line's last field.
+   */
+  private support(line: string) {
+    const type = line.slice(line.indexOf('  ') + 2, line.indexOf(','));
+    if (!type.includes('DAMAGE')) return;
+    const e = parseLine(line.replace('_SUPPORT,', ','));
+    if (!e) return;
+    const supporter = line.slice(line.lastIndexOf(',') + 1).trim();
+    if (!isPlayerGuid(supporter)) return;
+    const src = this.unitIndex.get(e.src);
+    const dst = this.unitIndex.get(e.dst);
+    if (src === undefined || dst === undefined) return;
+    const sp = e.spellId > 0 ? this.spellIndex.get(e.spellId) : undefined;
+    const who = this.unit(supporter, '', 0);
+    if (who < 0 || who === src) return;
+    const c = this.cols;
+    for (
+      let i = this.n - 1, stop = Math.max(0, this.n - 64);
+      i >= stop;
+      i -= 1
+    ) {
+      if (
+        c.k[i] === K.DMG &&
+        c.s[i] === src &&
+        c.d[i] === dst &&
+        (sp === undefined || c.sp[i] === sp) &&
+        Math.abs(c.a[i] + c.b[i] - (e.amount + e.absorbed)) < 1
+      ) {
+        c.s[i] = who;
+        return;
+      }
+    }
+  }
+
   private notACast(src: number, spellId: number, name: string, t: number) {
     if (NOT_CASTS.has(spellId)) return true;
+    if (ALWAYS_CASTS.has(spellId)) return false;
     const key = `${src}|${name}`;
     const last = this.lastCast.get(key);
     if (last && last[1] !== spellId && t - last[0] <= SAME_CAST_WINDOW)
