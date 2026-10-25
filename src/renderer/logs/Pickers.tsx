@@ -443,3 +443,94 @@ export const ExcludeTargetsPicker = ({
     </div>
   );
 };
+
+/**
+ * Buffs/Debuffs: jump to another aura (the ones the raider in view had),
+ * by section, with a search box.
+ */
+export const AuraPicker = ({
+  value,
+  label,
+  groups,
+  onChange,
+}: {
+  value: number;
+  label: string;
+  groups: { title: string; options: { id: number; name: string }[] }[];
+  onChange: (id: number) => void;
+}) => {
+  const { open, setOpen, box } = usePopover();
+  const [search, setSearch] = React.useState('');
+  const q = search.trim().toLowerCase();
+  const shown = groups
+    .map((g) => ({
+      ...g,
+      options: g.options.filter(
+        (o) => !q || o.name.toLowerCase().includes(q) || String(o.id) === q,
+      ),
+    }))
+    .filter((g) => g.options.length);
+  return (
+    <div className="relative" ref={box}>
+      <button
+        type="button"
+        className={button}
+        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Another buff or debuff"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown size={13} className="shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-40 w-[360px] rounded-md border border-card bg-background shadow-xl text-xs">
+          <div className="p-2 border-b border-card">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or spell ID"
+              className="w-full bg-card rounded px-2 h-7 text-xs text-foreground-lighter border border-background"
+              aria-label="Search buffs and debuffs"
+            />
+          </div>
+          <div className="max-h-[400px] overflow-y-auto" role="listbox">
+            {shown.map((g) => (
+              <div key={g.title}>
+                <div className="sticky top-0 px-2 py-1 bg-card text-[10px] uppercase tracking-wide text-foreground">
+                  {g.title}
+                </div>
+                {g.options.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    role="option"
+                    aria-selected={o.id === value}
+                    onClick={() => {
+                      onChange(o.id);
+                      setOpen(false);
+                      setSearch('');
+                    }}
+                    className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${o.id === value ? 'bg-brand/10' : 'hover:bg-card/40'}`}
+                  >
+                    <SpellIcon spellId={o.id} name={o.name} />
+                    <span className="flex-1 truncate text-foreground-lighter">
+                      {o.name}
+                    </span>
+                    <span className="text-[10px] text-foreground tabular-nums">
+                      {o.id}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {!shown.length && (
+              <p className="m-0 p-2 text-foreground">Nothing matches.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
