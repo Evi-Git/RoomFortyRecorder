@@ -252,6 +252,12 @@ export const lineSeconds = (line: string) => {
 };
 
 /** Builds a PullStore from the lines of one pull (START..END). */
+/** Spells shown under a clearer name than the log's (both halves of Stasis). */
+const RENAMED: Record<number, string> = {
+  370537: 'Stasis (Store)',
+  370564: 'Stasis (Release)',
+};
+
 export class StoreBuilder {
   private start = -1;
 
@@ -412,7 +418,7 @@ export class StoreBuilder {
     if (i === undefined) {
       i = this.spells.length;
       this.spellIndex.set(id, i);
-      this.spells.push({ id, name, school });
+      this.spells.push({ id, name: RENAMED[id] ?? name, school });
     } else if (!this.spells[i].school && school) {
       // First seen without a school (e.g. as an absorbed attack).
       this.spells[i].school = school;

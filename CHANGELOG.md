@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.64] - Unreleased
+### Changed
+- **Casts: pets are left out by default.** Pet and guardian casts no longer count for their owner, which made warlocks (thousands of Wild Imp casts) look far busier than they were. Turn **Pets** on to see the pets as rows of their own.
+- **Stasis shows as Stasis (Store) and Stasis (Release)** everywhere on the Logs page, instead of two "Stasis" casts.
+
 ## [1.9.63] - Unreleased
 ### Changed
 - **Protection paladin mitigations closer to Warcraft Logs:**
