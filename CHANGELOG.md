@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.76] - Unreleased
+### Fixed
+- **Talents widget drew trees wrongly.** Blizzard's class and spec lists also carry both hero trees' nodes and the empty node where the hero tree is picked, so they showed up as stray nodes inside the class and spec trees. Each tree now keeps only its own talents.
+- A node far away from the rest no longer stretches a tree across the page (the Flameshaper tree's long line).
+- The raider list no longer takes the picked raider's class colour; each name is in its own class colour.
+### Added
+- **Copy tree data** beside the raider list copies the tree and the raider's talents, for checking a tree that still looks wrong.
+
 ## [1.9.75] - Unreleased
 ### Added
 - **Summary: talents widget.** Pick a raider to see their talents drawn like the game's talent page (and Wowhead's calculator).
