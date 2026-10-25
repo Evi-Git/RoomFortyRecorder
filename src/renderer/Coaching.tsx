@@ -204,7 +204,7 @@ export const SendClipDialog = (props: SendClipProps) => {
           {config.officer
             ? error ||
               'The bot cannot see any text channels. Check its permissions in Discord.'
-            : 'You don’t have a personal channel yet. Ask an officer to add you under Analysis → Personal channels.'}
+            : 'You don’t have a personal channel yet. Ask an officer to add you under Dashboard → Personal channels.'}
         </p>
       );
     }

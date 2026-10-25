@@ -1673,7 +1673,7 @@ const PullDeskPage = (props: IProps) => {
       <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
         <span className="flex items-center gap-x-2 font-bold mr-2">
           <ClipboardList size={18} className="text-brand" />
-          <span className="font-display text-lg">Analysis</span>
+          <span className="font-display text-lg">Dashboard</span>
         </span>
         <div className="flex rounded-md border border-card overflow-hidden mr-2">
           {(
