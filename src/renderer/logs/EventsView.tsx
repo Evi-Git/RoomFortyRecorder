@@ -166,6 +166,7 @@ const kindLabel = (p: PullStore, i: number) => {
   const kind = p.k[i];
   if (kind === K.APPLY) return p.f[i] & F.DEBUFF ? 'Debuff on' : 'Buff on';
   if (kind === K.REMOVE) return p.f[i] & F.DEBUFF ? 'Debuff off' : 'Buff off';
+  if (kind === K.CAST && p.f[i] & F.PROC) return 'Proc';
   return KIND_NAMES[kind];
 };
 
