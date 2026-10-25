@@ -163,11 +163,84 @@ export type Unit = {
   first: number;
   /** Raiders: talents from COMBATANT_INFO as [node ID, entry ID, rank]. */
   talents?: [number, number, number][];
+  /** Raiders: what they wore at the pull (COMBATANT_INFO), slot by slot. */
+  gear?: GearItem[];
   /** Pets and guardians: the spell that summoned them (Time of Need...). */
   summon?: { id: number; name: string };
 };
 
 export type Spell = { id: number; name: string; school: number };
+
+/** One equipped item, as COMBATANT_INFO lists it. */
+export type GearItem = {
+  /** 0 head ... 17 tabard, in the game's inventory order. */
+  slot: number;
+  itemId: number;
+  ilvl: number;
+  enchants: number[];
+  bonusIds: number[];
+  gems: number[];
+};
+
+type Tuple = (number | Tuple)[];
+
+/** "(1,2,(3,4),())" -> [1, 2, [3, 4], []]; reads from text[at]. */
+const readTuple = (text: string, at: number): [Tuple, number] => {
+  const out: Tuple = [];
+  let i = at + 1;
+  let num = '';
+  const flush = () => {
+    if (num) out.push(Number(num));
+    num = '';
+  };
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '(' || ch === '[') {
+      const [inner, next] = readTuple(text, i);
+      out.push(inner);
+      i = next;
+    } else if (ch === ')' || ch === ']') {
+      flush();
+      return [out, i + 1];
+    } else if (ch === ',') {
+      flush();
+      i += 1;
+    } else {
+      num += ch;
+      i += 1;
+    }
+  }
+  flush();
+  return [out, i];
+};
+
+const nums = (value: number | Tuple | undefined) =>
+  Array.isArray(value)
+    ? value.filter((n): n is number => typeof n === 'number' && n > 0)
+    : [];
+
+/** COMBATANT_INFO's gear list: the "[" after the talents and PvP talents. */
+export const parseGear = (line: string, talentsClose: number): GearItem[] => {
+  const open = line.indexOf('[', talentsClose + 1);
+  if (open < 0) return [];
+  const [list] = readTuple(line, open);
+  return list
+    .map((item, slot) => {
+      if (!Array.isArray(item)) return null;
+      const itemId = typeof item[0] === 'number' ? item[0] : 0;
+      if (!itemId) return null;
+      return {
+        slot,
+        itemId,
+        ilvl: typeof item[1] === 'number' ? item[1] : 0,
+        enchants: nums(item[2]),
+        bonusIds: nums(item[3]),
+        // (gem item ID, gem item level) pairs.
+        gems: nums(item[4]).filter((_, i) => i % 2 === 0),
+      };
+    })
+    .filter((g): g is GearItem => Boolean(g));
+};
 
 export type AuraSpan = {
   spell: number;
@@ -330,6 +403,8 @@ export class StoreBuilder {
   private specs = new Map<string, number>();
 
   private talents = new Map<string, [number, number, number][]>();
+
+  private gear = new Map<string, GearItem[]>();
 
   private vers = new Map<string, number>();
 
@@ -507,6 +582,11 @@ export class StoreBuilder {
         m = re.exec(text);
       }
       this.talents.set(fields[1], list);
+      try {
+        this.gear.set(fields[1], parseGear(line, close));
+      } catch {
+        // An odd line: no gear for them.
+      }
       return;
     }
     const e = parseLine(line, WANTED);
@@ -688,6 +768,7 @@ export class StoreBuilder {
         u.specId = spec;
         u.raider = true;
         u.talents = this.talents.get(u.guid);
+        u.gear = this.gear.get(u.guid);
       }
     });
     if (!this.specs.size) {

@@ -517,6 +517,65 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     return { spells: { ...out }, pending: todo.length - done };
   };
 
+  // ---- Items: name, quality, slot and icon -----------------------------------
+  //
+  // For the Logs page's gear widget: the combat log lists item IDs and item
+  // levels only. Blizzard's item and item-media endpoints, once per item,
+  // kept for good (a miss is asked again after a day).
+  let itemCache = null;
+  let itemSave = Promise.resolve();
+  const ITEM_RETRY_MS = 24 * 60 * 60 * 1000;
+  const fetchItem = async (id) => {
+    try {
+      const [item, media] = await Promise.all([api(`/data/wow/item/${id}`), api(`/data/wow/media/item/${id}`)]);
+      if (!item) return { missing: true, checkedAt: Date.now() };
+      const url = (media?.assets || []).find((a) => a.key === 'icon')?.value || '';
+      const icon = url ? url.split('/').pop().replace(/\.(jpg|png)$/i, '') : null;
+      return {
+        name: item.name || '',
+        quality: item.quality?.type || '',
+        slot: item.inventory_type?.type || '',
+        icon,
+      };
+    } catch {
+      return { missing: true, checkedAt: Date.now() };
+    }
+  };
+  const items = async (itemIds, budget = 30, waitMs = 5000) => {
+    const ids = [...new Set(itemIds.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 400);
+    itemCache ??= await readJson('items.json', {});
+    const out = {};
+    const todo = ids.filter((id) => {
+      const hit = itemCache[id];
+      if (hit && !(hit.missing && Date.now() - (hit.checkedAt || 0) > ITEM_RETRY_MS)) {
+        if (!hit.missing) out[id] = hit;
+        return false;
+      }
+      return true;
+    });
+    if (todo.length && configured) {
+      const batch = todo.slice(0, budget);
+      let done = 0;
+      const jobs = (async () => {
+        for (let i = 0; i < batch.length; i += 6) {
+          // eslint-disable-next-line no-await-in-loop
+          const got = await Promise.all(batch.slice(i, i + 6).map((id) => fetchItem(id).then((v) => [id, v])));
+          got.forEach(([id, v]) => {
+            itemCache[id] = v;
+            if (!v.missing) out[id] = v;
+            done += 1;
+          });
+        }
+        itemSave = itemSave.then(() => writeJson('items.json', itemCache)).catch(() => {});
+      })();
+      let timer;
+      await Promise.race([jobs, new Promise((resolve) => (timer = setTimeout(resolve, waitMs)))]);
+      clearTimeout(timer);
+      return { items: { ...out }, pending: todo.length - done };
+    }
+    return { items: out, pending: configured ? 0 : todo.length };
+  };
+
   // ---- Warcraft Logs' spell names --------------------------------------------
   //
   // Several spells often share a name (a talent's extra Eviscerate hit);
@@ -772,5 +831,5 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     return talentInFlight.get(specId);
   };
 
-  return { configured, encounter, spell, spells, raw, talents, icon, names };
+  return { configured, encounter, spell, spells, raw, talents, icon, names, items };
 };

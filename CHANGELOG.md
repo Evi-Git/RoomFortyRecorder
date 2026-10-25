@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.74] - Unreleased
+### Added
+- **Summary: item level widget.** Every raider's equipped item level (worked out the way the game does), how many enchants they're missing, and how many gems they have, with the raid average.
+  - Click a raider to see their gear: each slot's item, item level, whether it's enchanted ("No enchant" in yellow where one is expected) and its gems.
+  - Item names, quality colours and icons come from Blizzard through the guild server, so it needs the server update.
+  - It uses what each raider wore at the start of the pull.
+
 ## [1.9.73] - Unreleased
 ### Added
 - **Compare with Warcraft Logs (owner only).** A panel above the tables on the Logs page puts our numbers next to Warcraft Logs' for the same fight.
