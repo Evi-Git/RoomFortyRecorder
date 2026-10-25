@@ -5,7 +5,7 @@ const ipc = window.electron.ipcRenderer;
 
 /**
  * [RoomFortyRecorder] Full-window brand screen shown while an update installs
- * (the installer runs silently and reopens the app).
+ * until the installer's progress window takes over (it reopens the app).
  */
 const UpdatingOverlay = () => {
   const [version, setVersion] = useState<string | null | undefined>(undefined);
@@ -54,7 +54,8 @@ const UpdatingOverlay = () => {
         />
       </div>
       <div className="text-sm" style={{ color: 'rgba(230,222,209,0.65)' }}>
-        The app will close and reopen by itself in a few seconds.
+        The installer window takes over in a moment and reopens the app when
+        it&apos;s done.
       </div>
       <style>{`
         .rf-updating-bar { width: 35%; animation: rf-updating 1.4s ease-in-out infinite; }

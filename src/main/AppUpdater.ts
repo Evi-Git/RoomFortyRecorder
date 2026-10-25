@@ -76,10 +76,12 @@ export default class AppUpdater {
 
     ipcMain.on('doAppUpdate', () => {
       console.info('[AutoUpdater] User triggered auto-update');
-      // Show our own "Updating" screen, then install silently (no Windows
-      // installer window) and reopen the app when done.
+      // Show our own "Updating" screen, then hand over to the installer's
+      // progress window, which stays up until it reopens the app. (A silent
+      // install left nothing on screen while it ran, which looked like a
+      // crash.)
       window.webContents.send('appUpdating', this.pendingVersion ?? null);
-      setTimeout(() => autoUpdater.quitAndInstall(true, true), 1500);
+      setTimeout(() => autoUpdater.quitAndInstall(false, true), 1500);
     });
 
     ipcMain.handle('getUpdateStatus', () => this.status);
