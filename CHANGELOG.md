@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.77] - Unreleased
+### Added
+- **Compare everything** in Compare with Warcraft Logs. One click goes through every tab and puts all the differences in one text, so you don't have to click through each tab and raider.
+  - Covers Damage Done, Healing, Damage Taken, Casts, Buffs and Debuffs for the whole raid, enemies' damage done and taken, and Damage Done, Healing, Damage Taken, Casts and Buffs for each raider.
+  - It compares the whole fight with no filters, whatever the page is set to.
+  - Only rows that differ by more than 2% are kept (buffs: more than 2 points of uptime, or a different number of uses), with each section's totals.
+  - **Copy all** puts it on the clipboard; **Save as file** saves it as a .txt to attach to a chat.
+
 ## [1.9.76] - Unreleased
 ### Fixed
 - **Talents widget drew trees wrongly.** Blizzard's class and spec lists also carry both hero trees' nodes and the empty node where the hero tree is picked, so they showed up as stray nodes inside the class and spec trees. Each tree now keeps only its own talents.
