@@ -6,6 +6,7 @@ import {
   AbilityGroup,
   AbilityRow,
   byAbility,
+  byTarget,
   groupAbilities,
   Ctx,
   Meter,
@@ -659,7 +660,9 @@ const Drill = ({
   );
 };
 
-/** Everyone, by source or by ability. */
+export type Group = 'source' | 'enemy' | 'ability';
+
+/** Everyone, by source, by target or by ability. */
 const MeterView = ({
   ctx,
   meter,
@@ -668,14 +671,17 @@ const MeterView = ({
   who,
   setWho,
   extras,
+  onEnemy,
 }: {
   ctx: Ctx;
   meter: MeterKind;
   rows: MeterRow[];
-  group: 'source' | 'ability';
+  group: Group;
   who: string | null;
   setWho: (key: string | null) => void;
   extras: ChartExtras;
+  /** Click an enemy in "Done to enemy": filter to it. */
+  onEnemy?: (npcId: number, name: string) => void;
 }) => {
   const seconds = viewSeconds(ctx);
   const selected = rows.find((r) => r.key === who) ?? null;
@@ -847,6 +853,109 @@ const MeterView = ({
         <p className="text-sm text-foreground">
           Nothing here with these filters.
         </p>
+      </div>
+    );
+  }
+
+  if (group === 'enemy' && meter !== 'prevented') {
+    const targets = sortRows(byTarget(ctx, meter), sort, {
+      name: (a) => a.name,
+      total: (a) => a.total,
+      rate: (a) => a.total,
+      hits: (a) => a.hits,
+      crit: (a) => (a.hits ? a.crits / a.hits : 0),
+      units: (a) => a.units,
+    });
+    const max = Math.max(1, ...targets.map((a) => a.total));
+    const sum = targets.reduce((n, a) => n + a.total, 0);
+    const clickable = (a: (typeof targets)[number]) =>
+      Boolean(onEnemy) && !a.player && a.npcId > 0;
+    return (
+      <div className="flex flex-col gap-y-3">
+        {chart}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-foreground border-b border-card bg-card/30">
+              <tr>
+                {sh(meter === 'taken' ? 'Done by' : 'Done to', 'name', true)}
+                {sh('Amount', 'total', true)}
+                {sh('Count', 'units')}
+                {sh('Hits', 'hits')}
+                {sh('Crit %', 'crit')}
+                <th className={`${th} text-left`}>
+                  {meter === 'taken' ? 'Who took it' : 'Who'}
+                </th>
+                {sh(RATE[meter], 'rate')}
+              </tr>
+            </thead>
+            <tbody>
+              {targets.map((a) => (
+                <tr
+                  key={a.key}
+                  className="border-b border-card/40 hover:bg-card/30"
+                >
+                  <td className={td}>
+                    {clickable(a) ? (
+                      <button
+                        type="button"
+                        onClick={() => onEnemy?.(a.npcId, a.name)}
+                        className="font-semibold hover:underline text-left text-foreground-lighter"
+                        title="Show only this enemy"
+                      >
+                        {a.name}
+                      </button>
+                    ) : (
+                      <span
+                        className="font-semibold"
+                        style={{
+                          color: a.player
+                            ? classColor(a.specId)
+                            : 'hsl(var(--foreground-lighter))',
+                        }}
+                      >
+                        {a.name}
+                      </span>
+                    )}
+                  </td>
+                  <td className={td}>
+                    <AmountBar
+                      parts={[
+                        { value: a.total, look: 'solid', label: 'Amount' },
+                      ]}
+                      label={a.total}
+                      max={max}
+                      color="hsl(var(--brand))"
+                      share={pct(a.total, sum)}
+                    />
+                  </td>
+                  <td className={`${td} text-right`}>{a.units}</td>
+                  <td className={`${td} text-right`}>{thousands(a.hits)}</td>
+                  <td className={`${td} text-right`}>
+                    {pct(a.crits, a.hits, 1)}
+                  </td>
+                  <td className={`${td} text-xs`}>
+                    {[...a.users.values()]
+                      .sort((x, y) => y.total - x.total)
+                      .slice(0, 4)
+                      .map((u, i) => (
+                        <span
+                          key={u.name}
+                          style={{ color: classColor(u.specId) }}
+                        >
+                          {i ? ', ' : ''}
+                          {u.name}
+                        </span>
+                      ))}
+                    {a.users.size > 4 ? ` +${a.users.size - 4}` : ''}
+                  </td>
+                  <td className={`${td} text-right text-foreground-lighter`}>
+                    {thousands(a.total / seconds)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }

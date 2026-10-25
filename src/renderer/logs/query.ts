@@ -618,6 +618,109 @@ export const mergeSpans = (list: [number, number][]) => {
 export const unionLength = (list: [number, number][]) =>
   mergeSpans(list).reduce((n, [s, e]) => n + e - s, 0);
 
+/** One row of "Done to enemy": what one target (or, for damage taken, one
+ * attacker) got, merged by name, as Warcraft Logs' "Done to target". */
+export type TargetRow = {
+  key: string;
+  name: string;
+  specId: number;
+  player: boolean;
+  npcId: number;
+  /** How many different units of that name. */
+  units: number;
+  total: number;
+  hits: number;
+  crits: number;
+  users: Map<string, { name: string; specId: number; total: number }>;
+};
+
+/** The meter's amounts by who they were done to (taken: by who did it). */
+export const byTarget = (ctx: Ctx, meter: Meter): TargetRow[] => {
+  const out = new Map<string, TargetRow & { seen: Set<string> }>();
+  const pets = ctx.filters.pets && meter !== 'taken';
+  scan(
+    ctx,
+    (p, i, _at, pi) => {
+      const unit = meterUnit(ctx, p, i, meter);
+      if (unit < 0) return;
+      const doer = rowOf(p, unit, pets);
+      if (!doer) return;
+      const kind = p.k[i];
+      const cost =
+        meter === 'healing' && (kind === K.DMG || kind === K.HEALABSORB);
+      if (cost) return;
+      const otherIdx = meter === 'taken' ? p.s[i] : p.d[i];
+      // No unit: falling, drowning, lava and the like.
+      const other =
+        otherIdx < 0 ? undefined : (p.units[otherIdx] as Unit | undefined);
+      const root = other ? p.units[other.root] : undefined;
+      const isPlayer = Boolean(root?.player);
+      const u = (isPlayer ? root : other) ?? {
+        name: 'Environment',
+        npcId: 0,
+        guid: '',
+      };
+      const key = isPlayer
+        ? (root?.guid ?? '')
+        : other
+          ? `npc:${u.npcId || u.name}`
+          : 'environment';
+      let row = out.get(key);
+      if (!row) {
+        row = {
+          key,
+          name: u.name,
+          specId: isPlayer ? (root?.specId ?? 0) : 0,
+          player: isPlayer,
+          npcId: isPlayer ? 0 : u.npcId,
+          units: 0,
+          total: 0,
+          hits: 0,
+          crits: 0,
+          users: new Map(),
+          seen: new Set(),
+        };
+        out.set(key, row);
+      }
+      const id = `${pi}:${isPlayer ? other?.root : otherIdx}`;
+      if (!row.seen.has(id)) {
+        row.seen.add(id);
+        row.units += 1;
+      }
+      const amount =
+        kind === K.DMG || kind === K.HEAL ? p.a[i] + p.b[i] : p.a[i];
+      row.total += amount;
+      row.hits += 1;
+      if (p.f[i] & F.CRIT) row.crits += 1;
+      const by = row.users.get(doer.key) ?? {
+        name: doer.name,
+        specId: doer.specId,
+        total: 0,
+      };
+      by.total += amount;
+      row.users.set(doer.key, by);
+    },
+    { kinds: [K.DMG, K.HEAL, K.ABSORB, K.HEALABSORB] },
+  );
+  return [...out.values()]
+    .map(
+      (row): TargetRow => ({
+        key: row.key,
+        name: row.name,
+        specId: row.specId,
+        player: row.player,
+        npcId: row.npcId,
+        units: row.units,
+        total: row.total,
+        hits: row.hits,
+        crits: row.crits,
+        users: row.users,
+      }),
+    )
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total);
+};
+
 /** Damage/healing broken down by ability across all rows (Done by ability). */
 export const byAbility = (rows: MeterRow[]) => {
   const out = new Map<

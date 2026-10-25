@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.70] - Unreleased
+### Added
+- **Done to enemy:** on Damage Done, Damage Taken and Healing, the Group by list now has a third choice beside Done by source (still the default) and Done by ability.
+  - Damage Done: **Done to enemy**. Healing: **Done to target**. Damage Taken: **By enemy**.
+  - Each row is one enemy (or raider) by name, with how many of them there were, hits, crit %, who did it, and the rate.
+  - Click an enemy's name to show only that enemy. The view goes back to Done by source.
+
 ## [1.9.69] - Unreleased
 ### Changed
 - **Trends:** the Mitigations option is gone. Damage done, Healing and Damage taken stay.

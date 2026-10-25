@@ -19,7 +19,7 @@ import {
 } from './query';
 import { PullMeta, PullStore } from './store';
 import { usePullStores } from './load';
-import MeterView, { MeterKind, RATE } from './MeterView';
+import MeterView, { Group, MeterKind, RATE } from './MeterView';
 import AuraTables from './AuraTables';
 import { CastView, CountView, ResourceView, SummaryView } from './OtherTables';
 import EventsView, { EventTab } from './EventsView';
@@ -241,7 +241,7 @@ const LogsExplorer = ({
     ),
   );
   const [filters, setFilters] = React.useState<Filters>(DEFAULT_FILTERS);
-  const [group, setGroup] = React.useState<'source' | 'ability'>('source');
+  const [group, setGroup] = React.useState<Group>('source');
   const [who, setWho] = React.useState<string | null>(null);
   const [auraWho, setAuraWho] = React.useState<string | null>(null);
   const [exprText, setExprText] = React.useState('');
@@ -605,13 +605,18 @@ const LogsExplorer = ({
               <select
                 className={field}
                 value={group}
-                onChange={(e) =>
-                  setGroup(e.target.value as 'source' | 'ability')
-                }
+                onChange={(e) => setGroup(e.target.value as Group)}
                 aria-label="Group by"
               >
                 <option value="source">
                   {meter === 'taken' ? 'By raider' : 'Done by source'}
+                </option>
+                <option value="enemy">
+                  {meter === 'taken'
+                    ? 'By enemy'
+                    : meter === 'healing'
+                      ? 'Done to target'
+                      : 'Done to enemy'}
                 </option>
                 <option value="ability">
                   {meter === 'taken' ? 'By ability' : 'Done by ability'}
@@ -809,6 +814,10 @@ const LogsExplorer = ({
                 meter={meter}
                 rows={rows}
                 group={meter === 'prevented' ? 'source' : group}
+                onEnemy={(npcId, name) => {
+                  patch({ enemy: { kind: 'npc', npcId, name } });
+                  setGroup('source');
+                }}
                 who={who}
                 setWho={setWho}
                 extras={{
