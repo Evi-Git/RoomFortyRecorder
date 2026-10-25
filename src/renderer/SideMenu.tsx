@@ -341,7 +341,7 @@ const SideMenu = (props: IProps) => {
         <Menu.Item.Icon>
           <ClipboardList size={18} />
         </Menu.Item.Icon>
-        <span>Analysis</span>
+        <span>Dashboard</span>
       </span>
     </Menu.Item>
   );
@@ -414,23 +414,33 @@ const SideMenu = (props: IProps) => {
       >
         <>
           <Menu
-            className="mt-5"
+            className="mt-3"
             initialValue={
               appState.page === Pages.InstantReplay ||
-              appState.page === Pages.Live ||
-              appState.page === Pages.PullDesk ||
-              appState.page === Pages.Logs
+              appState.page === Pages.Live
                 ? appState.page
                 : false
             }
             onChange={handleChangePage}
           >
-            <Menu.Label>Raid night</Menu.Label>
             {renderInstantReplayTab()}
             {allows(permissions, 'liveWatch') && renderLiveTab()}
-            {allows(permissions, 'analysisView') && renderPullDeskTab()}
-            {allows(permissions, 'analysisView') && renderLogsTab()}
           </Menu>
+          {allows(permissions, 'analysisView') && (
+            <Menu
+              className="mt-5"
+              initialValue={
+                appState.page === Pages.PullDesk || appState.page === Pages.Logs
+                  ? appState.page
+                  : false
+              }
+              onChange={handleChangePage}
+            >
+              <Menu.Label>Analysis</Menu.Label>
+              {renderPullDeskTab()}
+              {renderLogsTab()}
+            </Menu>
+          )}
         </>
 
         <Menu
@@ -443,8 +453,8 @@ const SideMenu = (props: IProps) => {
           </Menu.Label>
           {renderCategoryTab(VideoCategory.MythicPlus, mythicPlusIcon)}
           {renderCategoryTab(VideoCategory.Raids, raidsIcon)}
-          {renderCategoryTab(VideoCategory.Manual, <HardHat size={ICON} />)}
           {renderCategoryTab(VideoCategory.Clips, <Clapperboard size={ICON} />)}
+          {renderCategoryTab(VideoCategory.Manual, <HardHat size={ICON} />)}
         </Menu>
         <Menu
           className="mt-5"

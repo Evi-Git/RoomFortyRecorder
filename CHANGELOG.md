@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.80] - Unreleased
+### Changed
+- **Sidebar reorganized.** Instant replay and Watch live sit right under the Go live button. The "Raid night" section is now **Analysis**, holding **Dashboard** (the old Analysis page) and Logs. Manual moved below Clips in Recordings.
+
 ## [1.9.79] - Unreleased
 ### Changed
 - **Picking pulls on the Logs page works like Excel.** The tick boxes are gone: click a pull to open it, Ctrl-click to add or remove pulls, Shift-click to pick every pull between the last one you clicked and this one (Ctrl+Shift adds the range). Two or more picked pulls are added up as before.
