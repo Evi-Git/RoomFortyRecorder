@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.65] - Unreleased
+### Added
+- **Buffs and debuffs: open up one raider.** With a buff or debuff opened, click a raider's name to see only theirs, as on WCL. Their name shows with an ✖ to go back to everyone.
+- **Jump to another buff or debuff** from the dropdown beside the name. It lists what the raider in view had (or everyone, with no raider picked), by section, with a search box that takes a name or a spell ID.
+
 ## [1.9.64] - Unreleased
 ### Changed
 - **Casts: pets are left out by default.** Pet and guardian casts no longer count for their owner, which made warlocks (thousands of Wild Imp casts) look far busier than they were. Turn **Pets** on to see the pets as rows of their own.

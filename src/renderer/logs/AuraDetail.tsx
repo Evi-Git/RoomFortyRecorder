@@ -1,9 +1,10 @@
 import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import { auraDetail, AuraTarget, Ctx } from './query';
 import { classColor, ENEMY_COLOR, mmss, pct, thousands } from './format';
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
+import { AuraPicker } from './Pickers';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs/Debuffs: one aura opened up. Who had
@@ -112,8 +113,16 @@ const AuraDetail = ({
   setRange,
   onPick,
   onBack,
+  groups,
+  onSwitch,
+  setWho,
 }: {
   ctx: Ctx;
+  /** Other auras to jump to, by section. */
+  groups: { title: string; options: { id: number; name: string }[] }[];
+  onSwitch: (spellId: number) => void;
+  /** Click a raider to look at only them (null: everyone). */
+  setWho?: (guid: string | null) => void;
   spellId: number;
   debuffs: boolean;
   who: string | null;
@@ -160,6 +169,16 @@ const AuraDetail = ({
       values: detail.stacks,
     });
   const shown = all ? detail.targets : detail.targets.slice(0, 25);
+  const whoRow = who ? detail.targets.find((r) => r.key === who) : undefined;
+  const whoName = React.useMemo(() => {
+    if (!who) return '';
+    for (const p of ctx.pulls) {
+      const u = p.units.find((x) => x.guid === who);
+      if (u) return u.name;
+    }
+    return '';
+  }, [ctx, who]);
+  const canPickWho = !onEnemy && Boolean(setWho);
   const one = detail.targets.length === 1;
   const unit = onEnemy
     ? one
@@ -182,6 +201,31 @@ const AuraDetail = ({
           <SpellIcon spellId={spellId} name={detail.name} />
           {detail.name || `Spell ${spellId}`}
         </span>
+        {who && setWho && (
+          <span
+            className="inline-flex items-center gap-x-1 rounded bg-card px-2 h-8 text-xs font-semibold"
+            style={{ color: whoRow ? color(whoRow) : undefined }}
+          >
+            {whoName}
+            <button
+              type="button"
+              onClick={() => setWho(null)}
+              className="text-foreground hover:text-foreground-lighter"
+              aria-label="Back to everyone"
+              title="Back to everyone"
+            >
+              <X size={13} />
+            </button>
+          </span>
+        )}
+        <AuraPicker
+          value={spellId}
+          label={
+            who ? `${whoName}'s ${debuffs ? 'debuffs' : 'buffs'}` : 'Others'
+          }
+          groups={groups}
+          onChange={onSwitch}
+        />
         <span className="text-xs text-foreground">
           {detail.targets.length} {unit}
           {detail.maxStacks > 1 ? ` · up to ${detail.maxStacks} stacks` : ''}
@@ -266,7 +310,18 @@ const AuraDetail = ({
                     className={`${td} truncate font-semibold`}
                     style={{ color: color(r) }}
                   >
-                    {r.name}
+                    {canPickWho && r.player && who !== r.key ? (
+                      <button
+                        type="button"
+                        onClick={() => setWho?.(r.key)}
+                        className="max-w-full truncate hover:underline text-left"
+                        title={`Only ${r.name}: pick their other ${debuffs ? 'debuffs' : 'buffs'} above`}
+                      >
+                        {r.name}
+                      </button>
+                    ) : (
+                      r.name
+                    )}
                   </td>
                   <td className={`${td} text-right`}>
                     {thousands(

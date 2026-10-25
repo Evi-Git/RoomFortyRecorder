@@ -801,6 +801,7 @@ const LogsExplorer = ({
               range={filters.range}
               setRange={(r) => patch({ range: r })}
               onPick={onWatch ? (t) => onWatch(t, null) : undefined}
+              setWho={setAuraWho}
             />
           )}
           {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}

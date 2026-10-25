@@ -219,6 +219,7 @@ const AuraTables = ({
   range,
   setRange,
   onPick,
+  setWho,
 }: {
   ctx: Ctx;
   debuffs: boolean;
@@ -228,6 +229,8 @@ const AuraTables = ({
   range: [number, number] | null;
   setRange: (r: [number, number] | null) => void;
   onPick?: (t: number) => void;
+  /** Look at one raider's auras (null: everyone's). */
+  setWho?: (guid: string | null) => void;
 }) => {
   const rows = React.useMemo(
     () => auraRows(ctx, { debuffs, who }),
@@ -241,8 +244,19 @@ const AuraTables = ({
   const openKey = `${debuffs}|${ctx.filters.side}`;
   const seconds = viewSeconds(ctx);
   if (opened && opened.key === openKey) {
+    // The picker: what the raider in view (or anyone) had, by section.
+    const groups = ORDER.map((cat) => ({
+      title: SECTIONS[cat],
+      options: rows
+        .filter((r) => r.category === cat)
+        .sort((x, y) => x.name.localeCompare(y.name))
+        .map((r) => ({ id: r.spellId, name: r.name })),
+    })).filter((g) => g.options.length);
     return (
       <AuraDetail
+        groups={groups}
+        onSwitch={(spellId) => setOpened({ key: openKey, spellId })}
+        setWho={setWho}
         ctx={ctx}
         spellId={opened.spellId}
         debuffs={debuffs}
