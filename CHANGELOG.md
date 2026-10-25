@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.61] - Unreleased
+### Added
+- **Open up a buff or debuff.** On the Buffs and Debuffs tabs (and the raid's debuffs on enemies), click a name to see who had it: a lane per raider (or enemy) showing when it was on them, darker with more stacks and the stack count written on, plus count, uptime and highest stacks. Above it, a chart of how many had it and their stacks added up (a single raider's stacks when only one had it). Drag a slice and press **Zoom to slice**: the chart and every lane zoom together, and the counts and uptimes follow the slice. Hover a lane piece for its times and stacks; click a lane to watch that moment.
+
 ## [1.9.60] - Unreleased
 ### Changed
 - **Mitigations now match Warcraft Logs much more closely** (checked against Puzzlebox on the Mythic Kith'ix kill; every row within about 4% of WCL):

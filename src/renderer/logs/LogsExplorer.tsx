@@ -797,6 +797,9 @@ const LogsExplorer = ({
               debuffs={tab === 'debuffs'}
               who={filters.side === 'friendly' ? auraWho : null}
               bands={bands}
+              boundaries={boundaries}
+              range={filters.range}
+              setRange={(r) => patch({ range: r })}
               onPick={onWatch ? (t) => onWatch(t, null) : undefined}
             />
           )}

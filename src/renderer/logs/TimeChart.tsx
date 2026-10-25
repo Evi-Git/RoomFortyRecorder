@@ -71,6 +71,8 @@ const TimeChart = ({
   format = compact,
   showZero = false,
   stepped = false,
+  zoomed: zoomedProp,
+  onZoomed,
 }: {
   duration: number;
   series: ChartSeries[];
@@ -95,6 +97,9 @@ const TimeChart = ({
   showZero?: boolean;
   /** Draw levels as steps (resources, stacks) instead of slopes. */
   stepped?: boolean;
+  /** Zoom controlled by the parent (to line other things up with it). */
+  zoomed?: boolean;
+  onZoomed?: (z: boolean) => void;
 }) => {
   const svgRef = React.useRef<SVGSVGElement>(null);
   const dragRef = React.useRef<{ a: number; b: number } | null>(null);
@@ -112,7 +117,9 @@ const TimeChart = ({
     return () => observer.disconnect();
   }, []);
 
-  const [zoomOn, setZoomOn] = React.useState(false);
+  const [zoomOwn, setZoomOwn] = React.useState(false);
+  const zoomOn = onZoomed ? Boolean(zoomedProp) : zoomOwn;
+  const setZoomOn = onZoomed ?? setZoomOwn;
   const span = W - LEFT - RIGHT;
   const total = Math.max(1, duration);
   // What the chart shows: the whole fight, or the slice when zoomed in.
