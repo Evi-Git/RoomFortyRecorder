@@ -1222,6 +1222,26 @@ const pullResult = (p: NightPull) =>
       ? `${p.bossPercent}%`
       : 'Wipe';
 
+/** State that lasts through a reload of this window (sessionStorage). */
+const useSessionState = <T,>(key: string, initial: T) => {
+  const [value, setValue] = React.useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw === null ? initial : (JSON.parse(raw) as T);
+    } catch {
+      return initial;
+    }
+  });
+  React.useEffect(() => {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Not kept: a reload starts fresh.
+    }
+  }, [key, value]);
+  return [value, setValue] as const;
+};
+
 /**
  * Logs: browse a night's pulls and their meters; tick several pulls of a
  * boss to see them side by side.
@@ -1231,13 +1251,14 @@ export const LogsView = () => {
   const [nights, setNights] = React.useState<
     { night: string; bosses: NightBoss[] }[] | null
   >(null);
-  const [night, setNight] = React.useState('');
+  // Kept for this window so a reload (Ctrl+R) opens the same pulls.
+  const [night, setNight] = useSessionState('rf-logs-night', '');
   const [bosses, setBosses] = React.useState<
     (NightBoss & { pullsList: NightPull[] })[] | null
   >(null);
-  const [bossKey, setBossKey] = React.useState('');
-  const [pullId, setPullId] = React.useState('');
-  const [picked, setPicked] = React.useState<string[]>([]);
+  const [bossKey, setBossKey] = useSessionState('rf-logs-boss', '');
+  const [pullId, setPullId] = useSessionState('rf-logs-pull', '');
+  const [picked, setPicked] = useSessionState<string[]>('rf-logs-picked', []);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -1249,7 +1270,12 @@ export const LogsView = () => {
         return;
       }
       setNights(response.data.nights);
-      setNight((n) => n || response.data.nights[0]?.night || '');
+      // A night kept from before a reload may have aged out.
+      setNight((n) =>
+        response.data.nights.some((x) => x.night === n)
+          ? n
+          : response.data.nights[0]?.night || '',
+      );
     });
   }, []);
 
