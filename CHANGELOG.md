@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.63] - Unreleased
+### Changed
+- **Protection paladin mitigations closer to Warcraft Logs:**
+  - **Gift of the Golden Val'kyr** now has its own row. It credits the short Guardian of Ancient Kings it gives when health runs low, and that window no longer also counts as a Guardian of Ancient Kings cast.
+  - **Sentinel** is now counted, at 1% per stack as its stacks wear off (15 to start).
+- **Tempered in Battle (Damage)**: the health Tempered in Battle takes from the paladin to share out is a negative healing row, as on WCL. Like Spirit Link's damage, it isn't counted as damage that mitigations prevented.
+- **Nesting:** Light of the Titans sits under Word of Glory. Leech from Sacred Weapon sits under Blessing of the Forge, the spell that summoned it.
+
 ## [1.9.62] - Unreleased
 ### Changed
 - **Abilities nest like Warcraft Logs.** In a raider's ability table (and the chart above it), related spells now sit under one row you can open with ▸ (closed to start with):

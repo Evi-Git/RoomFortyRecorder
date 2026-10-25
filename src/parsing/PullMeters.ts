@@ -60,7 +60,10 @@ type UnitStats = {
  * "Damage" that only moves health between raiders (Spirit Link Totem's
  * redistribution): reductions don't apply, and Warcraft Logs leaves it out.
  */
-export const NOT_REDUCED = new Set([98021]);
+export const NOT_REDUCED = new Set([
+  98021, // Spirit Link
+  469704, // Tempered in Battle (the paladin's own health, shared out)
+]);
 
 export const DAMAGE_REDUCTION: Record<
   number,
@@ -72,6 +75,14 @@ export const DAMAGE_REDUCTION: Record<
     personal?: boolean;
     // The aura has no source in the log: credit whoever last cast this.
     castId?: number;
+    /**
+     * Stacks that wear off one by one (Sentinel): r per stack, starting
+     * from `stacks`. `r` is a whole-buff average for the meters.
+     */
+    perStack?: number;
+    stacks?: number;
+    /** Another reduction it puts on at the same moment (not counted then). */
+    replaces?: number;
   }
 > = {
   // Cast on others (credited to the caster).
@@ -109,6 +120,21 @@ export const DAMAGE_REDUCTION: Record<
   414658: { r: 0.7, name: 'Ice Cold', personal: true },
   65116: { r: 0.1, name: 'Stoneform', personal: true },
   86659: { r: 0.5, name: 'Guardian of Ancient Kings', personal: true },
+  // The short Guardian of Ancient Kings it gives when health runs low
+  // (it also puts a 86659 on, left out so it isn't counted twice).
+  393108: {
+    r: 0.5,
+    name: "Gift of the Golden Val'kyr",
+    personal: true,
+    replaces: 86659,
+  },
+  389539: {
+    r: 0.1,
+    name: 'Sentinel',
+    personal: true,
+    perStack: 0.01,
+    stacks: 15,
+  },
   193065: { r: 0.1, name: 'Protective Light', personal: true },
 };
 
