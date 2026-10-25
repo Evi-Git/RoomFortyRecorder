@@ -5,8 +5,11 @@ import {
   auraRows,
   castRows,
   Ctx,
+  DEFAULT_FILTERS,
   groupAbilities,
+  meterRows,
   MeterRow,
+  raiders,
   viewSeconds,
 } from './query';
 import { explainSection, SECTION_TITLES } from './auraSections';
@@ -175,6 +178,46 @@ const fmt = (n: number | null, uptime: boolean) => {
   if (n === null) return '–';
   if (uptime) return `${n.toFixed(1)}%`;
   return thousands(Math.round(n));
+};
+
+/** Tab-separated lines for Claude. `onlyGaps`: leave out rows that agree. */
+const linesText = (lines: CompareLine[], uptime: boolean, onlyGaps = false) => {
+  const head = uptime
+    ? 'name\tours uptime %\twcl uptime %\tours uses\twcl uses\tours ids\twcl ids\tour section (why)'
+    : 'name\tours\twcl\tdiff %\tours nests\twcl nests';
+  const body = lines
+    .filter((l) => {
+      if (!onlyGaps) return true;
+      const g = pctGap(l);
+      if (uptime) {
+        const du = Math.abs((l.ours ?? 0) - (l.wcl ?? 0));
+        return g === null || du > 2 || (l.oursUses ?? -1) !== (l.wclUses ?? -1);
+      }
+      return g === null || Math.abs(g) > 2;
+    })
+    .map((l) => {
+      const g = pctGap(l);
+      return uptime
+        ? [
+            l.name,
+            fmt(l.ours, true),
+            fmt(l.wcl, true),
+            l.oursUses ?? '–',
+            l.wclUses ?? '–',
+            l.oursParts.join(' '),
+            l.wclParts.join(' '),
+            l.note ?? '',
+          ].join('\t')
+        : [
+            l.name,
+            l.ours === null ? '–' : Math.round(l.ours),
+            l.wcl === null ? '–' : Math.round(l.wcl),
+            g === null ? '–' : g === Infinity ? 'new' : g.toFixed(1),
+            l.oursParts.join('; '),
+            l.wclParts.join('; '),
+          ].join('\t');
+    });
+  return { head, body, total: lines.length };
 };
 
 /** Our side, for the tab in view. */
@@ -397,35 +440,164 @@ const WclCompare = ({
         ? `Slice: ${ctx.filters.range.join('-')} s`
         : 'Whole fight',
       '',
-      uptime
-        ? 'name\tours uptime %\twcl uptime %\tours uses\twcl uses\tours ids\twcl ids\tour section (why)'
-        : 'name\tours\twcl\tdiff %\tours nests\twcl nests',
     ];
-    const body = lines.map((l) => {
-      const g = pctGap(l);
-      return uptime
-        ? [
-            l.name,
-            fmt(l.ours, true),
-            fmt(l.wcl, true),
-            l.oursUses ?? '–',
-            l.wclUses ?? '–',
-            l.oursParts.join(' '),
-            l.wclParts.join(' '),
-            l.note ?? '',
-          ].join('\t')
-        : [
-            l.name,
-            l.ours === null ? '–' : Math.round(l.ours),
-            l.wcl === null ? '–' : Math.round(l.wcl),
-            g === null ? '–' : g === Infinity ? 'new' : g.toFixed(1),
-            l.oursParts.join('; '),
-            l.wclParts.join('; '),
-          ].join('\t');
-    });
+    const t = linesText(lines, uptime);
+    head.push(t.head);
+    const { body } = t;
     await navigator.clipboard.writeText([...head, ...body].join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  // ---- Compare everything: every tab, the raid and each raider ----
+  const [all, setAll] = React.useState<{
+    done: number;
+    total: number;
+    text: string | null;
+  } | null>(null);
+  const compareAll = async () => {
+    if (!fights || !fight) return;
+    const clean = (side: 'friendly' | 'enemy'): Ctx => ({
+      ...ctx,
+      filters: { ...DEFAULT_FILTERS, side },
+    });
+    const friendly = clean('friendly');
+    const foes = clean('enemy');
+    const roster = raiders(friendly).filter((r) =>
+      fights.players.some((p) => norm(p.name) === norm(r.name)),
+    );
+    setAll({ done: 0, total: 0, text: null });
+    // Buff descriptions first, for the section each buff lands in.
+    const allTexts = new Map<number, string>();
+    const buffIds = auraRows(friendly, { debuffs: false, who: null }).map(
+      (r) => r.spellId,
+    );
+    const found = await loadSpellTexts(buffIds);
+    buffIds.forEach((id) => allTexts.set(id, found.get(id)?.text ?? ''));
+    const rowsOf = new Map<string, MeterRow[]>();
+    const meter = (c: Ctx, tabName: string) => {
+      const key = `${c.filters.side}|${tabName}`;
+      if (!rowsOf.has(key))
+        rowsOf.set(
+          key,
+          tabName === 'damage' || tabName === 'healing' || tabName === 'taken'
+            ? meterRows(c, tabName)
+            : [],
+        );
+      return rowsOf.get(key) ?? [];
+    };
+    type Job = {
+      title: string;
+      tab: string;
+      c: Ctx;
+      guid: string | null;
+      source: number | null;
+      enemies: boolean;
+    };
+    const jobs: Job[] = [];
+    ['damage', 'healing', 'taken', 'casts', 'buffs', 'debuffs'].forEach((t) =>
+      jobs.push({
+        title: `${t} · whole raid`,
+        tab: t,
+        c: friendly,
+        guid: null,
+        source: null,
+        enemies: false,
+      }),
+    );
+    ['damage', 'taken'].forEach((t) =>
+      jobs.push({
+        title: `${t} · enemies`,
+        tab: t,
+        c: foes,
+        guid: null,
+        source: null,
+        enemies: true,
+      }),
+    );
+    roster.forEach((r) => {
+      const id =
+        fights.players.find((p) => norm(p.name) === norm(r.name))?.id ?? null;
+      ['damage', 'healing', 'taken', 'casts', 'buffs'].forEach((t) =>
+        jobs.push({
+          title: `${t} · ${r.name}`,
+          tab: t,
+          c: friendly,
+          guid: r.guid,
+          source: id,
+          enemies: false,
+        }),
+      );
+    });
+    setAll({ done: 0, total: jobs.length, text: null });
+    const out: string[][] = jobs.map(() => []);
+    let done = 0;
+    let next = 0;
+    const work = async () => {
+      while (next < jobs.length) {
+        const i = next;
+        next += 1;
+        const job = jobs[i];
+
+        const response = await call<{ table: WclTable }>({
+          action: 'wclTable',
+          report: fights.code,
+          fight,
+          type: TYPES[job.tab],
+          source: job.source,
+          hostility: job.enemies ? 'Enemies' : 'Friendlies',
+        });
+        const isAura = job.tab === 'buffs' || job.tab === 'debuffs';
+        if (!response.ok) {
+          out[i] = [`## ${job.title}`, `error: ${response.error}`, ''];
+        } else {
+          const lines = pairLines(
+            ourSide(
+              job.c,
+              job.tab,
+              meter(job.c, job.tab),
+              isAura ? null : job.guid,
+              isAura ? job.guid : null,
+              allTexts,
+            ),
+            wclSide(response.data.table, job.tab, viewSeconds(job.c)),
+          );
+          const t = linesText(lines, isAura, true);
+          const sum = (pick: (l: CompareLine) => number | null) =>
+            lines.reduce((n, l) => n + (pick(l) ?? 0), 0);
+          const totals = isAura
+            ? ''
+            : `; totals ours ${Math.round(sum((l) => l.ours))} vs WCL ${Math.round(sum((l) => l.wcl))}`;
+          out[i] = [
+            `## ${job.title} (${t.body.length} of ${t.total} rows differ${totals})`,
+            ...(t.body.length ? [t.head, ...t.body] : []),
+            '',
+          ];
+        }
+        done += 1;
+        setAll({ done, total: jobs.length, text: null });
+      }
+    };
+    await Promise.all([work(), work(), work()]);
+    const p = fights.fights.find((f) => f.id === fight);
+    const text = [
+      'Compare everything with Warcraft Logs. Rows within 2% are left out; buff rows within 2 points of uptime with the same uses are left out.',
+      `Pull: ${meta?.label ?? metas.map((m) => m.label).join(' + ')} (encounter ${meta?.encounterId ?? '?'})`,
+      `WCL: ${fights.code} fight ${fight}${p ? ` (${p.name}, ${p.seconds}s, ${p.kill ? 'kill' : 'wipe'})` : ''}`,
+      'Whole fight, no filters, pets counted for their owner.',
+      '',
+      ...out.flat(),
+    ].join('\n');
+    setAll({ done, total: jobs.length, text });
+  };
+  const saveAll = () => {
+    if (!all?.text) return;
+    const blob = new Blob([all.text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `wcl-compare-${fights?.code ?? 'report'}-${fight ?? ''}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   };
 
   const field =
@@ -489,6 +661,37 @@ const WclCompare = ({
                 <Copy size={13} />
                 {copied ? 'Copied' : 'Copy for Claude'}
               </button>
+            )}
+            {fights && fight && (
+              <button
+                type="button"
+                className={`${field} hover:text-foreground-lighter`}
+                onClick={compareAll}
+                disabled={Boolean(all && !all.text)}
+                title="Every tab, for the whole raid and each raider, in one go"
+              >
+                {all && !all.text
+                  ? `Comparing ${all.done}/${all.total}…`
+                  : 'Compare everything'}
+              </button>
+            )}
+            {all?.text && (
+              <>
+                <button
+                  type="button"
+                  className={`${field} hover:text-foreground-lighter`}
+                  onClick={() => navigator.clipboard.writeText(all.text ?? '')}
+                >
+                  Copy all
+                </button>
+                <button
+                  type="button"
+                  className={`${field} hover:text-foreground-lighter`}
+                  onClick={saveAll}
+                >
+                  Save as file
+                </button>
+              </>
             )}
             {(busy || asking) && (
               <span className="text-xs text-foreground">Asking…</span>
