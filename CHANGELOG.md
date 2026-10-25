@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.81] - Unreleased
+### Changed
+- **Bug button** replaces the Discord button at the bottom of the sidebar (which only linked to another server). It opens a small box; what you write goes to the bug channel in our Discord with your name, the app version and the page you were on. Ctrl+Enter sends.
+### Server
+- New `bug-report.mjs` (added to the files `update-server.cmd` installs) and `POST /api/bug-report`. Set `GUILD_CLOUD_BUG_WEBHOOK` (a webhook on #toolkitbugs) or `GUILD_CLOUD_BUG_CHANNEL_ID` in `.env`. One report per raider every 20 seconds; mentions never ping.
+
 ## [1.9.80] - Unreleased
 ### Changed
 - **Sidebar reorganized.** Instant replay and Watch live sit right under the Go live button. The "Raid night" section is now **Analysis**, holding **Dashboard** (the old Analysis page) and Logs. Manual moved below Clips in Recordings.

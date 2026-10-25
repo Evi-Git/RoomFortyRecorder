@@ -18,6 +18,7 @@ import { createCoach } from './coach.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 import { createPermissions } from './permissions.mjs';
+import { createBugReport } from './bug-report.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -1062,6 +1063,9 @@ const createShareLink = async (guild, video) => {
 };
 
 // [RoomFortyRecorder] Flag this moment and send clips to Discord channels.
+// Bug reports from the app's bug button go to one Discord channel.
+const bugReport = createBugReport({ env: process.env, botToken: DISCORD_BOT_TOKEN });
+
 const coach = createCoach({
   storage: STORAGE,
   readBody,
@@ -1222,6 +1226,20 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   if (!authorized(req, res)) return;
+
+  // The app's bug button: one short report to the bug channel in Discord.
+  if (parts[1] === 'bug-report' && req.method === 'POST') {
+    const body = await readBody(req, 16 * 1024);
+    const result = await bugReport.send({
+      discordId: req.cloudUserId,
+      userName: req.cloudUserName,
+      text: body?.text,
+      version: body?.version,
+      page: body?.page,
+    });
+    if (result.status !== 200) return fail(res, result.status, result.error);
+    return json(res, 200, {});
+  }
 
   // Where this raider's app should send its live stream.
   if (parts[1] === 'live' && parts[2] === 'publish' && req.method === 'GET') {

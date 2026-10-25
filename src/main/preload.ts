@@ -65,6 +65,7 @@ export type Channels =
   | 'spellIcons'
   | 'iconImage'
   | 'liveListStreams'
+  | 'bugReport'
   | 'liveWatch'
   | 'liveUnwatch'
   | 'pullDesk'

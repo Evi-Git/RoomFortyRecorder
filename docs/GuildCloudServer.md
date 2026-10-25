@@ -349,3 +349,12 @@ another time). Remove it with
 This is a private guild service restricted to Room Forty Discord members. It
 is not intended to be an internet-facing multi-tenant service or a replacement
 for a real backup system.
+
+## Bug button
+
+The bug icon at the bottom of the app's sidebar sends a short report, with the raider's Discord name, app version and the page they were on, to one Discord channel. Set one of these in the server's `.env` and restart Node:
+
+- `GUILD_CLOUD_BUG_WEBHOOK`: a webhook made on that channel (Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL). Simplest.
+- `GUILD_CLOUD_BUG_CHANNEL_ID`: the channel's ID, posted by the guild bot (it needs Send Messages there).
+
+Each raider can send one report every 20 seconds; mentions in reports never ping anyone.

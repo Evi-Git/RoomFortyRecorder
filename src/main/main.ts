@@ -43,6 +43,7 @@ import Poller from 'utils/Poller';
 import Recorder from './Recorder';
 import LiveStreamer from './LiveStreamer';
 import LiveViewer from './LiveViewer';
+import sendBugReport from './BugReport';
 import PullDesk from './PullDesk';
 import SpellIcons from './SpellIcons';
 import AsyncQueue from 'utils/AsyncQueue';
@@ -594,6 +595,11 @@ ipcMain.handle('liveStreamToggle', async () => {
 
 ipcMain.handle('liveStreamGetState', () =>
   LiveStreamer.getInstance().getState(),
+);
+
+// [RoomFortyRecorder] The bug button: a short report to the bug channel.
+ipcMain.handle('bugReport', (_event, args) =>
+  sendBugReport(String(args?.[0] ?? ''), String(args?.[1] ?? '')),
 );
 
 // [RoomFortyRecorder] Watching live streams in the app (Live page).
