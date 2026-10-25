@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.53] - Unreleased
+### Fixed
+- **Hover cards no longer run off the bottom of the window:** the "who it came from / who it hit" card on the Logs page and the spell tooltips now open above the row when there isn't room below, and stay inside the window at the edges.
+- **Mitigation rows show who they protected:** hovering Elemental Resistance, Devotion Aura and other mitigations (Healing with Mitigations on, or the Damage Prevented tab) now lists the caster and the raiders the damage was kept off, instead of an empty card.
+- Hovering a grouped ability (several spells with one name) now counts all of its spells, not just the first.
+
 ## [1.9.52] - Unreleased
 ### Changed
 - **Ctrl+R keeps your place:** reloading the window comes back to the page you were on (Analysis, Logs, Live, Settings...) instead of the raid recordings. On the Logs page it also keeps the night, boss and the pulls you had open. A fresh start of the app still opens on the recordings.

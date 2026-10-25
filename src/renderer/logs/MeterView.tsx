@@ -21,6 +21,7 @@ const wholeFight = (ctx: Ctx): Ctx =>
     ? { ...ctx, filters: { ...ctx.filters, range: null } }
     : ctx;
 import TimeChart, { ChartSeries } from './TimeChart';
+import FloatingCard, { Anchor, anchorOf } from './Floating';
 import SpellIcon, { useSpellLabels } from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import {
@@ -175,16 +176,29 @@ const SplitCard = ({
   meter,
   rowKey,
   ability,
+  spellIds,
 }: {
   ctx: Ctx;
-  meter: Meter;
+  meter: MeterKind;
   rowKey: string;
   ability: AbilityRow;
+  /** Every spell in the row (a group's parts). */
+  spellIds: number[];
 }) => {
-  const split = React.useMemo(
-    () => abilitySplit(ctx, meter, rowKey, ability.spellId),
-    [ctx, meter, rowKey, ability.spellId],
-  );
+  const idsKey = spellIds.join(',');
+  const split = React.useMemo(() => {
+    // Damage prevented is worked out, not logged: it carries its own split.
+    if (ability.split) {
+      const sorted = (m: Map<string, number>) =>
+        [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      return {
+        sources: sorted(ability.split.sources),
+        targets: sorted(ability.split.targets),
+      };
+    }
+    if (meter === 'prevented') return { sources: [], targets: [] };
+    return abilitySplit(ctx, meter, rowKey, idsKey.split(',').map(Number));
+  }, [ctx, meter, rowKey, ability, idsKey]);
   const part = (title: string, list: [string, number][]) => {
     const total = list.reduce((n, [, v]) => n + v, 0);
     return (
@@ -240,8 +254,16 @@ const Drill = ({
   const seconds = viewSeconds(ctx);
   const [hover, setHover] = React.useState<{
     ability: AbilityRow;
-    top: number;
+    spellIds: number[];
+    anchor: Anchor;
   } | null>(null);
+  // A scrolled page leaves the card behind: drop it.
+  React.useEffect(() => {
+    if (!hover) return undefined;
+    const drop = () => setHover(null);
+    window.addEventListener('scroll', drop, true);
+    return () => window.removeEventListener('scroll', drop, true);
+  }, [hover]);
   const [sort, onSort] = useSort('total');
   const columns: Record<string, (a: AbilityRow) => number | string> = {
     name: (a) => a.name,
@@ -430,10 +452,19 @@ const Drill = ({
                   child ? 'bg-card/10' : ''
                 }`}
                 onMouseEnter={(e) => {
-                  if (meter === 'prevented') return;
+                  if (meter === 'prevented' && !a.split) return;
                   const outer = box.current?.getBoundingClientRect();
-                  const r = e.currentTarget.getBoundingClientRect();
-                  setHover({ ability: a, top: r.bottom - (outer?.top ?? 0) });
+                  setHover({
+                    ability: a,
+                    spellIds:
+                      group && !child
+                        ? group.parts.map((x) => x.spellId)
+                        : [a.spellId],
+                    anchor: anchorOf(
+                      e.currentTarget,
+                      outer ? outer.left + outer.width * 0.38 : undefined,
+                    ),
+                  });
                 }}
                 onMouseLeave={() => setHover(null)}
               >
@@ -585,18 +616,19 @@ const Drill = ({
             </tr>
           </tfoot>
         </table>
-        {hover && meter !== 'prevented' && (
-          <div
-            className="absolute left-[38%] z-20 rounded-md border border-card bg-background p-2 shadow-xl pointer-events-none"
-            style={{ top: hover.top + 2 }}
+        {hover && (
+          <FloatingCard
+            anchor={hover.anchor}
+            className="z-20 rounded-md border border-card bg-background p-2 shadow-xl"
           >
             <SplitCard
               ctx={ctx}
               meter={meter}
               rowKey={row.key}
               ability={hover.ability}
+              spellIds={hover.spellIds}
             />
-          </div>
+          </FloatingCard>
         )}
       </div>
       {meter === 'healing' && <BarKey prevented={row.prevented > 0} />}

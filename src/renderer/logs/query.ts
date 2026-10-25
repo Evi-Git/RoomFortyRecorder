@@ -317,6 +317,11 @@ export type AbilityRow = {
   uptime: number;
   /** Healing: a heal, a shield, or damage prevented (for the bar's look). */
   kind?: 'heal' | 'shield' | 'prevented';
+  /**
+   * Who it came from and who it was for, by name, when there are no events
+   * to look it up from (damage prevented is worked out, not logged).
+   */
+  split?: { sources: Map<string, number>; targets: Map<string, number> };
 };
 
 export type MeterRow = RowRef & {
@@ -613,8 +618,9 @@ export const abilitySplit = (
   ctx: Ctx,
   meter: Meter,
   rowKey: string,
-  spellId: number,
+  spellIds: number[],
 ) => {
+  const ids = new Set(spellIds);
   const sources = new Map<string, number>();
   const targets = new Map<string, number>();
   const pets = ctx.filters.pets && meter !== 'taken';
@@ -623,7 +629,7 @@ export const abilitySplit = (
     (p, i) => {
       const unit = meterUnit(ctx, p, i, meter);
       if (unit < 0) return;
-      if (p.spells[p.sp[i]]?.id !== spellId) return;
+      if (!ids.has(p.spells[p.sp[i]]?.id ?? -1)) return;
       const ref = rowOf(p, unit, pets);
       if (!ref || (rowKey && ref.key !== rowKey)) return;
       const amount = p.a[i] + (p.k[i] === K.ABSORB ? 0 : p.b[i]);
@@ -1308,6 +1314,7 @@ export const preventedRows = (
       name: string,
       prevented: number,
       t: number,
+      target: number,
     ) => {
       const ref = rowOf(p, caster, false);
       if (!ref || prevented <= 0) return;
@@ -1331,6 +1338,11 @@ export const preventedRows = (
       const ab = row.abilities.get(key) ?? newAbility(key, spellId, name, '');
       ab.total += prevented;
       ab.hits += 1;
+      ab.split ??= { sources: new Map(), targets: new Map() };
+      const from = p.units[caster]?.name ?? '?';
+      const to = p.units[target]?.name ?? '?';
+      ab.split.sources.set(from, (ab.split.sources.get(from) ?? 0) + prevented);
+      ab.split.targets.set(to, (ab.split.targets.get(to) ?? 0) + prevented);
       row.abilities.set(key, ab);
       row.total += prevented;
       row.series[Math.min(points - 1, Math.floor((off + t) / SERIES_STEP))] +=
@@ -1353,7 +1365,7 @@ export const preventedRows = (
         if (!cuts(span, school)) return;
         const prevented = (amount * span.r) / (1 - span.r);
         if (!abilityOk(ctx, span.spellId)) return;
-        add(span.caster, span.spellId, span.name, prevented, t);
+        add(span.caster, span.spellId, span.name, prevented, t, d);
       });
       if (!opts.passive) continue;
       // Talents that always cut this school (Elemental Warding...), at the
@@ -1365,7 +1377,7 @@ export const preventedRows = (
         const prevented = (amount * dr.r) / (1 - dr.r);
         byTalents += prevented;
         if (abilityOk(ctx, dr.spellId))
-          add(d, dr.spellId, dr.name, prevented, t);
+          add(d, dr.spellId, dr.name, prevented, t, d);
       });
       // The rest of the raider's usual cut of magic damage (armour handles
       // physical): versatility and whatever else, never more than this
@@ -1376,7 +1388,7 @@ export const preventedRows = (
         const cut = Math.min(own, cutNow);
         const rest = amount / (1 - cut) - amount - byTalents;
         if (rest > 0)
-          add(d, 0, 'Versatility & other passives (estimate)', rest, t);
+          add(d, 0, 'Versatility & other passives (estimate)', rest, t, d);
       }
     }
   });
@@ -1453,6 +1465,7 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       absorbed: 0,
       mitigated: 0,
       uptime: 0,
+      split: undefined,
     };
     parts.forEach((a) => {
       head.total += a.total;
@@ -1465,6 +1478,16 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       head.absorbed += a.absorbed;
       head.mitigated += a.mitigated;
       head.uptime = Math.max(head.uptime, a.uptime);
+      if (a.split) {
+        head.split ??= { sources: new Map(), targets: new Map() };
+        const into = head.split;
+        a.split.sources.forEach((v, k) =>
+          into.sources.set(k, (into.sources.get(k) ?? 0) + v),
+        );
+        a.split.targets.forEach((v, k) =>
+          into.targets.set(k, (into.targets.get(k) ?? 0) + v),
+        );
+      }
     });
     return { key, head, parts };
   });
