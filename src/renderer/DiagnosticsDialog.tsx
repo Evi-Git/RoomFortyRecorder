@@ -12,6 +12,7 @@ import { ClipboardCopy, ExternalLink, FileText, Package } from 'lucide-react';
 import Spinner from './components/Spinner/Spinner';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
+import { iconDebugLines } from './AbilityCard';
 
 type IProps = {
   children: ReactNode;
@@ -52,6 +53,7 @@ const DiagnosticsDialog = (props: IProps) => {
         `Log folder: ${result.dir}`,
         `Files: ${result.files.join(', ') || '(none)'}`,
         ...result.lines,
+        ...iconDebugLines(),
       ].join('\n');
       ipc.sendMessage('writeClipboard', [text]);
       setCopyStatus(

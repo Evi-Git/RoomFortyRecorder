@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.50] - Unreleased
+### Fixed
+- **Icons that appeared only after reopening a row:** an icon drawn before its spell's icon name was known never picked the name up when it arrived, while icons drawn afterwards worked (which is why collapsing and reopening a group showed its children's icons). Each icon now starts fresh as soon as its name arrives.
+
+### Added
+- **Copy icon log lines** also lists what every icon on screen is doing (name, whether the app has its picture, which source, drawn or blank), to pin down any icon that still stays blank.
+
 ## [1.9.49] - Unreleased
 ### Fixed
 - **Blank spell icons (for real this time):** the icon pictures were downloaded and saved fine (they're in the app's `icons-v2` folder), but the page loaded them through the app's own `rficon://` address, and those requests got stuck inside the browser engine, blocking every icon after the first few. The page now gets each picture from the app directly and only falls back to Blizzard's and Wowhead's servers when the app has none.
