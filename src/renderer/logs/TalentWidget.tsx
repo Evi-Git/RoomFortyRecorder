@@ -8,7 +8,7 @@ import { classColor } from './format';
 import { GameIcon } from '../AbilityCard';
 import { useSpell } from './SpellIcon';
 import FloatingCard, { Anchor, anchorOf } from './Floating';
-import { LayoutNode, loadTree, TalentTree } from './talents';
+import { LayoutNode, loadTree, TalentLayout, TalentTree } from './talents';
 
 /**
  * [RoomFortyRecorder] Summary widget: a raider's talents drawn like the
@@ -27,43 +27,65 @@ const LINE_OFF = 'rgba(230, 222, 209, 0.14)';
 
 type Taken = Map<number, { entryId: number; rank: number }>;
 
-/** Grid columns and rows from the game's positions. */
-const gridOf = (nodes: LayoutNode[]) => {
-  // The usual gap between neighbouring columns (rows): some nodes sit
-  // half a step over, so positions stay fractional.
-  const step = (values: number[]) => {
+/**
+ * Grid columns and rows from the game's positions. Some nodes sit half a
+ * step over, so positions stay fractional; a gap of more than two steps
+ * (a node far off on its own) is shrunk to two, so one stray node can't
+ * stretch the tree across the page.
+ */
+export const gridOf = (nodes: LayoutNode[]) => {
+  const axis = (values: number[]) => {
     const u = [...new Set(values)].sort((a, b) => a - b);
     const count = new Map<number, number>();
     for (let i = 1; i < u.length; i += 1) {
       const d = u[i] - u[i - 1];
       if (d > 0) count.set(d, (count.get(d) ?? 0) + 1);
     }
-    let best = 0;
+    // The usual gap between neighbours (ties: the smaller).
+    let step = 0;
     let seen = 0;
     count.forEach((n, d) => {
-      if (n > seen || (n === seen && d < best)) {
-        best = d;
+      if (n > seen || (n === seen && d < step)) {
+        step = d;
         seen = n;
       }
     });
-    return { min: u[0] ?? 0, step: best > 0 ? best : 1 };
+    if (step <= 0) step = 1;
+    const pos = new Map<number, number>();
+    let at = 0;
+    u.forEach((v, i) => {
+      if (i) at += Math.min(u[i] - u[i - 1], step * 2) / step;
+      pos.set(v, at);
+    });
+    return pos;
   };
-  const sx = step(nodes.map((n) => n.x));
-  const sy = step(nodes.map((n) => n.y));
+  const px = axis(nodes.map((n) => n.x));
+  const py = axis(nodes.map((n) => n.y));
   const at = new Map(
-    nodes.map((n) => [
-      n.id,
-      {
-        col: (n.x - sx.min) / sx.step,
-        row: (n.y - sy.min) / sy.step,
-      },
-    ]),
+    nodes.map((n) => [n.id, { col: px.get(n.x) ?? 0, row: py.get(n.y) ?? 0 }]),
   );
   const cols =
     Math.ceil(Math.max(0, ...[...at.values()].map((p) => p.col))) + 1;
   const rows =
     Math.ceil(Math.max(0, ...[...at.values()].map((p) => p.row))) + 1;
   return { at, cols, rows };
+};
+
+/**
+ * Blizzard's class and spec node lists also hold the hero trees' nodes
+ * (both hero trees, at their own positions) and the empty node where the
+ * hero tree is picked: each tree keeps only its own talents.
+ */
+export const cleanLayout = (layout: TalentLayout): TalentLayout => {
+  const heroIds = new Set(layout.hero.flatMap((h) => h.nodes.map((n) => n.id)));
+  const real = (n: LayoutNode) =>
+    n.entries.some((e) => e.spellId > 0) && !/SELECT/i.test(n.type);
+  return {
+    ...layout,
+    class: layout.class.filter((n) => real(n) && !heroIds.has(n.id)),
+    spec: layout.spec.filter((n) => real(n) && !heroIds.has(n.id)),
+    hero: layout.hero.map((h) => ({ ...h, nodes: h.nodes.filter(real) })),
+  };
 };
 
 const Node = ({
@@ -276,7 +298,7 @@ const TalentWidget = ({ ctx }: { ctx: Ctx }) => {
     raider.talents.map(([node, entryId, rank]) => [node, { entryId, rank }]),
   );
   const current = tree && tree.specId === specId ? tree.tree : undefined;
-  const layout = current?.layout;
+  const layout = current?.layout ? cleanLayout(current.layout) : undefined;
   const hero = layout?.hero.find((h) => h.nodes.some((n) => taken.has(n.id)));
   return (
     <section className="rounded-md border border-card bg-background/40 overflow-hidden">
@@ -285,18 +307,40 @@ const TalentWidget = ({ ctx }: { ctx: Ctx }) => {
           Talents
         </h4>
         <select
-          className="h-7 px-2 rounded-md border border-background bg-card text-xs"
-          style={{ color: classColor(raider.specId) }}
+          className="h-7 px-2 rounded-md border border-background bg-card text-xs text-foreground-lighter"
           value={raider.guid}
           onChange={(e) => setPick(e.target.value)}
           aria-label="Raider"
         >
           {raiders.map((r) => (
-            <option key={r.guid} value={r.guid}>
+            <option
+              key={r.guid}
+              value={r.guid}
+              style={{ color: classColor(r.specId) }}
+            >
               {r.name}
             </option>
           ))}
         </select>
+        {current?.layout && (
+          <button
+            type="button"
+            className="text-[11px] text-foreground hover:text-foreground-lighter underline"
+            title="Copies this spec's tree data and the raider's talents, for Claude to check the drawing"
+            onClick={() =>
+              navigator.clipboard.writeText(
+                JSON.stringify({
+                  specId,
+                  raider: raider.name,
+                  talents: raider.talents,
+                  layout: current.layout,
+                }),
+              )
+            }
+          >
+            Copy tree data
+          </button>
+        )}
         {layout && (
           <span className="text-xs text-foreground">
             {layout.specName} {layout.className}
