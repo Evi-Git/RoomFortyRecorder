@@ -283,6 +283,12 @@ export const parseLine = (
   } else if (type.startsWith('SPELL_AURA_')) {
     e.auraType = args[12] ?? '';
     e.stacks = int(args[13]);
+  } else if (type === 'SPELL_HEAL_ABSORBED') {
+    // healer(4) [healing spell id, name, school] amount absorbed, heal
+    e.attacker = args[12] ?? NO_GUID;
+    e.extraId = int(args[16]);
+    e.extraName = args[17] ?? '';
+    e.amount = int(args[19]);
   } else if (type === 'SPELL_INTERRUPT') {
     e.extraId = int(args[12]);
     e.extraName = args[13] ?? '';

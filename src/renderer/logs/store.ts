@@ -30,6 +30,8 @@ export const K = {
   SUMMON: 12,
   RES: 13,
   MISS: 14,
+  /** Healing taken away by a heal absorb (Light of the Martyr). */
+  HEALABSORB: 15,
 } as const;
 
 export const KIND_NAMES = [
@@ -48,6 +50,7 @@ export const KIND_NAMES = [
   'Summon',
   'Resurrect',
   'Miss',
+  'Heal absorbed',
 ];
 
 /** Flags. */
@@ -112,6 +115,8 @@ export type Unit = {
   first: number;
   /** Raiders: talents from COMBATANT_INFO as [node ID, entry ID, rank]. */
   talents?: [number, number, number][];
+  /** Pets and guardians: the spell that summoned them (Time of Need...). */
+  summon?: { id: number; name: string };
 };
 
 export type Spell = { id: number; name: string; school: number };
@@ -212,6 +217,7 @@ const WANTED = new Set([
   'SPELL_HEAL',
   'SPELL_PERIODIC_HEAL',
   'SPELL_ABSORBED',
+  'SPELL_HEAL_ABSORBED',
   'SPELL_CAST_SUCCESS',
   'SPELL_CAST_START',
   'SPELL_AURA_APPLIED',
@@ -511,6 +517,10 @@ export class StoreBuilder {
       a = e.amount;
       x = this.unit(e.attacker, '', 0);
       aux = this.spell(e.attackSpellId, e.attackSpellName, e.attackSchool);
+    } else if (type === 'SPELL_HEAL_ABSORBED') {
+      kind = K.HEALABSORB;
+      a = e.amount;
+      aux = this.spell(e.extraId, e.extraName, 0);
     } else if (type === 'SPELL_CAST_SUCCESS') kind = K.CAST;
     else if (type === 'SPELL_CAST_START') kind = K.BEGIN;
     else if (type === 'SPELL_AURA_APPLIED') {
@@ -540,7 +550,11 @@ export class StoreBuilder {
       aux = e.powerType;
     } else if (type === 'SPELL_SUMMON') {
       kind = K.SUMMON;
-      if (dst >= 0 && src >= 0) this.units[dst].owner = src;
+      if (dst >= 0 && src >= 0) {
+        this.units[dst].owner = src;
+        if (e.spellId > 0)
+          this.units[dst].summon = { id: e.spellId, name: e.spellName };
+      }
     } else if (type === 'SPELL_RESURRECT') kind = K.RES;
     else return;
 

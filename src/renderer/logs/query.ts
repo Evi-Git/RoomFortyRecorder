@@ -318,6 +318,10 @@ export type AbilityRow = {
   mitigated: number;
   /** Debuff uptime on targets (DoTs), seconds. */
   uptime: number;
+  /** Counts against the raider's healing (Spirit Link's damage...). */
+  negative?: boolean;
+  /** Pets: the spell that summoned the pet (groups its abilities). */
+  summon?: { id: number; name: string };
   /** Healing: a heal, a shield, or damage prevented (for the bar's look). */
   kind?: 'heal' | 'shield' | 'prevented';
   /**
@@ -367,6 +371,12 @@ const newAbility = (
 });
 
 /** Does event i belong in this meter, and whose row (by unit) is it. */
+/** Damage from healing spells, shown as negative healing. */
+const HEALING_COSTS = new Set([
+  98021, // Spirit Link (damage evening out health)
+  448005, // Light of the Martyr (healing the paladin doesn't get)
+]);
+
 /** Healing to this unit (or its owner) is left out of the view. */
 export const excludedTarget = (ctx: Ctx, p: PullStore, unit: number) => {
   const list = ctx.filters.healExclude;
@@ -392,6 +402,14 @@ const meterUnit = (ctx: Ctx, p: PullStore, i: number, meter: Meter): number => {
     return s;
   }
   if (meter === 'healing') {
+    // Health a healing spell takes off raiders (Spirit Link evening out
+    // health) counts against it, as on Warcraft Logs.
+    if (kind === K.DMG || kind === K.HEALABSORB) {
+      if (!HEALING_COSTS.has(p.spells[p.sp[i]]?.id ?? 0)) return -1;
+      if (side !== 'friendly' || !isRaiderSide(p, s)) return -1;
+      if (d < 0 || !p.units[d].raider || excludedTarget(ctx, p, d)) return -1;
+      return s;
+    }
     if (kind !== K.HEAL && kind !== K.ABSORB) return -1;
     if (side === 'friendly' ? !isRaiderSide(p, s) : !isEnemy(p, s)) return -1;
     if (kind === K.HEAL && side === 'friendly' && !p.units[d]?.friendly)
@@ -454,8 +472,13 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         rows.set(ref.key, row);
       }
       const kind = p.k[i];
-      const amount =
-        kind === K.DMG
+      const cost =
+        meter === 'healing' && (kind === K.DMG || kind === K.HEALABSORB);
+      const amount = cost
+        ? kind === K.HEALABSORB
+          ? -p.a[i]
+          : -(p.a[i] + p.b[i] - p.aux[i])
+        : kind === K.DMG
           ? p.a[i] + p.b[i]
           : kind === K.HEAL
             ? p.a[i] + p.b[i]
@@ -465,17 +488,24 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         meter !== 'taken' && unit !== p.units[unit].root && !pets
           ? p.units[unit].name
           : '';
-      const aKey = `${spell?.id ?? 0}|${fromPet}`;
+      const aKey = `${spell?.id ?? 0}|${fromPet}${cost ? '|cost' : ''}`;
       let ab = row.abilities.get(aKey);
       if (!ab) {
-        ab = newAbility(aKey, spell?.id ?? 0, spell?.name ?? '?', fromPet);
+        ab = newAbility(
+          aKey,
+          spell?.id ?? 0,
+          `${spell?.name ?? '?'}${cost && kind === K.DMG ? ' (Damage)' : ''}`,
+          fromPet,
+        );
+        if (cost) ab.negative = true;
+        if (fromPet) ab.summon = p.units[unit].summon;
         row.abilities.set(aKey, ab);
       }
       ab.total += amount;
       ab.hits += 1;
       if (p.f[i] & F.CRIT) ab.crits += 1;
       if (p.f[i] & F.TICK) ab.ticks += 1;
-      if (kind === K.DMG) {
+      if (kind === K.DMG && !cost) {
         ab.absorbed += p.b[i];
         const mit = p.x[i] > amount ? p.x[i] - amount : 0;
         ab.mitigated += mit;
@@ -497,7 +527,7 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
       if (meter !== 'taken' && unit === p.units[unit].root)
         touch(ref.key, at, pi);
     },
-    { kinds: [K.DMG, K.HEAL, K.ABSORB] },
+    { kinds: [K.DMG, K.HEAL, K.ABSORB, K.HEALABSORB] },
   );
 
   // Casts and misses per ability (for damage and healing).
@@ -677,12 +707,20 @@ export const abilitySeries = (
       if (unit < 0) return;
       const ref = rowOf(p, unit, pets);
       if (!ref || ref.key !== rowKey) return;
+      // Healing spells' own damage (Spirit Link) isn't drawn.
+      if (meter === 'healing' && p.k[i] === K.DMG) return;
       const spell = p.spells[p.sp[i]];
-      const id = spell?.name ?? '?';
+      // Nested the way the table nests: under the parent ability or item,
+      // a pet's spells under what summoned it (totems' copies by name).
+      const u = p.units[unit];
+      const summon =
+        !pets && unit !== u.root && !isTotem(u.name) ? u.summon?.name : '';
+      const id =
+        NESTED_UNDER[spell?.id ?? 0]?.name || summon || spell?.name || '?';
       let entry = by.get(id);
       if (!entry) {
         entry = {
-          name: spell?.name ?? '?',
+          name: id,
           values: new Float64Array(points),
           total: 0,
         };
@@ -1695,31 +1733,115 @@ export const withPrevented = (healing: MeterRow[], prevented: MeterRow[]) => {
   return [...rows.values()].sort((a, b) => b.total - a.total);
 };
 
-/** Abilities with the same name (several spell IDs), as WCL nests them. */
+/**
+ * Spells Warcraft Logs folds under another: talents and procs under the
+ * ability that sets them off, items' effects under the item. Child spell
+ * ID -> the parent's name and the spell whose icon it shows.
+ */
+export const NESTED_UNDER: Record<number, { name: string; icon: number }> = {
+  // Shaman
+  73921: { name: 'Healing Rain', icon: 73920 },
+  1300642: { name: 'Healing Rain', icon: 73920 }, // Condensation
+  462425: { name: 'Healing Rain', icon: 73920 }, // Tidewaters
+  // Evoker
+  378213: { name: 'Reversion', icon: 366155 }, // Golden Hour
+  367364: { name: 'Reversion', icon: 366155 }, // Reversion (echo)
+  366155: { name: 'Reversion', icon: 366155 },
+  1256688: { name: 'Reversion', icon: 366155 }, // Merithra's Blessing
+  361361: { name: 'Emerald Blossom', icon: 355916 }, // Fluttering Seedlings
+  355916: { name: 'Emerald Blossom', icon: 355916 },
+  // Paladin
+  25914: { name: 'Holy Shock', icon: 20473 },
+  461499: { name: 'Holy Shock', icon: 20473 }, // Overflowing Light
+  414019: { name: 'Judgment', icon: 275773 }, // Greater Judgment
+  461546: { name: 'Judgment', icon: 275773 }, // Truth Prevails
+  461529: { name: 'Judgment', icon: 275773 }, // Truth Prevails
+  // Items
+  1307578: { name: 'Soulcoiler Ritual Vessel', icon: 1291894 }, // Soulcoil Barrier
+  1263002: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Unleashed Fire
+  1287665: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Lingering
+  1287908: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Self-Mending
+  1286970: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Unleashed Fire
+  1287663: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Lingering
+  1289063: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Echoes
+  1303048: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Echoes
+  1303071: { name: 'Omnium Folio', icon: 1263002 }, // Rune of Echoes
+};
+
+/** Same-named spells Warcraft Logs keeps apart. */
+const KEEP_APART = new Set([
+  1245369, // Beacon of the Savior
+  1244893, // Beacon of the Savior
+]);
+
+/** Abilities nested the way Warcraft Logs nests them. */
 export type AbilityGroup = {
   key: string;
   /** The row to show: the ability itself, or the group's sum. */
   head: AbilityRow;
-  /** Two or more when grouped; the main one (cast, else biggest) first. */
+  /** The spells in it; the main one (cast, else biggest) first. */
   parts: AbilityRow[];
+  /** A group to open even with one spell in it (an item, a pet...). */
+  nested: boolean;
 };
 
+const isTotem = (name: string) => /totem$/i.test(name);
+
 export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
-  const groups = new Map<string, AbilityRow[]>();
+  // The raider's own spells by name: a totem's copy of one (Surging
+  // Totem's Chain Heal) goes in with it.
+  const own = new Set(abilities.filter((a) => !a.by).map((a) => a.name));
+  const groups = new Map<
+    string,
+    { list: AbilityRow[]; parent?: { name: string; icon: number } }
+  >();
   abilities.forEach((a) => {
-    const key = `${a.name}|${a.by}|${a.kind ?? ''}`;
-    const list = groups.get(key) ?? [];
-    list.push(a);
-    groups.set(key, list);
+    let key: string;
+    let parent: { name: string; icon: number } | undefined;
+    const cost = Boolean(a.negative);
+    const nest = cost ? undefined : NESTED_UNDER[a.spellId];
+    if (cost) {
+      // Negative healing (Spirit Link's damage): a row of its own.
+      key = `cost:${a.spellId}|${a.by}`;
+    } else if (nest) {
+      key = `nest:${nest.name}|${a.by}`;
+      parent = nest;
+    } else if (a.by && isTotem(a.by) && own.has(a.name)) {
+      key = `${a.name}||${a.kind ?? ''}`;
+    } else if (a.by) {
+      // A pet's or guardian's spells together, under what summoned it.
+      const name = a.summon?.name || a.by;
+      key = `pet:${name}`;
+      parent = { name, icon: a.summon?.id ?? a.spellId };
+    } else if (KEEP_APART.has(a.spellId)) {
+      key = `id:${a.spellId}|${a.kind ?? ''}`;
+    } else key = `${a.name}|${a.by}|${a.kind ?? ''}`;
+    const g = groups.get(key) ?? { list: [] };
+    g.list.push(a);
+    if (parent) g.parent = parent;
+    groups.set(key, g);
   });
-  return [...groups.entries()].map(([key, list]) => {
-    if (list.length === 1) return { key, head: list[0], parts: list };
+  return [...groups.entries()].map(([key, { list, parent }]) => {
+    // One pet spell on its own: just that spell (with who did it).
+    // Nested even with one spell (an item's effect), except a pet's lone
+    // spell or a spell alone under its own name.
+    const nested =
+      Boolean(parent) &&
+      !(
+        list.length < 2 &&
+        (key.startsWith('pet:') || list[0].name === parent?.name)
+      );
+    if (list.length === 1 && !nested)
+      return { key, head: list[0], parts: list, nested: false };
     const parts = [...list].sort(
       (x, y) => y.casts - x.casts || y.total - x.total,
     );
+    // A totem's copy isn't the one to name the group after.
+    const main = parts.find((x) => !x.by) ?? parts[0];
     const head: AbilityRow = {
-      ...parts[0],
+      ...main,
       key: `group:${key}`,
+      by: nested && key.startsWith('pet:') ? '' : main.by,
       total: 0,
       hits: 0,
       crits: 0,
@@ -1732,6 +1854,10 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       uptime: 0,
       split: undefined,
     };
+    if (parent) {
+      head.name = parent.name;
+      head.spellId = parent.icon;
+    }
     parts.forEach((a) => {
       head.total += a.total;
       head.hits += a.hits;
@@ -1743,6 +1869,8 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
       head.absorbed += a.absorbed;
       head.mitigated += a.mitigated;
       head.uptime = Math.max(head.uptime, a.uptime);
+      if (a.kind === 'heal' || a.kind === 'shield')
+        head.kind = head.kind === 'heal' ? 'heal' : a.kind;
       if (a.split) {
         head.split ??= { sources: new Map(), targets: new Map() };
         const into = head.split;
@@ -1754,6 +1882,6 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
         );
       }
     });
-    return { key, head, parts };
+    return { key, head, parts, nested };
   });
 };

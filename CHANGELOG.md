@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.62] - Unreleased
+### Changed
+- **Abilities nest like Warcraft Logs.** In a raider's ability table (and the chart above it), related spells now sit under one row you can open with ▸ (closed to start with):
+  - Totems' copies of a spell go in with the shaman's own (Chain Heal from Surging, Healing Stream, Stormstream, Wind Rush and Spirit Link totems under Chain Heal).
+  - A pet's or guardian's spells sit under what summoned it: Stormstream Totem (with Stormswell), Time of Need (the evoker's Past Self: Verdant Embrace, Living Flame).
+  - Procs and talents under the ability behind them: Condensation and Tidewaters under Healing Rain; Golden Hour, the echo Reversion and Merithra's Blessing under Reversion; Fluttering Seedlings under Emerald Blossom; Overflowing Light under Holy Shock; Greater Judgment and Truth Prevails under Judgment.
+  - Item effects under the item: Soulcoil Barrier under Soulcoiler Ritual Vessel, the runes under Omnium Folio.
+  - Same-named spells still group as before (Dawnlight, Sun's Avatar), except Beacon of the Savior's two, which WCL keeps apart.
+- **Negative healing rows** like WCL's: Spirit Link (Damage) for the shaman (health Spirit Link Totem took off raiders) and Light of the Martyr for the paladin (healing their own Light of the Martyr absorbed). Checked on the Mythic Kith'ix kill: -1.58m and -3.01m, as on WCL.
+- Spell IDs next to a nested spell only show when two in the group share a name.
+
 ## [1.9.61] - Unreleased
 ### Added
 - **Open up a buff or debuff.** On the Buffs and Debuffs tabs (and the raid's debuffs on enemies), click a name to see who had it: a lane per raider (or enemy) showing when it was on them, darker with more stacks and the stack count written on, plus count, uptime and highest stacks. Above it, a chart of how many had it and their stacks added up (a single raider's stacks when only one had it). Drag a slice and press **Zoom to slice**: the chart and every lane zoom together, and the counts and uptimes follow the slice. Hover a lane piece for its times and stacks; click a lane to watch that moment.

@@ -296,11 +296,11 @@ const Drill = ({
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
   const labels = useSpellLabels(
     groups.flatMap((g) =>
-      g.parts.length > 1 ? g.parts.map((a) => a.spellId) : [],
+      g.parts.length > 1 || g.nested ? g.parts.map((a) => a.spellId) : [],
     ),
   );
   const lines = groups.flatMap((g) =>
-    g.parts.length === 1
+    g.parts.length === 1 && !g.nested
       ? [{ a: g.head, child: false, group: null as AbilityGroup | null }]
       : [
           { a: g.head, child: false, group: g },
@@ -479,7 +479,11 @@ const Drill = ({
                       <button
                         type="button"
                         aria-expanded={open.has(group.key)}
-                        title={`${group.parts.length} spells named ${a.name}`}
+                        title={
+                          group.nested
+                            ? `${a.name}: ${group.parts.map((x) => x.name).join(', ')}`
+                            : `${group.parts.length} spells named ${a.name}`
+                        }
                         onClick={() =>
                           setOpen((prev) => {
                             const next = new Set(prev);
@@ -498,30 +502,38 @@ const Drill = ({
                       </button>
                     ) : (
                       !child &&
-                      groups.some((g) => g.parts.length > 1) && (
+                      groups.some((g) => g.parts.length > 1 || g.nested) && (
                         <span className="w-4" />
                       )
                     )}
                     <SpellIcon spellId={a.spellId} name={a.name} />
                     <span>
                       {nameOf(a, group)}
-                      {a.by && (
-                        <span className="text-foreground"> ({a.by})</span>
-                      )}
+                      {a.by &&
+                        a.by !== a.name &&
+                        !(child && group?.key.startsWith('pet:')) && (
+                          <span className="text-foreground"> ({a.by})</span>
+                        )}
                       {child &&
                         group?.parts[0] !== a &&
-                        nameOf(a, group) === a.name && (
+                        nameOf(a, group) === a.name &&
+                        group?.parts.some(
+                          (x) => x !== a && x.name === a.name,
+                        ) && (
                           <span className="text-foreground text-xs">
                             {' '}
                             · {a.spellId}
                           </span>
                         )}
-                      {group && !child && (
-                        <span className="text-foreground text-xs">
-                          {' '}
-                          ×{group.parts.length}
-                        </span>
-                      )}
+                      {group &&
+                        !child &&
+                        !group.nested &&
+                        !group.parts.some((x) => x.by) && (
+                          <span className="text-foreground text-xs">
+                            {' '}
+                            ×{group.parts.length}
+                          </span>
+                        )}
                     </span>
                   </span>
                 </td>
