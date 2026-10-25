@@ -73,8 +73,34 @@ const loadIconData = (icon: string) => {
 // A CDN image that neither loads nor fails within this counts as failed.
 const ICON_SOURCE_MS = 6000;
 
+// What each icon on screen is doing, for "Copy icon log lines".
+const iconStates = new Map<number, string>();
+let iconSeq = 0;
+export const iconDebugLines = () => {
+  const lines = [...iconStates.values()];
+  const pending = [...iconDataFlight.keys()];
+  const known = [...iconData.entries()].map(
+    ([name, url]) => `${name}=${url ? `${url.length}b` : 'none'}`,
+  );
+  return [
+    `[Renderer] ${lines.length} icons on screen; app images known: ${known.length}, still loading: ${pending.length}${pending.length ? ` (${pending.slice(0, 10).join(', ')})` : ''}`,
+    ...lines.slice(0, 60).map((l) => `[Renderer] ${l}`),
+    `[Renderer] known: ${known.slice(0, 60).join(' ')}`,
+  ];
+};
+
 /** A spell icon by its name (e.g. "ability_creature_poison_02"). */
-export const GameIcon = ({
+// Keyed by the icon name, so an icon that mounted before its name was known
+// starts fresh once it arrives (a fresh mount always loads).
+export const GameIcon = (props: {
+  icon: string | null | undefined;
+  className: string;
+}) => {
+  const { icon } = props;
+  return <GameIconInner key={icon ?? ''} {...props} />;
+};
+
+const GameIconInner = ({
   icon,
   className,
 }: {
@@ -131,6 +157,18 @@ export const GameIcon = ({
     const timer = setTimeout(next, ICON_SOURCE_MS);
     return () => clearTimeout(timer);
   }, [src, loaded, next]);
+
+  const [seq] = React.useState(() => (iconSeq += 1));
+  iconStates.set(
+    seq,
+    `${icon || '(no name)'}: app ${appData ? (appData.url ? 'has image' : 'has none') : 'loading'}, source ${cdnIndex}, ${src ? (src.startsWith('data:') ? 'data' : 'cdn') : 'blank'}${loaded && loaded === src ? ', drawn' : ''}`,
+  );
+  React.useEffect(
+    () => () => {
+      iconStates.delete(seq);
+    },
+    [seq],
+  );
 
   if (!src) {
     return <span className={`${className} border border-card bg-card/50`} />;
