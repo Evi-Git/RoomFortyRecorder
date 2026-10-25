@@ -1,6 +1,6 @@
 !macro customInstall
-  # Updates already have the Visual C++ runtime; skipping it keeps the
-  # silent in-app update free of Microsoft's own progress window.
+  # Updates already have the Visual C++ runtime; skipping it keeps
+  # Microsoft's own progress window out of in-app updates.
   ${IfNot} ${isUpdated}
   NSISdl::download https://aka.ms/vs/17/release/vc_redist.x64.exe "$INSTDIR\vc_redist.x64.exe"  
   

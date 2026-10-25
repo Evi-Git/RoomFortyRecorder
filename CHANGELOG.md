@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.56] - Unreleased
+### Changed
+- **Updates no longer look like a crash:** after the brief "Updating" screen, the installer's progress window now stays on screen while the update installs and until it reopens the app. Before, the install ran hidden, so nothing was on screen for several seconds.
+
 ## [1.9.55] - Unreleased
 ### Changed
 - **Mitigations show up straight away:** Elemental Resistance and other buff-based mitigations used to take a minute or two to appear, because the guild server looked up hundreds of buff descriptions on Wowhead (a few a second) the first time anyone opened the pull. The server now does those lookups as soon as a pull's full log arrives, and at start-up for the last three days' pulls, so the Logs page finds them ready. The app also starts reading them when the pull opens, before Mitigations is switched on, and shows "Looking up buffs and talents…" if they aren't in yet.
