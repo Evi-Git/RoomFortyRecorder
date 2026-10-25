@@ -62,9 +62,17 @@ const fakeBlizzard = () => {
     }
     if (u.includes('/talent-tree/786/playable-specialization/264')) {
       return ok({
+        playable_class: { name: 'Shaman' },
+        playable_specialization: { name: 'Restoration' },
         class_talent_nodes: [
           {
             id: 80978,
+            display_row: 1,
+            display_col: 2,
+            raw_position_x: 1200,
+            raw_position_y: 600,
+            node_type: { type: 'PASSIVE' },
+            unlocks: [80990],
             ranks: [
               { rank: 1, tooltip: { talent: { id: 101844 }, spell_tooltip: { spell: { id: 381650, name: 'Elemental Warding' }, description: 'Reduces all magic damage taken by 2%.' } } },
               { rank: 2, tooltip: { talent: { id: 101844 }, spell_tooltip: { spell: { id: 381650, name: 'Elemental Warding' }, description: 'Reduces all magic damage taken by 4%.' } } },
@@ -84,6 +92,7 @@ const fakeBlizzard = () => {
           },
         ],
         spec_talent_nodes: [],
+        hero_talent_trees: [{ id: 54, name: 'Farseer', hero_talent_nodes: [{ id: 94000, display_row: 1, display_col: 1, ranks: [{ rank: 1, tooltip: { talent: { id: 117000 }, spell_tooltip: { spell: { id: 443442, name: 'Call of the Ancestors' } } } }] }] }],
       });
     }
     if (/spell\/404404/.test(u)) return { ok: false, status: 404, json: async () => ({}) };
@@ -247,6 +256,14 @@ test('talent trees: node and entry IDs to spells, fetched once per spec', async 
       [101862, 'Choice B'],
     ],
   );
+  const node = tree.layout.class.find((n) => n.id === 80978);
+  assert.deepEqual(
+    { x: node.x, y: node.y, type: node.type, maxRank: node.maxRank, next: node.next },
+    { x: 1200, y: 600, type: 'PASSIVE', maxRank: 2, next: [80990] },
+  );
+  assert.deepEqual(tree.layout.class.find((n) => n.id === 80990).entries.map((e) => e.entryId), [101861, 101862]);
+  assert.equal(tree.layout.hero[0].name, 'Farseer');
+  assert.equal(tree.layout.hero[0].nodes[0].entries[0].spellId, 443442);
   const before = calls.length;
   await journal.talents(264);
   assert.equal(calls.length, before);

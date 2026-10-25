@@ -15,9 +15,28 @@ export type TalentOption = {
   name: string;
   text: string;
 };
-type TalentTree = {
+/** A node where the game draws it (see journal.mjs talentLayout). */
+export type LayoutNode = {
+  id: number;
+  x: number;
+  y: number;
+  type: string;
+  maxRank: number;
+  next: number[];
+  entries: { entryId: number; spellId: number; name: string }[];
+};
+export type TalentLayout = {
+  className: string;
+  specName: string;
+  class: LayoutNode[];
+  spec: LayoutNode[];
+  hero: { id: number; name: string; nodes: LayoutNode[] }[];
+};
+export type TalentTree = {
   specId: number;
   nodes: Record<string, { rank: number; options: TalentOption[] }[]>;
+  /** Missing from a server older than 1.9.75. */
+  layout?: TalentLayout;
 };
 
 /** A passive reduction: share of damage it removes, for these schools. */
@@ -32,7 +51,7 @@ export type PassiveDr = {
 type Response<T> = { ok: true; data: T } | { ok: false; error: string };
 const trees = new Map<number, Promise<TalentTree | null>>();
 
-const loadTree = (specId: number) => {
+export const loadTree = (specId: number) => {
   const known = trees.get(specId);
   if (known) return known;
   const job = (

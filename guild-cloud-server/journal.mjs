@@ -798,13 +798,56 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     return out;
   };
 
+  /**
+   * Where each node sits, for drawing the tree like the game (and Wowhead's
+   * calculator): class, spec and hero trees, with each node's position,
+   * kind, ranks, choices and the nodes it leads to.
+   */
+  const talentLayout = (tree) => {
+    const idsOf = (list) =>
+      (Array.isArray(list) ? list : [])
+        .map((n) => (typeof n === 'number' ? n : Number(n?.id)))
+        .filter((n) => Number.isInteger(n) && n > 0);
+    const nodeOf = (n) => {
+      const first = Array.isArray(n?.ranks) ? n.ranks[0] : null;
+      const options = first ? [first.tooltip, ...(first.choice_of_tooltips || [])].filter(Boolean) : [];
+      return {
+        id: Number(n.id),
+        x: Number.isFinite(Number(n.raw_position_x)) ? Number(n.raw_position_x) : Number(n.display_col) || 0,
+        y: Number.isFinite(Number(n.raw_position_y)) ? Number(n.raw_position_y) : Number(n.display_row) || 0,
+        type: String(n.node_type?.type || (first?.choice_of_tooltips ? 'CHOICE' : 'ACTIVE')),
+        maxRank: Array.isArray(n.ranks) ? n.ranks.length : 1,
+        next: idsOf(n.unlocks),
+        entries: options
+          .map((t) => ({
+            entryId: Number(t?.talent?.id) || 0,
+            spellId: Number(t?.spell_tooltip?.spell?.id) || 0,
+            name: t?.spell_tooltip?.spell?.name || t?.talent?.name || '',
+          }))
+          .filter((e) => e.entryId || e.spellId),
+      };
+    };
+    const list = (nodes) => (Array.isArray(nodes) ? nodes.filter((n) => Number.isInteger(n?.id)).map(nodeOf) : []);
+    return {
+      className: tree?.playable_class?.name || '',
+      specName: tree?.playable_specialization?.name || '',
+      class: list(tree?.class_talent_nodes),
+      spec: list(tree?.spec_talent_nodes),
+      hero: (Array.isArray(tree?.hero_talent_trees) ? tree.hero_talent_trees : []).map((h) => ({
+        id: Number(h.id) || 0,
+        name: h.name || '',
+        nodes: list(h.hero_talent_nodes),
+      })),
+    };
+  };
+
   const fetchTalents = async (specId) => {
     const index = await api('/data/wow/talent-tree/index');
     const hrefs = JSON.stringify(index || {}).match(/talent-tree\/\d+\/playable-specialization\/\d+/g) || [];
     const route = hrefs.find((h) => h.endsWith(`/playable-specialization/${specId}`));
     if (!route) return { specId, nodes: {} };
     const tree = await api(`/data/wow/${route}`);
-    return { specId, nodes: talentNodes(tree) };
+    return { specId, nodes: talentNodes(tree), layout: talentLayout(tree) };
   };
 
   /** A spec's talent nodes: node ID -> ranks -> spells (with descriptions). */
@@ -814,7 +857,8 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     if (!configured) return null;
     const file = `talents-${specId}.json`;
     const cached = await readJson(file, null);
-    if (cached && Date.now() - (cached.at || 0) < TALENT_TTL_MS) return cached;
+    // Kept before the layout was: fetched again once.
+    if (cached && cached.layout && Date.now() - (cached.at || 0) < TALENT_TTL_MS) return cached;
     if (!talentInFlight.has(specId)) {
       talentInFlight.set(
         specId,
