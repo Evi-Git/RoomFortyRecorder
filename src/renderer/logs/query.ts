@@ -721,21 +721,35 @@ export const byTarget = (ctx: Ctx, meter: Meter): TargetRow[] => {
     .sort((a, b) => b.total - a.total);
 };
 
-/** Damage/healing broken down by ability across all rows (Done by ability). */
-export const byAbility = (rows: MeterRow[]) => {
-  const out = new Map<
-    string,
-    AbilityRow & {
-      users: Map<string, { name: string; specId: number; total: number }>;
-    }
-  >();
+export type AbilityUsers = Map<
+  string,
+  { name: string; specId: number; total: number }
+>;
+
+/**
+ * Damage/healing broken down by ability across all rows (Done by ability),
+ * nested the way a raider's own abilities are: the same ability under
+ * several spell IDs is one row, procs sit under what sets them off, and a
+ * pet's spells under what summoned it.
+ */
+export const byAbility = (
+  rows: MeterRow[],
+): (AbilityGroup & { users: AbilityUsers })[] => {
+  const all = new Map<string, AbilityRow>();
+  const users = new Map<string, AbilityUsers>();
   rows.forEach((row) => {
     row.abilities.forEach((ab) => {
-      const key = `${ab.spellId}`;
-      let agg = out.get(key);
+      // The raider's key without the raider: one row per spell (and pet).
+      const key = ab.key;
+      let agg = all.get(key);
       if (!agg) {
-        agg = { ...newAbility(key, ab.spellId, ab.name, ''), users: new Map() };
-        out.set(key, agg);
+        agg = {
+          ...newAbility(key, ab.spellId, ab.name, ab.by),
+          kind: ab.kind,
+          negative: ab.negative,
+          summon: ab.summon,
+        };
+        all.set(key, agg);
       }
       agg.total += ab.total;
       agg.hits += ab.hits;
@@ -746,16 +760,30 @@ export const byAbility = (rows: MeterRow[]) => {
       agg.overheal += ab.overheal;
       agg.absorbed += ab.absorbed;
       agg.mitigated += ab.mitigated;
-      const u = agg.users.get(row.key) ?? {
+      const who = users.get(key) ?? new Map();
+      const u = who.get(row.key) ?? {
         name: row.name,
         specId: row.specId,
         total: 0,
       };
       u.total += ab.total;
-      agg.users.set(row.key, u);
+      who.set(row.key, u);
+      users.set(key, who);
     });
   });
-  return [...out.values()].sort((a, b) => b.total - a.total);
+  return groupAbilities([...all.values()])
+    .map((g) => {
+      const merged: AbilityUsers = new Map();
+      g.parts.forEach((part) => {
+        users.get(part.key)?.forEach((u, k) => {
+          const m = merged.get(k) ?? { ...u, total: 0 };
+          m.total += u.total;
+          merged.set(k, m);
+        });
+      });
+      return { ...g, users: merged };
+    })
+    .sort((a, b) => b.head.total - a.head.total);
 };
 
 /** For one row's ability: amounts by target (or by source for taken). */
