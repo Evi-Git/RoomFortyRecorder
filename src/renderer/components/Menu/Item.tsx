@@ -1,5 +1,6 @@
 import { PropsWithChildren, ReactNode } from 'react';
-import { useMenuContext } from './Menu';
+import { useContext } from 'react';
+import { SidebarRailContext, useMenuContext } from './Menu';
 import { cn } from '../utils';
 import { Badge } from '../Badge/Badge';
 
@@ -8,6 +9,8 @@ type MenuItemProps = {
   value: any;
   className?: string;
   disabled?: boolean;
+  /** Shown on hover when the sidebar is an icon strip. */
+  label?: string;
 };
 
 const Root = ({
@@ -15,8 +18,10 @@ const Root = ({
   className,
   children,
   disabled = false,
+  label,
 }: PropsWithChildren<MenuItemProps>) => {
   const { currentValue, onValueChange } = useMenuContext();
+  const rail = useContext(SidebarRailContext);
   const active = currentValue === value && !disabled;
   // [RoomFortyRecorder] Brass sidebar: compact rows, the selected one a
   // filled pill with its icon in brass.
@@ -30,9 +35,14 @@ const Root = ({
             !active && !disabled,
           'bg-card text-foreground-lighter font-semibold': active,
           'opacity-50 cursor-not-allowed': disabled,
+          // Icon strip: only the icon shows (text is sized away).
+          'justify-center px-0 text-[0px] [&_*]:text-[0px] [&_button]:hidden [&_span]:!w-auto [&_.ml-auto]:hidden':
+            rail,
         },
         className,
       )}
+      title={rail ? label : undefined}
+      data-rail={rail}
       data-active={active}
       onClick={disabled ? undefined : () => onValueChange(value)}
       role="button"
@@ -44,7 +54,7 @@ const Root = ({
 
 const Icon = ({ children }: { children: ReactNode }) => {
   return (
-    <div className="mr-3 w-[18px] h-[18px] flex items-center justify-center opacity-70 group-data-[active=true]:opacity-100 group-data-[active=true]:text-brand">
+    <div className="mr-3 group-data-[rail=true]:mr-0 w-[18px] h-[18px] shrink-0 flex items-center justify-center opacity-70 group-data-[active=true]:opacity-100 group-data-[active=true]:text-brand">
       {children}
     </div>
   );

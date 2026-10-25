@@ -1,5 +1,5 @@
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
 import {
@@ -1260,6 +1260,22 @@ export const LogsView = () => {
   const [pullId, setPullId] = useSessionState('rf-logs-pull', '');
   const [picked, setPicked] = useSessionState<string[]>('rf-logs-picked', []);
   const anchorRef = React.useRef<string | null>(null);
+  // The pull list folds to a thin strip so the logs get the width.
+  const [listFolded, setListFolded] = React.useState(() => {
+    try {
+      return localStorage.getItem('rf-pulls-folded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const foldList = (folded: boolean) => {
+    setListFolded(folded);
+    try {
+      localStorage.setItem('rf-pulls-folded', folded ? '1' : '0');
+    } catch {
+      // Not remembered.
+    }
+  };
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -1453,56 +1469,91 @@ export const LogsView = () => {
       </div>
 
       {boss && (
-        <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)] gap-4 items-start">
-          <div className="flex flex-col gap-y-1">
-            <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
-              {pulls.map((p) => {
-                const active =
-                  picked.length >= 2
-                    ? picked.includes(p.id)
-                    : pull?.id === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    className={`flex items-center gap-x-2 px-2 border-b border-card/40 ${
-                      active ? 'bg-brand/15' : 'hover:bg-card/30'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={active}
-                      onMouseDown={(e) => {
-                        // Shift-click would otherwise select the page's text.
-                        if (e.shiftKey) e.preventDefault();
-                      }}
-                      onClick={(e) => choose(p.id, e)}
-                      className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left select-none"
+        <div
+          className={`grid grid-cols-1 gap-4 items-start ${
+            listFolded
+              ? 'lg:grid-cols-[36px_minmax(0,1fr)]'
+              : 'lg:grid-cols-[230px_minmax(0,1fr)]'
+          }`}
+        >
+          {listFolded ? (
+            <button
+              type="button"
+              title="Show the pull list"
+              onClick={() => foldList(false)}
+              className="flex lg:flex-col items-center gap-2 rounded-md border border-card bg-background/40 hover:bg-card/40 px-2 lg:px-0 py-2 text-foreground hover:text-foreground-lighter"
+            >
+              <ChevronsRight size={16} className="shrink-0" />
+              <span className="text-xs whitespace-nowrap lg:[writing-mode:vertical-rl]">
+                {comparing.length >= 2
+                  ? `${comparing.length} pulls`
+                  : pull
+                    ? `Pull ${pull.pullNumber}`
+                    : 'Pulls'}
+              </span>
+            </button>
+          ) : (
+            <div className="flex flex-col gap-y-1">
+              <div className="flex items-center justify-between text-xs text-foreground px-1">
+                <span>Pulls</span>
+                <button
+                  type="button"
+                  title="Fold the pull list"
+                  onClick={() => foldList(true)}
+                  className="rounded p-0.5 hover:bg-card/50 hover:text-foreground-lighter"
+                >
+                  <ChevronsLeft size={16} />
+                </button>
+              </div>
+              <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
+                {pulls.map((p) => {
+                  const active =
+                    picked.length >= 2
+                      ? picked.includes(p.id)
+                      : pull?.id === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`flex items-center gap-x-2 px-2 border-b border-card/40 ${
+                        active ? 'bg-brand/15' : 'hover:bg-card/30'
+                      }`}
                     >
-                      <span className="font-semibold tabular-nums w-14 text-foreground-lighter">
-                        Pull {p.pullNumber}
-                      </span>
-                      <span
-                        className={`tabular-nums ${
-                          p.result === 'kill'
-                            ? 'text-green-400'
-                            : 'text-foreground'
-                        }`}
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onMouseDown={(e) => {
+                          // Shift-click would otherwise select the page's text.
+                          if (e.shiftKey) e.preventDefault();
+                        }}
+                        onClick={(e) => choose(p.id, e)}
+                        className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left select-none"
                       >
-                        {pullResult(p)}
-                      </span>
-                      <span className="ml-auto text-xs text-foreground tabular-nums">
-                        {mmss(p.duration)}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
+                        <span className="font-semibold tabular-nums w-14 text-foreground-lighter">
+                          Pull {p.pullNumber}
+                        </span>
+                        <span
+                          className={`tabular-nums ${
+                            p.result === 'kill'
+                              ? 'text-green-400'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {pullResult(p)}
+                        </span>
+                        <span className="ml-auto text-xs text-foreground tabular-nums">
+                          {mmss(p.duration)}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-foreground m-0">
+                Ctrl-click to add a pull, Shift-click for a range. Two or more
+                picked pulls are added up.
+              </p>
             </div>
-            <p className="text-[11px] text-foreground m-0">
-              Ctrl-click to add a pull, Shift-click for a range. Two or more
-              picked pulls are added up.
-            </p>
-          </div>
+          )}
           <div className="min-w-0">
             {shown.length ? (
               <LogsExplorer

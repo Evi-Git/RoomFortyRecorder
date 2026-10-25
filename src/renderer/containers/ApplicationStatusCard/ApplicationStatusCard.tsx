@@ -25,6 +25,8 @@ type ApplicationStatusCardProps = {
   activityStatus: ActivityStatus | null;
   combatLoggingStatus: CombatLoggingStatus;
   setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  /** Folded sidebar: just the recorder's status dot (details on hover). */
+  compact?: boolean;
 };
 
 const ApplicationStatusCard = ({
@@ -38,7 +40,25 @@ const ApplicationStatusCard = ({
   activityStatus,
   combatLoggingStatus,
   setPreviewEnabled,
+  compact = false,
 }: ApplicationStatusCardProps) => {
+  if (compact) {
+    return (
+      <div className="w-full rounded-lg bg-card/60 py-2.5 mb-3 flex justify-center [&_.rf-status-text]:hidden">
+        <Status
+          status={recorderStatus}
+          error={error}
+          savingStatus={savingStatus}
+          config={config}
+          appState={appState}
+          activityStatus={activityStatus}
+          combatLoggingStatus={combatLoggingStatus}
+          setPreviewEnabled={setPreviewEnabled}
+        />
+      </div>
+    );
+  }
+
   // [RoomFortyRecorder] One compact card: recorder status on top (with the
   // mic and crash icons), cloud status underneath. Each row keeps its own
   // hover details.

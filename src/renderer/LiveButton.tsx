@@ -18,7 +18,8 @@ type LiveState = {
 
 const ipc = window.electron.ipcRenderer;
 
-const LiveButton: React.FC = () => {
+/** compact: the folded sidebar's icon-only button. */
+const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const [state, setState] = React.useState<LiveState>({ status: 'off' });
   const [busy, setBusy] = React.useState(false);
 
@@ -55,6 +56,22 @@ const LiveButton: React.FC = () => {
     live || connecting
       ? `Streaming to the guild as "${state.streamName ?? 'you'}". Click to stop.`
       : 'Stream your POV to the guild. Stops by itself when WoW closes.';
+
+  if (compact) {
+    return (
+      <Tooltip content={`${label} · ${tooltip}`} side="right">
+        <Button
+          variant={live ? 'destructive' : 'outline'}
+          size="icon"
+          className={`h-9 w-9 ${connecting ? 'animate-pulse' : ''}`}
+          disabled={busy}
+          onClick={toggle}
+        >
+          <Radio size={16} className={live ? 'animate-pulse' : 'text-brand'} />
+        </Button>
+      </Tooltip>
+    );
+  }
 
   return (
     <div className="w-full">
