@@ -172,6 +172,8 @@ export type PullStore = PullMeta & {
    * current, max], one point each time the value changes.
    */
   powers: Map<number, Map<number, [number, number, number][]>>;
+  /** Raiders' versatility rating (COMBATANT_INFO), by GUID. */
+  vers: Map<string, number>;
   deaths: Death[];
   /** The enemy the raid hit hardest. */
   boss: number;
@@ -268,6 +270,8 @@ export class StoreBuilder {
   private specs = new Map<string, number>();
 
   private talents = new Map<string, [number, number, number][]>();
+
+  private vers = new Map<string, number>();
 
   private power = new Map<number, [number, number, number, number][]>();
 
@@ -429,6 +433,8 @@ export class StoreBuilder {
       const head = line.slice(line.indexOf('  ') + 2, line.indexOf('['));
       const fields = head.split(',');
       this.specs.set(fields[1], Number(fields[25]) || 0);
+      // Versatility rating (damage taken), the last of the three.
+      this.vers.set(fields[1], Number(fields[23]) || 0);
       // The first [...] is the talents: (node, entry, rank), ...
       const open = line.indexOf('[');
       const close = line.indexOf(']', open);
@@ -737,6 +743,7 @@ export class StoreBuilder {
       auras,
       power: this.power,
       powers: this.powers,
+      vers: this.vers,
       deaths,
       boss,
     };
