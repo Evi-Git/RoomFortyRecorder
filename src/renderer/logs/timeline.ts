@@ -1,6 +1,6 @@
 import type { AuraTrack, TimelineData } from '../LogsTimeline';
 import { mergeSpans } from './query';
-import { K, PullStore } from './store';
+import { F, K, PullStore } from './store';
 
 /**
  * [RoomFortyRecorder] Logs page Timelines: one pull's cooldown casts, cooldown
@@ -18,7 +18,7 @@ export const timelineOf = (p: PullStore): TimelineData => {
     Map<number, { name: string; times: number[] }>
   >();
   for (let i = 0; i < p.n; i += 1) {
-    if (p.k[i] !== K.CAST || p.s[i] < 0) continue;
+    if (p.k[i] !== K.CAST || p.s[i] < 0 || p.f[i] & F.PROC) continue;
     const root = p.units[p.s[i]].root;
     if (!p.units[root].raider) continue;
     const spell = p.spells[p.sp[i]];

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.72] - Unreleased
+### Changed
+- **Casts only counts what raiders actually cast.** Procs, passives and things picked up no longer count: Soul Fragment, Shattered Souls, Shadowy Apparition, Reclamation, a hunter pet's Frenzy, Fatebound Coin, Scornful Haste, Abomination Limb's pulls and the like.
+  - A spell's extra parts count once with the cast: Fracture's extra hits, Felblade's charge, The Hunt's impact, Mutilate's second hand, Divine Hymn's ticks.
+  - This applies to the Casts tab, the Casts column in Damage Done and Healing, active time, and the cast lanes.
+  - They still show in Events, labelled Proc.
+
 ## [1.9.71] - Unreleased
 ### Changed
 - **Done by ability nests like a raider's own abilities.** The same ability under several spell IDs is now one row (Fracture, Rampage, Death Sweep, Immolation Aura...), procs sit under what sets them off (Light of the Titans under Word of Glory), items' effects under the item, and pets' and guardians' spells under what summoned them. Click the arrow to open a row.

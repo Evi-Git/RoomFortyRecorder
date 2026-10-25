@@ -59,7 +59,55 @@ export const F = {
   TICK: 2,
   DEBUFF: 4,
   SOAKED: 8, // a hit a shield took completely
+  /** A "cast" that isn't one: a proc, a passive, or another part of a
+   * cast already counted (see NOT_CASTS and SAME_CAST_WINDOW). */
+  PROC: 16,
 };
+
+/**
+ * Spells the combat log reports as cast that nobody presses: procs,
+ * passives, pets' buffs and things picked up. They stay in Events, but
+ * don't count as casts.
+ */
+export const NOT_CASTS = new Set([
+  // Demon Hunter
+  204255, // Soul Fragment
+  328957, // Soul Fragment
+  1223412, // Soul Fragment
+  209693, // Shattered Souls
+  228537, // Shattered Souls
+  328951, // Shattered Souls
+  // Priest
+  147193, // Shadowy Apparition
+  341263, // Shadowy Apparition
+  // Paladin
+  415388, // Reclamation
+  // Hunter
+  272790, // Frenzy (the pet's buff from Barbed Shot)
+  260286, // Tip of the Spear
+  // Death Knight
+  323798, // Abomination Limb (pull)
+  383312, // Abomination Limb (pull)
+  383313, // Abomination Limb (pull)
+  323710, // Abomination Limb (pull)
+  // Rogue
+  452538, // Fatebound Coin (Tails)
+  // Evoker
+  395495, // Scornful Haste
+  395498, // Scornful Haste
+  // Items and old effects
+  324748, // Celestial Guidance
+  324260, // Sinful Revelation
+  336885, // Soothing Shade (standing in the shade)
+  354050, // Nimble Steps
+]);
+
+/**
+ * Seconds after a cast in which another "cast" of the same name by the
+ * same caster but a different spell ID is part of it (Fracture's extra
+ * hits, Felblade's charge, The Hunt's impact).
+ */
+const SAME_CAST_WINDOW = 0.75;
 
 export const MISS_TYPES = [
   '',
@@ -527,8 +575,10 @@ export class StoreBuilder {
       kind = K.HEALABSORB;
       a = e.amount;
       aux = this.spell(e.extraId, e.extraName, 0);
-    } else if (type === 'SPELL_CAST_SUCCESS') kind = K.CAST;
-    else if (type === 'SPELL_CAST_START') kind = K.BEGIN;
+    } else if (type === 'SPELL_CAST_SUCCESS') {
+      kind = K.CAST;
+      if (this.notACast(src, e.spellId, e.spellName, t)) f |= F.PROC;
+    } else if (type === 'SPELL_CAST_START') kind = K.BEGIN;
     else if (type === 'SPELL_AURA_APPLIED') {
       kind = K.APPLY;
       if (e.auraType === 'DEBUFF') f |= F.DEBUFF;
@@ -614,6 +664,19 @@ export class StoreBuilder {
     c.aux[i] = aux;
     c.hp[i] = kind === K.DMG && e.info !== e.dst ? 255 : hp;
     this.n += 1;
+  }
+
+  /** Last counted cast per caster and spell name: [time, spell ID]. */
+  private lastCast = new Map<string, [number, number]>();
+
+  private notACast(src: number, spellId: number, name: string, t: number) {
+    if (NOT_CASTS.has(spellId)) return true;
+    const key = `${src}|${name}`;
+    const last = this.lastCast.get(key);
+    if (last && last[1] !== spellId && t - last[0] <= SAME_CAST_WINDOW)
+      return true;
+    this.lastCast.set(key, [t, spellId]);
+    return false;
   }
 
   public finish(meta: PullMeta): PullStore {

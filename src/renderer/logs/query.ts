@@ -551,6 +551,7 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
           unit !== p.units[unit].root && !pets ? p.units[unit].name : '';
         const ab = row.abilities.get(`${spell?.id ?? 0}|${fromPet}`);
         if (p.k[i] === K.CAST) {
+          if (p.f[i] & F.PROC) return;
           if (unit === p.units[unit].root) touch(row.key, at, pi);
           if (ab) ab.casts += 1;
         } else if (ab && meter === 'damage') ab.misses += 1;
@@ -1341,6 +1342,7 @@ export const castRows = (ctx: Ctx): CastRow[] => {
       // Pets' casts only with Pets on (as their own rows): counted for
       // their owner they'd swamp a warlock's casts.
       if (friendly && s !== p.units[s].root && !ctx.filters.pets) return;
+      if (p.f[i] & F.PROC) return;
       const ref = rowOf(p, s, ctx.filters.pets);
       if (!ref) return;
       const spell = p.spells[p.sp[i]];
