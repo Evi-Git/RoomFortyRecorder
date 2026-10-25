@@ -167,6 +167,10 @@ const AuraDetail = ({
       color: 'hsl(200 70% 60%)',
       values: detail.stacks,
     });
+  // Whole-number ticks for small counts (1 raider, a few stacks).
+  let peak = 1;
+  series.forEach((x) => x.values.forEach((v) => (peak = Math.max(peak, v))));
+  peak = Math.ceil(peak);
   const shown = all ? detail.targets : detail.targets.slice(0, 25);
   const whoRow = who ? detail.targets.find((r) => r.key === who) : undefined;
   const whoName = React.useMemo(() => {
@@ -250,6 +254,7 @@ const AuraDetail = ({
           boundaries={boundaries}
           smoothing={0}
           step={detail.step}
+          yMax={peak <= 10 ? peak : undefined}
           stepped
           format={(v) => thousands(Math.round(v))}
           height={180}

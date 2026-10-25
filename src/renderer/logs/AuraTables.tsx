@@ -1,5 +1,12 @@
 import React from 'react';
-import { AuraCategory, auraRows, AuraRow, Ctx, viewSeconds } from './query';
+import { auraRows, AuraRow, Ctx, viewSeconds } from './query';
+import {
+  AuraSection,
+  SECTION_ORDER,
+  SECTION_TITLES,
+  sectionOf,
+} from './auraSections';
+import { loadSpellTexts } from './SpellIcon';
 import { pct, thousands } from './format';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
@@ -7,31 +14,11 @@ import AuraDetail from './AuraDetail';
 import { useViewWindow } from './zoom';
 
 /**
- * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables grouped
- * like Warcraft Logs' (raid cooldowns, externals, personals, raid buffs,
- * consumables...), each row with its uptime drawn across the fight.
+ * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables in
+ * Warcraft Logs' sections (major group and individual cooldowns, damage,
+ * defensive, healing and movement buffs, raid buffs...), each row with its
+ * uptime drawn across the fight.
  */
-
-const SECTIONS: Record<AuraCategory, string> = {
-  raid: 'Raid cooldowns',
-  external: 'External cooldowns',
-  personal: 'Personal cooldowns',
-  raidbuff: 'Raid buffs',
-  consumable: 'Consumables',
-  mechanic: 'From enemies',
-  yours: "The raid's debuffs",
-  other: 'Other',
-};
-const ORDER: AuraCategory[] = [
-  'raid',
-  'external',
-  'personal',
-  'mechanic',
-  'yours',
-  'raidbuff',
-  'consumable',
-  'other',
-];
 
 const th = 'px-2 py-1.5 font-normal whitespace-nowrap';
 const td = 'px-2 py-1 tabular-nums whitespace-nowrap';
@@ -250,6 +237,51 @@ const AuraTables = ({
     () => auraRows(ctx, { debuffs, who }),
     [ctx, debuffs, who],
   );
+  // Sections go by the whole raid: one raider's Rallying Cry is still a
+  // group cooldown.
+  const raidCategory = React.useMemo(
+    () =>
+      new Map(
+        (who ? auraRows(ctx, { debuffs, who: null }) : rows).map((r) => [
+          r.spellId,
+          r.category,
+        ]),
+      ),
+    [ctx, debuffs, who, rows],
+  );
+  // Buff descriptions, to sort the rest into damage, defensive, healing...
+  const [texts, setTexts] = React.useState<Map<number, string>>(new Map());
+  const ids = rows
+    .map((r) => r.spellId)
+    .filter((id) => !texts.has(id))
+    .sort((a, b) => a - b)
+    .join(',');
+  React.useEffect(() => {
+    if (debuffs || !ids) return undefined;
+    let cancelled = false;
+    loadSpellTexts(ids.split(',').map(Number)).then((found) => {
+      if (cancelled) return;
+      setTexts((old) => {
+        const next = new Map(old);
+        ids.split(',').forEach((id) => {
+          next.set(Number(id), found.get(Number(id))?.text ?? '');
+        });
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ids, debuffs]);
+  const section = (r: AuraRow): AuraSection =>
+    debuffs
+      ? r.category === 'mechanic' || r.category === 'yours'
+        ? r.category
+        : 'other'
+      : sectionOf(
+          { ...r, category: raidCategory.get(r.spellId) ?? r.category },
+          texts.get(r.spellId) ?? '',
+        );
   // The aura opened up (per tab and side).
   const [opened, setOpened] = React.useState<{
     key: string;
@@ -259,10 +291,10 @@ const AuraTables = ({
   const seconds = viewSeconds(ctx);
   if (opened && opened.key === openKey) {
     // The picker: what the raider in view (or anyone) had, by section.
-    const groups = ORDER.map((cat) => ({
-      title: SECTIONS[cat],
+    const groups = SECTION_ORDER.map((cat) => ({
+      title: SECTION_TITLES[cat],
       options: rows
-        .filter((r) => r.category === cat)
+        .filter((r) => section(r) === cat)
         .sort((x, y) => x.name.localeCompare(y.name))
         .map((r) => ({ id: r.spellId, name: r.name })),
     })).filter((g) => g.options.length);
@@ -293,13 +325,13 @@ const AuraTables = ({
   }
   return (
     <div className="flex flex-col gap-y-3">
-      {ORDER.map((cat) => {
-        const list = rows.filter((r) => r.category === cat);
+      {SECTION_ORDER.map((cat) => {
+        const list = rows.filter((r) => section(r) === cat);
         if (!list.length) return null;
         return (
           <Section
             key={cat}
-            title={SECTIONS[cat]}
+            title={debuffs && cat === 'other' ? 'Other' : SECTION_TITLES[cat]}
             rows={list}
             seconds={seconds}
             total={ctx.total}
@@ -313,9 +345,10 @@ const AuraTables = ({
       })}
       <p className="text-xs text-foreground m-0">
         Uptime: time it was on {who ? 'them' : 'anyone'} in the part of the
-        fight you&apos;re looking at. Cooldowns are spells their caster pressed
-        now and then; raid cooldowns reached several raiders at once. Click a
-        bar to watch that moment, or a name to open it up.
+        fight you&apos;re looking at. Major cooldowns are spells their caster
+        pressed now and then (group ones reached several raiders at once); the
+        other sections go by each buff&apos;s description. Click a bar to watch
+        that moment, or a name to open it up.
       </p>
     </div>
   );
