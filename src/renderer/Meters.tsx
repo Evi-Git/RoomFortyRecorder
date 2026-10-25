@@ -1259,6 +1259,7 @@ export const LogsView = () => {
   const [bossKey, setBossKey] = useSessionState('rf-logs-boss', '');
   const [pullId, setPullId] = useSessionState('rf-logs-pull', '');
   const [picked, setPicked] = useSessionState<string[]>('rf-logs-picked', []);
+  const anchorRef = React.useRef<string | null>(null);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -1357,10 +1358,38 @@ export const LogsView = () => {
     setPullId('');
     setPicked([]);
   };
-  const togglePick = (id: string) =>
-    setPicked((list) =>
-      list.includes(id) ? list.filter((x) => x !== id) : [...list, id],
-    );
+  // Excel-style picking: click picks one pull, Ctrl-click adds or removes a
+  // pull, Shift-click picks every pull between the last one clicked and this
+  // one (Ctrl+Shift adds that range to what's already picked).
+  const choose = (id: string, e: React.MouseEvent) => {
+    const ctrl = e.ctrlKey || e.metaKey;
+    const current = picked.length >= 2 ? picked : pull ? [pull.id] : [];
+    let next: string[];
+    if (e.shiftKey) {
+      const from = pulls.findIndex(
+        (p) => p.id === (anchorRef.current ?? pull?.id),
+      );
+      const to = pulls.findIndex((p) => p.id === id);
+      const lo = Math.min(from < 0 ? to : from, to);
+      const hi = Math.max(from < 0 ? to : from, to);
+      const range = pulls.slice(lo, hi + 1).map((p) => p.id);
+      next = ctrl ? [...new Set([...current, ...range])] : range;
+    } else if (ctrl) {
+      anchorRef.current = id;
+      next = current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id];
+    } else {
+      anchorRef.current = id;
+      next = [id];
+    }
+    if (next.length >= 2) {
+      setPicked(next);
+    } else {
+      setPicked([]);
+      if (next.length === 1) setPullId(next[0]);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-y-4">
@@ -1428,7 +1457,10 @@ export const LogsView = () => {
           <div className="flex flex-col gap-y-1">
             <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
               {pulls.map((p) => {
-                const active = picked.length < 2 && pull?.id === p.id;
+                const active =
+                  picked.length >= 2
+                    ? picked.includes(p.id)
+                    : pull?.id === p.id;
                 return (
                   <div
                     key={p.id}
@@ -1436,21 +1468,15 @@ export const LogsView = () => {
                       active ? 'bg-brand/15' : 'hover:bg-card/30'
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      aria-label={`Compare pull ${p.pullNumber}`}
-                      title="Tick two or more to compare"
-                      checked={picked.includes(p.id)}
-                      onChange={() => togglePick(p.id)}
-                      className="w-3.5 h-3.5 accent-[hsl(var(--brand))] cursor-pointer"
-                    />
                     <button
                       type="button"
-                      onClick={() => {
-                        setPullId(p.id);
-                        setPicked([]);
+                      aria-pressed={active}
+                      onMouseDown={(e) => {
+                        // Shift-click would otherwise select the page's text.
+                        if (e.shiftKey) e.preventDefault();
                       }}
-                      className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left"
+                      onClick={(e) => choose(p.id, e)}
+                      className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left select-none"
                     >
                       <span className="font-semibold tabular-nums w-14 text-foreground-lighter">
                         Pull {p.pullNumber}
@@ -1473,7 +1499,8 @@ export const LogsView = () => {
               })}
             </div>
             <p className="text-[11px] text-foreground m-0">
-              Tick two or more pulls to add them up.
+              Ctrl-click to add a pull, Shift-click for a range. Two or more
+              picked pulls are added up.
             </p>
           </div>
           <div className="min-w-0">
