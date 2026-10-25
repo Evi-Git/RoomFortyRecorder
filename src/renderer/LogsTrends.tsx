@@ -3,7 +3,7 @@ import { getSpecClass, getWoWClassColor } from './rendererutils';
 
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
- * damage taken or damage prevented night by night on one boss, from the
+ * or damage taken night by night on one boss, from the
  * stored meters. Only kills count (the first kill, then every reclear), so
  * weeks compare like with like.
  */
@@ -13,12 +13,11 @@ type Response<T> = { ok: true; data: T } | { ok: false; error: string };
 const call = <T,>(request: Record<string, unknown>) =>
   ipc.invoke('pullDesk', [request]) as Promise<Response<T>>;
 
-type Kind = 'damage' | 'healing' | 'taken' | 'mitigation';
+type Kind = 'damage' | 'healing' | 'taken';
 const KINDS: { key: Kind; label: string; rate: string }[] = [
   { key: 'damage', label: 'Damage done', rate: 'DPS' },
   { key: 'healing', label: 'Healing', rate: 'HPS' },
   { key: 'taken', label: 'Damage taken', rate: 'DTPS' },
-  { key: 'mitigation', label: 'Mitigations', rate: 'PPS' },
 ];
 
 type NightTotals = {
