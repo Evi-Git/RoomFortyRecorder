@@ -32,6 +32,8 @@ import { AbilityPicker, EnemyPicker, ExcludeTargetsPicker } from './Pickers';
 import { useAuraDrs, usePassiveTalents } from './talents';
 import { loadSpellTexts } from './SpellIcon';
 import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
+import WclCompare from './WclCompare';
+import { usePermissions } from '../usePermissions';
 
 // Cooldowns are counted from their auras, not as talents.
 const isCooldown = (spellId: number) => Boolean(DAMAGE_REDUCTION[spellId]);
@@ -357,6 +359,7 @@ const LogsExplorer = ({
     () => (stores.length ? raiders(makeCtx(stores, DEFAULT_FILTERS)) : []),
     [stores],
   );
+  const permissions = usePermissions();
   const abilities = React.useMemo(
     () => abilityNames(abilityRows),
     [abilityRows],
@@ -804,6 +807,22 @@ const LogsExplorer = ({
           {watch && <WatchHint can={watch.can} />}
           {notice && <span className="text-yellow-400">{notice}</span>}
         </div>
+
+        {mode === 'tables' && permissions?.owner && !permissions.viewAs && (
+          <WclCompare
+            ctx={ctx}
+            metas={metas}
+            tab={tab}
+            rows={rows}
+            who={tab === 'buffs' || tab === 'debuffs' ? null : who}
+            auraWho={filters.side === 'friendly' ? auraWho : null}
+            whoName={
+              (tab === 'buffs' || tab === 'debuffs'
+                ? roster.find((r) => r.guid === auraWho)?.name
+                : roster.find((r) => r.guid === who)?.name) ?? null
+            }
+          />
+        )}
 
         {mode === 'tables' && (
           <>

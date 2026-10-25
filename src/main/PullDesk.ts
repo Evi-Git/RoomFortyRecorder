@@ -98,6 +98,16 @@ export type PullDeskRequest =
   | { action: 'journalSpells'; ids: number[]; difficultyId?: number }
   | { action: 'spellNames'; ids: number[] }
   | { action: 'talentTree'; specId: number }
+  | { action: 'wclFights'; report: string }
+  | {
+      action: 'wclTable';
+      report: string;
+      fight: number;
+      type: string;
+      source?: number | null;
+      view?: string;
+      hostility?: string;
+    }
   | {
       action: 'avoidableToggle';
       encounterId: number;
@@ -730,6 +740,27 @@ export default class PullDesk {
           `/journal/spell/${id(request.spellId)}?${params.toString()}`,
         );
       }
+      case 'wclFights':
+        return client.pullDeskRequest(
+          'post',
+          '/wcl/fights',
+          { report: request.report },
+          { timeout: 60000 },
+        );
+      case 'wclTable':
+        return client.pullDeskRequest(
+          'post',
+          '/wcl/table',
+          {
+            report: request.report,
+            fight: request.fight,
+            type: request.type,
+            source: request.source ?? null,
+            view: request.view,
+            hostility: request.hostility,
+          },
+          { timeout: 90000 },
+        );
       case 'talentTree':
         return client.pullDeskRequest(
           'get',
