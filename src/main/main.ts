@@ -459,12 +459,14 @@ ipcMain.on('logPath', (_event, args) => {
 });
 
 /**
- * Where the application logs are, plus the recent icon/Logs-page lines from
- * the newest log files, so they can be copied without hunting for files.
+ * Where the application logs are, plus the recent Analysis, Logs page,
+ * updater and live lines (and errors) from the newest log files, so they can
+ * be copied without hunting for files.
  */
 ipcMain.handle('getLogDiagnostics', async () => {
   const dir = getApplicationLogDir();
-  const pattern = /\[(SpellIcons|PullDesk|Logging)\]|rficon|journal/;
+  const pattern =
+    /\[(SpellIcons|PullDesk|Logging|AutoUpdater|LiveStreamer|LiveViewer)\]|journal|\b(error|warn)/i;
   try {
     const names = (await fs.promises.readdir(dir)).filter(
       (name) => name.startsWith('RoomFortyRecorder') && name.endsWith('.log'),
@@ -555,62 +557,6 @@ ipcMain.handle('signOutDiscord', async () => {
 });
 
 // [RoomFortyRecorder] Icon names for spell IDs, for the spell timeline.
-// [RoomFortyRecorder] Icon/journal call counts, logged once a minute while
-// the Logs page is asking, so a stuck or never-made call shows in the log.
-type CallStats = { calls: number; ids: number; empty: number; slowest: number };
-const callStats: Record<string, CallStats> = {};
-const callsOpen = new Map<number, { kind: string; started: number }>();
-let callSeq = 0;
-let callStatsTimer: NodeJS.Timeout | null = null;
-
-const flushCallStats = () => {
-  callStatsTimer = null;
-  const now = Date.now();
-  Object.entries(callStats).forEach(([kind, st]) => {
-    const open = [...callsOpen.values()].filter((c) => c.kind === kind);
-    const oldest = open.length
-      ? Math.round((now - Math.min(...open.map((c) => c.started))) / 1000)
-      : 0;
-    console.info(
-      `[SpellIcons] ${kind} last minute: ${st.calls} calls, ${st.ids} spells,`,
-      `${st.empty} answered with nothing, slowest ${st.slowest} ms,`,
-      `${open.length} still running${open.length ? ` (oldest ${oldest} s)` : ''}`,
-    );
-    delete callStats[kind];
-  });
-  if (callsOpen.size) callStatsTimer = setTimeout(flushCallStats, 60000);
-};
-
-const trackIconCall = async <T>(
-  kind: string,
-  ids: number,
-  run: () => Promise<T>,
-  isEmpty: (result: T) => boolean,
-): Promise<T> => {
-  const id = (callSeq += 1);
-  const started = Date.now();
-  callsOpen.set(id, { kind, started });
-  if (!callStats[kind]) {
-    if (!Object.keys(callStats).length) {
-      console.info(`[SpellIcons] First ${kind} call: ${ids} spells`);
-    }
-    callStats[kind] = { calls: 0, ids: 0, empty: 0, slowest: 0 };
-  }
-  if (!callStatsTimer) callStatsTimer = setTimeout(flushCallStats, 60000);
-  try {
-    const result = await run();
-    const st = callStats[kind] ?? { calls: 0, ids: 0, empty: 0, slowest: 0 };
-    callStats[kind] = st;
-    st.calls += 1;
-    st.ids += ids;
-    if (isEmpty(result)) st.empty += 1;
-    st.slowest = Math.max(st.slowest, Date.now() - started);
-    return result;
-  } finally {
-    callsOpen.delete(id);
-  }
-};
-
 // [RoomFortyRecorder] A spell icon image as a data: URL (the Logs page's
 // first image source; the rficon:// protocol stalled in Chromium's queue).
 ipcMain.handle('iconImage', async (_event, args) =>
@@ -619,12 +565,7 @@ ipcMain.handle('iconImage', async (_event, args) =>
 
 ipcMain.handle('spellIcons', async (_event, args) => {
   const ids = Array.isArray(args[0]) ? (args[0] as unknown[]).map(Number) : [];
-  return trackIconCall(
-    'icon',
-    ids.length,
-    () => SpellIcons.getInstance().get(ids),
-    (result) => !Object.keys(result).length,
-  );
+  return SpellIcons.getInstance().get(ids);
 });
 
 // [RoomFortyRecorder] Spell timeline for a video (raid pulls only). Returns
@@ -670,20 +611,9 @@ ipcMain.handle('liveWatch', async (_event, args) => {
 ipcMain.handle('liveUnwatch', () => LiveViewer.getInstance().stop());
 
 // [RoomFortyRecorder] Pull desk page: reports and per-boss settings.
-ipcMain.handle('pullDesk', (_event, args) => {
-  const request = args[0] as { action?: string; ids?: unknown[] };
-  if (request?.action !== 'journalSpells') {
-    return PullDesk.getInstance().handle(args[0]);
-  }
-  return trackIconCall(
-    'spell text',
-    Array.isArray(request.ids) ? request.ids.length : 0,
-    () => PullDesk.getInstance().handle(args[0]),
-    (result) =>
-      !result.ok ||
-      !Object.keys((result.data as { spells?: object })?.spells ?? {}).length,
-  );
-});
+ipcMain.handle('pullDesk', (_event, args) =>
+  PullDesk.getInstance().handle(args[0]),
+);
 
 LiveStreamer.getInstance().on('state', (state) =>
   send('liveStreamState', state),
