@@ -24,6 +24,7 @@ import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from '.
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
+import { createWclCompare } from './pulldesk-wcl-compare.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 
@@ -577,6 +578,9 @@ export const createPullDesk = (options) => {
     queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
     return results;
   };
+
+  // Compare with Warcraft Logs (owner only): their tables for one fight.
+  const wclCompare = createWclCompare({ wcl });
 
   // ---- Whole-tier import from Warcraft Logs ----------------------------------
 
@@ -1530,6 +1534,24 @@ export const createPullDesk = (options) => {
       return json(res, 200, data);
     }
 
+    if (first === 'wcl' && (second === 'fights' || second === 'table') && req.method === 'POST') {
+      if (!(await ownerOnly(req))) return fail(res, 403, 'Only the owner can compare with Warcraft Logs');
+      const body = await readBody(req, 8 * 1024);
+      try {
+        if (second === 'fights') return json(res, 200, await wclCompare.fights(body?.report));
+        return json(res, 200, {
+          table: await wclCompare.table(body?.report, {
+            fight: body?.fight,
+            type: body?.type,
+            source: body?.source,
+            view: body?.view,
+            hostility: body?.hostility,
+          }),
+        });
+      } catch (error) {
+        return fail(res, error.status || 502, error.message);
+      }
+    }
     if (first === 'import' && second === 'guild' && !(await ownerOnly(req))) {
       return fail(res, 403, 'Only the owner can import a whole tier');
     }

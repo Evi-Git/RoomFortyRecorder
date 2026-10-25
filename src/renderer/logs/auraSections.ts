@@ -65,21 +65,40 @@ const DAMAGE =
 const HEALING =
   /healing (done|dealt|received|taken|you do)|heal(s|ing)? (you|the target|nearby|allies|an ally|for)|restor\w* \d|increas\w* (your )?healing|\bmana\b/i;
 
-/** The section a buff or debuff goes in. */
-export const sectionOf = (row: AuraRow, text: string): AuraSection => {
+/** The section a buff or debuff goes in, and why (for checking). */
+export const explainSection = (
+  row: AuraRow,
+  text: string,
+): { section: AuraSection; why: string } => {
   const c: AuraCategory = row.category;
-  if (c === 'mechanic' || c === 'yours') return c;
-  if (c === 'raid') return 'groupCd';
-  if (c === 'personal' || c === 'external') return 'personalCd';
-  if (STANCE.test(row.name)) return 'stance';
-  if (c === 'raidbuff') return 'raidbuff';
-  if (DAMAGE_REDUCTION[row.spellId]) return 'defensive';
+  const hit = (re: RegExp, value: string) => value.match(re)?.[0] ?? '';
+  if (c === 'mechanic' || c === 'yours')
+    return { section: c, why: `log: category ${c}` };
+  if (c === 'raid') return { section: 'groupCd', why: 'log: raid cooldown' };
+  if (c === 'personal' || c === 'external')
+    return { section: 'personalCd', why: `log: ${c} cooldown` };
+  if (STANCE.test(row.name))
+    return { section: 'stance', why: `name: "${hit(STANCE, row.name)}"` };
+  if (c === 'raidbuff')
+    return { section: 'raidbuff', why: 'log: on most of the raid all fight' };
+  if (DAMAGE_REDUCTION[row.spellId])
+    return { section: 'defensive', why: 'in the DAMAGE_REDUCTION table' };
   const t = text || '';
-  if (TOY.test(row.name) || /\btoy\b/i.test(t)) return 'toy';
-  if (!t) return 'other';
-  if (DEFENSIVE.test(t)) return 'defensive';
-  if (DAMAGE.test(t)) return 'damage';
-  if (HEALING.test(t)) return 'healing';
-  if (MOVEMENT.test(t)) return 'movement';
-  return 'other';
+  if (TOY.test(row.name))
+    return { section: 'toy', why: `name: "${hit(TOY, row.name)}"` };
+  if (/\btoy\b/i.test(t)) return { section: 'toy', why: 'text: "toy"' };
+  if (!t) return { section: 'other', why: 'no description yet' };
+  const checks: [AuraSection, RegExp][] = [
+    ['defensive', DEFENSIVE],
+    ['damage', DAMAGE],
+    ['healing', HEALING],
+    ['movement', MOVEMENT],
+  ];
+  const found = checks.find(([, re]) => re.test(t));
+  if (found) return { section: found[0], why: `text: "${hit(found[1], t)}"` };
+  return { section: 'other', why: 'text matched nothing' };
 };
+
+/** The section a buff or debuff goes in. */
+export const sectionOf = (row: AuraRow, text: string): AuraSection =>
+  explainSection(row, text).section;

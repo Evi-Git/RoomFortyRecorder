@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.73] - Unreleased
+### Added
+- **Compare with Warcraft Logs (owner only).** A panel above the tables on the Logs page puts our numbers next to Warcraft Logs' for the same fight.
+  - Paste a report link and click **Load fights**. The fight that matches the pull (same boss, closest start) is picked for you.
+  - It follows the tab you're on (Damage Done, Healing, Damage Taken, Casts, Buffs, Debuffs) and the raider you've clicked, and Enemies too.
+  - Each row shows ours, theirs and the difference; gaps over 5% are highlighted. For a raider's abilities it shows what each side nests under the row.
+  - On Buffs, each buff shows the section we put it in and why.
+  - **Copy for Claude** copies the whole comparison as text to paste into a chat.
+  - Warcraft Logs is asked through the guild server, so it needs the server update (new file `pulldesk-wcl-compare.mjs`). Answers are kept for 30 minutes.
+
 ## [1.9.72] - Unreleased
 ### Changed
 - **Casts only counts what raiders actually cast.** Procs, passives and things picked up no longer count: Soul Fragment, Shattered Souls, Shadowy Apparition, Reclamation, a hunter pet's Frenzy, Fatebound Coin, Scornful Haste, Abomination Limb's pulls and the like.
