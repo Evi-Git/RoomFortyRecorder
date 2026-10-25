@@ -22,3 +22,4 @@ update-server.cmd
 permissions.mjs
 consumables.mjs
 icon-pack.mjs
+bug-report.mjs

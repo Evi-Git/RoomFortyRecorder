@@ -44,7 +44,7 @@ import { getCategoryIndex } from './rendererutils';
 import Menu from './components/Menu';
 import Separator from './components/Separator/Separator';
 import TestButton from './TestButton';
-import DiscordButton from './DiscordButton';
+import BugButton from './BugButton';
 import LiveButton from './LiveButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
@@ -491,7 +491,7 @@ const SideMenu = (props: IProps) => {
             </Button>
           </DiagnosticsDialog>
           <TestButton recorderStatus={recorderStatus} appState={appState} />
-          <DiscordButton appState={appState} />
+          <BugButton appState={appState} />
         </div>
         <UpdateCheck
           versionLabel={getLocalePhrase(language, Phrase.Version)}
