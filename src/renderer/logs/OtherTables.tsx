@@ -26,6 +26,7 @@ import {
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
+import CastDetail from './CastDetail';
 
 /**
  * [RoomFortyRecorder] Logs page: Summary, Interrupts, Dispels, Resources
@@ -653,18 +654,44 @@ export const CastView = ({
   who,
   setWho,
   onWatch,
+  extras,
 }: {
   ctx: Ctx;
   who: string | null;
   setWho: (k: string | null) => void;
   onWatch?: (t: number, name: string | null) => void;
+  extras: {
+    setRange: (r: [number, number] | null) => void;
+    bands: [number, number][];
+    boundaries: { t: number; label: string }[];
+  };
 }) => {
   const rows = React.useMemo(() => castRows(ctx), [ctx]);
+  // A spell opened up, and whose casts of it (null: everyone's).
+  const [opened, setOpened] = React.useState<{
+    spellId: number;
+    who: string | null;
+  } | null>(null);
   const [sort, onSort] = useSort('count');
   const [v0, v1] = useViewWindow(ctx.filters.range, ctx.total);
   const seconds = viewSeconds(ctx);
   const minutes = seconds / 60;
   const selected = rows.find((r) => r.key === who) ?? null;
+  if (opened) {
+    return (
+      <CastDetail
+        ctx={ctx}
+        spellId={opened.spellId}
+        who={opened.who}
+        setWho={(k) => setOpened({ ...opened, who: k })}
+        bands={extras.bands}
+        boundaries={extras.boundaries}
+        setRange={extras.setRange}
+        onWatch={onWatch}
+        onBack={() => setOpened(null)}
+      />
+    );
+  }
   if (selected) {
     return (
       <div className="flex flex-col gap-y-3">
@@ -726,10 +753,17 @@ export const CastView = ({
                   className="border-b border-card/40 hover:bg-card/30"
                 >
                   <td className={`${td} text-foreground-lighter`}>
-                    <span className="inline-flex items-center gap-x-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpened({ spellId: s.spellId, who: selected.key })
+                      }
+                      className="inline-flex items-center gap-x-2 hover:underline text-left"
+                      title="See when it was cast on a timeline"
+                    >
                       <SpellIcon spellId={s.spellId} name={s.name} />
                       {s.name}
-                    </span>
+                    </button>
                   </td>
                   <td className={`${td} text-right`}>{s.count}</td>
                   <td className={`${td} text-right`}>
@@ -834,10 +868,21 @@ export const CastView = ({
                 {(r.total / minutes).toFixed(1)}
               </td>
               <td className={`${td} text-xs text-foreground`}>
-                {r.spells
-                  .slice(0, 3)
-                  .map((s) => `${s.name} ${s.count}`)
-                  .join(', ')}
+                {r.spells.slice(0, 3).map((s, i) => (
+                  <React.Fragment key={s.spellId}>
+                    {i > 0 && ', '}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpened({ spellId: s.spellId, who: null })
+                      }
+                      className="hover:underline hover:text-foreground-lighter"
+                      title="See when everyone cast it"
+                    >
+                      {s.name} {s.count}
+                    </button>
+                  </React.Fragment>
+                ))}
               </td>
             </tr>
           ))}

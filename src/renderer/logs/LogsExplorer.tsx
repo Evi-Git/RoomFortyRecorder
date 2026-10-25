@@ -851,7 +851,17 @@ const LogsExplorer = ({
               />
             )}
             {tab === 'casts' && (
-              <CastView ctx={ctx} who={who} setWho={setWho} onWatch={onWatch} />
+              <CastView
+                ctx={ctx}
+                who={who}
+                setWho={setWho}
+                onWatch={onWatch}
+                extras={{
+                  setRange: (r) => patch({ range: r }),
+                  bands,
+                  boundaries,
+                }}
+              />
             )}
             {multi && meter && (
               <PullByPull stores={stores} filters={filters} meter={meter} />

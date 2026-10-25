@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.67] - Unreleased
+### Added
+- **Casts: open up a spell.** In a raider's casts, click a spell to see when it was cast: a lane per caster with a mark for each cast (click one to watch it), under a chart of casts over the fight. It slices and zooms like the other charts, and the lanes follow it.
+  - The table gives casts, casts a minute and the average gap between casts, for the slice in view.
+  - Click ✖ to see everyone who cast it, or click a name to see just that caster.
+  - From the casts overview, click a spell under "Most cast" to open it for everyone.
+### Changed
+- Stacked charts drawn as steps are now flat bars instead of slopes.
+
 ## [1.9.66] - Unreleased
 ### Changed
 - **Drag to zoom in, like Warcraft Logs.** Dragging across any chart on the Logs page now zooms in: the slice fills the chart's full width, and everything else on the page follows it. That covers the buff and debuff lanes, the uptime bars, the casts' "When" bars and the cast lanes. Drag again to zoom in further.

@@ -351,12 +351,21 @@ const TimeChart = ({
           ? stacks
               .map((s, si) => {
                 const prev = si > 0 ? stacks[si - 1] : null;
-                const top = Array.from(s, (v, i) => `${xi(i)},${y(v)}`);
-                const bottom = Array.from(
-                  { length: points },
-                  (_, i) =>
-                    `${xi(points - 1 - i)},${y(prev ? prev[points - 1 - i] : 0)}`,
-                );
+                // Stepped: each value flat across its own width.
+                const edge = (v: (i: number) => number) => {
+                  const out: string[] = [];
+                  for (let i = 0; i < points; i += 1) {
+                    if (stepped) {
+                      out.push(`${LEFT + (i / points) * span},${y(v(i))}`);
+                      out.push(
+                        `${LEFT + ((i + 1) / points) * span},${y(v(i))}`,
+                      );
+                    } else out.push(`${xi(i)},${y(v(i))}`);
+                  }
+                  return out;
+                };
+                const top = edge((i) => s[i]);
+                const bottom = edge((i) => (prev ? prev[i] : 0)).reverse();
                 return (
                   <polygon
                     key={series[si].key}
