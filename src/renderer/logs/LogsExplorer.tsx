@@ -27,7 +27,7 @@ import QueriesView from './QueriesView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { CATEGORICAL, classColor, compact, mmss } from './format';
-import { AbilityPicker, EnemyPicker } from './Pickers';
+import { AbilityPicker, EnemyPicker, ExcludeTargetsPicker } from './Pickers';
 import { useAuraDrs, usePassiveTalents } from './talents';
 import { loadSpellTexts } from './SpellIcon';
 import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
@@ -292,9 +292,16 @@ const LogsExplorer = ({
     if (!fns.length) return null;
     return (p, i) => fns.every((fn) => fn(p, i));
   }, [layers]);
+  // Healing exclusions only count where they can be seen and changed.
+  const healTab = tab === 'healing' || tab === 'prevented';
   const ctx = React.useMemo(
-    () => makeCtx(stores, { ...filters, expr: layerExpr }),
-    [stores, filters, layerExpr],
+    () =>
+      makeCtx(stores, {
+        ...filters,
+        healExclude: healTab ? filters.healExclude : [],
+        expr: layerExpr,
+      }),
+    [stores, filters, layerExpr, healTab],
   );
 
   // Raiders' passive reduction talents, when passives are counted.
@@ -549,6 +556,18 @@ const LogsExplorer = ({
               onChange={(ids) => patch({ abilities: ids })}
             />
           )}
+          {(meter === 'healing' || meter === 'prevented') &&
+            filters.side === 'friendly' && (
+              <ExcludeTargetsPicker
+                value={filters.healExclude}
+                options={roster.map((r) => ({
+                  guid: r.guid,
+                  name: r.name,
+                  color: classColor(r.specId),
+                }))}
+                onChange={(healExclude) => patch({ healExclude })}
+              />
+            )}
           {(tab === 'buffs' || tab === 'debuffs') &&
             filters.side === 'friendly' && (
               <select

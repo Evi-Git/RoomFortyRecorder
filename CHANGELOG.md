@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.58] - Unreleased
+### Added
+- **Healing: leave out healing to chosen raiders.** A new dropdown next to the ability picker ("Healing to everyone") lets you tick as many raiders as you like; healing they received is left out of the table, the chart, the per-ability numbers and the Pull by pull table. Handy for "how much did this healer put on others, not themselves or the tank". It also applies to Mitigations when that's on, and only on the Healing tab (other tabs ignore it).
+
 ## [1.9.57] - Unreleased
 ### Changed
 - **Icon troubleshooting removed** now that icons work: the app no longer writes a summary of icon lookups to its log every minute, and spell tooltips no longer show where the icon came from (they still show the spell ID). The Diagnostics dialog's button is now **Copy log lines**: it copies recent Analysis, Logs page, updater and live-stream lines, plus warnings and errors, for pasting into a chat.
