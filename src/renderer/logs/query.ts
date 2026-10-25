@@ -2145,7 +2145,10 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
     let key: string;
     let parent: { name: string; icon: number } | undefined;
     const cost = Boolean(a.negative);
-    const nest = cost ? undefined : NESTED_UNDER[a.spellId];
+    const under = cost ? undefined : NESTED_UNDER[a.spellId];
+    // A pet's copy of a spell under its own name (Dancing Rune Weapon's
+    // Vampiric Strike) stays with the pet, as on Warcraft Logs.
+    const nest = under && a.by && under.name === a.name ? undefined : under;
     if (cost) {
       // Negative healing (Spirit Link's damage): a row of its own.
       key = `cost:${a.spellId}|${a.by}`;
