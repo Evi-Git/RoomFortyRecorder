@@ -106,8 +106,11 @@ const Node = ({
     node.entries[0];
   const spell = useSpell(entry?.spellId ?? 0);
   const [at, setAt] = React.useState<Anchor | null>(null);
-  const rank = got ? Math.min(got.rank, node.maxRank) : 0;
-  const full = got && rank >= node.maxRank;
+  // Apex talents take up to 4 points even where Blizzard's tree lists fewer
+  // ranks, so trust the log's rank and raise the node's max to match.
+  const maxRank = Math.max(node.maxRank, got?.rank ?? 0);
+  const rank = got ? got.rank : 0;
+  const full = got && rank >= maxRank;
   const shape =
     node.type === 'PASSIVE'
       ? 'rounded-full'
@@ -131,12 +134,12 @@ const Node = ({
       >
         <GameIcon icon={spell?.icon} className="w-full h-full" />
       </div>
-      {node.maxRank > 1 && (
+      {maxRank > 1 && (
         <span
           className="absolute -bottom-1.5 -right-1.5 px-1 rounded text-[10px] leading-[14px] tabular-nums bg-background border border-card"
           style={{ color: got ? (full ? BRASS : PARTIAL) : undefined }}
         >
-          {rank}/{node.maxRank}
+          {rank}/{maxRank}
         </span>
       )}
       {at && (
@@ -165,8 +168,7 @@ const Node = ({
             );
           })}
           <div className="text-foreground">
-            {got ? `Rank ${rank} of ${node.maxRank}` : 'Not taken'} · node{' '}
-            {node.id}
+            {got ? `Rank ${rank} of ${maxRank}` : 'Not taken'} · node {node.id}
           </div>
           {spell?.text && (
             <p className="m-0 mt-1 text-foreground-lighter whitespace-pre-line leading-snug">
@@ -201,7 +203,7 @@ const Tree = ({
   };
   const ids = new Set(nodes.map((n) => n.id));
   const spent = nodes.reduce(
-    (n, node) => n + Math.min(taken.get(node.id)?.rank ?? 0, node.maxRank),
+    (n, node) => n + (taken.get(node.id)?.rank ?? 0),
     0,
   );
   return (
@@ -294,9 +296,15 @@ const TalentWidget = ({ ctx }: { ctx: Ctx }) => {
     };
   }, [specId]);
   if (!raider) return null;
-  const taken: Taken = new Map(
-    raider.talents.map(([node, entryId, rank]) => [node, { entryId, rank }]),
-  );
+  // A node listed more than once (apex talents can be) adds its ranks up.
+  const taken: Taken = new Map();
+  raider.talents.forEach(([node, entryId, rank]) => {
+    const had = taken.get(node);
+    taken.set(
+      node,
+      had ? { entryId: had.entryId, rank: had.rank + rank } : { entryId, rank },
+    );
+  });
   const current = tree && tree.specId === specId ? tree.tree : undefined;
   const layout = current?.layout ? cleanLayout(current.layout) : undefined;
   const hero = layout?.hero.find((h) => h.nodes.some((n) => taken.has(n.id)));

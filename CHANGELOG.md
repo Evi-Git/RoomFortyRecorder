@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.78] - Unreleased
+### Fixed
+- **Apex talents** show all their points (up to 4) in the Talents widget. Blizzard's tree lists fewer ranks for them, so they were capped and showed no rank badge.
+
 ## [1.9.77] - Unreleased
 ### Added
 - **Compare everything** in Compare with Warcraft Logs. One click goes through every tab and puts all the differences in one text, so you don't have to click through each tab and raider.
