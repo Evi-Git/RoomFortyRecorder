@@ -45,6 +45,23 @@ import KillVideoProgress from './KillVideoProgress';
 const ipc = window.electron.ipcRenderer;
 const queryClient = new QueryClient();
 
+// [RoomFortyRecorder] The page the window was on, so a reload (Ctrl+R)
+// comes back to it. sessionStorage lasts for this window only: a fresh
+// start still opens on the recordings.
+const PAGE_KEY = 'rf-page';
+const savedPage = () => {
+  try {
+    const name = sessionStorage.getItem(PAGE_KEY);
+    const page = name ? Pages[name as keyof typeof Pages] : undefined;
+    // Instant replay needs state that doesn't survive a reload.
+    return page === undefined || page === Pages.InstantReplay
+      ? Pages.None
+      : page;
+  } catch {
+    return Pages.None;
+  }
+};
+
 const WarcraftRecorder = () => {
   const [config, setConfig] = useSettings();
   const [error, setError] = useState<string>('');
@@ -75,7 +92,7 @@ const WarcraftRecorder = () => {
 
   const [appState, setAppState] = useState<AppState>({
     // Navigation.
-    page: Pages.None,
+    page: savedPage(),
     category: getCategoryFromConfig(config),
     selectedVideos: [],
     multiPlayerMode: false,
@@ -128,6 +145,14 @@ const WarcraftRecorder = () => {
     // selector to remember their preference when changing rows in the table.
     preferredViewpoint: '',
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PAGE_KEY, Pages[appState.page]);
+    } catch {
+      // Storage blocked: a reload just opens on the recordings.
+    }
+  }, [appState.page]);
 
   // The video state contains most of the frontend state.
   const [videoState, setVideoState] = useState<RendererVideo[]>([]);
