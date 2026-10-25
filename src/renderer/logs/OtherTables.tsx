@@ -27,6 +27,7 @@ import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import CastDetail from './CastDetail';
+import GearWidget from './GearWidget';
 
 /**
  * [RoomFortyRecorder] Logs page: Summary, Interrupts, Dispels, Resources
@@ -184,6 +185,7 @@ export const SummaryView = ({
           </div>
         </Box>
       </div>
+      <GearWidget ctx={ctx} />
     </div>
   );
 };

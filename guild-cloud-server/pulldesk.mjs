@@ -1422,6 +1422,12 @@ export const createPullDesk = (options) => {
       return json(res, 200, await journal.names(Array.isArray(body?.ids) ? body.ids : []));
     }
 
+    if (kind === 'items' && req.method === 'POST') {
+      const body = await readBody(req, 32 * 1024);
+      if (!journal.items) return json(res, 200, { items: {}, pending: 0 });
+      return json(res, 200, await journal.items(Array.isArray(body?.ids) ? body.ids : []));
+    }
+
     if (kind === 'spells' && req.method === 'POST') {
       const body = await readBody(req, 32 * 1024);
       const ids = Array.isArray(body?.ids) ? body.ids : [];

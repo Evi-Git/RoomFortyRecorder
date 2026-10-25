@@ -367,3 +367,26 @@ test('Warcraft Logs names for spells, 30 to a query, kept', async () => {
   assert.equal((await again.names([2])).names[2], 'Eviscerate (Ancient Arts)');
   assert.equal(queries.length, 2, 'kept on disk');
 });
+
+test('items: name, quality, slot and icon from Blizzard, kept', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-items-'));
+  const calls = [];
+  const fetchImpl = async (url) => {
+    const u = String(url);
+    calls.push(u);
+    const ok = (body) => ({ ok: true, status: 200, json: async () => body });
+    if (u.includes('oauth')) return ok({ access_token: 't', expires_in: 3600 });
+    if (u.includes('/data/wow/media/item/271875'))
+      return ok({ assets: [{ key: 'icon', value: 'https://render.example/icons/56/inv_helm_plate_raid.jpg' }] });
+    if (u.includes('/data/wow/item/271875'))
+      return ok({ name: 'Crown of Coils', quality: { type: 'EPIC' }, inventory_type: { type: 'HEAD' } });
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const journal = createJournal({ storage, env, fetchImpl });
+  const got = await journal.items([271875, 5]);
+  assert.deepEqual(got.items[271875], { name: 'Crown of Coils', quality: 'EPIC', slot: 'HEAD', icon: 'inv_helm_plate_raid' });
+  assert.equal(got.items[5], undefined);
+  const before = calls.length;
+  await journal.items([271875, 5]);
+  assert.equal(calls.length, before);
+});
