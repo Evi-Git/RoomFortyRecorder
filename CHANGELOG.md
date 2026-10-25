@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.83] - Unreleased
+### Fixed
+Checked against Warcraft Logs on the Mythic Kith'ix kill: raid healing now matches to the point, damage taken within 0.01%, and every raider's damage within 0.5% (most exact).
+- **Support damage goes to the supporter.** Bombardments (and other `*_SUPPORT` damage such as Ebon Might) now counts for the evoker who gave it, not the raider whose hit it rode on.
+- **Refractive Images and Stretch Time** shields are no longer healing, and what they soak is taken off damage taken (the images take it, or it comes later as Stretch Time ticks).
+- **Spirit Link and Tempered in Battle** aren't damage taken (health moved between raiders).
+- **Guardian Spirit's and Purgatory's saves** aren't healing.
+- **Healers' healing on other raiders' pets and guardians** doesn't count, as on Warcraft Logs.
+- **Casts no longer count procs**: Throw Glaive's and Reaver's Glaive's extra throws, Infliction of Sorrow, Twin Flame, Dream Breath's heal over time, Divine Hymn's ticks, Charge's impact. Alter Time's return always counts.
+- **Abilities nest like Warcraft Logs** (Coup de Grace, Dominion of Argus, Diabolic Ritual, trinkets under their item, talents under the ability they come from), and a spell's heal and shield of the same name are one row.
+
 ## [1.9.82] - Unreleased
 ### Added
 - **The sidebar folds.** The button at the bottom right of the sidebar folds it down to a strip of icons (names on hover) and the page next to it widens to fill the space; the same button brings it back. The app remembers which way you left it.
