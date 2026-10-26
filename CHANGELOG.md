@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.88] - Unreleased
+### Changed
+- **Trends count like the Logs page** (and Warcraft Logs): support damage goes to the supporter, Refractive Images and Stretch Time are neither healing nor damage taken, Spirit Link and Tempered in Battle aren't damage taken (and count against the shaman's and paladin's healing), Guardian Spirit and Purgatory saves aren't healing, healers' healing on other raiders' pets doesn't count, and procs aren't casts. On the test logs every raider's damage, healing and taken now equal the Logs page's.
+- Apps with **Send my Logs** on re-send last week's pulls with the new meters automatically. Older nights keep their old numbers (healing a little higher, taken slightly higher), so a Trends line can step at the week boundary.
+
 ## [1.9.87] - Unreleased
 ### Fixed
 - **Lightspire Core** no longer shows up as casts. It has no on-use: its beam of light is a proc, so it's left out of Casts like other procs (it stays in Events).

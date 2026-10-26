@@ -1,4 +1,13 @@
 import { DAMAGE_REDUCTION, NOT_REDUCED } from '../../parsing/PullMeters';
+import {
+  DEFERRED_ABSORBS,
+  HEALER_SPECS,
+  HEALING_COSTS,
+  NOT_HEALING_ABSORBS,
+  NOT_TAKEN,
+} from '../../parsing/MeterRules';
+
+export { DEFERRED_ABSORBS };
 import { F, K, PullStore, Unit } from './store';
 import type { PassiveDr } from './talents';
 
@@ -371,32 +380,6 @@ const newAbility = (
 });
 
 /** Does event i belong in this meter, and whose row (by unit) is it. */
-/** Damage from healing spells, shown as negative healing. */
-const HEALING_COSTS = new Set([
-  98021, // Spirit Link (damage evening out health)
-  448005, // Light of the Martyr (healing the paladin doesn't get)
-  469704, // Tempered in Battle (the paladin's health it hands out)
-]);
-
-/**
- * Shields that are damage put off or sent elsewhere rather than healing:
- * Warcraft Logs counts what they take as neither healing nor damage taken.
- */
-export const DEFERRED_ABSORBS = new Set([
-  1309497, // Refractive Images (the mage's images take it)
-  410355, // Stretch Time (taken later, as Stretch Time ticks)
-]);
-
-/** Shields Warcraft Logs doesn't count as healing. */
-const NOT_HEALING_ABSORBS = new Set([
-  ...DEFERRED_ABSORBS,
-  47788, // Guardian Spirit (the save from a killing blow)
-  114556, // Purgatory (the death knight's own cheat death)
-]);
-
-/** Healer specs: Warcraft Logs leaves out their healing on others' pets. */
-const HEALER_SPECS = new Set([65, 105, 256, 257, 264, 270, 1468]);
-
 /**
  * Warcraft Logs doesn't count a healer's healing on another raider's pet
  * or guardian (a DPS's Halo on them still counts; checked on Kith'ix).
@@ -410,12 +393,6 @@ const healerOnOthersPet = (p: PullStore, s: number, d: number) => {
     HEALER_SPECS.has(healer.specId ?? 0) && target.root !== p.units[s].root
   );
 };
-
-/** Health moved between raiders, not damage taken (as on Warcraft Logs). */
-const NOT_TAKEN = new Set([
-  98021, // Spirit Link
-  469704, // Tempered in Battle
-]);
 
 /** A deferred shield's soak, taken off the hit it soaked (Damage Taken). */
 const deferredSoak = (p: PullStore, i: number, meter: Meter) =>
