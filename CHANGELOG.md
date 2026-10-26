@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.87] - Unreleased
+### Fixed
+- **Lightspire Core** no longer shows up as casts. It has no on-use: its beam of light is a proc, so it's left out of Casts like other procs (it stays in Events).
+
 ## [1.9.86] - Unreleased
 ### Changed
 - **"Send my pull logs" is now "Send my Logs"** and lives in Settings → Game → Game Settings instead of the Dashboard's top bar. It's the same setting, so it stays as you had it.
