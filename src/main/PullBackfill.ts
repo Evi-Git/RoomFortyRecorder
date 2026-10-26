@@ -65,7 +65,8 @@ type Done = Record<string, string>; // file name -> "v:size:mtime" checked
 // Bump to check every recent file again after the capture rules change
 // (2: flex Mythic pulls were skipped before).
 // 3: re-send last week's pulls with the app's meters (1.9.30).
-const DONE_VERSION = 4;
+// 5: meters v4, counted like the Logs page (1.9.88).
+const DONE_VERSION = 5;
 const doneKey = (f: LogFile) =>
   `${DONE_VERSION}:${f.size}:${Math.round(f.modified)}`;
 

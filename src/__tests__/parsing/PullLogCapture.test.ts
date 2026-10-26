@@ -106,7 +106,7 @@ test('damage taken counts bosses that also hit pets, and soaked hits', () => {
   const [pull] = capture('beloren_boss_hp.txt');
   const last = pull.log.trim().split('\n').pop() as string;
   const meters = JSON.parse(last.slice(METERS_LINE_PREFIX.length));
-  expect(meters.v).toBe(3);
+  expect(meters.v).toBe(4);
   const taken = meters.taken.reduce(
     (n: number, r: { total: number }) => n + r.total,
     0,

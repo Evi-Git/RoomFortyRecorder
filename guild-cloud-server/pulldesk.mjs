@@ -41,8 +41,9 @@ const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
 // A pull's full combat log (every line, gzipped) for the app's Logs page.
 const MAX_FULL_BYTES = 150 * 1024 * 1024;
 // Meters the app works out (src/parsing/PullMeters.ts): 3 counts every hit
-// in damage taken (1.9.32). Older ones are re-requested.
-const METERS_VERSION = 3;
+// in damage taken (1.9.32); 4 counts like the Logs page / Warcraft Logs
+// (1.9.88). Older ones are re-requested.
+const METERS_VERSION = 4;
 const CLAIM_MATCH_SECONDS = 120; // claims this close together are one pull
 const CLAIM_DURATION_SLACK = 3; // seconds of disagreement on pull length
 const CLAIM_STALE_MS = 60 * 1000; // a chosen uploader that never uploaded

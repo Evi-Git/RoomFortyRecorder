@@ -43,7 +43,7 @@ const setup = async () => {
 };
 
 // What 1.9.30+ apps send: the filtered log plus the app's meters line.
-const METERS = { v: 3, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
+const METERS = { v: 4, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
 const withMeters = `${slice}ROOMFORTY_METERS ${JSON.stringify(METERS)}\n`;
 // 1.9.32+ apps also send every line of the pull.
 const FULL = zlib.gzipSync(slice);
@@ -140,18 +140,18 @@ test('pulls sent by older apps (no meters) are asked for again and replaced', as
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
 });
 
-test('meters from before 1.9.32 (v2) are asked for again and replaced; the full log is served', async () => {
+test('meters from before 1.9.88 (v3) are asked for again and replaced; the full log is served', async () => {
   const { call } = await setup();
   const at = Date.parse('2026-10-21T20:05:00');
   const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
   const first = await call('POST', ['backfill'], pull);
   const id = first.body.pullId;
-  const v2 = `${slice}ROOMFORTY_METERS ${JSON.stringify({ ...METERS, v: 2 })}\n`;
+  const v2 = `${slice}ROOMFORTY_METERS ${JSON.stringify({ ...METERS, v: 3 })}\n`;
   await call('PUT', ['pulls', id, 'log'], zlib.gzipSync(v2));
   await call('PUT', ['pulls', id, 'full'], FULL);
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, [0]);
   await call('PUT', ['pulls', id, 'log'], zlib.gzipSync(withMeters));
-  assert.equal((await call('GET', ['pulls', id, 'meters'])).body.v, 3);
+  assert.equal((await call('GET', ['pulls', id, 'meters'])).body.v, 4);
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [pull] })).body.missing, []);
   // Not gzip: refused.
   assert.equal((await call('PUT', ['pulls', id, 'full'], Buffer.from('hello world, not gzip at all'))).status, 400);

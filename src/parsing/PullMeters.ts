@@ -21,6 +21,14 @@ import {
   parseLine,
   shortName,
 } from './LogEvents';
+import {
+  CastFilter,
+  DEFERRED_ABSORBS,
+  HEALER_SPECS,
+  HEALING_COSTS,
+  NOT_HEALING_ABSORBS,
+  NOT_TAKEN,
+} from './MeterRules';
 
 export const METERS_LINE_PREFIX = 'ROOMFORTY_METERS ';
 export const BUCKET_SECONDS = 5;
@@ -159,6 +167,7 @@ const WANTED = new Set([
   ...MISS_EVENTS,
   ...HEAL_EVENTS,
   'SPELL_ABSORBED',
+  'SPELL_HEAL_ABSORBED',
   'SPELL_CAST_SUCCESS',
   'SPELL_SUMMON',
   'SPELL_AURA_APPLIED',
@@ -204,8 +213,12 @@ export type AuraTrack = {
 };
 
 export type PullMetersData = {
-  /** 3: damage taken counts every hit (1.9.32). */
-  v: 3;
+  /**
+   * 3: damage taken counts every hit (1.9.32). 4: the Logs page's Warcraft
+   * Logs rules (MeterRules: support damage, deferred shields, health moved
+   * between raiders, healers on others' pets, procs aren't casts; 1.9.88).
+   */
+  v: 4;
   source: 'app';
   bucketSeconds: number;
   duration: number;
@@ -280,6 +293,20 @@ export default class PullMeters {
   // Damage the raid did to each enemy, to find the boss.
   private enemyDamage = new Map<string, number>();
 
+  private castFilter = new CastFilter();
+
+  // The last raider hits on enemies, for *_DAMAGE_SUPPORT lines to find.
+  private recentHits: {
+    by: string | null;
+    src: string;
+    dst: string;
+    spellId: number;
+    name: string;
+    amount: number;
+    bucket: number;
+    crit: boolean;
+  }[] = [];
+
   /** Feed one raw combat log line from the pull. */
   public feed(line: string) {
     if (line.includes('  COMBATANT_INFO,')) {
@@ -288,6 +315,10 @@ export default class PullMeters {
       const head = line.slice(start + 2, line.indexOf('['));
       const fields = head.split(',');
       this.specs.set(fields[1], Number.parseInt(fields[25], 10) || 0);
+      return;
+    }
+    if (line.includes('_SUPPORT,')) {
+      this.support(line);
       return;
     }
     const e = parseLine(line, WANTED);
@@ -312,6 +343,9 @@ export default class PullMeters {
     if (e.type === 'SPELL_CAST_SUCCESS') {
       const who = this.ownerOf(e.src);
       if (!who) return;
+      this.lastCaster.set(e.spellId, who);
+      // Procs and passives the log calls casts (as the Logs page counts).
+      if (this.castFilter.isProc(e.src, e.spellId, e.spellName, t)) return;
       const bySpell = this.casts.get(who) ?? new Map();
       const byBucket = bySpell.get(e.spellId) ?? new Map();
       byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
@@ -322,7 +356,6 @@ export default class PullMeters {
       if (entry.times.length < 200) entry.times.push(Math.round(t * 10) / 10);
       timed.set(e.spellId, entry);
       this.castTimes.set(who, timed);
-      this.lastCaster.set(e.spellId, who);
       return;
     }
 
@@ -373,7 +406,32 @@ export default class PullMeters {
           (this.enemyDamage.get(e.dst) ?? 0) + amount,
         );
       }
-      if (isPlayer(e.dst)) {
+      // Every hit on an enemy, even by a unit whose raider we don't know
+      // yet: a support line can still move it to its supporter.
+      if (!isFriendly(e.dstFlags)) {
+        this.recentHits.push({
+          by,
+          src: e.src,
+          dst: e.dst,
+          spellId: e.spellId,
+          name: e.spellName,
+          amount,
+          bucket,
+          crit: e.crit,
+        });
+        if (this.recentHits.length > 64) this.recentHits.shift();
+      }
+      // Health a healing spell takes off raiders (Spirit Link evening out
+      // health, Light of the Martyr) counts against its healing.
+      if (by && isPlayer(e.dst) && HEALING_COSTS.has(e.spellId)) {
+        const cost = amount - (e.overkill > 0 ? e.overkill : 0);
+        if (cost > 0)
+          this.add('healing', by, bucket, e.spellId, e.spellName, -cost, {
+            noHit: true,
+          });
+      }
+      // Health moved between raiders isn't damage taken.
+      if (isPlayer(e.dst) && !NOT_TAKEN.has(e.spellId)) {
         const mitigated = e.base > amount ? e.base - amount : 0;
         this.add('taken', e.dst, bucket, e.spellId, e.spellName, amount, {
           crit: e.crit,
@@ -398,7 +456,12 @@ export default class PullMeters {
       const by = this.ownerOf(e.src);
       // Heals eaten by a heal-absorb debuff still count for the healer.
       const effective = Math.max(0, e.amount - e.overheal) + e.absorbed;
-      if (by && isFriendly(e.dstFlags) && (effective || e.overheal)) {
+      if (
+        by &&
+        isFriendly(e.dstFlags) &&
+        (effective || e.overheal) &&
+        !this.healerOnOthersPet(by, e.dst)
+      ) {
         this.add('healing', by, bucket, e.spellId, e.spellName, effective, {
           crit: e.crit,
           overheal: e.overheal,
@@ -407,15 +470,91 @@ export default class PullMeters {
       return;
     }
 
+    if (e.type === 'SPELL_HEAL_ABSORBED') {
+      // Light of the Martyr's share of a heal the paladin doesn't get.
+      const by = this.ownerOf(e.src);
+      if (!by || !e.amount || !isPlayer(e.dst)) return;
+      if (!HEALING_COSTS.has(e.spellId)) return;
+      this.add('healing', by, bucket, e.spellId, e.spellName, -e.amount, {
+        noHit: true,
+      });
+      return;
+    }
+
     if (e.type === 'SPELL_ABSORBED') {
       if (isPlayer(e.src) && e.srcName)
         this.names.set(e.src, shortName(e.srcName));
+      if (!e.amount) return;
+      // Damage put off or sent elsewhere (Refractive Images, Stretch Time):
+      // not healing, and not damage taken.
+      if (DEFERRED_ABSORBS.has(e.spellId) && isPlayer(e.dst)) {
+        this.add(
+          'taken',
+          e.dst,
+          bucket,
+          e.attackSpellId,
+          e.attackSpellName,
+          -e.amount,
+          { noHit: true },
+        );
+      }
+      if (NOT_HEALING_ABSORBS.has(e.spellId)) return;
       const by = this.ownerOf(e.src);
-      if (!by || !e.amount) return;
+      if (!by || this.healerOnOthersPet(by, e.dst)) return;
       this.add('healing', by, bucket, e.spellId, e.spellName, e.amount, {
         absorb: true,
       });
     }
+  }
+
+  /**
+   * A *_DAMAGE_SUPPORT line: the hit just logged was added by another
+   * raider's buff (Bombardments, Ebon Might, Prescience...), so it moves to
+   * them, as on Warcraft Logs. The supporter is the line's last field.
+   */
+  private support(line: string) {
+    const type = line.slice(line.indexOf('  ') + 2, line.indexOf(','));
+    if (!type.includes('DAMAGE')) return;
+    const e = parseLine(line.replace('_SUPPORT,', ','));
+    if (!e) return;
+    const supporter = line.slice(line.lastIndexOf(',') + 1).trim();
+    if (!isPlayer(supporter)) return;
+    const amount = e.amount + e.absorbed;
+    for (let i = this.recentHits.length - 1; i >= 0; i -= 1) {
+      const h = this.recentHits[i];
+      if (
+        h.src === e.src &&
+        h.dst === e.dst &&
+        (e.spellId <= 0 || h.spellId === e.spellId) &&
+        Math.abs(h.amount - amount) < 1
+      ) {
+        this.recentHits.splice(i, 1);
+        if (supporter === h.by) return;
+        if (h.by)
+          this.add('damage', h.by, h.bucket, h.spellId, h.name, -h.amount, {
+            crit: h.crit,
+            undo: true,
+          });
+        this.add('damage', supporter, h.bucket, h.spellId, h.name, h.amount, {
+          crit: h.crit,
+        });
+        return;
+      }
+    }
+  }
+
+  /**
+   * Warcraft Logs leaves out a healer's healing on another raider's pet or
+   * guardian (a DPS's heals on them still count).
+   */
+  private healerOnOthersPet(healer: string, target: string) {
+    if (isPlayer(target) || !this.owners.has(target)) return false;
+    const owner = this.ownerOf(target);
+    return (
+      !!owner &&
+      owner !== healer &&
+      HEALER_SPECS.has(this.specs.get(healer) ?? 0)
+    );
   }
 
   /** Buffs on raiders and debuffs on enemies, applied by a raider. */
@@ -482,8 +621,13 @@ export default class PullMeters {
       overheal?: number;
       absorb?: boolean;
       mitigated?: number;
+      /** An amount taken off (no hit). */
+      noHit?: boolean;
+      /** Taking a hit back (one hit, one crit fewer). */
+      undo?: boolean;
     },
   ) {
+    const hit = extra.undo ? -1 : extra.noHit ? 0 : 1;
     const map = this.stats[kind];
     const unit = map.get(guid) ?? {
       total: 0,
@@ -508,14 +652,14 @@ export default class PullMeters {
       buckets: new Map(),
     };
     ability.total += amount;
-    ability.hits += 1;
-    if (extra.crit) ability.crits += 1;
+    ability.hits += hit;
+    if (extra.crit) ability.crits += hit;
     ability.overheal += extra.overheal ?? 0;
     ability.mitigated += extra.mitigated ?? 0;
     const b = ability.buckets.get(bucket) ?? [bucket, 0, 0, 0, 0, 0];
     b[1] += amount;
-    b[2] += 1;
-    if (extra.crit) b[3] += 1;
+    b[2] += hit;
+    if (extra.crit) b[3] += hit;
     b[5] += extra.overheal ?? 0;
     ability.buckets.set(bucket, b);
     unit.abilities.set(spellId, ability);
@@ -671,7 +815,7 @@ export default class PullMeters {
         .sort((a, b) => b.total - a.total);
 
     return {
-      v: 3,
+      v: 4,
       source: 'app',
       bucketSeconds: BUCKET_SECONDS,
       duration: Math.round(duration * 10) / 10,
