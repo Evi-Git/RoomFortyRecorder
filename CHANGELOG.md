@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.89] - Unreleased
+### Added
+- **Deaths tab on the Logs page**, like Warcraft Logs, for one pull or several picked:
+  - Every raider death with its killing blow, overkill and how many defensives they still had ready. A wipe (4+ deaths to one ability within 2 s) folds into one row.
+  - Killing blows by ability, and deaths by raider (click a name to see only theirs).
+  - **Death recap** for the death picked: the last 5–30 s of hits, heals, shields, their own casts, defensives going on and off, and debuffs, with health after each, plus what was up when they died, what they pressed this pull and what was still ready (the Dashboard's defensive list, base cooldowns).
+  - Click any row, or Watch, to open the recording there.
+  - Events → Deaths lists raiders' deaths (not their pets').
+### Fixed
+- **Feign Death** no longer counts as a death on the Logs page (it threw off "Ignore events after death N").
+
 ## [1.9.88] - Unreleased
 ### Changed
 - **Trends count like the Logs page** (and Warcraft Logs): support damage goes to the supporter, Refractive Images and Stretch Time are neither healing nor damage taken, Spirit Link and Tempered in Battle aren't damage taken (and count against the shaman's and paladin's healing), Guardian Spirit and Purgatory saves aren't healing, healers' healing on other raiders' pets doesn't count, and procs aren't casts. On the test logs every raider's damage, healing and taken now equal the Logs page's.

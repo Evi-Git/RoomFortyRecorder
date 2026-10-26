@@ -24,6 +24,7 @@ import AuraTables from './AuraTables';
 import { CastView, CountView, ResourceView, SummaryView } from './OtherTables';
 import EventsView, { EventTab } from './EventsView';
 import QueriesView from './QueriesView';
+import DeathsView from './DeathsView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { ZoomContext } from './zoom';
@@ -52,7 +53,7 @@ type Layer = {
  * [RoomFortyRecorder] The Logs page's pull explorer, after Warcraft Logs:
  * Tables / Timelines / Events / Queries over one pull or several added up,
  * with tabs (Summary, Damage Done, Damage Taken, Healing (with mitigations),
- * Buffs, Debuffs, Interrupts, Dispels, Resources, Casts) and filters
+ * Buffs, Debuffs, Deaths, Interrupts, Dispels, Resources, Casts) and filters
  * (friendlies/enemies, enemy, ability, pets, ignore after deaths, filter
  * expression, a slice of the fight).
  */
@@ -67,6 +68,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'healing', label: 'Healing' },
   { key: 'buffs', label: 'Buffs' },
   { key: 'debuffs', label: 'Debuffs' },
+  { key: 'deaths', label: 'Deaths' },
   { key: 'interrupts', label: 'Interrupts' },
   { key: 'dispels', label: 'Dispels' },
   { key: 'resources', label: 'Resources' },
@@ -862,6 +864,7 @@ const LogsExplorer = ({
                 setWho={setAuraWho}
               />
             )}
+            {tab === 'deaths' && <DeathsView ctx={ctx} onWatch={onWatch} />}
             {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}
             {tab === 'dispels' && <CountView ctx={ctx} kind="dispel" />}
             {tab === 'resources' && (

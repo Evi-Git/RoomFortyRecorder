@@ -16,6 +16,7 @@ export type EventTab =
   | 'prevented'
   | 'buffs'
   | 'debuffs'
+  | 'deaths'
   | 'interrupts'
   | 'dispels'
   | 'resources'
@@ -29,6 +30,7 @@ const KINDS_FOR: Record<EventTab, number[] | null> = {
   healing: [K.HEAL, K.ABSORB],
   buffs: [K.APPLY, K.REMOVE, K.DOSE],
   debuffs: [K.APPLY, K.REMOVE, K.DOSE],
+  deaths: [K.DIED],
   interrupts: [K.INTERRUPT],
   dispels: [K.DISPEL],
   resources: [K.ENERGIZE],
@@ -81,6 +83,15 @@ export const matchEvents = (ctx: Ctx, tab: EventTab, who: string | null) => {
         case 'debuffs':
           if (!debuff || friendly !== raider(p, d)) return;
           break;
+        case 'deaths':
+          // Raiders themselves (not their pets), or enemies.
+          if (
+            friendly
+              ? d < 0 || !p.units[d].raider || !p.units[d].player
+              : raider(p, d)
+          )
+            return;
+          break;
         case 'interrupts':
         case 'dispels':
         case 'resources':
@@ -100,6 +111,7 @@ export const matchEvents = (ctx: Ctx, tab: EventTab, who: string | null) => {
       if (who) {
         const by =
           tab === 'taken' ||
+          tab === 'deaths' ||
           tab === 'buffs' ||
           tab === 'debuffs' ||
           tab === 'resources'
