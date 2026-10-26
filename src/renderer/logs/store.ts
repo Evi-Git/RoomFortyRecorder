@@ -691,8 +691,11 @@ export class StoreBuilder {
       kind = K.DOSE;
       x = e.stacks;
       if (e.auraType === 'DEBUFF') f |= F.DEBUFF;
-    } else if (type === 'UNIT_DIED') kind = K.DIED;
-    else if (type === 'SPELL_INTERRUPT') {
+    } else if (type === 'UNIT_DIED') {
+      // Feign Death and the like log a death with the last field 1.
+      if (/,1\s*$/.test(line)) return;
+      kind = K.DIED;
+    } else if (type === 'SPELL_INTERRUPT') {
       kind = K.INTERRUPT;
       aux = this.spell(e.extraId, e.extraName, 0);
     } else if (type === 'SPELL_DISPEL' || type === 'SPELL_STOLEN') {
