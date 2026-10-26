@@ -200,7 +200,7 @@ export default class PullDesk {
 
   constructor() {
     // Automatic backfill: shortly after start, then every half hour. Only
-    // with "Send my pull logs" on, and never during a pull.
+    // with "Send my Logs" on, and never during a pull.
     const tick = () => {
       if (this.cfg.get<boolean>('pullDeskUpload') === false) return;
       if (this.capture.capturing) return;

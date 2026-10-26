@@ -1003,7 +1003,7 @@ export const NightSummaryView = ({
   if (!nights.length) {
     return (
       <p className="text-sm text-foreground">
-        No pulls yet. Once raiders have &quot;Send my pull logs&quot; on, each
+        No pulls yet. Once raiders have &quot;Send my Logs&quot; on, each
         raid night shows up here.
       </p>
     );
@@ -2943,7 +2943,7 @@ export const UploadFromLog = ({
         </Button>
       </div>
       <p className="text-xs text-foreground">
-        The app does this by itself: with &quot;Send my pull logs&quot; on, it
+        The app does this by itself: with &quot;Send my Logs&quot; on, it
         checks your finished combat logs from the last week every half hour and
         sends any pulls the server doesn&apos;t have. Use this to send a
         specific file now: pick it, scan, and upload. Each pull gets the full

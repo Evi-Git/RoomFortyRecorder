@@ -2,7 +2,7 @@ import { ConfigurationSchema, configSchema } from 'config/configSchema';
 import React, { Dispatch, SetStateAction } from 'react';
 import { AppState, CombatLoggingStatus, RecStatus } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
-import { setConfigValues } from './useSettings';
+import { setConfigValue, setConfigValues } from './useSettings';
 import { pathSelect } from './rendererutils';
 import Switch from './components/Switch/Switch';
 import Label from './components/Label/Label';
@@ -103,7 +103,10 @@ const FlavourSettings: React.FC<IProps> = ({
               Phrase.LatestCombatLogFileDaysOld,
             )}`
           : ageDays === 1
-            ? getLocalePhrase(appState.language, Phrase.LatestCombatLogFileDayOld)
+            ? getLocalePhrase(
+                appState.language,
+                Phrase.LatestCombatLogFileDayOld,
+              )
             : getLocalePhrase(
                 appState.language,
                 Phrase.LatestCombatLogFileLessThanADayOld,
@@ -231,6 +234,28 @@ const FlavourSettings: React.FC<IProps> = ({
         configSchema.recordRetailPtr.description,
         Phrase.InvalidRetailPtrLogPathText,
       )}
+      {/* [RoomFortyRecorder] Upload this PC's pull logs to the guild server. */}
+      <div className="flex flex-col w-[160px]">
+        <Label htmlFor="pullDeskUpload" className="flex items-center">
+          Send my Logs
+          <Tooltip
+            content="When on, your app may upload your combat log for each raid pull to the guild server (Dashboard and Logs). Only one raider's upload is used per pull."
+            side="top"
+          >
+            <Info size={20} className="inline-flex ml-2" />
+          </Tooltip>
+        </Label>
+        <div className="flex h-10 items-center">
+          <Switch
+            checked={config.pullDeskUpload !== false}
+            name="pullDeskUpload"
+            onCheckedChange={(value) => {
+              setConfig((previous) => ({ ...previous, pullDeskUpload: value }));
+              setConfigValue('pullDeskUpload', value);
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 };

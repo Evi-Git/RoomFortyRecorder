@@ -72,7 +72,7 @@ from the reports it already has, so they need nothing extra from raiders.
 ### Missed pulls are sent automatically
 
 Pulls the live capture didn't send (the app was closed, signed out, or
-crashed) are picked up from the saved combat logs. With "Send my pull logs"
+crashed) are picked up from the saved combat logs. With "Send my Logs"
 on, every raider's app checks its finished combat log files from the last
 week, 2 minutes after it starts and then every 30 minutes, never during a
 pull. It asks the server which pulls it still needs a log for and sends only
@@ -94,7 +94,7 @@ for are skipped, so it's safe to run twice or from two raiders' PCs.
 
 ### Importing pulls from Warcraft Logs
 
-If a night wasn't captured (nobody had "Send my pull logs" on, or it was
+If a night wasn't captured (nobody had "Send my Logs" on, or it was
 before the app), editors can click **Import from Warcraft Logs** on the Night
 summary or Progression view and paste the report links. Boss pulls on the
 tracked difficulties are added with their result, boss %, roster and deaths,
@@ -197,7 +197,7 @@ cost few points.
    200-300 MB of disk per raid night until then. The app caches the logs
    you open (up to 1.5 GB) in its settings folder.
 
-Raiders can turn **Send my pull logs** off on the Pull desk page. Pulls are
+Raiders can turn **Send my Logs** off in Settings → Game → Game Settings. Pulls are
 only captured on retail raid difficulties, and the server only reports on
 the difficulties in `GUILD_CLOUD_PULLDESK_DIFFICULTIES` (Mythic by default).
 
@@ -285,7 +285,7 @@ Do steps 1-4 before a raid night; 5-8 happen during it.
 | Symptom | Check |
 | --- | --- |
 | Page says the pull desk isn't set up | The server is still running the old `server.mjs`. Copy all three files and restart Node. |
-| No pulls appear | The difficulty isn't in `GUILD_CLOUD_PULLDESK_DIFFICULTIES`, nobody has Send my pull logs on, or nobody is signed in. The app log shows `[PullDesk]` lines for each pull. |
+| No pulls appear | The difficulty isn't in `GUILD_CLOUD_PULLDESK_DIFFICULTIES`, nobody has Send my Logs on, or nobody is signed in. The app log shows `[PullDesk]` lines for each pull. |
 | Pull appears but no Discord post | No channel set, or the bot lacks Send Messages or Embed Links there. The server console shows the Discord error. |
 | Watch is greyed out | You don't have that raider's recording of that pull (not uploaded, or not recorded). |
 | Plan check shows "named nobody in the pull" | The names in the note don't match character names. Names are matched without realm and ignoring case. |
