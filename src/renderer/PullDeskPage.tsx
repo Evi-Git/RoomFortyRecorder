@@ -13,9 +13,8 @@ import { VideoCategory } from 'types/VideoCategory';
 import { Button } from './components/Button/Button';
 import { Input } from './components/Input/Input';
 import { Textarea } from './components/TextArea/textarea';
-import Switch from './components/Switch/Switch';
 import { getCategoryIndex } from './rendererutils';
-import { getConfigValue, setConfigValue } from './useSettings';
+import { setConfigValue } from './useSettings';
 import { BRAND } from 'renderer/brand';
 import {
   BossPercentHint,
@@ -425,9 +424,6 @@ const PullDeskPage = (props: IProps) => {
   const [reportError, setReportError] = React.useState('');
   const [tab, setTab] = React.useState<'report' | 'boss'>('report');
   const [canEdit, setCanEdit] = React.useState(false);
-  const [uploadEnabled, setUploadEnabled] = React.useState<boolean>(
-    () => getConfigValue<boolean>('pullDeskUpload') !== false,
-  );
   const [expandedDeath, setExpandedDeath] = React.useState<number | null>(null);
   const [section, setSection] = React.useState<Section>(loadSection);
   const [openGroups, setOpenGroups] = React.useState<number[]>([]);
@@ -556,11 +552,6 @@ const PullDeskPage = (props: IProps) => {
       cancelled = true;
     };
   }, [selectedId, summaryKey, reportTick]);
-
-  const toggleUpload = (value: boolean) => {
-    setUploadEnabled(value);
-    setConfigValue('pullDeskUpload', value);
-  };
 
   /** This raider's recording of the selected pull, if we have it. */
   const findVideo = (name?: string) => {
@@ -1744,13 +1735,6 @@ const PullDeskPage = (props: IProps) => {
           open={channelsOpen}
           onOpenChange={setChannelsOpen}
         />
-        <label
-          className={`${officer ? '' : 'ml-auto '}flex items-center gap-x-2 text-sm`}
-          title="When on, your app may upload your combat log for a pull. Only one raider's upload is used per pull."
-        >
-          Send my pull logs
-          <Switch checked={uploadEnabled} onCheckedChange={toggleUpload} />
-        </label>
       </div>
 
       {view !== 'pulls' && (

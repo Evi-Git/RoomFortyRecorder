@@ -1694,7 +1694,7 @@ export const createPullDesk = (options) => {
             404,
             pull.source === 'wcl'
               ? "Imported from Warcraft Logs: meters need a raider's app log."
-              : 'No meters yet: they come from the app (1.9.30 or newer). Raiders with "Send my pull logs" on re-send last week\'s pulls automatically.',
+              : 'No meters yet: they come from the app (1.9.30 or newer). Raiders with "Send my Logs" on re-send last week\'s pulls automatically.',
           );
         }
         try {

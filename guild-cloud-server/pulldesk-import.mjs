@@ -1,5 +1,5 @@
 // Pull desk import from Warcraft Logs: backfills pulls the app didn't
-// capture (nobody had "Send my pull logs" on, or it happened before the
+// capture (nobody had "Send my Logs" on, or it happened before the
 // Pull desk existed). Each imported pull gets a light report built from the
 // Warcraft Logs data: result, boss %, duration, roster with roles, and
 // deaths with killing blows. That is enough for the Night summary and

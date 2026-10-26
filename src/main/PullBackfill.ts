@@ -37,7 +37,7 @@ export const uploadFullLog = async (
 /**
  * [RoomFortyRecorder] Pull desk backfill: send pulls from saved combat log
  * files that the live capture didn't (the app was closed, signed out, or
- * nobody had "Send my pull logs" on). The same filter as the live capture,
+ * nobody had "Send my Logs" on). The same filter as the live capture,
  * the same reports on the server; each pull is placed by its real start time.
  *
  * - Automatic: every so often, finished log files from the last week are
