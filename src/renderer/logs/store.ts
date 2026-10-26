@@ -116,6 +116,14 @@ export const NOT_CASTS = new Set([
 ]);
 
 /**
+ * The same, by name, for procs whose spell IDs we haven't seen (every ID
+ * of that name is a proc).
+ */
+export const NOT_CAST_NAMES = new Set([
+  'Lightspire Core', // the trinket's beam of light (no on-use)
+]);
+
+/**
  * Seconds after a cast in which another "cast" of the same name by the
  * same caster but a different spell ID is part of it (Fracture's extra
  * hits, Felblade's charge, The Hunt's impact).
@@ -866,7 +874,7 @@ export class StoreBuilder {
   }
 
   private notACast(src: number, spellId: number, name: string, t: number) {
-    if (NOT_CASTS.has(spellId)) return true;
+    if (NOT_CASTS.has(spellId) || NOT_CAST_NAMES.has(name)) return true;
     if (ALWAYS_CASTS.has(spellId)) return false;
     const key = `${src}|${name}`;
     const last = this.lastCast.get(key);

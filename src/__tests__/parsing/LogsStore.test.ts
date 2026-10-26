@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { lineSeconds, StoreBuilder } from '../../renderer/logs/store';
+import { F, K, lineSeconds, StoreBuilder } from '../../renderer/logs/store';
 import {
   DEFAULT_FILTERS,
   makeCtx,
@@ -240,4 +240,31 @@ test('abilities sharing a name are one group, the cast one first', () => {
   expect(evis.parts.map((a: { spellId: number }) => a.spellId)).toEqual([1, 2]);
   expect(evis.head.total).toBe(1600);
   expect(evis.head.casts).toBe(78);
+});
+
+test("Lightspire Core's beam isn't a cast (matched by name)", () => {
+  const first = lines.findIndex(
+    (l) =>
+      l.includes('SPELL_CAST_SUCCESS,Player-') &&
+      !l.includes('"Lightspire Core"'),
+  );
+  const fake = lines[first].replace(
+    /^(.*?SPELL_CAST_SUCCESS,(?:[^,]*,){8})\d+,"[^"]*"/,
+    '$11299999,"Lightspire Core"',
+  );
+  expect(fake).toContain('1299999,"Lightspire Core"');
+  const b = new StoreBuilder();
+  lines.slice(0, first + 1).forEach((l) => b.feed(l));
+  b.feed(fake);
+  const p = b.finish({
+    id: 'x',
+    label: 'Pull 1',
+    encounterId: 3182,
+    difficultyId: 16,
+    startedAt: 0,
+    result: 'wipe',
+  });
+  const i = p.k.lastIndexOf(K.CAST);
+  expect(p.spells[p.sp[i]].name).toBe('Lightspire Core');
+  expect(p.f[i] & F.PROC).toBe(F.PROC);
 });
