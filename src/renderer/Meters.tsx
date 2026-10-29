@@ -8,6 +8,7 @@ import {
   getWoWClassColor,
 } from './rendererutils';
 import { setConfigValue } from './useSettings';
+import { TabContext, TabsContext, useTabTitle } from './tabs/tabs';
 import AbilityName from './AbilityCard';
 import {
   AuraView,
@@ -101,8 +102,10 @@ export const useRecordingWatch = (
   videoState: RendererVideo[],
   setAppState: Dispatch<SetStateAction<AppState>>,
   persistentProgressRef: RefObject<number>,
-): Watcher =>
-  React.useMemo(() => {
+): Watcher => {
+  const tabs = React.useContext(TabsContext);
+  const tab = React.useContext(TabContext);
+  return React.useMemo(() => {
     const find = (pull: PullRef, name: string | null) => {
       const candidates = videoState.filter(
         (video) =>
@@ -128,11 +131,25 @@ export const useRecordingWatch = (
         // Their recording, else anyone's.
         const video = find(pull, name) ?? find(pull, null);
         if (!video) return false;
-        seekTo(persistentProgressRef, seconds - WATCH_LEAD_SECONDS);
         setConfigValue(
           'selectedCategory',
           getCategoryIndex(VideoCategory.Raids),
         );
+        // [RoomFortyRecorder] With tabs, the recording opens in this tab's
+        // watch tab, so this page stays where it is.
+        if (tabs && tab.id) {
+          tabs.openWatch(
+            tab.id,
+            {
+              page: Pages.None,
+              category: VideoCategory.Raids,
+              selectedVideos: [video],
+            },
+            Math.max(0, seconds - WATCH_LEAD_SECONDS),
+          );
+          return true;
+        }
+        seekTo(persistentProgressRef, seconds - WATCH_LEAD_SECONDS);
         setAppState((prev) => ({
           ...prev,
           page: Pages.None,
@@ -147,7 +164,8 @@ export const useRecordingWatch = (
         return true;
       },
     };
-  }, [videoState, setAppState, persistentProgressRef]);
+  }, [videoState, setAppState, persistentProgressRef, tabs, tab.id]);
+};
 type Kind = 'damage' | 'healing' | 'taken' | 'mitigation';
 
 // A row or ability added up over a slice of the fight.
@@ -1337,6 +1355,16 @@ export const LogsView = () => {
         })),
     [pulls, picked],
   );
+
+  // [RoomFortyRecorder] The tab is named after the pull (or pulls) shown.
+  const titlePull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  let tabTitle: string | undefined;
+  if (boss && comparing.length > 1) {
+    tabTitle = `${boss.encounterName} ×${comparing.length}`;
+  } else if (boss && titlePull) {
+    tabTitle = `${boss.encounterName} #${titlePull.pullNumber}`;
+  }
+  useTabTitle(tabTitle);
 
   if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
   if (!nights) return <p className="text-sm text-foreground">Loading…</p>;

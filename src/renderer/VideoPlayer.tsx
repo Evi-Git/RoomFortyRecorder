@@ -13,6 +13,7 @@ import {
   forwardRef,
   RefObject,
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -68,6 +69,7 @@ import { SpellTimeline as SpellTimelineData } from 'main/types';
 import SpellTimeline from './components/SpellTimeline/SpellTimeline';
 import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
+import { TabContext } from './tabs/tabs';
 
 interface IProps {
   videos: RendererVideo[];
@@ -138,6 +140,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const player3 = useRef<HTMLVideoElement>(null);
   const player4 = useRef<HTMLVideoElement>(null);
   const players = [player1, player2, player3, player4];
+  const { active: tabActive } = useContext(TabContext);
+  const tabActiveRef = useRef(tabActive);
+  tabActiveRef.current = tabActive;
 
   const seekPlayer = (
     player: RefObject<HTMLVideoElement | null>,
@@ -1573,10 +1578,21 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   // Listener for keydown events when the player is open.
+  // [RoomFortyRecorder] Only the showing tab's player takes keys.
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const onKey = (e: KeyboardEvent) => {
+      if (tabActiveRef.current) handleKeyDown(e);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // A hidden tab's recording pauses.
+  useEffect(() => {
+    if (tabActive) return;
+    players.forEach((player) => player.current?.pause());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActive]);
 
   // This hook updates some state to force a re-render on window resize,
   // otherwise resizing the window (and hence the progress bar) causes

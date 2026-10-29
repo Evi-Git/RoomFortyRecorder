@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.92] - Unreleased
+### Added
+- **Tabs, like a browser**, in the title bar. Each tab keeps its place: a recording keeps its position and the Logs page keeps its pulls, tab and drill-down while you look at something else.
+  - Click to watch (Logs, Dashboard) opens the recording in a tab next to the log and switches to it. Watching another moment reuses that tab, so flipping between the log and the VoD is one click.
+  - Ctrl+click or middle-click a sidebar item to open it in a new tab. + (Ctrl+T) opens a new tab; × or middle-click closes one (Ctrl+W).
+  - Ctrl+Tab and Ctrl+Shift+Tab flip between tabs; Ctrl+1–9 jumps. Drag tabs to reorder.
+  - Logs tabs are named after the pull shown (e.g. "Ula'tek #3"), recordings after the boss.
+  - Up to 10 tabs. A hidden tab's recording pauses. Settings, Scene, Instant replay, Watch live and Admin have one tab each.
+
 ## [1.9.91] - Unreleased
 ### Fixed
 - **Clipping in Recordings:** the clip bar no longer runs off the edge. The time, Done and Cancel stay on screen, and the Start, End and playhead labels aren't cut off.

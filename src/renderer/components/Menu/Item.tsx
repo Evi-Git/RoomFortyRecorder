@@ -44,7 +44,18 @@ const Root = ({
       title={rail ? label : undefined}
       data-rail={rail}
       data-active={active}
-      onClick={disabled ? undefined : () => onValueChange(value)}
+      onClick={
+        disabled
+          ? undefined
+          : (e) => onValueChange(value, e.ctrlKey || e.metaKey)
+      }
+      // [RoomFortyRecorder] Middle-click opens in a new tab.
+      onMouseDown={(e) => {
+        if (e.button === 1 && !disabled) e.preventDefault();
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1 && !disabled) onValueChange(value, true);
+      }}
       role="button"
     >
       {children}

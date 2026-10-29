@@ -33,6 +33,10 @@ interface IProps {
   setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
   instantReplayState: InstantReplayState;
   setInstantReplayState: Dispatch<SetStateAction<InstantReplayState>>;
+  /** [RoomFortyRecorder] This tab is showing (see tabs/tabs.ts). */
+  active?: boolean;
+  /** Bumped when Watch reuses this tab, so the recording reloads. */
+  revision?: number;
 }
 
 /**
@@ -54,13 +58,19 @@ const Layout = (props: IProps) => {
     setPreviewEnabled,
     instantReplayState,
     setInstantReplayState,
+    active = true,
+    revision = 0,
   } = props;
   const { page, category } = appState;
+  // Settings, Scene, Instant replay, Watch live and Admin hold one-of-a-kind
+  // things (the OBS preview, the live connection), so they unmount while
+  // their tab is hidden. Recordings, Logs and Dashboard stay mounted.
+  const shown = (p: Pages) => page === p && active;
 
   const renderCategoryPage = () => {
     return (
       <CategoryPage
-        key={category}
+        key={`${category}-${revision}`}
         category={category}
         videoState={videoState}
         setVideoState={setVideoState}
@@ -114,11 +124,11 @@ const Layout = (props: IProps) => {
 
   return (
     <>
-      {page === Pages.Settings && renderSettingsPage()}
-      {page === Pages.SceneEditor && renderSceneEditor()}
-      {page === Pages.InstantReplay && renderInstantReplay()}
-      {page === Pages.Live && <LivePage />}
-      {page === Pages.Admin && <AdminPage />}
+      {shown(Pages.Settings) && renderSettingsPage()}
+      {shown(Pages.SceneEditor) && renderSceneEditor()}
+      {shown(Pages.InstantReplay) && renderInstantReplay()}
+      {shown(Pages.Live) && <LivePage />}
+      {shown(Pages.Admin) && <AdminPage />}
       {page === Pages.Logs && (
         <LogsPage
           videoState={videoState}

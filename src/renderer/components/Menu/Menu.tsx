@@ -30,7 +30,8 @@ const writeFold = (key: string, folded: boolean) => {
 
 type MenuProps = {
   initialValue?: any;
-  onChange: (value: any) => void;
+  /** newTab: Ctrl+click or middle-click (open in a new tab). */
+  onChange: (value: any, newTab?: boolean) => void;
   className?: string;
   /** Section heading; clicking it folds the section away. */
   label?: ReactNode;
@@ -40,7 +41,7 @@ type MenuProps = {
 
 interface MenuContextType {
   currentValue?: any;
-  onValueChange: (newValue: string) => void;
+  onValueChange: (newValue: string, newTab?: boolean) => void;
 }
 
 const MenuContext = React.createContext<MenuContextType>({
@@ -81,9 +82,10 @@ export const Menu = ({
   // In the icon strip every item shows, folded or not.
   const hidden = folded && !rail;
 
-  const onValueChange = (newValue: string) => {
-    setCurrentValue(newValue);
-    onChange(newValue);
+  const onValueChange = (newValue: string, newTab?: boolean) => {
+    // A new tab leaves this tab's selection alone.
+    if (!newTab) setCurrentValue(newValue);
+    onChange(newValue, newTab);
   };
 
   // This is a bit of a janky way to handle it I guess, but it accounts for

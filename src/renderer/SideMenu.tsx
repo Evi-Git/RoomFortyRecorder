@@ -31,6 +31,7 @@ import {
   Dispatch,
   RefObject,
   SetStateAction,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -58,6 +59,7 @@ import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DiagnosticsDialog from './DiagnosticsDialog';
 import { allows, usePermissions } from './usePermissions';
+import { SINGLETON_PAGES, TabsContext } from './tabs/tabs';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -101,6 +103,7 @@ const SideMenu = (props: IProps) => {
     instantReplayState,
     setInstantReplayState,
   } = props;
+  const tabs = useContext(TabsContext);
 
   const [appVersion, setAppVersion] = useState<string>();
   // [RoomFortyRecorder] The sidebar folds down to an icon strip; the page
@@ -383,9 +386,15 @@ const SideMenu = (props: IProps) => {
     </Menu.Item>
   );
 
-  const handleChangeCategory = (value: VideoCategory) => {
+  const handleChangeCategory = (value: VideoCategory, newTab?: boolean) => {
     const index = getCategoryIndex(value);
     setConfigValue('selectedCategory', index);
+
+    if (newTab && tabs) {
+      tabs.openTab({ page: Pages.None, category: value });
+      return;
+    }
+
     persistentProgressRef.current = 0;
 
     setAppState((prevState) => {
@@ -401,12 +410,10 @@ const SideMenu = (props: IProps) => {
     });
   };
 
-  const handleChangePage = (newPage: Pages) => {
-    persistentProgressRef.current = 0;
-
+  const handleChangePage = (newPage: Pages, newTab?: boolean) => {
     if (
       newPage === Pages.InstantReplay &&
-      appState.page !== Pages.InstantReplay
+      (newTab || appState.page !== Pages.InstantReplay)
     ) {
       setInstantReplayState((prev) => {
         return {
@@ -415,6 +422,23 @@ const SideMenu = (props: IProps) => {
         };
       });
     }
+
+    if (newTab && tabs) {
+      tabs.openTab({ page: newPage });
+      return;
+    }
+
+    // [RoomFortyRecorder] Settings, Scene, Instant replay, Watch live and
+    // Admin have one tab at most: go to it if another tab has it.
+    const elsewhere = tabs?.tabs.find(
+      (t) => t.nav.page === newPage && t.id !== tabs.activeId,
+    );
+    if (tabs && elsewhere && SINGLETON_PAGES.has(newPage)) {
+      tabs.activate(elsewhere.id);
+      return;
+    }
+
+    persistentProgressRef.current = 0;
 
     setAppState((prevState) => {
       return {
