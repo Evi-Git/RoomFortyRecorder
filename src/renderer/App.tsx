@@ -7,7 +7,6 @@ import {
   Pages,
   RecStatus,
   SaveStatus,
-  AppState,
   RendererVideo,
   CloudStatus,
   DiskStatus,
@@ -41,6 +40,20 @@ import _ from 'lodash';
 import { playAudio } from './sounds';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import KillVideoProgress from './KillVideoProgress';
+import { MAX_TABS, TabContext, TabsContext, useTabs } from './tabs/tabs';
+import TabStrip from './tabs/TabStrip';
+
+// One stable context value per tab and visibility.
+const tabContexts = new Map<string, { id: string; active: boolean }>();
+const tabContextFor = (id: string, active: boolean) => {
+  const key = `${id}:${active}`;
+  let value = tabContexts.get(key);
+  if (!value) {
+    value = { id, active };
+    tabContexts.set(key, value);
+  }
+  return value;
+};
 
 const ipc = window.electron.ipcRenderer;
 const queryClient = new QueryClient();
@@ -90,61 +103,71 @@ const WarcraftRecorder = () => {
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
 
-  const [appState, setAppState] = useState<AppState>({
-    // Navigation.
-    page: savedPage(),
-    category: getCategoryFromConfig(config),
-    selectedVideos: [],
-    multiPlayerMode: false,
-    viewpointSelectionOpen: false,
+  // [RoomFortyRecorder] Navigation lives per tab (tabs/tabs.ts); appState and
+  // setAppState here are the active tab's.
+  const tabSet = useTabs(
+    {
+      // Navigation.
+      page: savedPage(),
+      category: getCategoryFromConfig(config),
+      selectedVideos: [],
+      multiPlayerMode: false,
+      viewpointSelectionOpen: false,
 
-    // Any text applied in the filter bar gets translated into a filter here.
-    videoFilterTags: [],
+      // Any text applied in the filter bar gets translated into a filter here.
+      videoFilterTags: [],
 
-    // Date range filter.
-    dateRangeFilter: {
-      startDate: null,
-      endDate: null,
+      // Date range filter.
+      dateRangeFilter: {
+        startDate: null,
+        endDate: null,
+      },
+
+      // The storage filter.
+      storageFilter: StorageFilter.BOTH,
+
+      // We use this to conditionally hide the recording preview.
+      videoFullScreen: false,
+
+      // This allows us to retain the playing state of the video when switching viewpoints.
+      playing: false,
+
+      // The language the client is in.
+      language: config.language as Language,
+
+      // The cloud storage status.
+      cloudStatus: {
+        enabled: false,
+        authenticated: false,
+        authorized: false,
+        guild: '',
+        available: [],
+        read: false,
+        write: false,
+        del: false,
+        usage: 0,
+        limit: 0,
+        migrated: false,
+      },
+
+      // The disk storage status.
+      diskStatus: { usage: 0, limit: 0 },
+
+      // The chat panel state.
+      chatOpen: false,
+
+      // The preferred viewpoint for activities with multiple viewpoints.
+      // This is updated when a user switches viewpoint to in the viewpoint
+      // selector to remember their preference when changing rows in the table.
+      preferredViewpoint: '',
     },
-
-    // The storage filter.
-    storageFilter: StorageFilter.BOTH,
-
-    // We use this to conditionally hide the recording preview.
-    videoFullScreen: false,
-
-    // This allows us to retain the playing state of the video when switching viewpoints.
-    playing: false,
-
-    // The language the client is in.
-    language: config.language as Language,
-
-    // The cloud storage status.
-    cloudStatus: {
-      enabled: false,
-      authenticated: false,
-      authorized: false,
-      guild: '',
-      available: [],
-      read: false,
-      write: false,
-      del: false,
-      usage: 0,
-      limit: 0,
-      migrated: false,
-    },
-
-    // The disk storage status.
-    diskStatus: { usage: 0, limit: 0 },
-
-    // The chat panel state.
-    chatOpen: false,
-
-    // The preferred viewpoint for activities with multiple viewpoints.
-    // This is updated when a user switches viewpoint to in the viewpoint
-    // selector to remember their preference when changing rows in the table.
-    preferredViewpoint: '',
-  });
+    () =>
+      toast({
+        title: `Up to ${MAX_TABS} tabs`,
+        description: 'Close a tab to open another.',
+      }),
+  );
+  const { appState, setAppState } = tabSet;
 
   useEffect(() => {
     try {
@@ -189,7 +212,8 @@ const WarcraftRecorder = () => {
   }, [videoState]);
 
   // Used to allow for hot switching of video players when moving between POVs.
-  const persistentProgressRef = useRef(0);
+  // [RoomFortyRecorder] Each tab has its own; this is the active tab's.
+  const persistentProgressRef = tabSet.activeTab.progress;
 
   // Used to remember the player height when switching categories.
   const playerHeightRef = useRef(500);
@@ -517,41 +541,65 @@ const WarcraftRecorder = () => {
           <TooltipProvider>
             <RendererTitleBar />
             <div className="flex flex-row items-center h-full w-full font-sans">
-              <SideMenu
-                recorderStatus={recorderStatus}
-                videoCounters={videoCounters}
-                appState={appState}
-                setAppState={setAppState}
-                persistentProgressRef={persistentProgressRef}
-                error={error}
-                micStatus={micStatus}
-                errorReports={errorReports}
-                savingStatus={savingStatus}
-                config={config}
-                updateAvailable={updateAvailable}
-                recorderCategory={activityStatus?.category}
-                activityStatus={activityStatus}
-                combatLoggingStatus={combatLoggingStatus}
-                setPreviewEnabled={setPreviewEnabled}
-                instantReplayState={instantReplayState}
-                setInstantReplayState={setInstantReplayState}
-              />
-              <Layout
-                recorderStatus={recorderStatus}
-                videoState={videoState}
-                setVideoState={setVideoState}
-                appState={appState}
-                setAppState={setAppState}
-                persistentProgressRef={persistentProgressRef}
-                playerHeightRef={playerHeightRef}
-                config={config}
-                setConfig={setConfig}
-                combatLoggingStatus={combatLoggingStatus}
-                previewEnabled={previewEnabled}
-                setPreviewEnabled={setPreviewEnabled}
-                instantReplayState={instantReplayState}
-                setInstantReplayState={setInstantReplayState}
-              />
+              <TabsContext.Provider value={tabSet.api}>
+                <SideMenu
+                  recorderStatus={recorderStatus}
+                  videoCounters={videoCounters}
+                  appState={appState}
+                  setAppState={setAppState}
+                  persistentProgressRef={persistentProgressRef}
+                  error={error}
+                  micStatus={micStatus}
+                  errorReports={errorReports}
+                  savingStatus={savingStatus}
+                  config={config}
+                  updateAvailable={updateAvailable}
+                  recorderCategory={activityStatus?.category}
+                  activityStatus={activityStatus}
+                  combatLoggingStatus={combatLoggingStatus}
+                  setPreviewEnabled={setPreviewEnabled}
+                  instantReplayState={instantReplayState}
+                  setInstantReplayState={setInstantReplayState}
+                />
+              </TabsContext.Provider>
+              <TabsContext.Provider value={tabSet.api}>
+                <div className="relative flex-1 min-w-0 h-full">
+                  <TabStrip tabs={tabSet.api} />
+                  {tabSet.api.tabs.map((tab) => {
+                    const active = tab.id === tabSet.api.activeId;
+                    return (
+                      <div
+                        key={tab.id}
+                        className="absolute inset-0 flex flex-row"
+                        style={{ display: active ? 'flex' : 'none' }}
+                      >
+                        <TabContext.Provider
+                          value={tabContextFor(tab.id, active)}
+                        >
+                          <Layout
+                            recorderStatus={recorderStatus}
+                            videoState={videoState}
+                            setVideoState={setVideoState}
+                            appState={tabSet.appStateFor(tab)}
+                            setAppState={tabSet.setterFor(tab.id)}
+                            persistentProgressRef={tab.progress}
+                            playerHeightRef={playerHeightRef}
+                            config={config}
+                            setConfig={setConfig}
+                            combatLoggingStatus={combatLoggingStatus}
+                            previewEnabled={previewEnabled}
+                            setPreviewEnabled={setPreviewEnabled}
+                            instantReplayState={instantReplayState}
+                            setInstantReplayState={setInstantReplayState}
+                            active={active}
+                            revision={tab.rev}
+                          />
+                        </TabContext.Provider>
+                      </div>
+                    );
+                  })}
+                </div>
+              </TabsContext.Provider>
             </div>
           </TooltipProvider>
         </QueryClientProvider>

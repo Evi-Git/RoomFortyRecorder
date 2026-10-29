@@ -26,6 +26,7 @@ import SelectAllShortcut from '../Shortcuts/SelectAllShortcut';
 import SelectMultiShortcut from '../Shortcuts/SelectMultiShortcut';
 import SelectRangeShortcut from '../Shortcuts/SelectRangeShortcut';
 import NavigateShortcut from '../Shortcuts/NavigateShortcut';
+import { TabContext } from '../../tabs/tabs';
 
 interface IProps {
   table: ReturnType<typeof useVideoSelectionTable>;
@@ -50,6 +51,8 @@ const VideoSelectionTable = (props: IProps) => {
     preferredViewpoint,
     language,
   } = appState;
+
+  const { active: tabActive } = React.useContext(TabContext);
 
   const { pageIndex, pageSize } = table.state.pagination;
   const selectedRowRef = React.useRef<HTMLTableRowElement>(null);
@@ -190,7 +193,8 @@ const VideoSelectionTable = (props: IProps) => {
       if (event.shiftKey || event.ctrlKey) event.preventDefault();
     };
 
-    if (!dialogOpen) {
+    // [RoomFortyRecorder] Only the showing tab's table takes arrow keys.
+    if (!dialogOpen && tabActive) {
       document.addEventListener('keydown', handleKeyDown);
       document.addEventListener('mousedown', handleMouseDown);
     }
@@ -206,6 +210,7 @@ const VideoSelectionTable = (props: IProps) => {
     dateRangeFilter,
     storageFilter,
     dialogOpen,
+    tabActive,
   ]);
 
   // If we've navigated here programatically (i.e. via the clip source button),
