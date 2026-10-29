@@ -67,6 +67,7 @@ import { VideoCategory } from 'types/VideoCategory';
 import { SpellTimeline as SpellTimelineData } from 'main/types';
 import SpellTimeline from './components/SpellTimeline/SpellTimeline';
 import { BRAND } from 'renderer/brand';
+import { cn } from './components/utils';
 
 interface IProps {
   videos: RendererVideo[];
@@ -449,8 +450,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const getProgressSliderSx = () => {
     return {
       ...sliderBaseSx,
-      m: 2,
-      width: '100%',
+      // [RoomFortyRecorder] Fill the space left in the controls bar instead
+      // of taking 100% of it (the bar's children don't shrink, so 100% pushed
+      // the time and the clip Done/Cancel buttons off the edge).
+      mx: 2,
+      flex: '1 1 0%',
+      minWidth: 120,
+      width: 'auto',
       '& .MuiSlider-markLabel': {
         top: '20px',
       },
@@ -478,8 +484,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const getProgressClipSliderSx = () => {
     return {
       ...sliderBaseSx,
-      m: 2,
-      width: '100%',
+      // [RoomFortyRecorder] Fill the space left in the controls bar instead
+      // of taking 100% of it (the bar's children don't shrink, so 100% pushed
+      // the time and the clip Done/Cancel buttons off the edge).
+      mx: 2,
+      flex: '1 1 0%',
+      minWidth: 120,
+      width: 'auto',
       '& .MuiSlider-thumb': {
         "&[data-index='0']": {
           backgroundColor: 'white',
@@ -1437,8 +1448,15 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     return (
       // [RoomFortyRecorder] Scrolls sideways instead of widening the page
       // when the window is narrow (e.g. with the viewpoints drawer open).
+      // In clip mode the bar is taller and doesn't clip, so the handle labels
+      // (start above, playhead below, end above) stay visible.
       <div
-        className="w-full min-w-0 h-10 flex flex-row justify-start items-center overflow-x-auto overflow-y-hidden bg-background-dark-gradient-to border border-background-dark-gradient-to px-1 py-2 rounded-br-sm [&>*]:shrink-0"
+        className={cn(
+          'w-full min-w-0 flex flex-row justify-start items-center bg-background-dark-gradient-to border border-background-dark-gradient-to px-1 rounded-br-sm [&>*]:shrink-0',
+          clipMode
+            ? 'h-20 py-6 overflow-visible'
+            : 'h-10 py-2 overflow-x-auto overflow-y-hidden',
+        )}
         style={{ scrollbarWidth: 'none' }}
       >
         {renderPlayPause()}
@@ -1680,7 +1698,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
         />
       )}
 
-      <div className="shrink-0" style={{ height: 40 }}>
+      <div className="shrink-0" style={{ height: clipMode ? 80 : 40 }}>
         {renderControls()}
       </div>
     </div>
