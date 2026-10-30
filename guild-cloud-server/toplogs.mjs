@@ -190,6 +190,12 @@ export const cumulative = (events, fightStart, duration) => {
   });
 };
 
+/**
+ * A track with usable amounts. 1.9.96 saved all-zero amounts when Warcraft
+ * Logs answered with no events; those are fetched again.
+ */
+export const hasAmounts = (track) => Boolean(track?.amounts?.length && track.amounts[track.amounts.length - 1] > 0);
+
 export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOfficer = async () => false, fetchImpl, wcl: givenWcl }) => {
   const enabled = String(env.GUILD_CLOUD_TOPLOGS ?? 'on').toLowerCase() !== 'off';
   const dir = path.join(storage, 'toplogs');
@@ -292,7 +298,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   // also their damage or healing second by second.
   const fetchTrack = async (code, fight, name, { amounts = false, metric = 'dps' } = {}) => {
     const old = await readTrack(code, fight, name);
-    if (old && (!amounts || old.amounts)) return old;
+    if (old && (!amounts || hasAmounts(old))) return old;
     let track = old;
     if (!track) {
       const head = await wcl.query(
@@ -350,33 +356,45 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         at: Date.now(),
       };
     }
-    if (amounts && !track.amounts) {
+    if (amounts && !hasAmounts(track)) {
+      // One query per actor (the player, then each pet) with the plain
+      // sourceID argument. 1.9.96 used a filter expression
+      // (`source.id IN (...)`), which came back empty on the real server:
+      // the race chart's "them" line lay flat at zero.
       const ids = [track.playerId, ...(track.pets || [])];
       const events = [];
-      let start = track.fightStart;
       const end = track.fightStart + track.duration * 1000;
       const dataType = metric === 'hps' ? 'Healing' : 'DamageDone';
-      for (let page = 0; page < 20 && start !== null && start !== undefined; page += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        const data = await wcl.query(
-          `query($code: String!, $fight: Int!, $start: Float!, $end: Float!, $filter: String!) { reportData { report(code: $code) {
-            events(fightIDs: [$fight], dataType: ${dataType}, startTime: $start, endTime: $end, limit: 10000, filterExpression: $filter) { data nextPageTimestamp }
-          } } }`,
-          { code, fight: track.fight, start, end, filter: `source.id IN (${ids.join(', ')})` },
-          { quiet: true },
-        );
-        const page_ = data.reportData?.report?.events;
-        (page_?.data || []).forEach((e) => {
-          // Damage done: hits (and their absorbed part) on enemies. Healing:
-          // heals and shields' absorbs; overheal isn't in `amount`.
-          if (dataType === 'DamageDone' && e.type !== 'damage') return;
-          if (dataType === 'Healing' && e.type !== 'heal' && e.type !== 'absorbed') return;
-          // Heals' `absorbed` is healing a heal-absorb ate: not counted.
-          events.push(dataType === 'Healing' ? { timestamp: e.timestamp, amount: e.amount } : e);
-        });
-        start = page_?.nextPageTimestamp ?? null;
+      for (const src of ids) {
+        let start = track.fightStart;
+        for (let page = 0; page < 20 && start !== null && start !== undefined; page += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          const data = await wcl.query(
+            `query($code: String!, $fight: Int!, $src: Int!, $start: Float!, $end: Float!) { reportData { report(code: $code) {
+              events(fightIDs: [$fight], dataType: ${dataType}, sourceID: $src, startTime: $start, endTime: $end, limit: 10000) { data nextPageTimestamp }
+            } } }`,
+            { code, fight: track.fight, src, start, end },
+            { quiet: true },
+          );
+          const page_ = data.reportData?.report?.events;
+          (page_?.data || []).forEach((e) => {
+            // Damage done: hits (and their absorbed part) on enemies. Healing:
+            // heals and shields' absorbs; overheal isn't in `amount`.
+            if (dataType === 'DamageDone' && e.type !== 'damage') return;
+            if (dataType === 'Healing' && e.type !== 'heal' && e.type !== 'absorbed') return;
+            // Heals' `absorbed` is healing a heal-absorb ate: not counted.
+            events.push(dataType === 'Healing' ? { timestamp: e.timestamp, amount: e.amount } : e);
+          });
+          start = page_?.nextPageTimestamp ?? null;
+        }
       }
-      track = { ...track, metric, amounts: cumulative(events, track.fightStart, track.duration) };
+      const sums = cumulative(events, track.fightStart, track.duration);
+      log(`${track.name} (${code} #${track.fight}): ${events.length} ${metric === 'hps' ? 'heals' : 'hits'} from ${ids.length} actor(s)`);
+      // Nothing at all is a fetch problem, not a result: don't keep it.
+      if (!sums[sums.length - 1]) {
+        throw new Error(`Warcraft Logs returned no ${metric === 'hps' ? 'healing' : 'damage'} for ${track.name}`);
+      }
+      track = { ...track, metric, amounts: sums };
     }
     await writeTrack(code, fight, name, track);
     return track;
@@ -571,14 +589,14 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       const metric = q('metric') === 'hps' ? 'hps' : 'dps';
       if (!SAFE_CODE.test(code) || !(fight > 0) || !SAFE_NAME.test(name)) return fail(res, 400, 'Bad trial');
       const have = await readTrack(code, fight, name);
-      if (have?.amounts) return json(res, 200, { state: 'ready', track: have });
+      if (hasAmounts(have)) return json(res, 200, { state: 'ready', track: have });
       const key = `trial:${code}:${fight}:${name.toLowerCase()}`;
       const error = recentlyFailed(key);
       if (error) return json(res, 200, { state: 'failed', error });
       const job = enqueue(key, () => fetchTrack(code, fight, name, { amounts: true, metric }));
       // Answer within a few seconds either way; the app asks again.
       const track = await Promise.race([job, new Promise((r) => setTimeout(() => r(undefined), 8000))]);
-      if (track?.amounts) return json(res, 200, { state: 'ready', track });
+      if (hasAmounts(track)) return json(res, 200, { state: 'ready', track });
       const failedNow = recentlyFailed(key);
       if (failedNow) return json(res, 200, { state: 'failed', error: failedNow });
       return json(res, 200, { state: 'queued' });

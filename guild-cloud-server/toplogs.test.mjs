@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
-import { SPECS, createTopLogs, cumulative, deriveCooldowns, parseRankings, wclDifficulty } from './toplogs.mjs';
+import { SPECS, hasAmounts, createTopLogs, cumulative, deriveCooldowns, parseRankings, wclDifficulty } from './toplogs.mjs';
 
 test('specs: 40, each once, healers ranked by healing', () => {
   assert.equal(SPECS.length, 40);
@@ -73,6 +73,7 @@ test('cumulative: second by second, absorbed counts', () => {
   );
 });
 
+const damageSources = [];
 const fakeWcl = () => {
   const calls = [];
   return {
@@ -131,7 +132,8 @@ const fakeWcl = () => {
           },
         };
       }
-      assert.equal(vars.filter, 'source.id IN (5, 40)');
+      damageSources.push(vars.src);
+      if (vars.src !== 5) return { reportData: { report: { events: { data: [], nextPageTimestamp: null } } } };
       return {
         reportData: {
           report: {
@@ -196,10 +198,53 @@ test('routes: rankings on demand, casts fetched for each row, then a trial with 
   assert.equal(trial.body.track.duration, 300);
   assert.deepEqual(trial.body.track.amounts.slice(0, 4), [120, 120, 170, 170]);
   assert.equal(trial.body.track.phaseNames[2], 'Stage Two');
+  assert.deepEqual(damageSources, [5, 40], 'the player, then their pet, by sourceID');
   const calls = wcl.calls.length;
   await ask('trial', { code: 'AAAAbbbb1111', fight: 4, name: 'Topwar' });
   assert.equal(wcl.calls.length, calls, 'trial kept');
 
   assert.equal((await ask('trial', { code: 'bad', fight: 4, name: 'Topwar' })).status, 400);
   assert.equal((await ask('rankings', { encounterId: 3129 })).status, 400);
+});
+
+test('trial: all-zero amounts are never kept, and old all-zero tracks are fetched again', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'toplogs-'));
+  // A 1.9.96 track saved with all-zero amounts.
+  await fsp.mkdir(path.join(storage, 'toplogs', 'tracks'), { recursive: true });
+  const base = {
+    code: 'EEEEffff3333', fight: 2, name: 'Zerowar', server: '', playerId: 5, pets: [], fightStart: 10000,
+    duration: 300, encounterId: 3129, kill: true, casts: [], phases: [], phaseNames: {}, at: 1,
+  };
+  await fsp.writeFile(
+    path.join(storage, 'toplogs', 'tracks', 'EEEEffff3333-2-zerowar.json'),
+    JSON.stringify({ ...base, metric: 'dps', amounts: new Array(300).fill(0) }),
+  );
+  const wcl = {
+    configured: true,
+    query: async () => ({
+      reportData: {
+        report: {
+          events: {
+            data: [],
+            nextPageTimestamp: null,
+          },
+        },
+      },
+    }),
+  };
+  const r = respond();
+  const top = createTopLogs({ storage, env: {}, json: r.json, fail: r.fail, wcl, season: { zone: async () => null } });
+  const ask = async () => {
+    const url = new URL('http://x/trial?code=EEEEffff3333&fight=2&name=Zerowar');
+    await top.handle({ method: 'GET' }, {}, ['trial'], url);
+    return { ...r.out };
+  };
+  assert.equal(hasAmounts({ amounts: [0, 0] }), false);
+  assert.equal(hasAmounts({ amounts: [0, 5] }), true);
+
+  const failed = await ask();
+  assert.equal(failed.body.state, 'failed');
+  assert.match(failed.body.error, /no damage for Zerowar/);
+  const kept = JSON.parse(await fsp.readFile(path.join(storage, 'toplogs', 'tracks', 'EEEEffff3333-2-zerowar.json'), 'utf8'));
+  assert.equal(hasAmounts(kept), false, 'zeros not written over as a result');
 });
