@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.93] - Unreleased
+### Added
+- **Dashboard: filter pulls by difficulty.** When a night has more than one difficulty (e.g. a heroic group raiding alongside the mythic re-clear), chips above the pull list pick All, Mythic, Heroic, Normal or LFR, with a count on each. Under All, each pull shows an M/H/N/L badge. The choice is remembered.
+
 ## [1.9.92] - Unreleased
 ### Added
 - **Tabs, like a browser**, in the title bar. Each tab keeps its place: a recording keeps its position and the Logs page keeps its pulls, tab and drill-down while you look at something else.

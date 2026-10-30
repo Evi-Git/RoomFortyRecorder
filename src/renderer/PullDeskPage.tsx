@@ -246,6 +246,25 @@ const nightLabel = (night: string) => {
   });
 };
 
+// [RoomFortyRecorder] Difficulty filter for the pull list (a heroic group
+// raiding alongside the mythic one made the list confusing).
+const DIFFICULTY_NAME: Record<number, string> = {
+  14: 'Normal',
+  15: 'Heroic',
+  16: 'Mythic',
+  233: 'Mythic', // flex Mythic (Kith'ix)
+  17: 'LFR',
+};
+const DIFFICULTY_ORDER = ['Mythic', 'Heroic', 'Normal', 'LFR'];
+const DIFFICULTY_BADGE: Record<string, string> = {
+  Mythic: 'text-orange-300 border-orange-300/40',
+  Heroic: 'text-purple-300 border-purple-300/40',
+  Normal: 'text-green-300 border-green-300/40',
+  LFR: 'text-sky-300 border-sky-300/40',
+};
+const difficultyOf = (id: number) => DIFFICULTY_NAME[id] ?? `Difficulty ${id}`;
+const DIFFICULTY_KEY = 'rf-pulldesk-difficulty';
+
 const STATUS_STYLE: Record<PlanStatus, { label: string; className: string }> = {
   ontime: { label: 'On time', className: 'text-green-400' },
   late: { label: 'Late', className: 'text-yellow-400' },
@@ -420,6 +439,13 @@ const PullDeskPage = (props: IProps) => {
   const [loading, setLoading] = React.useState(true);
   const [days, setDays] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [difficulty, setDifficulty] = React.useState<string>(() => {
+    try {
+      return localStorage.getItem(DIFFICULTY_KEY) ?? 'All';
+    } catch {
+      return 'All';
+    }
+  });
   const [report, setReport] = React.useState<Report | null>(null);
   const [reportError, setReportError] = React.useState('');
   const [tab, setTab] = React.useState<'report' | 'boss'>('report');
@@ -693,69 +719,153 @@ const PullDeskPage = (props: IProps) => {
       );
     }
 
-    const nights: string[] = [];
+    // Difficulties in the list, Mythic first. The filter only shows when
+    // there's more than one.
+    const present = DIFFICULTY_ORDER.filter((d) =>
+      pulls.some((pull) => difficultyOf(pull.difficultyId) === d),
+    );
     pulls.forEach((pull) => {
+      const d = difficultyOf(pull.difficultyId);
+      if (!present.includes(d)) present.push(d);
+    });
+    const mixed = present.length > 1;
+    const active = mixed && present.includes(difficulty) ? difficulty : 'All';
+    const shown =
+      active === 'All'
+        ? pulls
+        : pulls.filter((pull) => difficultyOf(pull.difficultyId) === active);
+
+    const pickDifficulty = (next: string) => {
+      setDifficulty(next);
+      try {
+        localStorage.setItem(DIFFICULTY_KEY, next);
+      } catch {
+        // Not remembered.
+      }
+      // Keep a pull selected that the list still shows.
+      const visible =
+        next === 'All'
+          ? pulls
+          : pulls.filter((pull) => difficultyOf(pull.difficultyId) === next);
+      if (visible.length && !visible.some((pull) => pull.id === selectedId)) {
+        setSelectedId(visible[0].id);
+        setExpandedDeath(null);
+        setOpenGroups([]);
+        setReportError('');
+      }
+    };
+
+    const nights: string[] = [];
+    shown.forEach((pull) => {
       if (!nights.includes(pull.night)) nights.push(pull.night);
     });
 
-    return nights.map((night) => (
-      <div key={night} className="mb-2">
-        <div className="px-3 pt-2 pb-1 text-xs font-bold uppercase text-foreground/50">
-          {nightLabel(night)}
-        </div>
-        {pulls
-          .filter((pull) => pull.night === night)
-          .map((pull) => {
-            const selected = pull.id === selectedId;
-            const kill = pull.result === 'kill';
-            return (
-              <button
-                type="button"
-                key={pull.id}
-                onClick={() => {
-                  setSelectedId(pull.id);
-                  setExpandedDeath(null);
-                  setOpenGroups([]);
-                  setReportError('');
-                  setTab('report');
-                }}
-                className={`w-full text-left px-3 py-2 border-l-2 hover:bg-card/60 ${
-                  selected ? 'bg-card border-brand' : 'border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-x-2 text-sm">
-                  <span className="font-bold">#{pull.pullNumber}</span>
-                  <span className="truncate">{pull.encounterName}</span>
-                  <span
-                    className={`ml-auto font-semibold ${
-                      kill ? 'text-green-400' : ''
+    const filter = mixed && (
+      <div
+        role="group"
+        aria-label="Difficulty"
+        className="sticky top-0 z-10 flex flex-wrap gap-1 px-2 py-2 bg-background-higher border-b border-card"
+      >
+        {['All', ...present].map((d) => {
+          const on = d === active;
+          const count =
+            d === 'All'
+              ? pulls.length
+              : pulls.filter((pull) => difficultyOf(pull.difficultyId) === d)
+                  .length;
+          return (
+            <button
+              type="button"
+              key={d}
+              aria-pressed={on}
+              onClick={() => pickDifficulty(d)}
+              className={`h-7 px-2.5 rounded-full text-xs font-semibold border transition-colors ${
+                on
+                  ? 'bg-card border-brand text-foreground-lighter'
+                  : 'border-card text-foreground hover:bg-card/60'
+              }`}
+            >
+              {d} <span className="font-normal opacity-60">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+
+    return (
+      <>
+        {filter}
+        {nights.map((night) => (
+          <div key={night} className="mb-2">
+            <div className="px-3 pt-2 pb-1 text-xs font-bold uppercase text-foreground/50">
+              {nightLabel(night)}
+            </div>
+            {shown
+              .filter((pull) => pull.night === night)
+              .map((pull) => {
+                const selected = pull.id === selectedId;
+                const kill = pull.result === 'kill';
+                return (
+                  <button
+                    type="button"
+                    key={pull.id}
+                    onClick={() => {
+                      setSelectedId(pull.id);
+                      setExpandedDeath(null);
+                      setOpenGroups([]);
+                      setReportError('');
+                      setTab('report');
+                    }}
+                    className={`w-full text-left px-3 py-2 border-l-2 hover:bg-card/60 ${
+                      selected ? 'bg-card border-brand' : 'border-transparent'
                     }`}
                   >
-                    {kill
-                      ? 'Kill'
-                      : pull.status === 'failed'
-                        ? 'Failed'
-                        : `${pull.bossPercent ?? '?'}%`}
-                  </span>
-                </div>
-                <div className="flex gap-x-2 text-xs text-foreground/50">
-                  <span>{mmss(pull.duration)}</span>
-                  {pull.deaths !== null && (
-                    <span className="flex items-center gap-x-[2px]">
-                      <Skull size={11} /> {pull.deaths}
-                    </span>
-                  )}
-                  {pull.plan && pull.plan.missed > 0 && (
-                    <span className="text-red-400">
-                      {pull.plan.missed} missed
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-      </div>
-    ));
+                    <div className="flex items-center gap-x-2 text-sm">
+                      <span className="font-bold">#{pull.pullNumber}</span>
+                      <span className="truncate">{pull.encounterName}</span>
+                      {mixed && active === 'All' && (
+                        <span
+                          title={difficultyOf(pull.difficultyId)}
+                          className={`shrink-0 px-1 rounded border text-[10px] leading-4 font-bold ${
+                            DIFFICULTY_BADGE[difficultyOf(pull.difficultyId)] ??
+                            'border-card'
+                          }`}
+                        >
+                          {difficultyOf(pull.difficultyId).charAt(0)}
+                        </span>
+                      )}
+                      <span
+                        className={`ml-auto font-semibold ${
+                          kill ? 'text-green-400' : ''
+                        }`}
+                      >
+                        {kill
+                          ? 'Kill'
+                          : pull.status === 'failed'
+                            ? 'Failed'
+                            : `${pull.bossPercent ?? '?'}%`}
+                      </span>
+                    </div>
+                    <div className="flex gap-x-2 text-xs text-foreground/50">
+                      <span>{mmss(pull.duration)}</span>
+                      {pull.deaths !== null && (
+                        <span className="flex items-center gap-x-[2px]">
+                          <Skull size={11} /> {pull.deaths}
+                        </span>
+                      )}
+                      {pull.plan && pull.plan.missed > 0 && (
+                        <span className="text-red-400">
+                          {pull.plan.missed} missed
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        ))}
+      </>
+    );
   };
 
   // ---- Report -----------------------------------------------------------------
