@@ -15,6 +15,7 @@ import {
   stripItems,
   stripModes,
   stripSummary,
+  zoneBosses,
 } from './bossStripModel';
 import { difficultyName } from './nightCalendar';
 
@@ -128,7 +129,7 @@ const BossStrip = <B extends StripNightBoss>({
 
   const mode = boss ? difficultyName(boss.difficultyId) : 'Mythic';
   const modes = stripModes(bosses);
-  const items = stripItems(season, bosses, mode);
+  const items = stripItems(zoneBosses(season), bosses, mode);
 
   return (
     <div className="flex items-center gap-x-3 flex-wrap gap-y-2">

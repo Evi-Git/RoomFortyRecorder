@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.97] - Unreleased
+### Fixed
+- **Logs boss strip:** shows only the current raid's bosses. Bosses from other raids (Belo'ren, L'ura) appear only on a night they were pulled, at the end of the strip.
+
 ## [1.9.96] - Unreleased
 ### Added
 - **Top logs** (Analysis → Top logs): Warcraft Logs' top 25 kills for any boss, Heroic or Mythic, and spec, in the style of Lorrgs. Each row shows DPS (HPS for healers), fight length and the spec's **main cooldowns on the fight clock**, with boss phase marks. Pick the boss from its portrait, the spec from a grid of spec icons, and World / US / EU when the server crawls more than one region.

@@ -13,6 +13,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { BossButton, loadSeason, MODE_TEXT } from '../logs/BossStrip';
+import { zoneBosses } from '../logs/bossStripModel';
 import type { SeasonBoss } from '../logs/bossStripModel';
 import SpellIcon from '../logs/SpellIcon';
 import { classColor, compact, mmss } from '../logs/format';
@@ -409,12 +410,7 @@ const TopLogsPage = () => {
   } | null>(null);
 
   React.useEffect(() => {
-    loadSeason().then((list) => {
-      const inZone = list.filter(
-        (b) => (b as SeasonBoss & { inZone?: boolean }).inZone !== false,
-      );
-      setSeason(inZone.length ? inZone : list);
-    });
+    loadSeason().then((list) => setSeason(zoneBosses(list)));
     call<Info>({ action: 'topLogs' }).then((r) => {
       if (r.ok) setInfo(r.data);
       else setInfoError(r.error);
