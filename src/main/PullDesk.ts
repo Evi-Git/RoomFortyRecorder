@@ -66,6 +66,7 @@ export type PullDeskRequest =
   | { action: 'setAvoidable'; encounterId: number; spells: number[] }
   | { action: 'setChannel'; encounterId: number; channelId: string }
   | { action: 'nights' }
+  | { action: 'season' }
   | { action: 'night'; night: string }
   | { action: 'fullLog'; id: string }
   | {
@@ -454,10 +455,15 @@ export default class PullDesk {
 
     const served = await fromServer();
     if (served) return served;
-    for (const url of [
-      `https://render.worldofwarcraft.com/us/icons/56/${name}.jpg`,
-      `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`,
-    ]) {
+    // "wclboss-<encounter ID>" is a boss portrait (Logs page boss strip).
+    const boss = /^wclboss-(\d+)$/.exec(name);
+    const urls = boss
+      ? [`https://assets.rpglogs.com/img/warcraft/bosses/${boss[1]}-icon.jpg`]
+      : [
+          `https://render.worldofwarcraft.com/us/icons/56/${name}.jpg`,
+          `https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`,
+        ];
+    for (const url of urls) {
       try {
         const response = await fetch(url, {
           signal: AbortSignal.timeout(10000),
@@ -698,6 +704,8 @@ export default class PullDesk {
         );
       case 'nights':
         return client.pullDeskRequest('get', '/summary/nights');
+      case 'season':
+        return client.pullDeskRequest('get', '/season');
       case 'night':
         return client.pullDeskRequest(
           'get',

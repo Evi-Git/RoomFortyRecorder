@@ -47,11 +47,18 @@ const cache = new Map<string, AbilityCardData>();
 // Icon images: the app's icon cache first (disk, then the guild server's
 // cache, which can serve an HD pack), sent over IPC as a data: URL, then
 // Blizzard's and Wowhead's servers.
-const ICON_CDNS = [
+const SPELL_CDNS = [
   (icon: string) =>
     `https://render.worldofwarcraft.com/us/icons/56/${icon}.jpg`,
   (icon: string) => `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg`,
 ];
+// "wclboss-<encounter ID>": a boss portrait (the Logs page's boss strip).
+const BOSS_CDNS = [
+  (icon: string) =>
+    `https://assets.rpglogs.com/img/warcraft/bosses/${icon.slice(8)}-icon.jpg`,
+];
+const cdnsFor = (icon: string) =>
+  icon.startsWith('wclboss-') ? BOSS_CDNS : SPELL_CDNS;
 
 // Data URLs from the app (null = it has none), shared by every icon.
 const iconData = new Map<string, string | null>();
@@ -132,7 +139,8 @@ const GameIconInner = ({
     if (appData.url && cdnIndex === 0) src = appData.url;
     else {
       const i = appData.url ? cdnIndex - 1 : cdnIndex;
-      if (i < ICON_CDNS.length) src = ICON_CDNS[i](icon);
+      const cdns = cdnsFor(icon);
+      if (i < cdns.length) src = cdns[i](icon);
     }
   }
 

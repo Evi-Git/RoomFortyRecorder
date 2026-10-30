@@ -19,6 +19,7 @@ import {
 import LogsTrends from './LogsTrends';
 import LogsExplorer, { Watch } from './logs/LogsExplorer';
 import NightPicker from './logs/NightPicker';
+import BossStrip from './logs/BossStrip';
 import type { PullMeta } from './logs/store';
 
 /**
@@ -1222,14 +1223,6 @@ type NightPull = {
   startedAt?: number | null;
 };
 
-const DIFF: Record<number, string> = {
-  14: 'Normal',
-  15: 'Heroic',
-  16: 'Mythic',
-  17: 'LFR',
-  233: 'Mythic',
-};
-
 const pullResult = (p: NightPull) =>
   p.result === 'kill'
     ? 'Kill'
@@ -1393,8 +1386,6 @@ export const LogsView = () => {
         open: (m, name, seconds) => watcher.open(m, name, seconds),
       }
     : null;
-  const field =
-    'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';
   const reset = () => {
     setPullId('');
     setPicked([]);
@@ -1447,23 +1438,16 @@ export const LogsView = () => {
           }}
         />
         {boss && (
-          <label className="flex items-center gap-x-2 text-sm">
-            Boss
-            <select
-              className={field}
-              value={keyOf(boss)}
-              onChange={(e) => {
-                setBossKey(e.target.value);
+          <BossStrip
+            bosses={shownBosses}
+            boss={boss}
+            onPick={(key) => {
+              if (key !== keyOf(boss)) {
+                setBossKey(key);
                 reset();
-              }}
-            >
-              {shownBosses.map((b) => (
-                <option key={keyOf(b)} value={keyOf(b)}>
-                  {b.encounterName} ({DIFF[b.difficultyId] ?? b.difficultyId})
-                </option>
-              ))}
-            </select>
-          </label>
+              }
+            }}
+          />
         )}
         {picked.length > 0 && (
           <span className="flex items-center gap-x-2 text-sm text-foreground">

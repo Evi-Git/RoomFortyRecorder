@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.95] - Unreleased
+### Added
+- **Logs: pick the boss from a strip of boss portraits** instead of the dropdown. Every boss of the raid is shown in raid order; bosses not pulled that night are greyed out, and a green check marks a kill. Hover a boss for its result (Kill or best %) and pull count.
+  - A **Heroic | Mythic** switch next to it changes difficulty and keeps the same boss when it was pulled there. LFR and Normal show up only on nights that have them.
+- **Server:** `/season` lists the raid's bosses in order (from Warcraft Logs, refreshed daily; set the raid with `GUILD_CLOUD_RAID_ZONE`, default The Venomous Abyss), and boss portraits are cached like spell icons (Warcraft Logs' boss icons, else the boss's portrait from Blizzard's journal). Run `update-server.cmd` after publishing; until then the strip shows only that night's bosses, with their initials.
+
 ## [1.9.94] - Unreleased
 ### Added
 - **Logs: a calendar to pick the night.** The Night button shows the night and a short summary (e.g. "Thu, Oct 29 · Mythic 9/10 · Heroic 6/6"); ‹ › step to the previous or next raid night.
