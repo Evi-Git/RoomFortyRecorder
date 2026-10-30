@@ -7,6 +7,10 @@ import {
   nightSummary,
   stepNight,
   weekGrid,
+  daysToCover,
+  multiPick,
+  nightsLabel,
+  recentNights,
 } from '../../renderer/logs/nightCalendar';
 
 const boss = (
@@ -83,5 +87,79 @@ describe('night calendar', () => {
     expect(stepNight(nights, '2026-10-29', 1)).toBeNull();
     expect(stepNight(nights, '2026-10-27', 1, 'Heroic')).toBe('2026-10-28');
     expect(difficultiesOf(nights)).toEqual(['Mythic', 'Heroic']);
+  });
+});
+
+describe('multi-select (Dashboard → Pulls)', () => {
+  const raid = [
+    '2026-10-14',
+    '2026-10-15',
+    '2026-10-21',
+    '2026-10-22',
+    '2026-10-27',
+    '2026-10-29',
+  ];
+  const plain = { range: false, toggle: false };
+
+  it('a click picks one night', () => {
+    expect(
+      multiPick(['2026-10-29'], '2026-10-29', '2026-10-21', plain, raid),
+    ).toEqual(['2026-10-21']);
+  });
+
+  it('Shift-click picks every raid night between, either way round', () => {
+    const range = { range: true, toggle: false };
+    expect(
+      multiPick(['2026-10-29'], '2026-10-29', '2026-10-21', range, raid),
+    ).toEqual(['2026-10-29', '2026-10-27', '2026-10-22', '2026-10-21']);
+    expect(
+      multiPick(['2026-10-15'], '2026-10-15', '2026-10-22', range, raid),
+    ).toEqual(['2026-10-22', '2026-10-21', '2026-10-15']);
+  });
+
+  it('Ctrl-click adds and removes, never leaving none', () => {
+    const toggle = { range: false, toggle: true };
+    const two = multiPick(
+      ['2026-10-29'],
+      '2026-10-29',
+      '2026-10-14',
+      toggle,
+      raid,
+    );
+    expect(two).toEqual(['2026-10-29', '2026-10-14']);
+    expect(multiPick(two, '2026-10-14', '2026-10-29', toggle, raid)).toEqual([
+      '2026-10-14',
+    ]);
+    expect(
+      multiPick(['2026-10-14'], '2026-10-14', '2026-10-14', toggle, raid),
+    ).toEqual(['2026-10-14']);
+  });
+
+  it('Ctrl+Shift adds a range to what is picked', () => {
+    const both = { range: true, toggle: true };
+    expect(
+      multiPick(['2026-10-14'], '2026-10-27', '2026-10-29', both, raid),
+    ).toEqual(['2026-10-29', '2026-10-27', '2026-10-14']);
+  });
+
+  it('recent nights and the label', () => {
+    const nights = raid.map((night) => ({ night, bosses: [] }));
+    expect(recentNights(nights, 7, '2026-10-29')).toEqual([
+      '2026-10-29',
+      '2026-10-27',
+    ]);
+    expect(recentNights(nights, 1, '2026-10-29')).toEqual(['2026-10-29']);
+    expect(nightsLabel(['2026-10-29', '2026-10-21', '2026-10-27'])).toMatch(
+      /^3 nights · Oct 21 – Oct 29$/,
+    );
+  });
+});
+
+describe('daysToCover (Pulls tab: how much history to fetch)', () => {
+  it('covers the oldest picked night plus a day, capped at 120', () => {
+    expect(daysToCover(undefined, '2026-10-30')).toBe(1);
+    expect(daysToCover('2026-10-30', '2026-10-30')).toBe(2);
+    expect(daysToCover('2026-10-27', '2026-10-30')).toBe(5);
+    expect(daysToCover('2025-01-01', '2026-10-30')).toBe(120);
   });
 });

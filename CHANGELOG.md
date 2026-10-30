@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.101] - Unreleased
+### Changed
+- **Dashboard → Pulls: pick nights from the calendar** instead of Tonight / 7 days / 30 days. It opens on the newest raid night and follows a new one when it starts. Click picks one night, **Shift-click** every raid night from the last one clicked, **Ctrl-click** adds or removes one. The calendar keeps quick buttons for the last raid night, last 7 days and last 30 days. Up to 120 days back.
+
 ## [1.9.100] - Unreleased
 ### Changed
 - **Dashboard → Night summary: the Logs page's calendar and boss strip** replace the Night and Boss dropdowns. Pick the night from the pop-out month (or the full calendar), and the boss from its portrait with the Heroic | Mythic switch.

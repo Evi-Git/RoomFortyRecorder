@@ -186,3 +186,71 @@ export const stepNight = (
   }
   return usable.find((d) => d > night) ?? null;
 };
+
+/** How a click picks nights in a multi-select calendar. */
+export type PickMods = { range: boolean; toggle: boolean };
+
+/**
+ * Several nights at once (Dashboard → Pulls): a click picks one night,
+ * Shift-click every raid night from the last clicked one to this one,
+ * Ctrl-click adds or removes one (never leaving none). `raidNights` are the
+ * nights that can be picked. The result is sorted newest first.
+ */
+export const multiPick = (
+  current: string[],
+  anchor: string | null,
+  date: string,
+  mods: PickMods,
+  raidNights: string[],
+) => {
+  let next: string[];
+  if (mods.range && anchor) {
+    const [from, to] = anchor < date ? [anchor, date] : [date, anchor];
+    const span = raidNights.filter((d) => d >= from && d <= to);
+    next = mods.toggle ? [...current, ...span] : span;
+  } else if (mods.toggle) {
+    next = current.includes(date)
+      ? current.filter((d) => d !== date)
+      : [...current, date];
+    if (!next.length) next = [date];
+  } else {
+    next = [date];
+  }
+  return [...new Set(next)].sort().reverse();
+};
+
+/** Raid nights within the last `days` days of `today` (YYYY-MM-DD), newest first. */
+export const recentNights = (
+  nights: CalendarNight[],
+  days: number,
+  today: string,
+) => {
+  const from = addDays(today, -(days - 1));
+  return nights
+    .map((n) => n.night)
+    .filter((d) => d >= from && d <= today)
+    .sort()
+    .reverse();
+};
+
+/** The picker's label for several nights: "3 nights · Oct 21 – Oct 29". */
+export const nightsLabel = (picked: string[]) => {
+  const sorted = [...picked].sort();
+  const short = (key: string) =>
+    parseKey(key).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+  return `${sorted.length} nights · ${short(sorted[0])} – ${short(
+    sorted[sorted.length - 1],
+  )}`;
+};
+
+/** Days of history to ask the server for so `oldest` (YYYY-MM-DD) is in. */
+export const daysToCover = (oldest: string | undefined, today: string) => {
+  if (!oldest) return 1;
+  let days = 1;
+  while (days < 120 && addDays(today, -(days - 1)) > oldest) days += 1;
+  // A night's pulls can run past midnight, and time zones differ: one more.
+  return Math.min(120, days + 1);
+};
