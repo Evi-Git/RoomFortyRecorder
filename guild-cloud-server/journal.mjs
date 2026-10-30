@@ -170,7 +170,7 @@ export const journalAbilities = (journal) => {
   return out;
 };
 
-export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) => {
+export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null, bossName = null }) => {
   const dir = path.join(storage, 'journal');
   const clientId = env.GUILD_CLOUD_BLIZZARD_CLIENT_ID || '';
   const clientSecret = env.GUILD_CLOUD_BLIZZARD_CLIENT_SECRET || '';
@@ -713,22 +713,59 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     }
     return null;
   };
+  // Download one image and keep it under icons/ as <name>.<ext>.
+  const saveFrom = async (url, name) => {
+    try {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) return null;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const ext = imageType(bytes);
+      if (!ext || bytes.length > 2 * 1024 * 1024) return null;
+      await fsp.mkdir(iconDir, { recursive: true });
+      await fsp.writeFile(path.join(iconDir, `${name}.${ext}`), bytes);
+      return { bytes, type: ICON_TYPES[ext] };
+    } catch {
+      return null;
+    }
+  };
   const downloadIcon = async (name) => {
     for (const template of iconSources) {
-      try {
-        const response = await fetchImpl(template.replaceAll('{name}', name), { signal: AbortSignal.timeout(10000) });
-        if (!response.ok) continue;
-        const bytes = Buffer.from(await response.arrayBuffer());
-        const ext = imageType(bytes);
-        if (!ext || bytes.length > 2 * 1024 * 1024) continue;
-        await fsp.mkdir(iconDir, { recursive: true });
-        await fsp.writeFile(path.join(iconDir, `${name}.${ext}`), bytes);
-        return { bytes, type: ICON_TYPES[ext] };
-      } catch {
-        // Try the next source.
-      }
+      // eslint-disable-next-line no-await-in-loop
+      const found = await saveFrom(template.replaceAll('{name}', name), name);
+      if (found) return found;
     }
     return null;
+  };
+
+  // Boss portraits for the Logs page's boss strip, asked for as icon
+  // "wclboss-<encounter ID>": Warcraft Logs' boss icon (the square ones its
+  // zone pages show), else the boss's creature portrait from Blizzard's
+  // journal (needs the Blizzard keys and the boss's name from our pulls).
+  const bossIconSources = [
+    env.GUILD_CLOUD_BOSS_ICON_URL || 'https://assets.rpglogs.com/img/warcraft/bosses/{id}-icon.jpg',
+  ];
+  const downloadBossIcon = async (name, encounterId) => {
+    for (const template of bossIconSources) {
+      // eslint-disable-next-line no-await-in-loop
+      const found = await saveFrom(template.replaceAll('{id}', String(encounterId)), name);
+      if (found) return found;
+    }
+    if (!configured || !bossName) return null;
+    try {
+      const bossTitle = await bossName(encounterId);
+      if (!bossTitle) return null;
+      const journal = await encounter({ name: bossTitle });
+      if (!journal?.journalId) return null;
+      const rawCopy = await readJson(`raw-${journal.journalId}.json`, null);
+      const displayId = (rawCopy?.creatures || []).map((c) => c?.creature_display?.id).find(Boolean);
+      if (!displayId) return null;
+      const media = await api(`/data/wow/media/creature-display/${Number(displayId)}`);
+      const assets = media?.assets || [];
+      const url = (assets.find((a) => a.key === 'zoom') || assets[0])?.value;
+      return url ? saveFrom(url, name) : null;
+    } catch {
+      return null;
+    }
   };
 
   /** An icon image by name: { bytes, type } or null. */
@@ -741,7 +778,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null }) =
     if (!iconFlight.has(name)) {
       iconFlight.set(
         name,
-        downloadIcon(name).then((found) => {
+        (/^wclboss-\d+$/.test(name) ? downloadBossIcon(name, Number(name.slice(8))) : downloadIcon(name)).then((found) => {
           iconFlight.delete(name);
           if (!found) iconMissing.set(name, Date.now());
           return found;

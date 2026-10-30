@@ -407,3 +407,50 @@ test('items: name, quality, slot and icon from Blizzard, kept', async () => {
   await journal.items([271875, 5]);
   assert.equal(calls.length, before);
 });
+
+test('boss icons: Warcraft Logs boss icon first, else the journal creature portrait', async () => {
+  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'journal-'));
+  const JPG = Buffer.from([0xff, 0xd8, 0xff, 7, 8, 9]);
+  const PORTRAIT = Buffer.from([0xff, 0xd8, 0xff, 1, 1, 1]);
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    const u = String(url);
+    calls.push(u);
+    const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
+    if (u.includes('rpglogs.example/3129')) return new Response(JPG, { status: 200 });
+    if (u.includes('rpglogs.example')) return new Response('nope', { status: 404 });
+    if (u.includes('oauth')) return ok({ access_token: 'tok', expires_in: 3600 });
+    if (u.includes('/search/journal-encounter')) return ok({ results: [{ data: { id: 2896, name: { en_US: "Kith'ix" } } }] });
+    if (u.includes('/journal-encounter/2896')) return ok({ ...KITHIX, creatures: [{ id: 1, creature_display: { id: 777 } }] });
+    if (u.includes('/media/creature-display/777')) {
+      assert.equal(init.headers.Authorization, 'Bearer tok');
+      return ok({ assets: [{ key: 'zoom', value: 'https://render.example/creature-display-777-zoom.jpg' }] });
+    }
+    if (u.includes('creature-display-777-zoom')) return new Response(PORTRAIT, { status: 200 });
+    return new Response('nope', { status: 404 });
+  };
+  const journal = createJournal({
+    storage,
+    env: {
+      GUILD_CLOUD_BOSS_ICON_URL: 'https://rpglogs.example/{id}-icon.jpg',
+      GUILD_CLOUD_BLIZZARD_CLIENT_ID: 'id',
+      GUILD_CLOUD_BLIZZARD_CLIENT_SECRET: 'secret',
+    },
+    fetchImpl,
+    bossName: async (id) => (id === 3300 ? "Kith'ix" : null),
+  });
+
+  const wclIcon = await journal.icon('wclboss-3129');
+  assert.deepEqual(wclIcon.bytes, JPG);
+  assert.deepEqual(calls, ['https://rpglogs.example/3129-icon.jpg']);
+
+  const portrait = await journal.icon('wclboss-3300');
+  assert.deepEqual(portrait.bytes, PORTRAIT);
+  assert.ok(calls.some((u) => u.includes('creature-display-777-zoom')));
+  const n = calls.length;
+  await journal.icon('wclboss-3300');
+  assert.equal(calls.length, n, 'cached on disk');
+
+  // Unknown boss, no name: nothing, and not asked again right away.
+  assert.equal(await journal.icon('wclboss-1'), null);
+});

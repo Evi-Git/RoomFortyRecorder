@@ -24,6 +24,7 @@ import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCau
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
+import { createSeason, seasonBosses } from './season.mjs';
 import { createWclCompare } from './pulldesk-wcl-compare.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
@@ -218,7 +219,11 @@ export const createPullDesk = (options) => {
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
   // Warcraft Logs is a last source for spell icons.
-  const journal = options.journal || createJournal({ storage: options.storage, env, wcl });
+  const journal =
+    options.journal || createJournal({ storage: options.storage, env, wcl, bossName: (id) => bossName(id) });
+
+  // The current raid's bosses in raid order (Logs page boss strip).
+  const season = options.season || createSeason({ storage: options.storage, env, wcl });
 
   const trackedDifficulties = new Set(
     String(env.GUILD_CLOUD_PULLDESK_DIFFICULTIES ?? 'mythic')
@@ -1481,6 +1486,15 @@ export const createPullDesk = (options) => {
     }
 
     if (first === 'journal') return handleJournal(req, res, rest, url);
+
+    // The raid's bosses in order; icons come from /journal/icon/wclboss-<id>.
+    if (first === 'season' && req.method === 'GET') {
+      const zone = await season.zone().catch(() => null);
+      return json(res, 200, {
+        zone: zone ? { id: zone.id, name: zone.name } : null,
+        bosses: seasonBosses(zone?.encounters || null, index.pulls),
+      });
+    }
 
     if (first === 'settings' && req.method === 'GET') {
       return json(res, 200, index.settings);
