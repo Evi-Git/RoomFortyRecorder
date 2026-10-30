@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.100] - Unreleased
+### Changed
+- **Dashboard → Night summary: the Logs page's calendar and boss strip** replace the Night and Boss dropdowns. Pick the night from the pop-out month (or the full calendar), and the boss from its portrait with the Heroic | Mythic switch.
+
+### Added
+- **Night summary: leave a raider out**, e.g. a buyer who dies at the start of every pull. Each raider in the Raiders table has a switch. Switching it off leaves them out of the raiders, avoidable damage and consumables widgets for that night; they stay in the table, greyed at the bottom, to switch back on. Remembered per night on this PC. Why pulls ended still counts their deaths.
+
 ## [1.9.99] - Unreleased
 ### Added
 - **Race me: watch our VoD.** The Time trial has a "Watch <raider>'s VoD" button that opens our raider's recording of the compared pull (in this tab's watch tab). **Click the race chart** to start the recording at that moment. If the raider didn't record the pull, it opens someone else's recording and the tooltip says whose. If nobody recorded it, the button is greyed out and the tooltip says so.
