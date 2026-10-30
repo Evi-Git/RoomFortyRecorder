@@ -21,8 +21,12 @@ import {
   groupByDifficulty,
   monthGrid,
   monthName,
+  multiPick,
+  nightsLabel,
   nightSummary,
   parseKey,
+  PickMods,
+  recentNights,
   stepNight,
   weekGrid,
 } from './nightCalendar';
@@ -33,7 +37,21 @@ import {
  * colored by difficulty, filled = killed) with the hovered night's bosses on
  * the right. ⤢ grows it into B: a full-page calendar (Week / Month / Season).
  * Which one opens is remembered per PC.
+ *
+ * With `onPickMany` (Dashboard → Pulls, 1.9.101) it picks several nights:
+ * Shift-click a range, Ctrl-click to add or remove one.
  */
+
+const NO_MODS: PickMods = { range: false, toggle: false };
+const modsOf = (e?: {
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}) => (e ? { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey } : NO_MODS);
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 type Zoom = 'week' | 'month' | 'season';
 type View = 'pop' | 'full';
@@ -234,9 +252,16 @@ type Props = {
   night: string;
   /** Picks a night, and a boss of it (`encounterId:difficultyId`) if given. */
   onPick: (night: string, bossKey?: string) => void;
+  /** Several nights: the picked ones (newest first) and the change. */
+  picked?: string[];
+  onPickMany?: (nights: string[]) => void;
 };
 
-const NightPicker = ({ nights, night, onPick }: Props) => {
+const NightPicker = ({ nights, night, onPick, picked, onPickMany }: Props) => {
+  const multi = Boolean(onPickMany);
+  const chosen = multi ? (picked ?? []) : [night];
+  const isChosen = (date: string) => chosen.includes(date);
+  const anchor = React.useRef<string | null>(null);
   const [view, setViewState] = React.useState<View>(() =>
     stored<View>(VIEW_KEY, ['pop', 'full'], 'pop'),
   );
@@ -297,9 +322,46 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
     setPopOpen(false);
     setFullOpen(false);
   };
-  const pick = (date: string, bossKey?: string) => {
+  const pick = (date: string, bossKey?: string, mods: PickMods = NO_MODS) => {
+    if (multi && onPickMany) {
+      const raidNights = nights
+        .filter((n) => filterBosses(n.bosses, difficulty).length > 0)
+        .map((n) => n.night);
+      const next = multiPick(
+        chosen,
+        // A range starts from the last clicked night, else the newest picked.
+        anchor.current ?? chosen[0] ?? null,
+        date,
+        mods,
+        raidNights,
+      );
+      if (!mods.range) anchor.current = date;
+      // Shift / Ctrl keep the calendar open to pick more.
+      if (!mods.range && !mods.toggle) close();
+      onPickMany(next);
+      return;
+    }
     close();
     onPick(date, bossKey);
+  };
+  const pickRecent = (days: number) => {
+    const list = recentNights(
+      nights.filter((n) => filterBosses(n.bosses, difficulty).length > 0),
+      days,
+      todayKey(),
+    );
+    const next = list.length ? list : nights.slice(0, 1).map((n) => n.night);
+    if (!next.length || !onPickMany) return;
+    anchor.current = next[0];
+    close();
+    onPickMany(next);
+  };
+  const step = (date: string | null) => {
+    if (!date) return;
+    if (multi && onPickMany) {
+      anchor.current = date;
+      onPickMany([date]);
+    } else onPick(date);
   };
 
   // Escape or a click outside closes the popover; Escape closes B too.
@@ -355,7 +417,7 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
       setCursor(next);
     } else if ((e.key === 'Enter' || e.key === ' ') && isRaid(focus)) {
       e.preventDefault();
-      pick(focus);
+      pick(focus, undefined, modsOf(e));
     }
   };
 
@@ -443,11 +505,11 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
                 key={d.date}
                 d={d}
                 bosses={bossesOn(d.date)}
-                selected={d.date === night}
+                selected={isChosen(d.date)}
                 focused={d.date === focus}
                 onHover={() => setHover(d.date)}
                 onFocusDay={() => setFocus(d.date)}
-                onPick={() => pick(d.date)}
+                onPick={(e) => pick(d.date, undefined, modsOf(e))}
               />
             ))}
         </div>
@@ -465,6 +527,7 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
             wipes only
           </span>
         </div>
+        {multi && <Shortcuts onRecent={pickRecent} />}
       </div>
       <div className="flex-1 p-4 min-w-0 max-h-[520px] overflow-y-auto">
         {previewDate ? (
@@ -495,9 +558,18 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
         >
           <CalendarDays size={16} className="text-brand shrink-0" />
           <span className="whitespace-nowrap">
-            {night ? nightLabel(night) : 'Pick a night'}
-            {summary && (
-              <span className="font-normal text-foreground"> · {summary}</span>
+            {chosen.length > 1 ? (
+              nightsLabel(chosen)
+            ) : (
+              <>
+                {night ? nightLabel(night) : 'Pick a night'}
+                {summary && (
+                  <span className="font-normal text-foreground">
+                    {' '}
+                    · {summary}
+                  </span>
+                )}
+              </>
             )}
           </span>
           <ChevronDown size={14} className="shrink-0" />
@@ -508,7 +580,7 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
           title={prev ? nightLabel(prev) : 'No earlier raid night'}
           disabled={!prev}
           className={iconButton}
-          onClick={() => prev && onPick(prev)}
+          onClick={() => step(prev)}
         >
           <ChevronLeft size={16} />
         </button>
@@ -518,7 +590,7 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
           title={next ? nightLabel(next) : 'No later raid night'}
           disabled={!next}
           className={iconButton}
-          onClick={() => next && onPick(next)}
+          onClick={() => step(next)}
         >
           <ChevronRight size={16} />
         </button>
@@ -526,7 +598,8 @@ const NightPicker = ({ nights, night, onPick }: Props) => {
       </div>
       {fullOpen && (
         <FullCalendar
-          night={night}
+          isChosen={isChosen}
+          shortcuts={multi ? <Shortcuts onRecent={pickRecent} /> : null}
           cursor={cursor}
           setCursor={setCursor}
           zoom={zoom}
@@ -565,7 +638,7 @@ const PopDay = ({
   focused: boolean;
   onHover: () => void;
   onFocusDay: () => void;
-  onPick: () => void;
+  onPick: (e: React.MouseEvent) => void;
 }) => {
   const raid = bosses.length > 0;
   const kills = bosses.filter((b) => b.kills > 0).length;
@@ -628,7 +701,8 @@ const zoomLabel = (zoom: Zoom, cursor: string) => {
 
 /** B: a full-page calendar over the Logs page. */
 const FullCalendar = ({
-  night,
+  isChosen,
+  shortcuts,
   cursor,
   setCursor,
   zoom,
@@ -640,7 +714,8 @@ const FullCalendar = ({
   onShrink,
   onClose,
 }: {
-  night: string;
+  isChosen: (date: string) => boolean;
+  shortcuts: React.ReactNode;
   cursor: string;
   setCursor: (c: string) => void;
   zoom: Zoom;
@@ -648,7 +723,7 @@ const FullCalendar = ({
   newest: string;
   bossesOn: (date: string) => CalendarBoss[];
   chips: React.ReactNode;
-  onPick: (date: string, bossKey?: string) => void;
+  onPick: (date: string, bossKey?: string, mods?: PickMods) => void;
   onShrink: () => void;
   onClose: () => void;
 }) => {
@@ -697,8 +772,8 @@ const FullCalendar = ({
                         key={d.date}
                         d={d}
                         bosses={bossesOn(d.date)}
-                        selected={d.date === night}
-                        onPick={() => onPick(d.date)}
+                        selected={isChosen(d.date)}
+                        onPick={(e) => onPick(d.date, undefined, modsOf(e))}
                       />
                     ) : (
                       <span key={d.date} />
@@ -725,10 +800,10 @@ const FullCalendar = ({
               key={d.date}
               d={d}
               bosses={bossesOn(d.date)}
-              selected={d.date === night}
+              selected={isChosen(d.date)}
               limit={zoom === 'week' ? Infinity : 4}
               tall={zoom === 'week'}
-              onPick={(key) => onPick(d.date, key)}
+              onPick={(key, e) => onPick(d.date, key, modsOf(e))}
             />
           ))}
         </div>
@@ -804,6 +879,7 @@ const FullCalendar = ({
           </button>
         </div>
       </div>
+      {shortcuts}
       {body}
     </div>
   );
@@ -823,7 +899,10 @@ const FullDay = ({
   selected: boolean;
   limit: number;
   tall: boolean;
-  onPick: (bossKey?: string) => void;
+  onPick: (
+    bossKey?: string,
+    e?: React.MouseEvent | React.KeyboardEvent,
+  ) => void;
 }) => {
   const raid = bosses.length > 0;
   const rows = groupByDifficulty(bosses).flatMap((g) => g.bosses);
@@ -838,13 +917,13 @@ const FullDay = ({
       aria-label={
         raid ? `${nightLabel(d.date)} · ${nightSummary(bosses)}` : undefined
       }
-      onClick={raid ? () => onPick() : undefined}
+      onClick={raid ? (e) => onPick(undefined, e) : undefined}
       onKeyDown={
         raid
           ? (e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                onPick();
+                onPick(undefined, e);
               }
             }
           : undefined
@@ -910,7 +989,7 @@ const SeasonDay = ({
   d: CalendarDay;
   bosses: CalendarBoss[];
   selected: boolean;
-  onPick: () => void;
+  onPick: (e: React.MouseEvent) => void;
 }) => {
   const raid = bosses.length > 0;
   let tone = 'border-transparent';
@@ -942,5 +1021,30 @@ const SeasonDay = ({
     </button>
   );
 };
+
+/** Multi-select: quick ranges, and how to pick several. */
+const Shortcuts = ({ onRecent }: { onRecent: (days: number) => void }) => (
+  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-3 text-[11px] text-foreground">
+    {(
+      [
+        [1, 'Last raid night'],
+        [7, 'Last 7 days'],
+        [30, 'Last 30 days'],
+      ] as [number, string][]
+    ).map(([days, label]) => (
+      <button
+        key={days}
+        type="button"
+        onClick={() => onRecent(days)}
+        className="px-2 h-7 rounded border border-card text-foreground-lighter hover:bg-card/60"
+      >
+        {label}
+      </button>
+    ))}
+    <span className="ml-1">
+      Shift-click a range · Ctrl-click to add or remove
+    </span>
+  </div>
+);
 
 export default NightPicker;

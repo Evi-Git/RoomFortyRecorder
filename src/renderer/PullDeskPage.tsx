@@ -28,6 +28,8 @@ import AbilityName from './AbilityCard';
 import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
 import PullMeters, { useRecordingWatch, WatchContext } from './Meters';
+import NightPicker from './logs/NightPicker';
+import { CalendarNight, daysToCover, recentNights } from './logs/nightCalendar';
 
 /**
  * [RoomFortyRecorder] Pull desk page: a report for every tracked raid pull,
@@ -199,6 +201,12 @@ interface IProps {
 
 const ipc = window.electron.ipcRenderer;
 const REFRESH_MS = 30000;
+
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // Seconds of video to show before a death or an assignment.
 const WATCH_LEAD_SECONDS = 10;
 // Avoidable hits are short: start the video just before the hit.
@@ -437,7 +445,17 @@ const PullDeskPage = (props: IProps) => {
   const [pulls, setPulls] = React.useState<PullSummary[]>([]);
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(true);
-  const [days, setDays] = React.useState(1);
+  // Which raid nights the Pulls tab lists (newest first); null = the newest
+  // raid night, following a new one as it starts.
+  const [picked, setPicked] = React.useState<string[] | null>(null);
+  const [nightList, setNightList] = React.useState<CalendarNight[]>([]);
+  const shownNights = React.useMemo(
+    () => picked ?? (nightList[0] ? [nightList[0].night] : []),
+    [picked, nightList],
+  );
+  const nightsKey = shownNights.join(',');
+  // A pull opened from a summary stays open even if it's older than the list.
+  const openedRef = React.useRef<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [difficulty, setDifficulty] = React.useState<string>(() => {
     try {
@@ -495,9 +513,11 @@ const PullDeskPage = (props: IProps) => {
 
   // From a summary: open that pull's report in the Pulls view.
   const openPull = (id: string) => {
+    openedRef.current = id;
     setSelectedId(id);
     setTab('report');
-    if (days < 30) setDays(30);
+    const month = recentNights(nightList, 30, todayKey());
+    if (month.length) setPicked(month);
     changeView('pulls');
   };
 
@@ -509,8 +529,14 @@ const PullDeskPage = (props: IProps) => {
   React.useEffect(() => {
     let cancelled = false;
 
-    const fetchList = () =>
-      call<{ pulls: PullSummary[] }>({ action: 'list', days }).then(
+    const wanted = nightsKey ? nightsKey.split(',') : [];
+    const days = daysToCover([...wanted].sort()[0], todayKey());
+    const fetchList = () => {
+      // The calendar's nights too, so a new raid night shows up.
+      call<{ nights: CalendarNight[] }>({ action: 'nights' }).then((r) => {
+        if (!cancelled && r.ok) setNightList(r.data.nights);
+      });
+      return call<{ pulls: PullSummary[] }>({ action: 'list', days }).then(
         (response) => {
           if (cancelled) return;
           setLoading(false);
@@ -519,12 +545,21 @@ const PullDeskPage = (props: IProps) => {
             return;
           }
           setError('');
-          setPulls(response.data.pulls);
-          setSelectedId(
-            (current) => current ?? response.data.pulls[0]?.id ?? null,
+          const list = wanted.length
+            ? response.data.pulls.filter((p) => wanted.includes(p.night))
+            : response.data.pulls;
+          setPulls(list);
+          // Picking other nights moves to their newest pull.
+          setSelectedId((current) =>
+            current &&
+            (current === openedRef.current ||
+              list.some((p) => p.id === current))
+              ? current
+              : (list[0]?.id ?? null),
           );
         },
       );
+    };
 
     fetchList();
     const timer = setInterval(fetchList, REFRESH_MS);
@@ -534,7 +569,7 @@ const PullDeskPage = (props: IProps) => {
       clearInterval(timer);
       unsubscribe?.();
     };
-  }, [days, listTick]);
+  }, [nightsKey, listTick]);
 
   React.useEffect(() => {
     call<{ canEdit: boolean; trackedDifficulties?: string[] }>({
@@ -1803,27 +1838,13 @@ const PullDeskPage = (props: IProps) => {
         </div>
         {view === 'pulls' && (
           <>
-            <Button
-              size="sm"
-              variant={days === 1 ? 'default' : 'outline'}
-              onClick={() => setDays(1)}
-            >
-              Tonight
-            </Button>
-            <Button
-              size="sm"
-              variant={days === 7 ? 'default' : 'outline'}
-              onClick={() => setDays(7)}
-            >
-              7 days
-            </Button>
-            <Button
-              size="sm"
-              variant={days === 30 ? 'default' : 'outline'}
-              onClick={() => setDays(30)}
-            >
-              30 days
-            </Button>
+            <NightPicker
+              nights={nightList}
+              night={shownNights[0] ?? ''}
+              picked={shownNights}
+              onPick={(n) => setPicked([n])}
+              onPickMany={setPicked}
+            />
             <Button size="sm" variant="ghost" onClick={() => loadPulls()}>
               <RefreshCw size={14} />
             </Button>
