@@ -5,6 +5,8 @@ import { Ability, AbilityScope } from './AbilityCard';
 import ConsumablesPanel, { PrepSummary } from './Consumables';
 import { usePermissions } from './usePermissions';
 import MiniSwitch from './components/Switch/MiniSwitch';
+import NightPicker from './logs/NightPicker';
+import BossStrip from './logs/BossStrip';
 import { Button } from './components/Button/Button';
 import {
   guildKey,
@@ -340,9 +342,12 @@ const sortValue = (r: Raider, key: SortKey) => {
 const RaiderTable = ({
   raiders,
   leftOut,
+  onToggle,
 }: {
   raiders: Raider[];
   leftOut?: Set<string>;
+  /** With this, left-out raiders stay listed (greyed, last) with a switch. */
+  onToggle?: (name: string) => void;
 }) => {
   const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({
     key: 'earlyDeaths',
@@ -350,10 +355,12 @@ const RaiderTable = ({
   });
   const [role, setRole] = React.useState('all');
 
+  const out = (r: Raider) => Boolean(leftOut?.has(r.name));
   const rows = raiders
-    .filter((r) => !leftOut?.has(r.name))
+    .filter((r) => onToggle || !out(r))
     .filter((r) => role === 'all' || r.role === role)
     .sort((a, b) => {
+      if (out(a) !== out(b)) return Number(out(a)) - Number(out(b));
       const av = sortValue(a, sort.key);
       const bv = sortValue(b, sort.key);
       const order =
@@ -440,12 +447,29 @@ const RaiderTable = ({
             {rows.map((r) => (
               <tr
                 key={r.name}
-                className="border-b border-card/40 hover:bg-card/30"
+                className={`border-b border-card/40 hover:bg-card/30 ${
+                  out(r) ? 'opacity-40' : ''
+                }`}
               >
                 <td
                   className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
                 >
-                  {r.name}
+                  {onToggle ? (
+                    <span className="inline-flex items-center gap-x-2">
+                      <MiniSwitch
+                        checked={!out(r)}
+                        onChange={() => onToggle(r.name)}
+                        label={
+                          out(r)
+                            ? `Include ${r.name}`
+                            : `Leave ${r.name} out of every widget`
+                        }
+                      />
+                      {r.name}
+                    </span>
+                  ) : (
+                    r.name
+                  )}
                 </td>
                 {cell(r.pulls)}
                 <td
@@ -493,6 +517,8 @@ const RaiderTable = ({
       <p className="text-xs text-foreground mt-2">
         Early deaths are the first 2 deaths of a pull; later ones are usually
         the wipe. Hover a raider&apos;s early deaths to see what killed them.
+        {onToggle &&
+          ' Switch someone off (a buyer, a trial on a carry) to leave them out of the raiders, avoidable damage and consumables widgets. Remembered on this PC.'}
       </p>
     </div>
   );
@@ -789,10 +815,14 @@ const BossNightCard = ({
   boss,
   onOpenPull,
   canEdit,
+  leftOut,
+  onToggle,
 }: {
   boss: BossNight;
   onOpenPull: (id: string) => void;
   canEdit: boolean;
+  leftOut: Set<string>;
+  onToggle: (name: string) => void;
 }) => {
   const [showPulls, setShowPulls] = React.useState(false);
 
@@ -842,13 +872,18 @@ const BossNightCard = ({
             </p>
           </Panel>
           <Panel title="Raiders">
-            <RaiderTable raiders={boss.raiders} />
+            <RaiderTable
+              raiders={boss.raiders}
+              leftOut={leftOut}
+              onToggle={onToggle}
+            />
           </Panel>
         </div>
 
         <AvoidablePanel
           key={`${boss.encounterId}:${boss.difficultyId}`}
           rows={boss.avoidable}
+          leftOut={leftOut}
         />
 
         {boss.consumables !== undefined && (
@@ -856,6 +891,7 @@ const BossNightCard = ({
             <ConsumablesPanel
               summary={boss.consumables}
               scope={`This night · ${boss.pulls} ${boss.pulls === 1 ? 'pull' : 'pulls'}`}
+              leftOut={leftOut}
             />
           </Panel>
         )}
@@ -943,6 +979,24 @@ const BossNightCard = ({
   );
 };
 
+/** Raiders left out of Night summary, per night (this PC only). */
+const NIGHT_LEFT_OUT_KEY = 'rf-pulldesk-night-leftout';
+const loadNightLeftOut = (): Record<string, string[]> => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NIGHT_LEFT_OUT_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+const saveNightLeftOut = (value: Record<string, string[]>) => {
+  try {
+    localStorage.setItem(NIGHT_LEFT_OUT_KEY, JSON.stringify(value));
+  } catch {
+    // Not remembered.
+  }
+};
+
 export const NightSummaryView = ({
   onOpenPull,
   canEdit = false,
@@ -959,6 +1013,27 @@ export const NightSummaryView = ({
   // The night the shown bosses belong to; differs while a new one loads.
   const [loadedNight, setLoadedNight] = React.useState('');
   const loading = night !== loadedNight;
+  // Raiders left out of this night's widgets (a buyer, say), per PC.
+  const [leftOutByNight, setLeftOutByNight] =
+    React.useState<Record<string, string[]>>(loadNightLeftOut);
+  const leftOutList = React.useMemo(
+    () => leftOutByNight[night] ?? [],
+    [leftOutByNight, night],
+  );
+  const leftOut = React.useMemo(() => new Set(leftOutList), [leftOutList]);
+  const toggleRaider = (name: string) => {
+    setLeftOutByNight((prev) => {
+      const own = prev[night] ?? [];
+      const nextOwn = own.includes(name)
+        ? own.filter((n) => n !== name)
+        : [...own, name];
+      const next = { ...prev };
+      if (nextOwn.length) next[night] = nextOwn;
+      else delete next[night];
+      saveNightLeftOut(next);
+      return next;
+    });
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1003,8 +1078,8 @@ export const NightSummaryView = ({
   if (!nights.length) {
     return (
       <p className="text-sm text-foreground">
-        No pulls yet. Once raiders have &quot;Send my Logs&quot; on, each
-        raid night shows up here.
+        No pulls yet. Once raiders have &quot;Send my Logs&quot; on, each raid
+        night shows up here.
       </p>
     );
   }
@@ -1025,42 +1100,21 @@ export const NightSummaryView = ({
 
   return (
     <div className="flex flex-col gap-y-4">
-      <div className="flex items-center gap-x-3 flex-wrap">
-        <label className="flex items-center gap-x-2 text-sm">
-          Night
-          <select
-            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
-            value={night}
-            onChange={(e) => setNight(e.target.value)}
-          >
-            {nights.map((n) => (
-              <option key={n.night} value={n.night}>
-                {nightLabel(n.night)} ·{' '}
-                {n.bosses.map((b) => b.encounterName).join(', ')}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="flex items-center gap-x-3 flex-wrap gap-y-2">
+        <NightPicker
+          nights={nights}
+          night={night}
+          onPick={(n, key) => {
+            if (n !== night) setNight(n);
+            if (key) setBossChoice(key);
+          }}
+        />
         {bosses && bosses.length > 0 && (
-          <label className="flex items-center gap-x-2 text-sm">
-            Boss
-            <select
-              className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
-              value={shownKey}
-              onChange={(e) => setBossChoice(e.target.value)}
-            >
-              {bosses.map((b) => (
-                <option
-                  key={bossKey(b.encounterId, b.difficultyId)}
-                  value={bossKey(b.encounterId, b.difficultyId)}
-                >
-                  {b.encounterName} ({difficultyName(b.difficultyId)}) ·{' '}
-                  {b.pulls} {b.pulls === 1 ? 'pull' : 'pulls'}
-                  {b.kills ? ' · killed' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+          <BossStrip
+            bosses={bosses}
+            boss={shown}
+            onPick={(key) => setBossChoice(key)}
+          />
         )}
         <span className="text-sm text-foreground">
           Night: {totalPulls} {totalPulls === 1 ? 'pull' : 'pulls'} ·{' '}
@@ -1068,6 +1122,28 @@ export const NightSummaryView = ({
         </span>
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
+      {leftOutList.length > 0 && (
+        <div className="flex items-center gap-x-2 flex-wrap gap-y-1 text-xs text-foreground">
+          <span>Left out this night:</span>
+          {leftOutList.map((name) => (
+            <span
+              key={name}
+              className="inline-flex items-center gap-x-1.5 rounded border border-card px-1.5 py-0.5 text-foreground-lighter"
+            >
+              <MiniSwitch
+                checked={false}
+                onChange={() => toggleRaider(name)}
+                label={`Include ${name}`}
+              />
+              {name}
+            </span>
+          ))}
+          <span>
+            Not counted in raiders, avoidable damage or consumables. Why pulls
+            ended still counts their deaths.
+          </span>
+        </div>
+      )}
 
       <div
         className={`flex flex-col gap-y-8 transition-opacity ${
@@ -1080,6 +1156,8 @@ export const NightSummaryView = ({
             boss={shown}
             onOpenPull={onOpenPull}
             canEdit={canEdit}
+            leftOut={leftOut}
+            onToggle={toggleRaider}
           />
         )}
         {!bosses && <p className="text-sm text-foreground">Loading…</p>}
@@ -2943,12 +3021,12 @@ export const UploadFromLog = ({
         </Button>
       </div>
       <p className="text-xs text-foreground">
-        The app does this by itself: with &quot;Send my Logs&quot; on, it
-        checks your finished combat logs from the last week every half hour and
-        sends any pulls the server doesn&apos;t have. Use this to send a
-        specific file now: pick it, scan, and upload. Each pull gets the full
-        report at its real time; pulls the server already has are skipped. Boss
-        % comes from your recordings where there is one.
+        The app does this by itself: with &quot;Send my Logs&quot; on, it checks
+        your finished combat logs from the last week every half hour and sends
+        any pulls the server doesn&apos;t have. Use this to send a specific file
+        now: pick it, scan, and upload. Each pull gets the full report at its
+        real time; pulls the server already has are skipped. Boss % comes from
+        your recordings where there is one.
       </p>
       {status?.lastAuto && !status.running && (
         <p className="text-xs text-foreground">
