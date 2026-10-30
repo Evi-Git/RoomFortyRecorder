@@ -361,3 +361,39 @@ export const summarizeProgression = (pulls) => {
     trend: Object.values(trend),
   };
 };
+
+/**
+ * [RoomFortyRecorder] Raid nights, newest first, with each boss tried that
+ * night: pulls, kills, when it first died, and the best (lowest) boss % of
+ * its wipes (null when no wipe has a %). The Logs page's night picker shows
+ * "Kill" or that best %.
+ */
+export const listNights = (pulls) => {
+  const nights = new Map();
+  pulls.forEach((pull) => {
+    const night = nights.get(pull.night) || new Map();
+    const key = `${pull.encounterId}:${pull.difficultyId}`;
+    const boss = night.get(key) || {
+      encounterId: pull.encounterId,
+      encounterName: pull.encounterName,
+      difficultyId: pull.difficultyId,
+      pulls: 0,
+      kills: 0,
+      bestPercent: null,
+    };
+    boss.pulls += 1;
+    if (pull.result === 'kill') {
+      boss.kills += 1;
+      // When it first died that night (orders bosses by first kill).
+      boss.firstKillAt = Math.min(boss.firstKillAt ?? Infinity, pull.startedAt || pull.createdAt || Infinity);
+    } else if (pull.bossPercent !== null && pull.bossPercent !== undefined && Number.isFinite(Number(pull.bossPercent))) {
+      const pct = Number(pull.bossPercent);
+      boss.bestPercent = boss.bestPercent === null ? pct : Math.min(boss.bestPercent, pct);
+    }
+    night.set(key, boss);
+    nights.set(pull.night, night);
+  });
+  return [...nights.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([night, bosses]) => ({ night, bosses: [...bosses.values()] }));
+};

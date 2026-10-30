@@ -20,7 +20,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
-import { abilityStats, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
+import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
@@ -1745,31 +1745,7 @@ export const createPullDesk = (options) => {
     if (first === 'summary' && req.method === 'GET') {
       const counted = countedPulls();
       if (second === 'nights') {
-        const nights = new Map();
-        counted.forEach((pull) => {
-          const night = nights.get(pull.night) || new Map();
-          const key = `${pull.encounterId}:${pull.difficultyId}`;
-          const boss = night.get(key) || {
-            encounterId: pull.encounterId,
-            encounterName: pull.encounterName,
-            difficultyId: pull.difficultyId,
-            pulls: 0,
-            kills: 0,
-          };
-          boss.pulls += 1;
-          if (pull.result === 'kill') {
-            boss.kills += 1;
-            // When it first died that night (orders bosses by first kill).
-            boss.firstKillAt = Math.min(boss.firstKillAt ?? Infinity, pull.startedAt || pull.createdAt || Infinity);
-          }
-          night.set(key, boss);
-          nights.set(pull.night, night);
-        });
-        return json(res, 200, {
-          nights: [...nights.entries()]
-            .sort((a, b) => b[0].localeCompare(a[0]))
-            .map(([night, bosses]) => ({ night, bosses: [...bosses.values()] })),
-        });
+        return json(res, 200, { nights: listNights(counted) });
       }
       if (second === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(third || '')) {
         const data = await cached(`night:${third}`, async () =>

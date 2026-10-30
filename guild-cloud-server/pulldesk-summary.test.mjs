@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { abilityStats, summarizeNight, summarizeProgression, summarizePulls, wipeCause } from './pulldesk-summary.mjs';
+import { abilityStats, listNights, summarizeNight, summarizeProgression, summarizePulls, wipeCause } from './pulldesk-summary.mjs';
 
 const pull = (night, n, result, pct, deaths = [], extra = {}) => ({
   summary: { id: `${night}-${n}`, encounterId: 3429, encounterName: 'The Coiled Altar', difficultyId: 16, night, pullNumber: n, totalPullNumber: n, result, bossPercent: pct, duration: 200, startedAt: Date.parse(`${night}T20:00:00Z`) + n * 300000 },
@@ -141,4 +141,25 @@ test('progression ends at the first kill per difficulty; the rest are reclears',
   const before = splitAtFirstKill(pulls, true);
   assert.equal(before.progression.length, 0);
   assert.equal(before.reclear.length, 7);
+});
+
+test('nights list: newest first, kills, best wipe %', () => {
+  const s = (night, encounterId, difficultyId, result, bossPercent) => ({ night, encounterId, encounterName: `Boss ${encounterId}`, difficultyId, result, bossPercent, startedAt: 1 });
+  const nights = listNights([
+    s('2026-10-27', 1, 16, 'wipe', 40),
+    s('2026-10-29', 1, 16, 'wipe', 30),
+    s('2026-10-29', 1, 16, 'wipe', 12.5),
+    s('2026-10-29', 1, 16, 'wipe', null),
+    s('2026-10-29', 2, 16, 'kill', 0),
+    s('2026-10-29', 2, 15, 'wipe', null),
+  ]);
+  assert.deepEqual(nights.map((n) => n.night), ['2026-10-29', '2026-10-27']);
+  const [wipes, kill, heroic] = nights[0].bosses;
+  assert.equal(wipes.pulls, 3);
+  assert.equal(wipes.kills, 0);
+  assert.equal(wipes.bestPercent, 12.5);
+  assert.equal(kill.kills, 1);
+  assert.equal(kill.bestPercent, null);
+  assert.equal(heroic.difficultyId, 15);
+  assert.equal(heroic.bestPercent, null);
 });
