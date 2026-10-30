@@ -16,6 +16,7 @@ import InstantReplay from './InstantReplay';
 import LivePage from './LivePage';
 import AdminPage from './AdminPage';
 import { LogsPage } from './Meters';
+import TopLogsPage from './toplogs/TopLogsPage';
 import PullDeskPage from './PullDeskPage';
 
 interface IProps {
@@ -136,6 +137,7 @@ const Layout = (props: IProps) => {
           persistentProgressRef={persistentProgressRef}
         />
       )}
+      {page === Pages.TopLogs && <TopLogsPage />}
       {page === Pages.PullDesk && (
         <PullDeskPage
           videoState={videoState}

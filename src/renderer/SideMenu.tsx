@@ -11,6 +11,7 @@ import {
   Play,
   Radio,
   ScrollText,
+  Trophy,
   ShieldCheck,
   Square,
   Swords,
@@ -243,6 +244,18 @@ const SideMenu = (props: IProps) => {
           <ScrollText size={18} />
         </Menu.Item.Icon>
         <span>Logs</span>
+      </span>
+    </Menu.Item>
+  );
+
+  // [RoomFortyRecorder] Warcraft Logs' top 25 per spec, and Time trial.
+  const renderTopLogsTab = () => (
+    <Menu.Item value={Pages.TopLogs} label="Top logs">
+      <span className="inline-flex items-center w-full">
+        <Menu.Item.Icon>
+          <Trophy size={18} />
+        </Menu.Item.Icon>
+        <span>Top logs</span>
       </span>
     </Menu.Item>
   );
@@ -498,7 +511,8 @@ const SideMenu = (props: IProps) => {
                 className="mt-5"
                 initialValue={
                   appState.page === Pages.PullDesk ||
-                  appState.page === Pages.Logs
+                  appState.page === Pages.Logs ||
+                  appState.page === Pages.TopLogs
                     ? appState.page
                     : false
                 }
@@ -508,6 +522,7 @@ const SideMenu = (props: IProps) => {
               >
                 {renderPullDeskTab()}
                 {renderLogsTab()}
+                {renderTopLogsTab()}
               </Menu>
             )}
           </>

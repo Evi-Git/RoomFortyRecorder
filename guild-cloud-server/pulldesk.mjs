@@ -25,6 +25,7 @@ import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
 import { createSeason, seasonBosses } from './season.mjs';
+import { createTopLogs } from './toplogs.mjs';
 import { createWclCompare } from './pulldesk-wcl-compare.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
@@ -351,6 +352,12 @@ export const createPullDesk = (options) => {
     const names = await memberRoleNames(req.cloudUserId);
     return Boolean(names?.some((name) => editorRoles.includes(name)));
   };
+
+  // Top logs: Warcraft Logs' top 25 per spec and the Time trial tracks.
+  const topLogs =
+    options.topLogs ||
+    createTopLogs({ storage: options.storage, env, json, fail, readBody, season, isOfficer: (req) => canEdit(req) });
+  if (!options.noTimers) topLogs.start();
 
   const summaryOf = (pull) => ({
     id: pull.id,
@@ -1486,6 +1493,25 @@ export const createPullDesk = (options) => {
     }
 
     if (first === 'journal') return handleJournal(req, res, rest, url);
+
+    // Top logs and Time trial (see toplogs.mjs).
+    if (first === 'toplogs') {
+      if (!(await canView(req))) return fail(res, 403, 'Your Discord role cannot see Analysis');
+      // Our own pulls with a full log on one boss and difficulty ("you" in
+      // Time trial): kills first, newest first.
+      if (second === 'ours' && req.method === 'GET') {
+        const encounterId = Number(url?.searchParams.get('encounterId'));
+        const mythic = (d) => (d === 233 ? 16 : d);
+        const difficultyId = mythic(Number(url?.searchParams.get('difficulty')) || 16);
+        const pulls = countedPulls()
+          .filter((p) => p.encounterId === encounterId && mythic(p.difficultyId) === difficultyId && p.hasFull && p.source !== 'wcl')
+          .sort((a, b) => (b.result === 'kill') - (a.result === 'kill') || (b.startedAt || b.createdAt) - (a.startedAt || a.createdAt))
+          .slice(0, 80)
+          .map(summaryOf);
+        return json(res, 200, { pulls });
+      }
+      return topLogs.handle(req, res, rest.slice(1), url);
+    }
 
     // The raid's bosses in order; icons come from /journal/icon/wclboss-<id>.
     if (first === 'season' && req.method === 'GET') {

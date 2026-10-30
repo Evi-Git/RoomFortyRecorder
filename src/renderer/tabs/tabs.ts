@@ -16,7 +16,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { AppState, Pages, RendererVideo, StorageFilter } from '../../main/types';
+import {
+  AppState,
+  Pages,
+  RendererVideo,
+  StorageFilter,
+} from '../../main/types';
 import { VideoCategory } from '../../types/VideoCategory';
 
 export const NAV_KEYS = [
@@ -176,6 +181,8 @@ export const tabLabel = (tab: Tab): string => {
   switch (nav.page) {
     case Pages.Logs:
       return 'Logs';
+    case Pages.TopLogs:
+      return 'Top logs';
     case Pages.PullDesk:
       return 'Dashboard';
     case Pages.Live:

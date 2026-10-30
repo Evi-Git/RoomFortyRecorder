@@ -353,6 +353,7 @@ enum Pages {
   'PullDesk',
   'Admin',
   'Logs',
+  'TopLogs',
 }
 
 /**

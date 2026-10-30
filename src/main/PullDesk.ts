@@ -67,6 +67,23 @@ export type PullDeskRequest =
   | { action: 'setChannel'; encounterId: number; channelId: string }
   | { action: 'nights' }
   | { action: 'season' }
+  | { action: 'topLogs' }
+  | {
+      action: 'topRankings';
+      encounterId: number;
+      difficultyId: number;
+      specId: number;
+      region?: string;
+    }
+  | {
+      action: 'topTrial';
+      code: string;
+      fight: number;
+      name: string;
+      metric: 'dps' | 'hps';
+    }
+  | { action: 'topCrawl' }
+  | { action: 'topOurs'; encounterId: number; difficultyId: number }
   | { action: 'night'; night: string }
   | { action: 'fullLog'; id: string }
   | {
@@ -706,6 +723,41 @@ export default class PullDesk {
         return client.pullDeskRequest('get', '/summary/nights');
       case 'season':
         return client.pullDeskRequest('get', '/season');
+      case 'topLogs':
+        return client.pullDeskRequest('get', '/toplogs');
+      case 'topRankings':
+        return client.pullDeskRequest(
+          'get',
+          `/toplogs/rankings?${new URLSearchParams({
+            encounterId: String(id(request.encounterId)),
+            difficulty: String(id(request.difficultyId)),
+            specId: String(id(request.specId)),
+            region: String(request.region ?? ''),
+          }).toString()}`,
+          undefined,
+          { timeout: 60000 },
+        );
+      case 'topTrial':
+        return client.pullDeskRequest(
+          'get',
+          `/toplogs/trial?${new URLSearchParams({
+            code: String(request.code),
+            fight: String(id(request.fight)),
+            name: String(request.name),
+            metric: request.metric === 'hps' ? 'hps' : 'dps',
+          }).toString()}`,
+          undefined,
+          { timeout: 30000 },
+        );
+      case 'topCrawl':
+        return client.pullDeskRequest('post', '/toplogs/crawl', {});
+      case 'topOurs':
+        return client.pullDeskRequest(
+          'get',
+          `/toplogs/ours?encounterId=${id(request.encounterId)}&difficulty=${id(
+            request.difficultyId,
+          )}`,
+        );
       case 'night':
         return client.pullDeskRequest(
           'get',
