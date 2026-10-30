@@ -4,6 +4,7 @@ import {
   stripItems,
   stripModes,
   stripSummary,
+  zoneBosses,
 } from '../../renderer/logs/bossStripModel';
 
 const season = [
@@ -100,5 +101,41 @@ describe('boss strip', () => {
     expect(stripSummary({ ...night[3], pulls: 1 })).toBe('1 pull');
     expect(initials('The Coiled Altar')).toBe('CA');
     expect(initials("Kith'ix")).toBe('K');
+  });
+});
+
+describe('zoneBosses', () => {
+  it("drops bosses from other raids, which show only on nights they're pulled", () => {
+    const list = [
+      ...season,
+      { encounterId: 50, name: "Belo'ren", inZone: false },
+      { encounterId: 51, name: "L'ura", inZone: false },
+    ];
+    const zone = zoneBosses(list);
+    const tonight = night.filter((b) => b.encounterId !== 9);
+    expect(zone.map((b) => b.encounterId)).toEqual([1, 2, 3]);
+    // Not pulled this night: not on the strip.
+    expect(
+      stripItems(zone, tonight, 'Mythic').map((i) => i.encounterId),
+    ).toEqual([1, 2, 3]);
+    // Pulled this night: added at the end.
+    const withOld = [
+      ...tonight,
+      {
+        encounterId: 50,
+        encounterName: "Belo'ren",
+        difficultyId: 16,
+        pulls: 1,
+        kills: 1,
+      },
+    ];
+    expect(
+      stripItems(zone, withOld, 'Mythic').map((i) => i.encounterId),
+    ).toEqual([1, 2, 3, 50]);
+  });
+
+  it('keeps everything when the server has no raid list', () => {
+    const list = [{ encounterId: 50, name: "Belo'ren", inZone: false }];
+    expect(zoneBosses(list)).toEqual(list);
   });
 });

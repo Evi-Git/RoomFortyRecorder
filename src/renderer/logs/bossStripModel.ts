@@ -5,7 +5,23 @@
  */
 import { difficultyName } from './nightCalendar';
 
-export type SeasonBoss = { encounterId: number; name: string };
+export type SeasonBoss = {
+  encounterId: number;
+  name: string;
+  /** False for a boss we only know from old pulls (another raid). */
+  inZone?: boolean;
+};
+
+/**
+ * The current raid's bosses only. The server also lists every other boss we
+ * ever pulled (older raids, world bosses) so nothing goes missing; those show
+ * on the strip only on a night they were pulled (see stripItems). If the
+ * server doesn't know the raid, everything it listed is kept.
+ */
+export const zoneBosses = (list: SeasonBoss[]) => {
+  const inZone = list.filter((b) => b.inZone !== false);
+  return inZone.length ? inZone : list;
+};
 
 export type StripNightBoss = {
   encounterId: number;
