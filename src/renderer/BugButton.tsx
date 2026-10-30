@@ -19,6 +19,7 @@ const PAGE_NAMES: Record<number, string> = {
   [Pages.PullDesk]: 'Dashboard',
   [Pages.Admin]: 'Admin',
   [Pages.Logs]: 'Logs',
+  [Pages.TopLogs]: 'Top logs',
 };
 
 const MAX = 1500;

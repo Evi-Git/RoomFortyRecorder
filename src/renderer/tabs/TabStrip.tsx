@@ -14,6 +14,7 @@ import {
   Plus,
   Radio,
   ScrollText,
+  Trophy,
   Settings,
   ShieldCheck,
   Swords,
@@ -32,6 +33,8 @@ const tabIcon = (tab: Tab) => {
   switch (tab.nav.page) {
     case Pages.Logs:
       return <ScrollText size={ICON} />;
+    case Pages.TopLogs:
+      return <Trophy size={ICON} />;
     case Pages.PullDesk:
       return <LayoutDashboard size={ICON} />;
     case Pages.Live:

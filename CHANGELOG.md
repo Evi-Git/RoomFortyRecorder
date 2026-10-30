@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.96] - Unreleased
+### Added
+- **Top logs** (Analysis → Top logs): Warcraft Logs' top 25 kills for any boss, Heroic or Mythic, and spec, in the style of Lorrgs. Each row shows DPS (HPS for healers), fight length and the spec's **main cooldowns on the fight clock**, with boss phase marks. Pick the boss from its portrait, the spec from a grid of spec icons, and World / US / EU when the server crawls more than one region.
+  - **Main cooldowns come from the data**, not a hand-made list: abilities most of the top 25 press, at least ~45 s apart. Click one to hide or show it.
+  - **Open log** opens that kill on Warcraft Logs.
+- **Race me (Time trial):** race a top log with any raider's pull of the same boss and difficulty (kills first). The raider you pick is remembered on your PC.
+  - Race chart: both players' damage (or healing) adding up over the fight, with the **gap** below (green when you're ahead).
+  - Main cooldown lanes, you vs them.
+  - **Where the time went:** the stretches where they pulled ahead, cooldowns pressed later, fewer times or not at all, and the overall pace. Click a line to mark that moment on the charts.
+- **Server:** fetches the rankings once a day with the Warcraft Logs API keys the recruiting page uses (at most 85% of the hourly points), and each top player's casts and damage the first time someone opens them, kept for good. Settings in `.env`: `GUILD_CLOUD_TOPLOGS_DIFFICULTIES` (default mythic,heroic), `GUILD_CLOUD_TOPLOGS_REGIONS` (default world), `GUILD_CLOUD_TOPLOGS_HOUR` (default 5). Run `update-server.cmd` after publishing.
+
 ## [1.9.95] - Unreleased
 ### Added
 - **Logs: pick the boss from a strip of boss portraits** instead of the dropdown. Every boss of the raid is shown in raid order; bosses not pulled that night are greyed out, and a green check marks a kill. Hover a boss for its result (Kill or best %) and pull count.

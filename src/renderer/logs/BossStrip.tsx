@@ -23,7 +23,7 @@ const ipc = window.electron.ipcRenderer;
 // The season list, once per app window (every tab shares it).
 let seasonCache: SeasonBoss[] | null = null;
 let seasonFlight: Promise<SeasonBoss[]> | null = null;
-const loadSeason = () => {
+export const loadSeason = () => {
   if (seasonCache) return Promise.resolve(seasonCache);
   seasonFlight ??= (
     ipc.invoke('pullDesk', [{ action: 'season' }]) as Promise<
@@ -41,7 +41,59 @@ const loadSeason = () => {
   return seasonFlight;
 };
 
-const MODE_TEXT: Record<string, string> = {
+/** One boss portrait (Logs page strip, Top logs). */
+export const BossButton = ({
+  encounterId,
+  name,
+  title,
+  picked,
+  enabled,
+  killed = false,
+  onClick,
+}: {
+  encounterId: number;
+  name: string;
+  title: string;
+  picked: boolean;
+  enabled: boolean;
+  killed?: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    role="option"
+    aria-selected={picked}
+    aria-label={name}
+    title={title}
+    disabled={!enabled}
+    onClick={onClick}
+    className={`relative h-11 w-11 shrink-0 rounded-md overflow-hidden bg-card transition ${
+      picked
+        ? 'ring-2 ring-white'
+        : enabled
+          ? 'ring-1 ring-background hover:ring-foreground hover:brightness-110'
+          : 'opacity-30 grayscale cursor-default'
+    }`}
+  >
+    <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-foreground">
+      {initials(name)}
+    </span>
+    <GameIcon
+      icon={`wclboss-${encounterId}`}
+      className="absolute inset-0 h-full w-full object-cover"
+    />
+    {killed && (
+      <span
+        className="absolute bottom-0 right-0 rounded-tl bg-green-600 p-px"
+        title="Killed this night"
+      >
+        <Check size={10} className="text-white" strokeWidth={3} />
+      </span>
+    )}
+  </button>
+);
+
+export const MODE_TEXT: Record<string, string> = {
   Mythic: 'text-orange-300',
   Heroic: 'text-purple-300',
   Normal: 'text-green-300',
@@ -89,39 +141,16 @@ const BossStrip = <B extends StripNightBoss>({
             ? `${item.name} — ${stripSummary(item.boss)}`
             : `${item.name} — not pulled this night on ${mode}`;
           return (
-            <button
+            <BossButton
               key={item.encounterId}
-              type="button"
-              role="option"
-              aria-selected={Boolean(picked)}
-              aria-label={item.name}
+              encounterId={item.encounterId}
+              name={item.name}
               title={title}
-              disabled={!item.boss}
+              picked={picked}
+              enabled={Boolean(item.boss)}
+              killed={Boolean(item.boss && item.boss.kills > 0)}
               onClick={() => item.boss && onPick(bossKey(item.boss))}
-              className={`relative h-11 w-11 shrink-0 rounded-md overflow-hidden bg-card transition ${
-                picked
-                  ? 'ring-2 ring-white'
-                  : item.boss
-                    ? 'ring-1 ring-background hover:ring-foreground hover:brightness-110'
-                    : 'opacity-30 grayscale cursor-default'
-              }`}
-            >
-              <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-foreground">
-                {initials(item.name)}
-              </span>
-              <GameIcon
-                icon={`wclboss-${item.encounterId}`}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              {item.boss && item.boss.kills > 0 && (
-                <span
-                  className="absolute bottom-0 right-0 rounded-tl bg-green-600 p-px"
-                  title="Killed this night"
-                >
-                  <Check size={10} className="text-white" strokeWidth={3} />
-                </span>
-              )}
-            </button>
+            />
           );
         })}
       </div>
