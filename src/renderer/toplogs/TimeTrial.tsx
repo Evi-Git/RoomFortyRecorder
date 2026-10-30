@@ -4,7 +4,9 @@
  * as lanes (you vs them), and "where the time went".
  */
 import React from 'react';
-import { Timer } from 'lucide-react';
+import { Play, Timer } from 'lucide-react';
+import { Tooltip } from '../components/Tooltip/Tooltip';
+import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
 import type { PullMeta } from '../logs/store';
 import SpellIcon from '../logs/SpellIcon';
@@ -17,6 +19,7 @@ import {
   ourTrack,
   raidersOf,
   Track,
+  vodInfo,
 } from './trial';
 import { call, RankRow, specTitle, ticks, useSpellNames } from './shared';
 
@@ -55,11 +58,14 @@ const RaceChart = ({
   them,
   marker,
   setMarker,
+  onWatch,
 }: {
   you: Track;
   them: Track;
   marker: number | null;
   setMarker: (t: number | null) => void;
+  /** Click: open our raider's recording there. */
+  onWatch?: (t: number) => void;
 }) => {
   const max = Math.max(you.duration, them.duration, 1);
   const top = Math.max(
@@ -132,6 +138,10 @@ const RaceChart = ({
         className="relative cursor-crosshair"
         onMouseMove={move}
         onMouseLeave={() => setMarker(null)}
+        onClick={() => {
+          if (onWatch && marker !== null) onWatch(marker);
+        }}
+        title={onWatch ? 'Click to watch our VoD from here' : undefined}
       >
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -452,6 +462,23 @@ const TimeTrial = ({
       // Not remembered.
     }
   };
+  // Our raider's recording of the pull (else anyone's who recorded it).
+  const watcher = React.useContext(WatchContext);
+  const pullRef =
+    pull && pull.startedAt
+      ? {
+          encounterId: pull.encounterId,
+          difficultyId: pull.difficultyId,
+          startedAt: pull.startedAt,
+        }
+      : null;
+  const vod = vodInfo(
+    watcher && pullRef ? watcher.owner(pullRef, me?.name ?? null) : null,
+    me?.name ?? '',
+  );
+  const watch = (t: number) => {
+    if (watcher && pullRef) watcher.open(pullRef, me?.name ?? null, t);
+  };
   const field =
     'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';
   const loadingPct = pull ? load.progress[pull.id] : undefined;
@@ -505,6 +532,21 @@ const TimeTrial = ({
             </select>
           </label>
         )}
+        {pull && (
+          <Tooltip content={vod.tip} side="bottom" maxWidth={260}>
+            <span className="inline-flex">
+              <button
+                type="button"
+                disabled={vod.owner === null}
+                onClick={() => watch(0)}
+                className="flex items-center gap-x-1.5 h-8 px-3 rounded border text-sm border-brand text-foreground-lighter hover:bg-brand/10 disabled:border-card disabled:text-foreground disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <Play size={14} className="text-brand" />
+                {vod.label}
+              </button>
+            </span>
+          </Tooltip>
+        )}
         {me && me.specId !== specId && (
           <span className="text-xs text-yellow-400">
             {me.name} played {specTitle(me.specId)} that pull.
@@ -545,6 +587,7 @@ const TimeTrial = ({
             them={track}
             marker={marker}
             setMarker={setMarker}
+            onWatch={vod.owner !== null ? watch : undefined}
           />
           <div>
             <div className="text-sm font-semibold mb-2">Main cooldowns</div>

@@ -137,7 +137,13 @@ const Layout = (props: IProps) => {
           persistentProgressRef={persistentProgressRef}
         />
       )}
-      {page === Pages.TopLogs && <TopLogsPage />}
+      {page === Pages.TopLogs && (
+        <TopLogsPage
+          videoState={videoState}
+          setAppState={setAppState}
+          persistentProgressRef={persistentProgressRef}
+        />
+      )}
       {page === Pages.PullDesk && (
         <PullDeskPage
           videoState={videoState}

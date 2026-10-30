@@ -3,7 +3,9 @@
  * boss, difficulty and spec, Lorrgs-style, with the spec's main cooldowns on
  * the fight clock; Race me opens a Time trial against any raider's pull.
  */
-import React from 'react';
+import React, { Dispatch, RefObject, SetStateAction } from 'react';
+import { AppState, RendererVideo } from 'main/types';
+import { useRecordingWatch, WatchContext } from '../Meters';
 import {
   ArrowLeft,
   ChevronDown,
@@ -391,7 +393,21 @@ const RankingsGrid = ({
   );
 };
 
-const TopLogsPage = () => {
+const TopLogsPage = ({
+  videoState,
+  setAppState,
+  persistentProgressRef,
+}: {
+  videoState: RendererVideo[];
+  setAppState: Dispatch<SetStateAction<AppState>>;
+  persistentProgressRef: RefObject<number>;
+}) => {
+  // Opens our raiders' recordings from the Time trial (in this tab's watch tab).
+  const watcher = useRecordingWatch(
+    videoState,
+    setAppState,
+    persistentProgressRef,
+  );
   const [season, setSeason] = React.useState<SeasonBoss[] | null>(null);
   const [info, setInfo] = React.useState<Info | null>(null);
   const [infoError, setInfoError] = React.useState('');
@@ -451,124 +467,128 @@ const TopLogsPage = () => {
   };
 
   return (
-    <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
-      <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap gap-y-2">
-        {race ? (
-          <button
-            type="button"
-            onClick={() => setRace(null)}
-            className="flex items-center gap-x-1 text-sm text-foreground-lighter hover:text-brand"
-          >
-            <ArrowLeft size={16} /> Top logs
-          </button>
-        ) : (
-          <span className="font-display text-lg font-bold mr-1">Top logs</span>
-        )}
-        <div className="flex items-center gap-x-1.5" role="listbox">
-          {(season ?? []).map((b) => (
-            <BossButton
-              key={b.encounterId}
-              encounterId={b.encounterId}
-              name={b.name}
-              title={b.name}
-              picked={b.encounterId === choice.encounterId}
-              enabled
-              onClick={() => set({ encounterId: b.encounterId })}
-            />
-          ))}
-        </div>
-        <div className="flex rounded-lg border border-card bg-background/60 p-0.5">
-          {(
-            [
-              [15, 'Heroic'],
-              [16, 'Mythic'],
-            ] as [number, string][]
-          ).map(([id, label]) => (
+    <WatchContext.Provider value={watcher}>
+      <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
+        <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap gap-y-2">
+          {race ? (
             <button
-              key={id}
               type="button"
-              onClick={() => set({ difficultyId: id })}
-              className={`rounded-md px-3 py-1 text-sm font-medium ${
-                choice.difficultyId === id
-                  ? `bg-card ${MODE_TEXT[label]}`
-                  : 'text-foreground hover:text-foreground-lighter'
-              }`}
+              onClick={() => setRace(null)}
+              className="flex items-center gap-x-1 text-sm text-foreground-lighter hover:text-brand"
             >
-              {label}
+              <ArrowLeft size={16} /> Top logs
             </button>
-          ))}
-        </div>
-        <SpecPicker
-          specId={choice.specId}
-          onPick={(id) => set({ specId: id })}
-        />
-        {regions.length > 1 && (
+          ) : (
+            <span className="font-display text-lg font-bold mr-1">
+              Top logs
+            </span>
+          )}
+          <div className="flex items-center gap-x-1.5" role="listbox">
+            {(season ?? []).map((b) => (
+              <BossButton
+                key={b.encounterId}
+                encounterId={b.encounterId}
+                name={b.name}
+                title={b.name}
+                picked={b.encounterId === choice.encounterId}
+                enabled
+                onClick={() => set({ encounterId: b.encounterId })}
+              />
+            ))}
+          </div>
           <div className="flex rounded-lg border border-card bg-background/60 p-0.5">
-            {regions.map((r) => (
+            {(
+              [
+                [15, 'Heroic'],
+                [16, 'Mythic'],
+              ] as [number, string][]
+            ).map(([id, label]) => (
               <button
-                key={r}
+                key={id}
                 type="button"
-                onClick={() => set({ region: r })}
-                className={`rounded-md px-3 py-1 text-sm ${
-                  choice.region === r
-                    ? 'bg-card text-foreground-lighter'
+                onClick={() => set({ difficultyId: id })}
+                className={`rounded-md px-3 py-1 text-sm font-medium ${
+                  choice.difficultyId === id
+                    ? `bg-card ${MODE_TEXT[label]}`
                     : 'text-foreground hover:text-foreground-lighter'
                 }`}
               >
-                {r === 'world' ? 'World' : r}
+                {label}
               </button>
             ))}
           </div>
-        )}
-        {info?.status.running && (
-          <span className="flex items-center gap-x-1 text-xs text-foreground">
-            <RefreshCw size={12} className="animate-spin" /> Daily crawl{' '}
-            {info.status.done}/{info.status.total}
-          </span>
-        )}
+          <SpecPicker
+            specId={choice.specId}
+            onPick={(id) => set({ specId: id })}
+          />
+          {regions.length > 1 && (
+            <div className="flex rounded-lg border border-card bg-background/60 p-0.5">
+              {regions.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => set({ region: r })}
+                  className={`rounded-md px-3 py-1 text-sm ${
+                    choice.region === r
+                      ? 'bg-card text-foreground-lighter'
+                      : 'text-foreground hover:text-foreground-lighter'
+                  }`}
+                >
+                  {r === 'world' ? 'World' : r}
+                </button>
+              ))}
+            </div>
+          )}
+          {info?.status.running && (
+            <span className="flex items-center gap-x-1 text-xs text-foreground">
+              <RefreshCw size={12} className="animate-spin" /> Daily crawl{' '}
+              {info.status.done}/{info.status.total}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {infoError && (
+            <p className="text-sm text-red-400">
+              {/Unknown API route/.test(infoError)
+                ? 'Top logs need the 1.9.96 guild server: run update-server.cmd.'
+                : infoError}
+            </p>
+          )}
+          {info && !info.configured && (
+            <p className="text-sm text-foreground">
+              Top logs need the Warcraft Logs API keys in the server&apos;s .env
+              (the same ones the recruiting page uses).
+            </p>
+          )}
+          {!infoError && info?.configured && season && !season.length && (
+            <p className="text-sm text-foreground flex items-center gap-x-2">
+              <Flag size={14} /> No raid bosses yet: set GUILD_CLOUD_RAID_ZONE
+              in the server&apos;s .env.
+            </p>
+          )}
+          {!infoError &&
+            info?.configured &&
+            choice.encounterId > 0 &&
+            (race ? (
+              <TimeTrial
+                them={race.row}
+                specId={race.data.specId}
+                metric={race.data.metric}
+                cooldowns={race.data.cooldowns}
+                encounterId={race.data.encounterId}
+                difficultyId={race.data.difficultyId}
+                bossName={boss?.name ?? ''}
+              />
+            ) : (
+              <RankingsGrid
+                key={`${choice.encounterId}:${choice.difficultyId}:${choice.specId}:${choice.region}`}
+                choice={choice}
+                onRace={(row, data) => setRace({ row, data })}
+              />
+            ))}
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        {infoError && (
-          <p className="text-sm text-red-400">
-            {/Unknown API route/.test(infoError)
-              ? 'Top logs need the 1.9.96 guild server: run update-server.cmd.'
-              : infoError}
-          </p>
-        )}
-        {info && !info.configured && (
-          <p className="text-sm text-foreground">
-            Top logs need the Warcraft Logs API keys in the server&apos;s .env
-            (the same ones the recruiting page uses).
-          </p>
-        )}
-        {!infoError && info?.configured && season && !season.length && (
-          <p className="text-sm text-foreground flex items-center gap-x-2">
-            <Flag size={14} /> No raid bosses yet: set GUILD_CLOUD_RAID_ZONE in
-            the server&apos;s .env.
-          </p>
-        )}
-        {!infoError &&
-          info?.configured &&
-          choice.encounterId > 0 &&
-          (race ? (
-            <TimeTrial
-              them={race.row}
-              specId={race.data.specId}
-              metric={race.data.metric}
-              cooldowns={race.data.cooldowns}
-              encounterId={race.data.encounterId}
-              difficultyId={race.data.difficultyId}
-              bossName={boss?.name ?? ''}
-            />
-          ) : (
-            <RankingsGrid
-              key={`${choice.encounterId}:${choice.difficultyId}:${choice.specId}:${choice.region}`}
-              choice={choice}
-              onRace={(row, data) => setRace({ row, data })}
-            />
-          ))}
-      </div>
-    </div>
+    </WatchContext.Provider>
   );
 };
 

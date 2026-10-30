@@ -5,6 +5,7 @@ import {
   rate,
   wclUrl,
   Track,
+  vodInfo,
 } from '../../renderer/toplogs/trial';
 
 const track = (
@@ -81,5 +82,25 @@ describe('time trial math', () => {
     expect(wclUrl('AbCd1234', 7, 'hps')).toBe(
       'https://www.warcraftlogs.com/reports/AbCd1234#fight=7&type=healing',
     );
+  });
+});
+
+describe('vodInfo (Race me: our VoD button)', () => {
+  it("names the raider when it's their recording", () => {
+    const v = vodInfo('Jawnathanx', 'Jawnathanx');
+    expect(v.label).toBe("Watch Jawnathanx's VoD");
+    expect(v.tip).toMatch(/Click the race chart/);
+  });
+  it("falls back to someone else's recording and says so", () => {
+    const v = vodInfo('Puzzlebox', 'Jawnathanx');
+    expect(v.label).toBe('Watch our VoD');
+    expect(v.tip).toMatch(
+      /Jawnathanx has no recording of this pull; opens Puzzlebox's/,
+    );
+  });
+  it('greys out with a reason when nobody recorded the pull', () => {
+    const v = vodInfo(null, 'Jawnathanx');
+    expect(v.owner).toBeNull();
+    expect(v.tip).toMatch(/No recording of this pull/);
   });
 });
