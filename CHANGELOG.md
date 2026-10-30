@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.99] - Unreleased
+### Added
+- **Race me: watch our VoD.** The Time trial has a "Watch <raider>'s VoD" button that opens our raider's recording of the compared pull (in this tab's watch tab). **Click the race chart** to start the recording at that moment. If the raider didn't record the pull, it opens someone else's recording and the tooltip says whose. If nobody recorded it, the button is greyed out and the tooltip says so.
+
 ## [1.9.98] - Unreleased
 ### Fixed
 - **Time trial: the top player's line was flat at zero** (only your line showed, and the gap was just your damage). The server now asks Warcraft Logs for their damage (or healing) one actor at a time, the player and then each pet. An empty answer is reported as an error instead of being saved, and tracks already saved with all zeros are fetched again. Run `update-server.cmd` after publishing. The server's Top logs log (`GET pulldesk/toplogs`) shows how many hits each fetch got.

@@ -87,6 +87,8 @@ type Watcher = {
   /** Opens a raider's recording (anyone's if null) `seconds` into the pull. */
   open: (pull: PullRef, name: string | null, seconds: number) => boolean;
   has: (pull: PullRef, name: string | null) => boolean;
+  /** Whose recording `open` would pick (theirs, else anyone's), or null if none. */
+  owner: (pull: PullRef, name: string | null) => string | null;
 };
 
 const WATCH_LEAD_SECONDS = 5;
@@ -129,6 +131,10 @@ export const useRecordingWatch = (
     };
     return {
       has: (pull, name) => Boolean(find(pull, name) ?? find(pull, null)),
+      owner: (pull, name) => {
+        const video = find(pull, name) ?? find(pull, null);
+        return video ? (video.player?._name ?? '') : null;
+      },
       open: (pull, name, seconds) => {
         // Their recording, else anyone's.
         const video = find(pull, name) ?? find(pull, null);

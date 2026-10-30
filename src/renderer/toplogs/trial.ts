@@ -191,3 +191,22 @@ export const wclUrl = (code: string, fight: number, metric: 'dps' | 'hps') =>
   `https://www.warcraftlogs.com/reports/${encodeURIComponent(code)}#fight=${fight}&type=${
     metric === 'hps' ? 'healing' : 'damage-done'
   }`;
+
+/** The VoD button's label and tooltip, from whose recording would open. */
+export const vodInfo = (owner: string | null, raider: string) => {
+  if (owner === null) {
+    return {
+      owner,
+      label: 'Our VoD',
+      tip: 'No recording of this pull, on this PC or in the guild cloud.',
+    };
+  }
+  const theirs = !owner || owner === raider;
+  return {
+    owner,
+    label: theirs && raider ? `Watch ${raider}'s VoD` : 'Watch our VoD',
+    tip: theirs
+      ? 'Opens the recording of this pull. Click the race chart to start at that moment.'
+      : `${raider || 'This raider'} has no recording of this pull; opens ${owner}'s. Click the race chart to start at that moment.`,
+  };
+};
