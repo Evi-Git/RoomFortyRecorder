@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.94] - Unreleased
+### Added
+- **Logs: a calendar to pick the night.** The Night button shows the night and a short summary (e.g. "Thu, Oct 29 · Mythic 9/10 · Heroic 6/6"); ‹ › step to the previous or next raid night.
+  - Clicking it opens a month calendar. Each raid night has a square per boss, colored by difficulty: filled = killed, outline = wipes only. Hover or arrow-key over a day to see its bosses on the right with pulls and the result (Kill or best %); click a boss to open it, or a day to open that night. Chips filter by difficulty. Esc or a click outside closes it.
+  - ⤢ grows it into a full-page calendar: each day lists its bosses with a difficulty dot and result. Week, Month and Season zoom, Tonight, and ⤡ to shrink back. Which one opens is remembered on your PC.
+- **Server:** the nights list now includes each boss's best wipe % that night. Run `update-server.cmd` after publishing; until then the calendar shows the pull count instead.
+
 ## [1.9.93] - Unreleased
 ### Added
 - **Dashboard: filter pulls by difficulty.** When a night has more than one difficulty (e.g. a heroic group raiding alongside the mythic re-clear), chips above the pull list pick All, Mythic, Heroic, Normal or LFR, with a count on each. Under All, each pull shows an M/H/N/L badge. The choice is remembered.

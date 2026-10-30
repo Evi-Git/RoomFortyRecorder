@@ -18,6 +18,7 @@ import {
 } from './LogsTimeline';
 import LogsTrends from './LogsTrends';
 import LogsExplorer, { Watch } from './logs/LogsExplorer';
+import NightPicker from './logs/NightPicker';
 import type { PullMeta } from './logs/store';
 
 /**
@@ -1205,6 +1206,9 @@ type NightBoss = {
   difficultyId: number;
   pulls: number;
   kills: number;
+  /** Best (lowest) boss % of the night's wipes; from the 1.9.94 server. */
+  bestPercent?: number | null;
+  firstKillAt?: number;
 };
 type NightPull = {
   id: string;
@@ -1225,13 +1229,6 @@ const DIFF: Record<number, string> = {
   17: 'LFR',
   233: 'Mythic',
 };
-
-const nightName = (night: string) =>
-  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
 
 const pullResult = (p: NightPull) =>
   p.result === 'kill'
@@ -1436,26 +1433,19 @@ export const LogsView = () => {
   };
 
   return (
-    <div className="flex flex-col gap-y-4">
+    <div className="relative flex flex-col gap-y-4">
       <div className="flex items-center gap-x-3 flex-wrap">
-        <label className="flex items-center gap-x-2 text-sm">
-          Night
-          <select
-            className={field}
-            value={night}
-            onChange={(e) => {
-              setNight(e.target.value);
+        <NightPicker
+          nights={nights}
+          night={night}
+          onPick={(n, key) => {
+            if (n !== night || key) {
+              setNight(n);
+              if (key) setBossKey(key);
               reset();
-            }}
-          >
-            {nights.map((n) => (
-              <option key={n.night} value={n.night}>
-                {nightName(n.night)} ·{' '}
-                {n.bosses.map((b) => b.encounterName).join(', ')}
-              </option>
-            ))}
-          </select>
-        </label>
+            }
+          }}
+        />
         {boss && (
           <label className="flex items-center gap-x-2 text-sm">
             Boss
