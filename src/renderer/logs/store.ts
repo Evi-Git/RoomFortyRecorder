@@ -353,6 +353,8 @@ export class StoreBuilder {
   private units: Unit[] = [];
 
   private unitIndex = new Map<string, number>();
+  /** GUIDs only ever written as "Unknown" so far. */
+  private unnamed = new Set<string>();
 
   private spells: Spell[] = [];
 
@@ -477,8 +479,13 @@ export class StoreBuilder {
     this.cap *= 2;
   }
 
-  private unit(guid: string, name: string, flags: number, t = 0) {
+  private unit(guid: string, rawName: string, flags: number, t = 0) {
     if (!guid || guid === NO_GUID) return -1;
+    // The game writes "Unknown" for a unit it hasn't named yet (a pet
+    // summoned before the pull): a name seen later on any line wins.
+    const unknown = rawName === 'Unknown' || rawName === 'nil';
+    const name = unknown ? '' : rawName;
+    if (unknown) this.unnamed.add(guid);
     let i = this.unitIndex.get(guid);
     if (i === undefined) {
       i = this.units.length;
@@ -842,6 +849,21 @@ export class StoreBuilder {
       }
       u.root = root;
       if (u.owner >= 0) u.friendly = units[root].friendly || u.friendly;
+    });
+    // Pets never named in this pull (summoned before it, only ever
+    // "Unknown"): the name of the same creature of the same owner, else
+    // what summoned it, as Warcraft Logs does (1.9.106).
+    const named = new Map<string, string>();
+    units.forEach((u) => {
+      if (u.owner >= 0 && u.name && u.npcId)
+        named.set(`${u.root}:${u.npcId}`, u.name);
+    });
+    units.forEach((u) => {
+      if (u.name) return;
+      if (u.owner >= 0)
+        u.name =
+          named.get(`${u.root}:${u.npcId}`) || u.summon?.name || 'Unknown';
+      else if (this.unnamed.has(u.guid)) u.name = 'Unknown';
     });
 
     const n = this.n;

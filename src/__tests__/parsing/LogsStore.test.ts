@@ -268,3 +268,87 @@ test("Lightspire Core's beam isn't a cast (matched by name)", () => {
   expect(p.spells[p.sp[i]].name).toBe('Lightspire Core');
   expect(p.f[i] & F.PROC).toBe(F.PROC);
 });
+
+test('pets nest the way Warcraft Logs nests them (1.9.106)', () => {
+  const { groupAbilities } = require('../../renderer/logs/query');
+  const row = (
+    spellId: number,
+    name: string,
+    by: string,
+    summon?: { id: number; name: string },
+  ) => ({
+    key: `${spellId}|${by}${summon ? `@${summon.id}` : ''}`,
+    spellId,
+    name,
+    by,
+    summon,
+    total: 100,
+    hits: 1,
+    crits: 0,
+    ticks: 0,
+    casts: 0,
+    misses: 0,
+    overheal: 0,
+    absorbed: 0,
+    mitigated: 0,
+    uptime: 0,
+  });
+  const groups = groupAbilities([
+    // Wild Imps from Hand of Gul'dan and from Inner Demons: two rows.
+    row(104318, 'Fel Firebolt', 'Wild Imp', { id: 104317, name: 'Wild Imp' }),
+    row(104318, 'Fel Firebolt', 'Wild Imp', { id: 279910, name: 'Wild Imp' }),
+    // Blood Beast's The Blood is Life: under the Blood Beast.
+    row(434246, 'The Blood is Life', 'Blood Beast', {
+      id: 434237,
+      name: 'The Blood is Life',
+    }),
+    // Mirror Image's Frostbolt (no summon seen): under Mirror Image.
+    row(59638, 'Frostbolt', 'Mirror Image'),
+  ]);
+  const heads = groups.map((g: { head: { name: string }; nested: boolean }) => [
+    g.head.name,
+    g.nested,
+  ]);
+  expect(heads).toEqual([
+    ['Wild Imp', true],
+    ['Wild Imp', true],
+    ['Blood Beast', true],
+    ['Mirror Image', true],
+  ]);
+});
+
+test('a pet only ever written as "Unknown" takes its name from any line', () => {
+  const stamp = '10/21/2026 23:24:40.000-4  ';
+  const owner = 'Player-61-0EDCA7E8,"Smoggw-Zul\'jin-US",0x514,0x80000000';
+  const boss =
+    'Creature-0-3882-3095-19964-267861-00005981DA,"Kith\'ix",0x10a48,0x80000000';
+  const pet1 = 'Pet-0-3882-3095-19964-17252-0103ABCDEF';
+  const pet2 = 'Pet-0-3882-3095-19964-17252-0103ABCDF0';
+  const adv = (guid: string, ownerGuid: string) =>
+    `${guid},${ownerGuid},821644,1061676,780,3657,2970,783,0,44147,0,220235,260000,0,1842.76,-22.54,2669,1.2127,334`;
+  const hit = (src: string, name: string) =>
+    `${stamp}SPELL_DAMAGE,${src},"${name}",0x1114,0x80000000,${boss},30213,"Legion Strike",0x1,${adv(src, 'Player-61-0EDCA7E8')},1000,1000,-1,1,0,0,0,nil,nil,nil,ST`;
+  const b = new StoreBuilder();
+  b.feed(`${stamp}ENCOUNTER_START,3513,"Kith'ix",16,22,3095`);
+  b.feed(
+    `${stamp}SPELL_CAST_SUCCESS,${owner},0000000000000000,nil,0x80000000,0x80000000,686,"Shadow Bolt",0x20,${adv('Player-61-0EDCA7E8', '0000000000000000')}`,
+  );
+  // The same felguard, written "Unknown" first, then by name.
+  b.feed(hit(pet1, 'Unknown'));
+  b.feed(hit(pet1, 'Ghaazhem'));
+  // Another felguard of the same owner, never named in the pull.
+  b.feed(hit(pet2, 'Unknown'));
+  b.feed(`${stamp}ENCOUNTER_END,3513,"Kith'ix",16,22,0,1000`);
+  const p = b.finish({
+    id: 'x',
+    label: 'Pull 1',
+    encounterId: 3513,
+    difficultyId: 16,
+    startedAt: 0,
+    result: 'wipe',
+  });
+  const names = p.units
+    .filter((u) => u.guid.startsWith('Pet-'))
+    .map((u) => u.name);
+  expect(names).toEqual(['Ghaazhem', 'Ghaazhem']);
+});
