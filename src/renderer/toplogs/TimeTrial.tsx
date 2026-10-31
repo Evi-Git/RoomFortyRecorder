@@ -6,7 +6,7 @@
  * by each phase; then "where the time went".
  */
 import React from 'react';
-import { Play, Timer } from 'lucide-react';
+import { ClipboardCopy, Play, Timer } from 'lucide-react';
 import { Tooltip } from '../components/Tooltip/Tooltip';
 import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
@@ -26,6 +26,7 @@ import {
 } from './timeline';
 import { findings } from './whereTime';
 import WhereTimeWent from './WhereTimeWent';
+import CopyNsrt from './CopyNsrt';
 import TrialTimeline from './TrialTimeline';
 import { call, RankRow, specTitle, useSpellNames } from './shared';
 
@@ -90,6 +91,7 @@ const TimeTrial = ({
     }
   });
   const [marker, setMarker] = React.useState<number | null>(null);
+  const [nsrtOpen, setNsrtOpen] = React.useState(false);
   const [lineUp, setLineUpState] = React.useState<LineUp>(() => {
     try {
       return localStorage.getItem(LINE_UP_KEY) === 'phase' ? 'phase' : 'start';
@@ -306,6 +308,19 @@ const TimeTrial = ({
             </span>
           </Tooltip>
         )}
+        {you && track && (
+          <button
+            type="button"
+            onClick={() => setNsrtOpen((o) => !o)}
+            title="These cooldowns as Northern Sky Raid Tools reminders"
+            className={`flex items-center gap-x-1.5 h-8 px-3 rounded border text-sm hover:bg-card/50 ${
+              nsrtOpen ? 'border-brand text-foreground-lighter' : 'border-card'
+            }`}
+          >
+            <ClipboardCopy size={14} className="text-brand" />
+            Copy for NSRT
+          </button>
+        )}
         {me && me.specId !== specId && (
           <span className="text-xs text-yellow-400">
             {me.name} played {specTitle(me.specId)} that pull.
@@ -339,6 +354,19 @@ const TimeTrial = ({
         <p className="text-sm text-red-400">{trackError}</p>
       )}
 
+      {you && track && nsrtOpen && (
+        <CopyNsrt
+          you={you}
+          them={track}
+          cooldowns={cds}
+          theirPhases={theirPhases}
+          ourPhases={ours}
+          encounterId={encounterId}
+          difficultyId={difficultyId}
+          bossName={bossName}
+          onClose={() => setNsrtOpen(false)}
+        />
+      )}
       {you && track && (
         <>
           <div className="flex items-center gap-x-3 flex-wrap gap-y-2 text-xs text-foreground">
