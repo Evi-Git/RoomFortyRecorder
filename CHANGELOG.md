@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.106] - Unreleased
+### Fixed
+- **Logs: pets summoned before the pull have their names.** The game writes "Unknown" for a pet it hasn't named yet; the name seen on any later line now wins, so a warlock's demon is one row instead of "Ghaazhem" plus "Unknown". A pet never named in the pull takes the name of the same creature of the same owner, else what summoned it (as Warcraft Logs does).
+
+### Changed
+- **Logs: pets nest the way Warcraft Logs nests them.**
+  - Pets of one name stay apart by what summoned them (Wild Imps from Hand of Gul'dan and from Inner Demons are two rows).
+  - A pet whose only spell is named like its summon sits under the pet's own name (Blood Beast → The Blood is Life).
+  - A pet's lone spell nests under the pet (Mirror Image → Frostbolt).
+
 ## [1.9.105] - Unreleased
 ### Changed
 - **Night summary: Why pulls ended skips raiders left out of the night.** A pull a left-out raider (a buyer, say) died first in now counts the next raider's death, and a pull where only they died counts as "No deaths". The server works the causes out again when you switch a raider off or on; the other widgets stay up meanwhile. Run `update-server.cmd` after publishing.

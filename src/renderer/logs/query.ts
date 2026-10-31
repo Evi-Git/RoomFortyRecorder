@@ -530,7 +530,10 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         meter !== 'taken' && unit !== p.units[unit].root && !pets
           ? p.units[unit].name
           : '';
-      const aKey = `${spell?.id ?? 0}|${fromPet}${cost ? '|cost' : ''}`;
+      // Pets of one name apart by what summoned them (Wild Imps from Hand
+      // of Gul'dan and from Inner Demons), as on Warcraft Logs.
+      const summonId = fromPet ? (p.units[unit].summon?.id ?? 0) : 0;
+      const aKey = `${spell?.id ?? 0}|${fromPet}${summonId ? `@${summonId}` : ''}${cost ? '|cost' : ''}`;
       let ab = row.abilities.get(aKey);
       if (!ab) {
         ab = newAbility(
@@ -2137,9 +2140,10 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
     } else if (a.by && isTotem(a.by) && own.has(a.name)) {
       key = `${a.name}||${a.kind ?? ''}`;
     } else if (a.by) {
-      // A pet's or guardian's spells together, under what summoned it.
+      // A pet's or guardian's spells together, under what summoned it
+      // (by the summoning spell: Wild Imps from two sources stay apart).
       const name = a.summon?.name || a.by;
-      key = `pet:${name}`;
+      key = a.summon ? `pet:#${a.summon.id}` : `pet:${name}`;
       parent = { name, icon: a.summon?.id ?? a.spellId };
     } else if (KEEP_APART.has(a.spellId)) {
       key = `id:${a.spellId}|${a.kind ?? ''}`;
@@ -2153,17 +2157,18 @@ export const groupAbilities = (abilities: AbilityRow[]): AbilityGroup[] => {
     if (parent) g.parent = parent;
     groups.set(key, g);
   });
-  return [...groups.entries()].map(([key, { list, parent }]) => {
-    // One pet spell on its own: just that spell (with who did it).
-    // Nested even with one spell (an item's effect), except a pet's lone
-    // spell or a spell alone under its own name.
+  return [...groups.entries()].map(([key, { list, parent: given }]) => {
+    let parent = given;
+    if (parent && key.startsWith('pet:')) {
+      // A pet whose only spell is named like its summon (Blood Beast's The
+      // Blood is Life) sits under the pet's own name, as on Warcraft Logs.
+      if (list.every((x) => x.name === parent?.name) && list[0].by)
+        parent = { ...parent, name: list[0].by };
+    }
+    // Nested even with one spell (an item's effect, a pet's lone spell:
+    // Mirror Image's Frostbolt), except a spell alone under its own name.
     const nested =
-      Boolean(parent) &&
-      !(
-        list.length < 2 &&
-        ((key.startsWith('pet:') && !list[0].summon) ||
-          list[0].name === parent?.name)
-      );
+      Boolean(parent) && !(list.length < 2 && list[0].name === parent?.name);
     if (list.length === 1 && !nested)
       return { key, head: list[0], parts: list, nested: false };
     const parts = [...list].sort(
