@@ -84,7 +84,7 @@ export type PullDeskRequest =
     }
   | { action: 'topCrawl' }
   | { action: 'topOurs'; encounterId: number; difficultyId: number }
-  | { action: 'night'; night: string }
+  | { action: 'night'; night: string; leftOut?: string[] }
   | { action: 'fullLog'; id: string }
   | {
       action: 'progression';
@@ -761,7 +761,11 @@ export default class PullDesk {
       case 'night':
         return client.pullDeskRequest(
           'get',
-          `/summary/night/${id(request.night)}`,
+          `/summary/night/${id(request.night)}${
+            request.leftOut?.length
+              ? `?leftOut=${encodeURIComponent(request.leftOut.slice(0, 40).join('|'))}`
+              : ''
+          }`,
           undefined,
           { timeout: 120000 },
         );
