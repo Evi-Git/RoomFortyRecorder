@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.103] - Unreleased
+### Changed
+- **Time trial: "Where the time went" is ranked by cost** (option A). It shows how far behind (or ahead) you were at the end, a bar of where it went by kind (Late, Missed, Fewer casts, Lull), then one row per finding, biggest first: the cooldown with its kind, what happened and why, the estimated cost (their damage or healing minus yours over the finding's window, with its share and a bar), and when it started.
+  - **Late:** a cooldown pressed 3 s or more after theirs; the cost is the delay. A run of late casts that each pushed the next one back is one finding ("One late Pillar of Frost pushed every later one back").
+  - **Missed / Fewer casts:** they pressed it and you didn't (once / more than once). The why says when your previous one was late enough that this one wasn't ready.
+  - **Lull:** 15 s or more with no main cooldown pressed by either of you, while they did more.
+  - Only cooldowns that raise their output are listed (a late defensive costs no damage), and seconds that several findings cover are split between them so the costs add up.
+- **Show** highlights a finding's windows on the timeline (and its cooldown's row); **Watch** opens our VoD there.
+
 ## [1.9.102] - Unreleased
 ### Changed
 - **Time trial is one timeline** (option A). Our boss's casts and phases, phase pacing, DPS (or HPS) as a 5 s average, the gap so far, and the main cooldowns now share one time axis. Hover anywhere for one line across every row with the numbers there (phase, both rates, the gap, a late or missed cooldown nearby); click to open our VoD at that moment.

@@ -1,7 +1,6 @@
 import {
   amountAt,
   gapSeries,
-  insights,
   rate,
   wclUrl,
   Track,
@@ -34,48 +33,6 @@ describe('time trial math', () => {
     expect(amountAt(you, 99)).toBe(30);
     expect(gapSeries(you, them)).toEqual([0, -10, -30]);
     expect(rate(them)).toBe(25);
-  });
-
-  test('insights: where they pulled ahead, late and missing cooldowns, pace', () => {
-    const flat = Array.from({ length: 120 }, () => 100);
-    const theirs = flat.map((v, i) => (i >= 60 && i < 80 ? 600 : v));
-    const you = track('You', flat, [
-      [20, 1],
-      [0, 3],
-      [61, 3],
-    ]);
-    const them = track('Them', theirs, [
-      [2, 1],
-      [0, 2],
-      [61, 2],
-      [0, 3],
-      [30, 3],
-      [61, 3],
-      [90, 3],
-    ]);
-    const names: Record<number, string> = {
-      1: 'Avatar',
-      2: 'Recklessness',
-      3: 'Bladestorm',
-    };
-    const cds = [1, 2, 3].map((spellId) => ({
-      key: `#${spellId}`,
-      name: names[spellId],
-      spellId,
-      spellIds: [spellId],
-      cooldown: 60,
-    }));
-    const list = insights(you, them, cds);
-    const texts = list.map((i) => i.text);
-    expect(texts[0]).toBe('1:00–1:20: they pulled 10k ahead.');
-    expect(texts).toContain(
-      'Avatar: your first one was 18 s later (0:20 vs 0:02).',
-    );
-    expect(texts).toContain("Recklessness: they pressed it 2×, you didn't.");
-    expect(texts).toContain('Bladestorm: 2 vs their 4 casts.');
-    expect(texts[texts.length - 1]).toMatch(
-      /^Overall: 100 vs 183 per second \(-45\.5%\)/,
-    );
   });
 
   test('Warcraft Logs link', () => {

@@ -12,23 +12,20 @@ import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
 import type { PullMeta } from '../logs/store';
 import { classColor, compact, mmss } from '../logs/format';
-import {
-  Cooldown,
-  insights,
-  ourTrack,
-  raidersOf,
-  Track,
-  vodInfo,
-} from './trial';
+import { Cooldown, ourTrack, raidersOf, Track, vodInfo } from './trial';
 import {
   alignByPhase,
   asIs,
   bossCasts,
   enemyCasts,
+  gapSoFar,
   mergeByName,
   ourPhases,
+  perSecond,
   phasesOf,
 } from './timeline';
+import { findings } from './whereTime';
+import WhereTimeWent from './WhereTimeWent';
 import TrialTimeline from './TrialTimeline';
 import { call, RankRow, specTitle, useSpellNames } from './shared';
 
@@ -200,10 +197,21 @@ const TimeTrial = ({
     aligned =
       lineUp === 'phase' && canLineUp ? alignByPhase(track, ours) : asIs(track);
   }
+  const unit = metric === 'hps' ? 'HPS' : 'DPS';
   const list =
-    you && track && aligned
-      ? insights(you, { ...track, casts: aligned.casts }, cds)
-      : [];
+    you && track && aligned ? findings(you, track, aligned, cds, unit) : [];
+  const gap = you && aligned ? gapSoFar(perSecond(you), aligned.rates) : [];
+  const [shown, setShown] = React.useState<number | null>(null);
+  const shownFinding = shown !== null ? list[shown] : undefined;
+  const timelineRef = React.useRef<HTMLDivElement>(null);
+  const show = (i: number | null) => {
+    setShown(i);
+    if (i !== null)
+      timelineRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+  };
 
   const pickCharacter = (name: string) => {
     setCharacter(name);
@@ -387,47 +395,37 @@ const TimeTrial = ({
             </span>
           </div>
           {aligned && (
-            <TrialTimeline
-              you={you}
-              them={track}
-              aligned={aligned}
-              cooldowns={cds}
-              boss={boss}
-              bossName={bossName}
-              ourPhases={ours}
-              theirPhases={theirPhases}
-              unit={metric === 'hps' ? 'HPS' : 'DPS'}
-              marker={marker}
-              setMarker={setMarker}
-              onWatch={vod.owner !== null ? watch : undefined}
-            />
-          )}
-          <div>
-            <div className="text-sm font-semibold mb-2">
-              Where the time went
+            <div ref={timelineRef} className="scroll-mt-4">
+              <TrialTimeline
+                you={you}
+                them={track}
+                aligned={aligned}
+                cooldowns={cds}
+                boss={boss}
+                bossName={bossName}
+                ourPhases={ours}
+                theirPhases={theirPhases}
+                unit={unit}
+                marker={marker}
+                setMarker={setMarker}
+                highlight={
+                  shownFinding
+                    ? { spans: shownFinding.spans, key: shownFinding.key }
+                    : null
+                }
+                onWatch={vod.owner !== null ? watch : undefined}
+              />
             </div>
-            {list.length ? (
-              <ul className="flex flex-col gap-y-1 text-sm">
-                {list.map((i) => (
-                  <li key={i.text}>
-                    {i.at !== undefined ? (
-                      <button
-                        type="button"
-                        className="text-left hover:text-brand"
-                        onClick={() => setMarker(Math.round(i.at ?? 0))}
-                      >
-                        {i.text}
-                      </button>
-                    ) : (
-                      i.text
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-foreground">Nothing stood out.</p>
-            )}
-          </div>
+          )}
+          <WhereTimeWent
+            list={list}
+            gapEnd={gap.length ? gap[gap.length - 1] : 0}
+            amount={metric === 'hps' ? 'healing' : 'damage'}
+            shown={shownFinding ? shown : null}
+            onShow={show}
+            onWatch={vod.owner !== null ? watch : undefined}
+            watchTip={vod.tip}
+          />
         </>
       )}
     </div>
