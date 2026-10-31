@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.102] - Unreleased
+### Changed
+- **Time trial is one timeline** (option A). Our boss's casts and phases, phase pacing, DPS (or HPS) as a 5 s average, the gap so far, and the main cooldowns now share one time axis. Hover anywhere for one line across every row with the numbers there (phase, both rates, the gap, a late or missed cooldown nearby); click to open our VoD at that moment.
+- **Cooldown lanes pair your casts with theirs:** their cast on top, yours below labelled with the time and **+N s** (green on time, orange a little late, red late), **missed** as a dashed ghost where they pressed it, and **extra** where you pressed one they didn't. Each row shows the counts and your average drift.
+- **Main cooldowns merge by name** (Frostwyrm's Fury has two spell IDs and was two rows, which also made a wrong "where the time went" line). On Top logs too. The server merges by name when it works out a spec's cooldowns, so a spell split over two IDs is no longer missed.
+
+### Added
+- **Boss track from our own log:** our boss's casts as marks (named where there's room), with our phases.
+- **Phase pacing:** their phases above, ours below, with how much later (or earlier) each of ours started. Our phases are found in our log from the enemy ability that marks each of their phase starts.
+- **Line up by: Pull start / Each phase.** "Each phase" shifts their timeline so each phase starts when ours did, so a slow phase doesn't push every later cooldown out of line. Remembered on this PC.
+- Server: Top logs tracks keep spell names and the enemies' casts of their fight (fetched once for tracks saved before). Run `update-server.cmd` after publishing.
+
 ## [1.9.101] - Unreleased
 ### Changed
 - **Dashboard → Pulls: pick nights from the calendar** instead of Tonight / 7 days / 30 days. It opens on the newest raid night and follows a new one when it starts. Click picks one night, **Shift-click** every raid night from the last one clicked, **Ctrl-click** adds or removes one. The calendar keeps quick buttons for the last raid night, last 7 days and last 30 days. Up to 120 days back.

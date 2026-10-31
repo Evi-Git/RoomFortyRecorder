@@ -9,6 +9,7 @@
  */
 import { castRows, DEFAULT_FILTERS, makeCtx, meterRows } from '../logs/query';
 import type { PullStore } from '../logs/store';
+import { castsFor, MainCd } from './timeline';
 
 export type Track = {
   name: string;
@@ -18,10 +19,17 @@ export type Track = {
   casts: [number, number][];
   phases?: [number, number][];
   phaseNames?: Record<string, string>;
+  /** Spell ID -> name (1.9.102 server; ours from our log). */
+  names?: Record<number, string>;
+  /** Their fight's enemy casts as [seconds, spell ID] (1.9.102 server). */
+  enemy?: [number, number][];
 };
 
 export type Cooldown = {
   spellId: number;
+  /** Every ID of this name (1.9.102 server merges by name). */
+  spellIds?: number[];
+  name?: string;
   share: number;
   medianGap: number;
   medianCasts: number;
@@ -57,13 +65,15 @@ export const ourTrack = (
     amounts.push(Math.round(sum));
   }
   const casts: [number, number][] = [];
+  const names: Record<number, string> = {};
   castRows(ctx)
     .find((r) => r.key === guid)
-    ?.spells.forEach((s) =>
-      s.times.forEach((t) => casts.push([Math.round(t * 10) / 10, s.spellId])),
-    );
+    ?.spells.forEach((s) => {
+      names[s.spellId] = s.name;
+      s.times.forEach((t) => casts.push([Math.round(t * 10) / 10, s.spellId]));
+    });
   casts.sort((a, b) => a[0] - b[0]);
-  return { name: unit.name, duration: store.duration, amounts, casts };
+  return { name: unit.name, duration: store.duration, amounts, casts, names };
 };
 
 /** Amount at a time (seconds), holding the last value past the end. */
@@ -110,8 +120,7 @@ export type Insight = {
 export const insights = (
   you: Track,
   them: Track,
-  cooldowns: Cooldown[],
-  names: Record<number, string> = {},
+  cooldowns: MainCd[],
   window = 20,
 ): Insight[] => {
   const out: Insight[] = [];
@@ -139,12 +148,10 @@ export const insights = (
       }),
     );
 
-  const timesOf = (track: Track, id: number) =>
-    track.casts.filter((c) => c[1] === id).map((c) => c[0]);
   cooldowns.forEach((cd) => {
-    const name = names[cd.spellId] || `Spell ${cd.spellId}`;
-    const mine = timesOf(you, cd.spellId);
-    const theirs = timesOf(them, cd.spellId);
+    const name = cd.name || `Spell ${cd.spellId}`;
+    const mine = castsFor(you, cd);
+    const theirs = castsFor(them, cd);
     if (!theirs.length) return;
     if (!mine.length) {
       out.push({

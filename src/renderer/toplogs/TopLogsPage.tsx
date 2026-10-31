@@ -32,6 +32,7 @@ import {
   useSpellNames,
 } from './shared';
 import type { Cooldown } from './trial';
+import { mergeByName } from './timeline';
 import { wclUrl } from './trial';
 
 type Rankings = {
@@ -179,7 +180,8 @@ const Lane = ({
 }: {
   row: RankRow;
   max: number;
-  shown: Set<number>;
+  /** Cast spell ID -> the cooldown's icon ID, for the ones shown. */
+  shown: Map<number, number>;
 }) => (
   <div className="relative h-7 rounded bg-background/40 overflow-hidden">
     <div
@@ -214,7 +216,7 @@ const Lane = ({
           className="absolute top-[5px] -translate-x-1/2"
           style={{ left: `${(t / max) * 100}%` }}
         >
-          <SpellIcon spellId={id} />
+          <SpellIcon spellId={shown.get(id) ?? id} />
         </span>
       ))}
   </div>
@@ -276,9 +278,13 @@ const RankingsGrid = ({
   }
 
   const max = Math.max(...data.rows.map((r) => r.duration), 1);
-  const shown = new Set(
-    data.cooldowns.map((c) => c.spellId).filter((id) => !hidden.has(id)),
-  );
+  // One chip per name (a spell can have several IDs; 1.9.102).
+  const merged = mergeByName(data.cooldowns, labels);
+  const byKey = new Map(data.cooldowns.map((c) => [c.spellId, c]));
+  const shown = new Map<number, number>();
+  merged
+    .filter((c) => !hidden.has(c.spellId))
+    .forEach((c) => c.spellIds.forEach((id) => shown.set(id, c.spellId)));
   const toggle = (id: number) =>
     setHidden((h) => {
       const next = new Set(h);
@@ -299,24 +305,29 @@ const RankingsGrid = ({
               : 'none stood out'}
           </span>
         )}
-        {data.cooldowns.map((c) => (
-          <button
-            key={c.spellId}
-            type="button"
-            onClick={() => toggle(c.spellId)}
-            title={`${Math.round(c.share * 100)}% of these players use it; median ${c.medianCasts} per fight${
-              c.cooldown ? `, about ${c.cooldown} s apart at the shortest` : ''
-            }. Click to hide or show.`}
-            className={`flex items-center gap-x-1 rounded-full border px-2 py-0.5 ${
-              hidden.has(c.spellId)
-                ? 'border-card text-foreground/50'
-                : 'border-foreground/40 text-foreground-lighter'
-            }`}
-          >
-            <SpellIcon spellId={c.spellId} />
-            {labels[c.spellId] || `Spell ${c.spellId}`}
-          </button>
-        ))}
+        {merged.map((m) => {
+          const c = byKey.get(m.spellId) ?? data.cooldowns[0];
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => toggle(m.spellId)}
+              title={`${Math.round(c.share * 100)}% of these players use it; median ${c.medianCasts} per fight${
+                m.cooldown
+                  ? `, about ${m.cooldown} s apart at the shortest`
+                  : ''
+              }${m.spellIds.length > 1 ? ` (spell IDs ${m.spellIds.join(', ')})` : ''}. Click to hide or show.`}
+              className={`flex items-center gap-x-1 rounded-full border px-2 py-0.5 ${
+                hidden.has(m.spellId)
+                  ? 'border-card text-foreground/50'
+                  : 'border-foreground/40 text-foreground-lighter'
+              }`}
+            >
+              <SpellIcon spellId={m.spellId} />
+              {m.name || `Spell ${m.spellId}`}
+            </button>
+          );
+        })}
         <span className="ml-auto text-foreground">
           {data.pending ? `${data.pending} logs still coming · ` : ''}
           Rankings from {new Date(data.at).toLocaleString()}

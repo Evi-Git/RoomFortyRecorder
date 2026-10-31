@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
-import { SPECS, hasAmounts, createTopLogs, cumulative, deriveCooldowns, parseRankings, wclDifficulty } from './toplogs.mjs';
+import { SPECS, hasAmounts, hasExtras, createTopLogs, cumulative, deriveCooldowns, parseRankings, wclDifficulty } from './toplogs.mjs';
 
 test('specs: 40, each once, healers ranked by healing', () => {
   assert.equal(SPECS.length, 40);
@@ -54,6 +54,21 @@ test('main cooldowns: pressed by most, at least 45 s apart; filler left out', ()
   assert.equal(cds[0].cooldown, 120);
   assert.equal(cds[0].medianCasts, 3);
   assert.deepEqual(deriveCooldowns(tracks.slice(0, 2)), [], 'needs 3 players');
+});
+
+test("main cooldowns: one name is one cooldown (Frostwyrm's Fury has two spell IDs)", () => {
+  // 3 of 7 players press 279302, 4 of 7 press 1265870: neither alone reaches 60%.
+  const names = { 279302: "Frostwyrm's Fury", 1265870: "Frostwyrm's Fury" };
+  const player = (id, n) => ({ duration: 300, names, casts: Array.from({ length: n }, (_, i) => [5 + i * 90, id]) });
+  const tracks = [player(279302, 4), player(279302, 4), player(279302, 4), player(1265870, 4), player(1265870, 3), player(1265870, 4), player(1265870, 4)];
+  const cds = deriveCooldowns(tracks);
+  assert.equal(cds.length, 1);
+  assert.equal(cds[0].name, "Frostwyrm's Fury");
+  assert.equal(cds[0].spellId, 1265870, 'the ID pressed most');
+  assert.deepEqual(cds[0].spellIds, [1265870, 279302]);
+  assert.equal(cds[0].share, 1);
+  // Without names they stay apart (and both fall under 60%).
+  assert.deepEqual(deriveCooldowns(tracks.map((t) => ({ ...t, names: undefined }))), []);
 });
 
 test('cumulative: second by second, absorbed counts', () => {
@@ -111,10 +126,18 @@ const fakeWcl = () => {
                   { id: 6, name: 'Nextwar', server: 'Area52', type: 'Player' },
                   { id: 40, name: 'Pet', type: 'Pet', petOwner: 5 },
                 ],
+                abilities: [
+                  { gameID: 107574, name: 'Avatar' },
+                  { gameID: 12294, name: 'Mortal Strike' },
+                  { gameID: 9999, name: 'Boss Smash' },
+                ],
               },
             },
           },
         };
+      }
+      if (text.includes('hostilityType: Enemies')) {
+        return { reportData: { report: { events: { data: [{ timestamp: 140000, type: 'cast', abilityGameID: 9999 }, { timestamp: 140000, type: 'begincast', abilityGameID: 9999 }], nextPageTimestamp: null } } } };
       }
       if (text.includes('dataType: Casts')) {
         return {
@@ -198,6 +221,11 @@ test('routes: rankings on demand, casts fetched for each row, then a trial with 
   assert.equal(trial.body.track.duration, 300);
   assert.deepEqual(trial.body.track.amounts.slice(0, 4), [120, 120, 170, 170]);
   assert.equal(trial.body.track.phaseNames[2], 'Stage Two');
+  assert.deepEqual(trial.body.track.enemy, [[130, 9999]], "the enemies' casts, for our phases");
+  assert.equal(trial.body.track.names[9999], 'Boss Smash');
+  assert.equal(trial.body.track.names[12294], 'Mortal Strike');
+  assert.ok(hasExtras(trial.body.track));
+  assert.equal(second.body.rows[0].names[107574], 'Avatar', 'rows carry spell names');
   assert.deepEqual(damageSources, [5, 40], 'the player, then their pet, by sourceID');
   const calls = wcl.calls.length;
   await ask('trial', { code: 'AAAAbbbb1111', fight: 4, name: 'Topwar' });

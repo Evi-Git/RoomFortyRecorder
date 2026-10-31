@@ -1,7 +1,9 @@
 /**
  * [RoomFortyRecorder] Time trial (1.9.96): race a top log with any raider's
- * pull of the same boss. Race chart with the gap, the spec's main cooldowns
- * as lanes (you vs them), and "where the time went".
+ * pull of the same boss. Since 1.9.102 it's one timeline (TrialTimeline):
+ * our boss's casts and phases, phase pacing, DPS, the gap and the main
+ * cooldowns (merged by name) on one time axis, lined up by pull start or
+ * by each phase; then "where the time went".
  */
 import React from 'react';
 import { Play, Timer } from 'lucide-react';
@@ -9,19 +11,26 @@ import { Tooltip } from '../components/Tooltip/Tooltip';
 import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
 import type { PullMeta } from '../logs/store';
-import SpellIcon from '../logs/SpellIcon';
 import { classColor, compact, mmss } from '../logs/format';
 import {
-  amountAt,
   Cooldown,
-  gapSeries,
   insights,
   ourTrack,
   raidersOf,
   Track,
   vodInfo,
 } from './trial';
-import { call, RankRow, specTitle, ticks, useSpellNames } from './shared';
+import {
+  alignByPhase,
+  asIs,
+  bossCasts,
+  enemyCasts,
+  mergeByName,
+  ourPhases,
+  phasesOf,
+} from './timeline';
+import TrialTimeline from './TrialTimeline';
+import { call, RankRow, specTitle, useSpellNames } from './shared';
 
 type OurPull = {
   id: string;
@@ -37,10 +46,8 @@ type OurPull = {
 };
 
 const CHARACTER_KEY = 'rf-trial-character';
-const YOU = '#CCA85C'; // brand brass
-const THEM = '#7fb4e6';
-const AHEAD = '#4ade80';
-const BEHIND = '#f87171';
+const LINE_UP_KEY = 'rf-trial-line-up';
+type LineUp = 'start' | 'phase';
 
 const pullLabel = (p: OurPull) =>
   `${new Date(`${p.night}T12:00:00`).toLocaleDateString(undefined, {
@@ -51,292 +58,6 @@ const pullLabel = (p: OurPull) =>
       ? `Kill ${mmss(p.duration)}`
       : `${p.bossPercent ?? '?'}% at ${mmss(p.duration)}`
   }`;
-
-/** Cumulative lines (you, them) and the gap under them; hover for values. */
-const RaceChart = ({
-  you,
-  them,
-  marker,
-  setMarker,
-  onWatch,
-}: {
-  you: Track;
-  them: Track;
-  marker: number | null;
-  setMarker: (t: number | null) => void;
-  /** Click: open our raider's recording there. */
-  onWatch?: (t: number) => void;
-}) => {
-  const max = Math.max(you.duration, them.duration, 1);
-  const top = Math.max(
-    you.amounts[you.amounts.length - 1] ?? 0,
-    them.amounts[them.amounts.length - 1] ?? 0,
-    1,
-  );
-  const gap = gapSeries(you, them);
-  const gapMax = Math.max(1, ...gap.map((g) => Math.abs(g)));
-  const W = 1000;
-  const H = 220;
-  const GH = 90;
-  const x = (t: number) => (t / max) * W;
-  const line = (track: Track) =>
-    `M0,${H} ${track.amounts
-      .map(
-        (v, i) => `L${x(i + 1).toFixed(1)},${(H - (v / top) * H).toFixed(1)}`,
-      )
-      .join(' ')}`;
-  const mid = GH / 2;
-  const gapPath = `M0,${mid} ${gap
-    .map(
-      (g, i) =>
-        `L${x(i + 1).toFixed(1)},${(mid - (g / gapMax) * mid).toFixed(1)}`,
-    )
-    .join(' ')} L${x(gap.length).toFixed(1)},${mid} Z`;
-  const ref = React.useRef<HTMLDivElement>(null);
-  const move = (e: React.MouseEvent) => {
-    const r = ref.current?.getBoundingClientRect();
-    if (!r) return;
-    const t = Math.max(
-      0,
-      Math.min(max, ((e.clientX - r.left) / r.width) * max),
-    );
-    setMarker(Math.round(t));
-  };
-  const at = marker ?? null;
-  const y = at !== null ? amountAt(you, at) : 0;
-  const th = at !== null ? amountAt(them, at) : 0;
-
-  return (
-    <div className="flex flex-col gap-y-1">
-      <div className="flex items-center gap-x-4 text-xs h-5">
-        <span className="flex items-center gap-x-1">
-          <span
-            className="inline-block w-3 h-0.5"
-            style={{ background: YOU }}
-          />
-          {you.name}
-        </span>
-        <span className="flex items-center gap-x-1">
-          <span
-            className="inline-block w-3 h-0.5"
-            style={{ background: THEM }}
-          />
-          {them.name}
-        </span>
-        {at !== null && (
-          <span className="ml-auto tabular-nums text-foreground-lighter">
-            {mmss(at)} · you {compact(y)} · them {compact(th)} ·{' '}
-            <span style={{ color: y >= th ? AHEAD : BEHIND }}>
-              {y >= th ? '+' : ''}
-              {compact(y - th)}
-            </span>
-          </span>
-        )}
-      </div>
-      <div
-        ref={ref}
-        className="relative cursor-crosshair"
-        onMouseMove={move}
-        onMouseLeave={() => setMarker(null)}
-        onClick={() => {
-          if (onWatch && marker !== null) onWatch(marker);
-        }}
-        title={onWatch ? 'Click to watch our VoD from here' : undefined}
-      >
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          className="w-full h-[220px] block rounded bg-background/40"
-        >
-          {ticks(max).map((t) => (
-            <line
-              key={t}
-              x1={x(t)}
-              x2={x(t)}
-              y1={0}
-              y2={H}
-              stroke="currentColor"
-              className="text-card"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {(them.phases ?? []).slice(1).map(([t]) => (
-            <line
-              key={`p${t}`}
-              x1={x(t)}
-              x2={x(t)}
-              y1={0}
-              y2={H}
-              stroke={THEM}
-              strokeDasharray="4 4"
-              opacity={0.4}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          <path
-            d={line(them)}
-            fill="none"
-            stroke={THEM}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-          <path
-            d={line(you)}
-            fill="none"
-            stroke={YOU}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-          {at !== null && (
-            <line
-              x1={x(at)}
-              x2={x(at)}
-              y1={0}
-              y2={H}
-              stroke="white"
-              opacity={0.5}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-        <div className="mt-1 text-[10px] text-foreground">Gap (you − them)</div>
-        <svg
-          viewBox={`0 0 ${W} ${GH}`}
-          preserveAspectRatio="none"
-          className="w-full h-[90px] block rounded bg-background/40"
-        >
-          <defs>
-            <clipPath id="tt-above">
-              <rect x={0} y={0} width={W} height={mid} />
-            </clipPath>
-            <clipPath id="tt-below">
-              <rect x={0} y={mid} width={W} height={mid} />
-            </clipPath>
-          </defs>
-          <path
-            d={gapPath}
-            fill={AHEAD}
-            opacity={0.5}
-            clipPath="url(#tt-above)"
-          />
-          <path
-            d={gapPath}
-            fill={BEHIND}
-            opacity={0.5}
-            clipPath="url(#tt-below)"
-          />
-          <line
-            x1={0}
-            x2={W}
-            y1={mid}
-            y2={mid}
-            stroke="currentColor"
-            className="text-foreground"
-            opacity={0.4}
-            vectorEffect="non-scaling-stroke"
-          />
-          {at !== null && (
-            <line
-              x1={x(at)}
-              x2={x(at)}
-              y1={0}
-              y2={GH}
-              stroke="white"
-              opacity={0.5}
-              vectorEffect="non-scaling-stroke"
-            />
-          )}
-        </svg>
-        <div className="relative h-4 text-[10px] text-foreground">
-          {ticks(max).map((t) => (
-            <span
-              key={t}
-              className="absolute -translate-x-1/2"
-              style={{ left: `${(t / max) * 100}%` }}
-            >
-              {mmss(t)}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/** Each main cooldown: when you pressed it and when they did. */
-const CooldownLanes = ({
-  you,
-  them,
-  cooldowns,
-  names,
-  marker,
-}: {
-  you: Track;
-  them: Track;
-  cooldowns: Cooldown[];
-  names: Record<number, string>;
-  marker: number | null;
-}) => {
-  const max = Math.max(you.duration, them.duration, 1);
-  const lane = (track: Track, id: number, color: string) => (
-    <div className="relative h-6 rounded bg-background/40">
-      <div
-        className="absolute inset-y-0 left-0 bg-card/30 rounded"
-        style={{ width: `${(track.duration / max) * 100}%` }}
-      />
-      {track.casts
-        .filter((c) => c[1] === id)
-        .map(([t]) => (
-          <span
-            key={t}
-            className="absolute top-[3px] -translate-x-1/2 rounded-[4px]"
-            style={{
-              left: `${(t / max) * 100}%`,
-              boxShadow: `0 0 0 1.5px ${color}`,
-            }}
-            title={mmss(t)}
-          >
-            <SpellIcon spellId={id} />
-          </span>
-        ))}
-      {marker !== null && (
-        <div
-          className="absolute inset-y-0 w-px bg-white/50"
-          style={{ left: `${(marker / max) * 100}%` }}
-        />
-      )}
-    </div>
-  );
-  if (!cooldowns.length) {
-    return (
-      <p className="text-xs text-foreground">
-        No main cooldowns stood out for this spec yet.
-      </p>
-    );
-  }
-  return (
-    <div className="grid grid-cols-[minmax(120px,170px)_40px_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
-      {cooldowns.map((cd) => (
-        <React.Fragment key={cd.spellId}>
-          <span className="row-span-2 flex items-center gap-x-1.5 min-w-0 text-xs">
-            <SpellIcon spellId={cd.spellId} />
-            <span className="truncate">
-              {names[cd.spellId] || `Spell ${cd.spellId}`}
-            </span>
-          </span>
-          <span className="text-[10px]" style={{ color: YOU }}>
-            You
-          </span>
-          {lane(you, cd.spellId, YOU)}
-          <span className="text-[10px]" style={{ color: THEM }}>
-            Them
-          </span>
-          {lane(them, cd.spellId, THEM)}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-};
 
 const TimeTrial = ({
   them,
@@ -372,6 +93,21 @@ const TimeTrial = ({
     }
   });
   const [marker, setMarker] = React.useState<number | null>(null);
+  const [lineUp, setLineUpState] = React.useState<LineUp>(() => {
+    try {
+      return localStorage.getItem(LINE_UP_KEY) === 'phase' ? 'phase' : 'start';
+    } catch {
+      return 'start';
+    }
+  });
+  const setLineUp = (v: LineUp) => {
+    setLineUpState(v);
+    try {
+      localStorage.setItem(LINE_UP_KEY, v);
+    } catch {
+      // Not remembered.
+    }
+  };
 
   // Their track (casts and amounts) from the guild server; it may take a
   // little while the first time (Warcraft Logs is asked then).
@@ -452,7 +188,22 @@ const TimeTrial = ({
   // The React Compiler keeps this until the pull, raider or metric change.
   const you = store && myGuid ? ourTrack(store, myGuid, metric) : null;
   const names = useSpellNames(cooldowns.map((c) => c.spellId));
-  const list = you && track ? insights(you, track, cooldowns, names) : [];
+  // One row per cooldown name (a spell can have several IDs).
+  const cds = mergeByName(cooldowns, { ...(track?.names ?? {}), ...names });
+  const boss = store ? bossCasts(store) : [];
+  const theirPhases = track ? phasesOf(track) : [];
+  const ours =
+    store && track ? ourPhases(track, enemyCasts(store), store.duration) : [];
+  const canLineUp = ours.length > 1;
+  let aligned = null;
+  if (track) {
+    aligned =
+      lineUp === 'phase' && canLineUp ? alignByPhase(track, ours) : asIs(track);
+  }
+  const list =
+    you && track && aligned
+      ? insights(you, { ...track, casts: aligned.casts }, cds)
+      : [];
 
   const pickCharacter = (name: string) => {
     setCharacter(name);
@@ -582,23 +333,75 @@ const TimeTrial = ({
 
       {you && track && (
         <>
-          <RaceChart
-            you={you}
-            them={track}
-            marker={marker}
-            setMarker={setMarker}
-            onWatch={vod.owner !== null ? watch : undefined}
-          />
-          <div>
-            <div className="text-sm font-semibold mb-2">Main cooldowns</div>
-            <CooldownLanes
+          <div className="flex items-center gap-x-3 flex-wrap gap-y-2 text-xs text-foreground">
+            <span className="flex items-center gap-x-1.5">
+              <span
+                className="inline-block w-3.5 h-[3px]"
+                style={{ background: '#CCA85C' }}
+              />
+              You · {you.name}
+            </span>
+            <span className="flex items-center gap-x-1.5">
+              <span
+                className="inline-block w-3.5 h-[3px]"
+                style={{ background: '#8FA3FF' }}
+              />
+              Them · {track.name}
+            </span>
+            <span className="flex items-center gap-x-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-[3px] border-[1.5px] border-dashed border-[#E57F7F]" />
+              A cooldown they pressed and you didn&apos;t
+            </span>
+            <span className="ml-auto flex items-center gap-x-2">
+              Line up by
+              <span className="inline-flex rounded border border-card overflow-hidden">
+                {(['start', 'phase'] as LineUp[]).map((v) => {
+                  const off = v === 'phase' && !canLineUp;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      disabled={off}
+                      title={
+                        off
+                          ? theirPhases.length < 2
+                            ? 'Warcraft Logs has no phases for this fight.'
+                            : "Couldn't find where their phases started in our log."
+                          : v === 'phase'
+                            ? 'Shift their timeline so each phase starts when ours did.'
+                            : 'Both from the pull.'
+                      }
+                      onClick={() => setLineUp(v)}
+                      className={`px-2.5 py-1 ${
+                        (lineUp === v && !(v === 'phase' && off)) ||
+                        (v === 'start' && lineUp === 'phase' && !canLineUp)
+                          ? 'bg-brand/20 text-foreground-lighter'
+                          : 'hover:bg-card/50'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {v === 'start' ? 'Pull start' : 'Each phase'}
+                    </button>
+                  );
+                })}
+              </span>
+            </span>
+          </div>
+          {aligned && (
+            <TrialTimeline
               you={you}
               them={track}
-              cooldowns={cooldowns}
-              names={names}
+              aligned={aligned}
+              cooldowns={cds}
+              boss={boss}
+              bossName={bossName}
+              ourPhases={ours}
+              theirPhases={theirPhases}
+              unit={metric === 'hps' ? 'HPS' : 'DPS'}
               marker={marker}
+              setMarker={setMarker}
+              onWatch={vod.owner !== null ? watch : undefined}
             />
-          </div>
+          )}
           <div>
             <div className="text-sm font-semibold mb-2">
               Where the time went
