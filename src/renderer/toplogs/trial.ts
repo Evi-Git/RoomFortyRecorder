@@ -9,7 +9,6 @@
  */
 import { castRows, DEFAULT_FILTERS, makeCtx, meterRows } from '../logs/query';
 import type { PullStore } from '../logs/store';
-import { castsFor, MainCd } from './timeline';
 
 export type Track = {
   name: string;
@@ -94,104 +93,6 @@ export const rate = (track: Track) =>
   track.duration > 0
     ? (track.amounts[track.amounts.length - 1] ?? 0) / track.duration
     : 0;
-
-const fmtTime = (s: number) =>
-  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-const fmtAmount = (n: number) => {
-  const a = Math.abs(n);
-  if (a >= 1e9) return `${(n / 1e9).toFixed(2)}b`;
-  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}m`;
-  if (a >= 1e3) return `${Math.round(n / 1e3)}k`;
-  return String(Math.round(n));
-};
-
-export type Insight = {
-  kind: 'gap' | 'cooldown' | 'casts' | 'pace';
-  text: string;
-  at?: number;
-};
-
-/**
- * "Where the time went": the biggest stretches where they pulled ahead,
- * cooldowns pressed later or fewer times than them, and overall pace.
- * `names` gives spell names for the text (spell ID -> name).
- */
-export const insights = (
-  you: Track,
-  them: Track,
-  cooldowns: MainCd[],
-  window = 20,
-): Insight[] => {
-  const out: Insight[] = [];
-  const gap = gapSeries(you, them);
-  // Stretches of `window` seconds where the gap moved most in their favour.
-  const drops: { at: number; lost: number }[] = [];
-  for (let t = 0; t + window <= gap.length; t += 1) {
-    const before = t === 0 ? 0 : gap[t - 1];
-    drops.push({ at: t, lost: before - gap[t + window - 1] });
-  }
-  drops.sort((a, b) => b.lost - a.lost);
-  const picked: { at: number; lost: number }[] = [];
-  drops.forEach((d) => {
-    if (picked.length >= 3 || d.lost <= 0) return;
-    if (picked.some((p) => Math.abs(p.at - d.at) < window)) return;
-    picked.push(d);
-  });
-  picked
-    .sort((a, b) => a.at - b.at)
-    .forEach((d) =>
-      out.push({
-        kind: 'gap',
-        at: d.at,
-        text: `${fmtTime(d.at)}–${fmtTime(d.at + window)}: they pulled ${fmtAmount(d.lost)} ahead.`,
-      }),
-    );
-
-  cooldowns.forEach((cd) => {
-    const name = cd.name || `Spell ${cd.spellId}`;
-    const mine = castsFor(you, cd);
-    const theirs = castsFor(them, cd);
-    if (!theirs.length) return;
-    if (!mine.length) {
-      out.push({
-        kind: 'cooldown',
-        at: theirs[0],
-        text: `${name}: they pressed it ${theirs.length}×, you didn't.`,
-      });
-      return;
-    }
-    const late = mine[0] - theirs[0];
-    if (late >= 5) {
-      out.push({
-        kind: 'cooldown',
-        at: mine[0],
-        text: `${name}: your first one was ${Math.round(late)} s later (${fmtTime(mine[0])} vs ${fmtTime(theirs[0])}).`,
-      });
-    }
-    // Per minute, so a shorter or longer fight compares fairly.
-    const perMin = (n: number, d: number) => (d > 0 ? (n * 60) / d : 0);
-    const fewer =
-      perMin(theirs.length, them.duration) - perMin(mine.length, you.duration);
-    if (fewer * (Math.max(you.duration, 60) / 60) >= 0.9) {
-      out.push({
-        kind: 'casts',
-        text: `${name}: ${mine.length} vs their ${theirs.length} casts.`,
-      });
-    }
-  });
-
-  const mineRate = rate(you);
-  const theirRate = rate(them);
-  if (theirRate > 0) {
-    const diff = ((mineRate - theirRate) / theirRate) * 100;
-    out.push({
-      kind: 'pace',
-      text: `Overall: ${fmtAmount(mineRate)} vs ${fmtAmount(theirRate)} per second (${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%), ${fmtTime(you.duration)} vs ${fmtTime(them.duration)} fight.`,
-    });
-  }
-  return out;
-};
 
 /** The Warcraft Logs link for a ranked kill. */
 export const wclUrl = (code: string, fight: number, metric: 'dps' | 'hps') =>

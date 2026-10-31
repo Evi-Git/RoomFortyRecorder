@@ -36,7 +36,7 @@ const driftColor = (d: number | null) => {
 };
 
 /** Something "Where the time went" asked to show on the timeline. */
-export type Highlight = { from: number; to: number; key?: string };
+export type Highlight = { spans: [number, number][]; key?: string };
 
 const BOSS_COLORS = [
   '#C0614F',
@@ -588,15 +588,16 @@ const TrialTimeline = ({
               );
             })}
 
-            {highlight && (
+            {highlight?.spans.map(([from, to]) => (
               <span
+                key={`h${from}`}
                 className="absolute top-6 bottom-0 pointer-events-none rounded-sm border border-brand/70 bg-brand/10"
                 style={{
-                  left: pct(highlight.from),
-                  width: `${Math.max(0.6, ((highlight.to - highlight.from) / max) * 100)}%`,
+                  left: pct(from),
+                  width: `${Math.max(0.4, ((to - from) / max) * 100)}%`,
                 }}
               />
-            )}
+            ))}
             {marker !== null && (
               <>
                 <span
