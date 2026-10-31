@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.105] - Unreleased
+### Changed
+- **Night summary: Why pulls ended skips raiders left out of the night.** A pull a left-out raider (a buyer, say) died first in now counts the next raider's death, and a pull where only they died counts as "No deaths". The server works the causes out again when you switch a raider off or on; the other widgets stay up meanwhile. Run `update-server.cmd` after publishing.
+
 ## [1.9.104] - Unreleased
 ### Added
 - **Time trial: Copy for NSRT.** Turns the main cooldowns into a Northern Sky Raid Tools reminder string (in game: /ns → Reminders → Import), so a raider gets "press it now" at the top player's timings. Pick **their timings or ours**, times **by phase** (Warcraft Logs' phases) or **from the pull**, who it's for (a character name or an NSRT tag), a countdown, and which cooldowns. Each reminder shows our raider's own spell ID for the cooldown when they have one. If a phase doesn't line up with your boss mod in game, use "From the pull".

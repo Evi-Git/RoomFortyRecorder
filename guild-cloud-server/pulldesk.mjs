@@ -1788,8 +1788,22 @@ export const createPullDesk = (options) => {
         return json(res, 200, { nights: listNights(counted) });
       }
       if (second === 'night' && /^\d{4}-\d{2}-\d{2}$/.test(third || '')) {
-        const data = await cached(`night:${third}`, async () =>
-          summarizeNight(await withReports(counted.filter((pull) => pull.night === third))),
+        // Raiders the viewer left out of this night (per PC), "|"-separated:
+        // their deaths don't count as why a pull ended.
+        const leftOut = [
+          ...new Set(
+            String(url?.searchParams.get('leftOut') || '')
+              .split('|')
+              .map((n) => n.trim())
+              .filter(Boolean),
+          ),
+        ]
+          .sort()
+          .slice(0, 40);
+        const data = await cached(`night:${third}:${leftOut.join('|')}`, async () =>
+          summarizeNight(await withReports(counted.filter((pull) => pull.night === third)), {
+            leftOut: leftOut.length ? new Set(leftOut) : null,
+          }),
         );
         return json(res, 200, { night: third, bosses: data });
       }

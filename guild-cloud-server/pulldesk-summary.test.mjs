@@ -25,6 +25,17 @@ test('wipe cause: raid-wide mechanic, else first death, else reset', () => {
   assert.equal(wipeCause({ result: 'wipe' }, { deaths: [{ killingBlow: { spellName: 'Toxic Spit' } }], wipe: {} }), 'Toxic Spit');
   assert.equal(wipeCause({ result: 'wipe', duration: 8 }, { deaths: [], wipe: {} }), 'Reset');
   assert.equal(wipeCause({ result: 'kill' }, {}), null);
+  // A raider left out of the night (a buyer dying at the start) doesn't end pulls.
+  const buyer = {
+    deaths: [
+      { name: 'Buyer', killingBlow: { spellName: 'Floor Is Lava' } },
+      { name: 'Raider', killingBlow: { spellName: 'Toxic Spit' } },
+    ],
+    wipe: {},
+  };
+  assert.equal(wipeCause({ result: 'wipe' }, buyer), 'Floor Is Lava');
+  assert.equal(wipeCause({ result: 'wipe' }, buyer, new Set(['Buyer'])), 'Toxic Spit');
+  assert.equal(wipeCause({ result: 'wipe', duration: 60 }, { deaths: [buyer.deaths[0]], wipe: {} }, new Set(['Buyer'])), 'No deaths');
 });
 
 test('night summary per boss with raider table', () => {
@@ -162,4 +173,19 @@ test('nights list: newest first, kills, best wipe %', () => {
   assert.equal(kill.bestPercent, null);
   assert.equal(heroic.difficultyId, 15);
   assert.equal(heroic.bestPercent, null);
+});
+
+test('night: why pulls ended skips raiders left out of the night', () => {
+  const pulls = [
+    pull('2026-10-28', 1, 'wipe', 60, [['Mage', 'Floor Is Lava'], ['Evi', 'Toxic Spit']]),
+    pull('2026-10-28', 2, 'wipe', 50, [['Mage', 'Floor Is Lava'], ['Tank', 'Crush']]),
+  ];
+  const [all] = summarizeNight(pulls);
+  assert.deepEqual(all.causes.map((c) => [c.name, c.count]), [['Floor Is Lava', 2]]);
+  const [without] = summarizeNight(pulls, { leftOut: new Set(['Mage']) });
+  assert.deepEqual(
+    without.causes.map((c) => [c.name, c.count]).sort(),
+    [['Crush', 1], ['Toxic Spit', 1]],
+  );
+  assert.equal(without.pullsList[0].cause, 'Toxic Spit');
 });

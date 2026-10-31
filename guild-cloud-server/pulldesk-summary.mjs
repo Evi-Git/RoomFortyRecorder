@@ -20,14 +20,17 @@ const median = (values) => {
 };
 
 /** Why a pull ended, in a few words, or null for a kill. */
-export const wipeCause = (summary, report) => {
+export const wipeCause = (summary, report, leftOut = null) => {
   if (summary.result === 'kill' || report?.result === 'kill') return null;
   if (!report) return 'Not analyzed';
   const mass = report.wipe?.massDeath;
   if (mass?.spellName) return `${mass.spellName} (raid-wide)`;
-  const first = report.deaths?.[0];
+  // Raiders left out of the night (1.9.105, e.g. a buyer) don't end pulls:
+  // the first death of someone else does.
+  const deaths = (report.deaths || []).filter((d) => !leftOut?.has(d.name));
+  const first = deaths[0];
   if (first?.killingBlow?.spellName) return first.killingBlow.spellName;
-  if (report.deaths?.length) return 'Unknown';
+  if (deaths.length) return 'Unknown';
   return (summary.duration || report.duration || 0) < 20 ? 'Reset' : 'No deaths';
 };
 
@@ -159,7 +162,7 @@ const countBy = (items) => {
  * One boss on one night (or any set of pulls).
  * @param {{ summary: object, report: object|null }[]} pulls
  */
-export const summarizePulls = (pulls) => {
+export const summarizePulls = (pulls, { leftOut = null } = {}) => {
   const ordered = [...pulls].sort((a, b) => (a.summary.startedAt || a.summary.createdAt || 0) - (b.summary.startedAt || b.summary.createdAt || 0));
   const first = ordered[0]?.summary || {};
   const percents = ordered
@@ -241,7 +244,7 @@ export const summarizePulls = (pulls) => {
     bossPercent: summary.bossPercent,
     duration: summary.duration,
     deaths: report?.deaths?.length ?? summary.deaths ?? null,
-    cause: wipeCause(summary, report),
+    cause: wipeCause(summary, report, leftOut),
     source: summary.source || 'app',
     hasFull: Boolean(summary.hasFull),
     startedAt: summary.startedAt ?? null,
@@ -280,14 +283,14 @@ export const summarizePulls = (pulls) => {
 /**
  * A raid night: one summary per boss (and difficulty) pulled that night.
  */
-export const summarizeNight = (pulls) => {
+export const summarizeNight = (pulls, { leftOut = null } = {}) => {
   const byBoss = new Map();
   pulls.forEach((p) => {
     const key = `${p.summary.encounterId}:${p.summary.difficultyId}`;
     byBoss.set(key, [...(byBoss.get(key) || []), p]);
   });
   return [...byBoss.values()]
-    .map(summarizePulls)
+    .map((list) => summarizePulls(list, { leftOut }))
     .sort((a, b) => (a.firstPullAt || 0) - (b.firstPullAt || 0));
 };
 

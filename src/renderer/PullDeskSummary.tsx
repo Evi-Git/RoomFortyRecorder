@@ -868,7 +868,11 @@ const BossNightCard = ({
             <CauseBars causes={boss.causes} />
             <p className="text-xs text-foreground mt-2">
               A raid-wide mechanic if it killed many at once, else the first
-              death&apos;s killing blow.
+              death&apos;s killing blow
+              {leftOut.size
+                ? ' (raiders left out of the night not counted)'
+                : ''}
+              .
             </p>
           </Panel>
           <Panel title="Raiders">
@@ -1051,12 +1055,16 @@ export const NightSummaryView = ({
     };
   }, []);
 
+  // Left-out raiders' deaths don't count as why a pull ended (the server
+  // works the causes out again; the widgets stay up meanwhile).
+  const leftOutKey = [...leftOutList].sort().join('|');
   React.useEffect(() => {
     if (!night) return undefined;
     let cancelled = false;
     call<{ night: string; bosses: BossNight[] }>({
       action: 'night',
       night,
+      leftOut: leftOutKey ? leftOutKey.split('|') : [],
     }).then((response) => {
       if (cancelled) return;
       setLoadedNight(night);
@@ -1070,7 +1078,7 @@ export const NightSummaryView = ({
     return () => {
       cancelled = true;
     };
-  }, [night]);
+  }, [night, leftOutKey]);
 
   if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
   if (!nights)
