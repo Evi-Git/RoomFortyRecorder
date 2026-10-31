@@ -25,6 +25,7 @@ import { CastView, CountView, ResourceView, SummaryView } from './OtherTables';
 import EventsView, { EventTab } from './EventsView';
 import QueriesView from './QueriesView';
 import DeathsView from './DeathsView';
+import AnalyzeView from './AnalyzeView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { ZoomContext } from './zoom';
@@ -59,7 +60,8 @@ type Layer = {
  */
 
 type Mode = 'tables' | 'timelines' | 'events' | 'queries';
-type Tab = EventTab;
+/** Analyze (1.9.108) is a Tables-only tab. */
+type Tab = EventTab | 'analyze';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'summary', label: 'Summary' },
@@ -73,6 +75,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'dispels', label: 'Dispels' },
   { key: 'resources', label: 'Resources' },
   { key: 'casts', label: 'Casts' },
+  { key: 'analyze', label: 'Analyze' },
 ];
 
 const MODES: { key: Mode; label: string; icon: React.ReactNode }[] = [
@@ -511,7 +514,9 @@ const LogsExplorer = ({
     </div>
   );
 
-  const showFilters = mode === 'tables' || mode === 'events';
+  // Analyze works on its own (the whole pull, one raider).
+  const showFilters =
+    (mode === 'tables' && tab !== 'analyze') || mode === 'events';
   const multi = stores.length > 1;
   const fightSeconds = viewSeconds(ctx);
 
@@ -547,20 +552,22 @@ const LogsExplorer = ({
 
         {mode !== 'queries' && mode !== 'timelines' && (
           <div className="flex flex-wrap gap-x-1 border-b border-card">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
-                className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${
-                  tab === t.key
-                    ? 'border-brand text-foreground-lighter'
-                    : 'border-transparent text-foreground hover:text-foreground-lighter'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+            {TABS.filter((t) => mode === 'tables' || t.key !== 'analyze').map(
+              (t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className={`px-3 py-1.5 text-sm border-b-2 -mb-px ${
+                    tab === t.key
+                      ? 'border-brand text-foreground-lighter'
+                      : 'border-transparent text-foreground hover:text-foreground-lighter'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ),
+            )}
           </div>
         )}
 
@@ -865,6 +872,7 @@ const LogsExplorer = ({
               />
             )}
             {tab === 'deaths' && <DeathsView ctx={ctx} onWatch={onWatch} />}
+            {tab === 'analyze' && <AnalyzeView ctx={ctx} onWatch={onWatch} />}
             {tab === 'interrupts' && <CountView ctx={ctx} kind="interrupt" />}
             {tab === 'dispels' && <CountView ctx={ctx} kind="dispel" />}
             {tab === 'resources' && (
@@ -901,7 +909,12 @@ const LogsExplorer = ({
         )}
 
         {mode === 'events' && (
-          <EventsView ctx={ctx} tab={tab} who={who} onWatch={onWatch} />
+          <EventsView
+            ctx={ctx}
+            tab={tab === 'analyze' ? 'summary' : tab}
+            who={who}
+            onWatch={onWatch}
+          />
         )}
 
         {mode === 'queries' && (

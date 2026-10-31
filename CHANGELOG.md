@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.108] - Unreleased
+### Added
+- **Logs → Analyze** (a new Tables tab): widgets after WoWAnalyzer for one raider in the pull. Pick the raider; each spec has its own layout on this PC, starting with Active time, a healing or damage breakdown and resource waste. **+ Add widget** opens the builder; each widget can be edited, moved or removed, and Reset layout goes back to the starting ones.
+  - **Cast efficiency:** casts vs possible from the cooldown (and charges), with the stretches it sat ready but unused. The cooldown is estimated from the casts if you don't set it.
+  - **Cooldown window:** what was cast while a cooldown (or its buff) was up, e.g. what Stasis held; graded Good when it holds enough of the spells you list. As a table, a timeline or a number.
+  - **Proc consumption:** each proc spent on the best spell, on another, or wasted (ran out or overwritten).
+  - **Buff uptime:** % up, its windows, and how many had a wanted cast in them.
+  - **Resource waste:** resource lost at the cap (the one wasted most, or one you pick).
+  - **Count:** casts, hits and heals, dispels or interrupts, of everything or of chosen spells, per minute.
+  - **Healing (or damage) breakdown** by spell, and **Active time**.
+  - Clicking a time or strip opens our VoD there. Presets per spec shared with the guild come next.
+
 ## [1.9.107] - Unreleased
 ### Added
 - **Ghost on your VoD.** When the Time trial opens our recording (the VoD button, or a click on the timeline or a finding's Watch), the top player rides along:
