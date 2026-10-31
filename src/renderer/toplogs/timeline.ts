@@ -152,7 +152,14 @@ export const gapSoFar = (you: (number | null)[], them: (number | null)[]) => {
   return out;
 };
 
-export type Phase = { name: string; short: string; from: number; to: number };
+export type Phase = {
+  name: string;
+  short: string;
+  from: number;
+  to: number;
+  /** Warcraft Logs' phase ID (their phases only). */
+  id?: number;
+};
 
 const WORDS: Record<string, number> = {
   one: 1,
@@ -182,6 +189,7 @@ export const phasesOf = (track: Track): Phase[] => {
   return list.map(([from, id], i) => {
     const name = track.phaseNames?.[String(id)] || `Phase ${i + 1}`;
     return {
+      id,
       name,
       short: shortPhase(name),
       from: i === 0 ? 0 : from,
