@@ -25,6 +25,7 @@ import {
   phasesOf,
 } from './timeline';
 import { findings } from './whereTime';
+import { setGhost } from './ghost';
 import WhereTimeWent from './WhereTimeWent';
 import CopyNsrt from './CopyNsrt';
 import TrialTimeline from './TrialTimeline';
@@ -238,7 +239,20 @@ const TimeTrial = ({
     me?.name ?? '',
   );
   const watch = (t: number) => {
-    if (watcher && pullRef) watcher.open(pullRef, me?.name ?? null, t);
+    if (!watcher || !pullRef) return;
+    // The top player rides along on the recording (Ghost on your VoD).
+    if (you && track && aligned)
+      setGhost({
+        ...pullRef,
+        rank: them.rank,
+        them: track,
+        you,
+        aligned,
+        cooldowns: cds,
+        phases: ours,
+        unit,
+      });
+    watcher.open(pullRef, me?.name ?? null, t);
   };
   const field =
     'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';

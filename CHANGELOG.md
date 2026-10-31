@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.107] - Unreleased
+### Added
+- **Ghost on your VoD.** When the Time trial opens our recording (the VoD button, or a click on the timeline or a finding's Watch), the top player rides along:
+  - **A card over the video:** how far behind or ahead you are at the playhead, both rates (5 s average), our phase, and what they press next ("them in 4 s · yours ready", or when yours will be back).
+  - **Under the video:** their cooldowns above ours, our boss phases, and the gap, with the playhead. Click a mark to go there.
+  - Hide it with the × on the card, or the button under the video. It follows the line-up you picked in the Time trial (pull start or each phase) and lasts until the app closes.
+
 ## [1.9.106] - Unreleased
 ### Fixed
 - **Logs: pets summoned before the pull have their names.** The game writes "Unknown" for a pet it hasn't named yet; the name seen on any later line now wins, so a warlock's demon is one row instead of "Ghaazhem" plus "Unknown". A pet never named in the pull takes the name of the same creature of the same owner, else what summoned it (as Warcraft Logs does).

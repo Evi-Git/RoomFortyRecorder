@@ -67,6 +67,8 @@ import { Phrase } from 'localisation/phrases';
 import { VideoCategory } from 'types/VideoCategory';
 import { SpellTimeline as SpellTimelineData } from 'main/types';
 import SpellTimeline from './components/SpellTimeline/SpellTimeline';
+import { ghostFor, useGhosts } from './toplogs/ghost';
+import { GhostCard, GhostLanes } from './toplogs/GhostOverlay';
 import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
@@ -186,6 +188,18 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     null,
   );
   const timelineVideo = instantReplay ? undefined : videos[0];
+  // [RoomFortyRecorder] The Time trial's top player as a ghost on this
+  // recording, when the trial opened it (1.9.107).
+  const ghosts = useGhosts();
+  const ghost =
+    timelineVideo?.category === VideoCategory.Raids
+      ? ghostFor(
+          ghosts,
+          timelineVideo.encounterID,
+          timelineVideo.difficultyID,
+          timelineVideo.start,
+        )
+      : undefined;
 
   useEffect(() => {
     setSpellTimeline(null);
@@ -1689,9 +1703,24 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
         <div className="w-full h-full relative">
           <div className={playerDivClass}>{srcs.map(renderPlayer)}</div>
           {isDrawingEnabled && renderDrawingOverlay()}
+          {ghost && !ghost.hidden && !clipMode && (
+            <GhostCard ghost={ghost} t={progress} />
+          )}
           {renderLoadingSpinner()}
         </div>
       </div>
+
+      {ghost && !clipMode && (
+        <GhostLanes
+          ghost={ghost}
+          t={progress}
+          duration={duration}
+          onSeek={(seconds) => {
+            seekAllPlayers(seconds);
+            setProgress(seconds);
+          }}
+        />
+      )}
 
       {spellTimeline && (
         <SpellTimeline
