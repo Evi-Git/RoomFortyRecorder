@@ -53,19 +53,19 @@ describe('time trial math', () => {
       [61, 3],
       [90, 3],
     ]);
-    const cds = [1, 2, 3].map((spellId) => ({
-      spellId,
-      share: 1,
-      medianGap: 60,
-      medianCasts: 2,
-      medianFirst: 0,
-      cooldown: 60,
-    }));
-    const list = insights(you, them, cds, {
+    const names: Record<number, string> = {
       1: 'Avatar',
       2: 'Recklessness',
       3: 'Bladestorm',
-    });
+    };
+    const cds = [1, 2, 3].map((spellId) => ({
+      key: `#${spellId}`,
+      name: names[spellId],
+      spellId,
+      spellIds: [spellId],
+      cooldown: 60,
+    }));
+    const list = insights(you, them, cds);
     const texts = list.map((i) => i.text);
     expect(texts[0]).toBe('1:00–1:20: they pulled 10k ahead.');
     expect(texts).toContain(

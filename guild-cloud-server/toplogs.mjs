@@ -126,44 +126,65 @@ const median = (list) => {
  * cast by at least `minShare` of them whose median gap between casts is at
  * least `minGap` seconds (one cast in a fight counts as the whole fight).
  * The cooldown is estimated from the shortest gap anyone left.
- * @param {{ duration: number, casts: [number, number][] }[]} tracks casts as [seconds, spellId]
+ *
+ * Spells of one name are one cooldown (1.9.102): Frostwyrm's Fury has two
+ * spell IDs and was two rows, each pressed by fewer players. A track's
+ * `names` (spell ID -> name, from Warcraft Logs) decides; without a name a
+ * spell stands on its own. `spellId` is the ID pressed most, `spellIds` all.
+ * @param {{ duration: number, casts: [number, number][], names?: Record<string, string> }[]} tracks casts as [seconds, spellId]
  */
 export const deriveCooldowns = (tracks, { minShare = 0.6, minGap = 45, max = 12 } = {}) => {
   const usable = tracks.filter((t) => t && Array.isArray(t.casts));
   if (usable.length < 3) return [];
-  const by = new Map(); // spellId -> { players, gaps: [], counts: [], firsts: [] }
+  const nameOf = new Map();
+  usable.forEach((t) =>
+    Object.entries(t.names || {}).forEach(([id, name]) => {
+      if (name && !nameOf.has(Number(id))) nameOf.set(Number(id), String(name));
+    }),
+  );
+  const keyOf = (id) => (nameOf.has(id) ? `n:${nameOf.get(id).toLowerCase()}` : `#${id}`);
+  const by = new Map(); // key -> { players, gaps: [], counts: [], firsts: [], ids: Map<id, casts> }
   usable.forEach((t) => {
     const times = new Map();
     t.casts.forEach(([at, id]) => {
-      if (!times.has(id)) times.set(id, []);
-      times.get(id).push(at);
+      const key = keyOf(id);
+      if (!times.has(key)) times.set(key, { list: [], ids: new Map() });
+      const e = times.get(key);
+      e.list.push(at);
+      e.ids.set(id, (e.ids.get(id) || 0) + 1);
     });
-    times.forEach((list, id) => {
+    times.forEach(({ list, ids }, key) => {
       list.sort((a, b) => a - b);
-      const entry = by.get(id) || { players: 0, gaps: [], counts: [], firsts: [], shortest: Infinity };
+      const entry = by.get(key) || { players: 0, gaps: [], counts: [], firsts: [], shortest: Infinity, ids: new Map() };
       entry.players += 1;
       entry.counts.push(list.length);
       entry.firsts.push(list[0]);
+      ids.forEach((n, id) => entry.ids.set(id, (entry.ids.get(id) || 0) + n));
       if (list.length === 1) entry.gaps.push(Math.max(minGap, t.duration || 0));
       for (let i = 1; i < list.length; i += 1) {
         const gap = list[i] - list[i - 1];
         entry.gaps.push(gap);
         if (gap > 1) entry.shortest = Math.min(entry.shortest, gap);
       }
-      by.set(id, entry);
+      by.set(key, entry);
     });
   });
   const need = Math.ceil(usable.length * minShare);
-  return [...by.entries()]
-    .map(([spellId, e]) => ({
-      spellId,
-      share: e.players / usable.length,
-      medianGap: median(e.gaps),
-      medianCasts: median(e.counts),
-      medianFirst: median(e.firsts),
-      cooldown: Number.isFinite(e.shortest) ? Math.round(e.shortest) : null,
-      players: e.players,
-    }))
+  return [...by.values()]
+    .map((e) => {
+      const ids = [...e.ids.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([id]) => id);
+      return {
+        spellId: ids[0],
+        spellIds: ids,
+        name: nameOf.get(ids[0]) || '',
+        share: e.players / usable.length,
+        medianGap: median(e.gaps),
+        medianCasts: median(e.counts),
+        medianFirst: median(e.firsts),
+        cooldown: Number.isFinite(e.shortest) ? Math.round(e.shortest) : null,
+        players: e.players,
+      };
+    })
     .filter((c) => c.players >= need && c.medianGap >= minGap)
     .sort((a, b) => b.share - a.share || a.medianFirst - b.medianFirst)
     .slice(0, max)
@@ -195,6 +216,24 @@ export const cumulative = (events, fightStart, duration) => {
  * Logs answered with no events; those are fetched again.
  */
 export const hasAmounts = (track) => Boolean(track?.amounts?.length && track.amounts[track.amounts.length - 1] > 0);
+
+/**
+ * A track with what Time trial needs besides amounts (1.9.102): spell names
+ * (to merge cooldowns by name) and the enemies' casts in their fight (to
+ * find where each of their phases starts in our own log).
+ */
+export const hasExtras = (track) => Boolean(track?.names && Array.isArray(track.enemy));
+
+/** Warcraft Logs' masterData abilities -> names of the IDs asked for. */
+export const namesFor = (abilities, ids) => {
+  const want = new Set(ids.map(Number));
+  const out = {};
+  (abilities || []).forEach((a) => {
+    const id = Number(a?.gameID);
+    if (want.has(id) && a.name) out[id] = String(a.name);
+  });
+  return out;
+};
 
 export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOfficer = async () => false, fetchImpl, wcl: givenWcl }) => {
   const enabled = String(env.GUILD_CLOUD_TOPLOGS ?? 'on').toLowerCase() !== 'off';
@@ -296,16 +335,68 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
 
   // The fight, the player (and their pets), then their casts; with `amounts`
   // also their damage or healing second by second.
+  // Each report's ability names, kept while the server runs (one report
+  // holds many ranked players).
+  const reportAbilities = new Map();
+  const abilitiesOf = async (code) => {
+    if (reportAbilities.has(code)) return reportAbilities.get(code);
+    const data = await wcl.query(
+      `query($code: String!) { reportData { report(code: $code) { masterData { abilities { gameID name } } } } }`,
+      { code },
+      { quiet: true },
+    );
+    const list = data.reportData?.report?.masterData?.abilities || [];
+    reportAbilities.set(code, list);
+    return list;
+  };
+
+  // Names for a track saved before 1.9.102 (cheap: one query per report).
+  const fetchNames = async (code, fight, name) => {
+    const track = await readTrack(code, fight, name);
+    if (!track || track.names) return track;
+    const names = namesFor(await abilitiesOf(code), (track.casts || []).map((c) => c[1]));
+    const next = { ...track, names };
+    await writeTrack(code, fight, name, next);
+    return next;
+  };
+
+  // The enemies' casts in their fight (Time trial finds our phases with them).
+  const fetchEnemy = async (track) => {
+    const enemy = [];
+    const end = track.fightStart + track.duration * 1000;
+    let start = track.fightStart;
+    for (let page = 0; page < 10 && start !== null && start !== undefined; page += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const data = await wcl.query(
+        `query($code: String!, $fight: Int!, $start: Float!, $end: Float!) { reportData { report(code: $code) {
+          events(fightIDs: [$fight], dataType: Casts, hostilityType: Enemies, startTime: $start, endTime: $end, limit: 10000) { data nextPageTimestamp }
+        } } }`,
+        { code: track.code, fight: track.fight, start, end },
+        { quiet: true },
+      );
+      const events = data.reportData?.report?.events;
+      (events?.data || []).forEach((e) => {
+        if (e.type === 'cast' && e.abilityGameID) {
+          enemy.push([Math.round((e.timestamp - track.fightStart) / 100) / 10, Number(e.abilityGameID)]);
+        }
+      });
+      start = events?.nextPageTimestamp ?? null;
+    }
+    const abilities = await abilitiesOf(track.code);
+    const names = namesFor(abilities, [...(track.casts || []).map((c) => c[1]), ...enemy.map((c) => c[1])]);
+    return { ...track, enemy, names: { ...(track.names || {}), ...names } };
+  };
+
   const fetchTrack = async (code, fight, name, { amounts = false, metric = 'dps' } = {}) => {
     const old = await readTrack(code, fight, name);
-    if (old && (!amounts || hasAmounts(old))) return old;
+    if (old && (!amounts || (hasAmounts(old) && hasExtras(old)))) return old;
     let track = old;
     if (!track) {
       const head = await wcl.query(
         `query($code: String!, $fight: Int!) { reportData { report(code: $code) {
           fights(fightIDs: [$fight]) { id startTime endTime encounterID kill phaseTransitions { id startTime } }
           phases { encounterID phases { id name isIntermission } }
-          masterData { actors { id name server type subType petOwner } }
+          masterData { actors { id name server type subType petOwner } abilities { gameID name } }
         } } }`,
         { code, fight: Number(fight) },
         { quiet: true },
@@ -353,8 +444,10 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         casts,
         phases: (f.phaseTransitions || []).map((p) => [Math.round((p.startTime - f.startTime) / 100) / 10, p.id]),
         phaseNames: Object.fromEntries((phaseInfo?.phases || []).map((p) => [p.id, p.name])),
+        names: namesFor(report.masterData?.abilities, casts.map((c) => c[1])),
         at: Date.now(),
       };
+      reportAbilities.set(code, report.masterData?.abilities || []);
     }
     if (amounts && !hasAmounts(track)) {
       // One query per actor (the player, then each pet) with the plain
@@ -396,6 +489,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       }
       track = { ...track, metric, amounts: sums };
     }
+    if (amounts && !hasExtras(track)) track = await fetchEnemy(track);
     await writeTrack(code, fight, name, track);
     return track;
   };
@@ -510,7 +604,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   // ---- Routes ---------------------------------------------------------------
   const rowState = async (row) => {
     const track = await readTrack(row.code, row.fight, row.name);
-    if (track) return { ...row, casts: track.casts, phases: track.phases, state: 'ready' };
+    if (track) return { ...row, casts: track.casts, phases: track.phases, names: track.names || null, state: 'ready' };
     const key = `track:${row.code}:${row.fight}:${row.name.toLowerCase()}`;
     const error = recentlyFailed(key);
     if (error) return { ...row, casts: null, state: 'failed', error };
@@ -568,6 +662,15 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         .forEach((r) =>
           enqueue(`track:${r.code}:${r.fight}:${r.name.toLowerCase()}`, () => fetchTrack(r.code, r.fight, r.name)),
         );
+      // Tracks saved before 1.9.102 have no spell names: fetch them after
+      // the casts (cooldowns merge by name once they're in).
+      rows
+        .filter((r) => r.state === 'ready' && !r.names)
+        .forEach((r) =>
+          enqueue(`names:${r.code}:${r.fight}:${r.name.toLowerCase()}`, () => fetchNames(r.code, r.fight, r.name), {
+            first: false,
+          }),
+        );
       const ready = rows.filter((r) => r.state === 'ready');
       return json(res, 200, {
         encounterId,
@@ -578,7 +681,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         at: set.at,
         rows,
         pending: rows.filter((r) => r.state === 'queued').length,
-        cooldowns: deriveCooldowns(ready.map((r) => ({ duration: r.duration, casts: r.casts }))),
+        cooldowns: deriveCooldowns(ready.map((r) => ({ duration: r.duration, casts: r.casts, names: r.names }))),
       });
     }
 
@@ -589,14 +692,14 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       const metric = q('metric') === 'hps' ? 'hps' : 'dps';
       if (!SAFE_CODE.test(code) || !(fight > 0) || !SAFE_NAME.test(name)) return fail(res, 400, 'Bad trial');
       const have = await readTrack(code, fight, name);
-      if (hasAmounts(have)) return json(res, 200, { state: 'ready', track: have });
+      if (hasAmounts(have) && hasExtras(have)) return json(res, 200, { state: 'ready', track: have });
       const key = `trial:${code}:${fight}:${name.toLowerCase()}`;
       const error = recentlyFailed(key);
       if (error) return json(res, 200, { state: 'failed', error });
       const job = enqueue(key, () => fetchTrack(code, fight, name, { amounts: true, metric }));
       // Answer within a few seconds either way; the app asks again.
       const track = await Promise.race([job, new Promise((r) => setTimeout(() => r(undefined), 8000))]);
-      if (hasAmounts(track)) return json(res, 200, { state: 'ready', track });
+      if (hasAmounts(track) && hasExtras(track)) return json(res, 200, { state: 'ready', track });
       const failedNow = recentlyFailed(key);
       if (failedNow) return json(res, 200, { state: 'failed', error: failedNow });
       return json(res, 200, { state: 'queued' });
