@@ -438,11 +438,21 @@ const NightPicker = ({ nights, night, onPick, picked, onPickMany }: Props) => {
     setPopOpen(true);
   };
 
+  // In the right-hand pane of a side-by-side compare, the pop-out would run
+  // off the window: open it to the left instead.
+  const [alignRight, setAlignRight] = React.useState(false);
+  React.useLayoutEffect(() => {
+    if (!popOpen || !box.current) return;
+    const left = box.current.getBoundingClientRect().left;
+    const width = Math.min(920, window.innerWidth - 120);
+    setAlignRight(left + width > window.innerWidth - 8);
+  }, [popOpen]);
+
   const popover = popOpen && (
     <div
       role="dialog"
       aria-label="Pick a night"
-      className="absolute left-0 top-full mt-2 z-40 flex w-[920px] max-w-[calc(100vw-120px)] rounded-xl border border-card bg-background-higher shadow-2xl overflow-hidden"
+      className={`absolute ${alignRight ? 'right-0' : 'left-0'} top-full mt-2 z-40 flex w-[920px] max-w-[calc(100vw-120px)] rounded-xl border border-card bg-background-higher shadow-2xl overflow-hidden`}
     >
       <div className="w-[540px] shrink-0 p-4 border-r border-card">
         <div className="flex items-center gap-x-2 mb-3">

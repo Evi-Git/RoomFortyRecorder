@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.110] - Unreleased
+### Added
+- **Logs → Compare side by side.** A button at the right of the Logs top row opens a second pane next to the first, with its own night, boss, pulls and tabs, so you can look at any pull from any night next to another (a wipe against the kill, last week's kill against tonight's). It starts on the same night and boss; Close puts it away. Both panes come back after a reload.
+- The night picker opens to the left when it would run off the window.
+
 ## [1.9.109] - Unreleased
 ### Changed
 - **12-hour clock everywhere** ("9:05 PM", dates as "Nov 7"), in the PC's own time zone (the Windows setting). Covers the Recordings tables, chat, coaching flags, crash reports, last-saved notes, Top logs and the Dashboard.
