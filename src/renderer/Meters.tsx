@@ -1,6 +1,12 @@
 import { timeOfDay } from 'renderer/clock';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
-import { ArrowLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronsLeft,
+  ChevronsRight,
+  Columns2,
+  X,
+} from 'lucide-react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
 import {
@@ -1258,27 +1264,37 @@ const useSessionState = <T,>(key: string, initial: T) => {
 };
 
 /**
- * Logs: browse a night's pulls and their meters; tick several pulls of a
- * boss to see them side by side.
+ * One Logs pane: browse a night's pulls and their meters; pick several pulls
+ * of a boss to add them up. `suffix` keeps a second pane's picks apart.
  */
-export const LogsView = () => {
+const LogsPane = ({
+  suffix,
+  extra,
+}: {
+  suffix: string;
+  /** Shown at the end of the pane's top row (Compare / Close). */
+  extra?: React.ReactNode;
+}) => {
   const watcher = React.useContext(WatchContext);
   const [nights, setNights] = React.useState<
     { night: string; bosses: NightBoss[] }[] | null
   >(null);
   // Kept for this window so a reload (Ctrl+R) opens the same pulls.
-  const [night, setNight] = useSessionState('rf-logs-night', '');
+  const [night, setNight] = useSessionState(`rf-logs-night${suffix}`, '');
   const [bosses, setBosses] = React.useState<
     (NightBoss & { pullsList: NightPull[] })[] | null
   >(null);
-  const [bossKey, setBossKey] = useSessionState('rf-logs-boss', '');
-  const [pullId, setPullId] = useSessionState('rf-logs-pull', '');
-  const [picked, setPicked] = useSessionState<string[]>('rf-logs-picked', []);
+  const [bossKey, setBossKey] = useSessionState(`rf-logs-boss${suffix}`, '');
+  const [pullId, setPullId] = useSessionState(`rf-logs-pull${suffix}`, '');
+  const [picked, setPicked] = useSessionState<string[]>(
+    `rf-logs-picked${suffix}`,
+    [],
+  );
   const anchorRef = React.useRef<string | null>(null);
   // The pull list folds to a thin strip so the logs get the width.
   const [listFolded, setListFolded] = React.useState(() => {
     try {
-      return localStorage.getItem('rf-pulls-folded') === '1';
+      return localStorage.getItem(`rf-pulls-folded${suffix}`) === '1';
     } catch {
       return false;
     }
@@ -1286,7 +1302,7 @@ export const LogsView = () => {
   const foldList = (folded: boolean) => {
     setListFolded(folded);
     try {
-      localStorage.setItem('rf-pulls-folded', folded ? '1' : '0');
+      localStorage.setItem(`rf-pulls-folded${suffix}`, folded ? '1' : '0');
     } catch {
       // Not remembered.
     }
@@ -1475,6 +1491,7 @@ export const LogsView = () => {
             </button>
           </span>
         )}
+        {extra && <div className="ml-auto">{extra}</div>}
       </div>
 
       {boss && (
@@ -1611,6 +1628,85 @@ export const LogsView = () => {
               <p className="text-sm text-foreground">No pulls.</p>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Copies the first pane's night and boss to the second when it opens. */
+const seedSecondPane = () => {
+  try {
+    ['night', 'boss'].forEach((k) => {
+      const from = sessionStorage.getItem(`rf-logs-${k}`);
+      if (from !== null && sessionStorage.getItem(`rf-logs-${k}-b`) === null)
+        sessionStorage.setItem(`rf-logs-${k}-b`, from);
+    });
+  } catch {
+    // The second pane starts on the latest night.
+  }
+};
+
+/**
+ * Logs: one pane, or two side by side (Compare) to cross-reference pulls
+ * from any night on the same boss or another.
+ */
+export const LogsView = () => {
+  const tab = React.useContext(TabContext);
+  const [split, setSplit] = useSessionState('rf-logs-split', false);
+  // Only the first pane names the tab.
+  const quiet = React.useMemo(() => ({ id: '', active: tab.active }), [tab]);
+  const button =
+    'flex items-center gap-x-1.5 rounded-md border border-card px-2.5 h-8 text-xs text-foreground-lighter hover:bg-card/50';
+  // The first pane stays where it is in the tree, so opening or closing
+  // the second doesn't reset it.
+  return (
+    <div
+      className={`grid grid-cols-1 gap-6 items-start ${
+        split ? 'xl:grid-cols-2' : ''
+      }`}
+    >
+      <div
+        className={`min-w-0 ${
+          split ? 'xl:border-r xl:border-card xl:pr-6' : ''
+        }`}
+      >
+        <LogsPane
+          suffix=""
+          extra={
+            split ? null : (
+              <button
+                type="button"
+                className={button}
+                title="Open a second pane to compare with any pull from any night"
+                onClick={() => {
+                  seedSecondPane();
+                  setSplit(true);
+                }}
+              >
+                <Columns2 size={14} /> Compare side by side
+              </button>
+            )
+          }
+        />
+      </div>
+      {split && (
+        <div className="min-w-0">
+          <TabContext.Provider value={quiet}>
+            <LogsPane
+              suffix="-b"
+              extra={
+                <button
+                  type="button"
+                  className={button}
+                  title="Close this pane"
+                  onClick={() => setSplit(false)}
+                >
+                  <X size={14} /> Close
+                </button>
+              }
+            />
+          </TabContext.Provider>
         </div>
       )}
     </div>
