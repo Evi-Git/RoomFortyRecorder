@@ -1,7 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import { StoreBuilder } from '../../renderer/logs/store';
-import { idleTime, runWidget } from '../../renderer/logs/analyze';
+import {
+  idleTime,
+  KIND_INFO,
+  runWidget,
+  starterLayout,
+} from '../../renderer/logs/analyze';
+import { SPEC_PRESETS } from '../../renderer/logs/specPresets';
 
 /** [RoomFortyRecorder] Logs → Analyze widgets on a small made-up pull. */
 
@@ -158,5 +164,45 @@ describe('Analyze widgets', () => {
     });
     if (count.kind !== 'count') throw new Error(count.kind);
     expect(count.total).toBe(3);
+  });
+
+  test('talent-gated widgets hide for raiders without the talent', () => {
+    const entry = p.units.find((u) => u.guid === ME)!.talents![0][1];
+    const w = {
+      id: 't',
+      kind: 'castEfficiency' as const,
+      spell: { name: 'Stasis' },
+    };
+    expect(runWidget(p, ME, { ...w, talent: [entry] }).kind).toBe(
+      'castEfficiency',
+    );
+    expect(runWidget(p, ME, { ...w, talent: [999999999] }).kind).toBe(
+      'notTalented',
+    );
+  });
+
+  test('spec presets from WoWAnalyzer', () => {
+    const pres = starterLayout(true, 1468);
+    expect(pres.some((w) => w.spell?.name === 'Stasis')).toBe(true);
+    expect(pres[0].kind).toBe('activeTime');
+    // A copy: editing it doesn't touch the preset.
+    pres[0].title = 'changed';
+    expect(SPEC_PRESETS[1468][0].title).toBeUndefined();
+    // An unknown spec gets the basic three.
+    expect(starterLayout(false, 1).map((w) => w.kind)).toEqual([
+      'activeTime',
+      'breakdown',
+      'resourceWaste',
+    ]);
+    Object.entries(SPEC_PRESETS).forEach(([spec, list]) => {
+      const ids = list.map((w) => w.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      list.forEach((w) => {
+        expect(KIND_INFO[w.kind]).toBeDefined();
+        if (w.kind === 'castEfficiency') expect(w.spell?.name).toBeTruthy();
+      });
+      expect(Number(spec)).toBeGreaterThan(0);
+    });
+    expect(Object.keys(SPEC_PRESETS).length).toBeGreaterThanOrEqual(39);
   });
 });

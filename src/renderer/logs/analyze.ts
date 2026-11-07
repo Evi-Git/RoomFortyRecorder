@@ -16,6 +16,7 @@
  */
 import { DEFAULT_FILTERS, makeCtx, meterRows, unionLength } from './query';
 import { F, K, PullStore, Spell } from './store';
+import { SPEC_PRESETS } from './specPresets';
 
 export type SpellRef = { name: string; id?: number };
 
@@ -55,6 +56,15 @@ export type WidgetSpec = {
   metric?: 'healing' | 'damage';
   /** cooldownWindow */
   show?: 'table' | 'timeline' | 'number';
+  /**
+   * Talent entry IDs (COMBATANT_INFO's second number): the widget is hidden
+   * for a raider whose talents are known and has none of them (presets).
+   */
+  talent?: number[];
+  /** castEfficiency: the efficiency that counts as good (WoWAnalyzer's). */
+  target?: number;
+  /** castEfficiency: hidden when never cast (a talent we can't check). */
+  optional?: boolean;
 };
 
 export const KIND_INFO: Record<WidgetKind, { name: string; hint: string }> = {
@@ -148,6 +158,8 @@ const merge = (spans: [number, number][]) => {
 };
 
 export type Result =
+  /** The raider doesn't have the talent the widget is about. */
+  | { kind: 'notTalented' }
   | {
       kind: 'castEfficiency';
       casts: number[];
@@ -260,6 +272,14 @@ export const runWidget = (
 ): Result => {
   const unit = unitOf(store, guid);
   if (unit < 0) return { kind: 'empty', reason: 'Not in this pull.' };
+  if (spec.talent?.length) {
+    const taken = store.units[unit].talents;
+    if (
+      taken?.length &&
+      !taken.some(([, entry]) => spec.talent?.includes(entry))
+    )
+      return { kind: 'notTalented' };
+  }
   const duration = store.duration;
   const casts = () => castsBy(store, unit);
 
@@ -269,6 +289,7 @@ export const runWidget = (
       const times = casts()
         .filter((c) => matches(spec.spell, c.spell))
         .map((c) => c.t);
+      if (!times.length && spec.optional) return { kind: 'notTalented' };
       let cooldown = spec.cooldown ?? 0;
       const estimated = !cooldown;
       if (!cooldown) {
@@ -511,11 +532,20 @@ export const runWidget = (
 };
 
 /** A starting layout for a spec with nothing saved yet. */
-export const starterLayout = (healer: boolean): WidgetSpec[] => [
-  { id: 'active', kind: 'activeTime' },
-  { id: 'breakdown', kind: 'breakdown', metric: healer ? 'healing' : 'damage' },
-  { id: 'waste', kind: 'resourceWaste' },
-];
+/**
+ * A spec's starting widgets: from WoWAnalyzer (specPresets.ts) when we
+ * have that spec, else active time, a breakdown and resource waste.
+ */
+export const starterLayout = (healer: boolean, specId = 0): WidgetSpec[] =>
+  SPEC_PRESETS[specId]?.map((w) => ({ ...w })) ?? [
+    { id: 'active', kind: 'activeTime' },
+    {
+      id: 'breakdown',
+      kind: 'breakdown',
+      metric: healer ? 'healing' : 'damage',
+    },
+    { id: 'waste', kind: 'resourceWaste' },
+  ];
 
 export const newWidgetId = () =>
   `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;

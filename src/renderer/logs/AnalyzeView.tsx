@@ -22,6 +22,7 @@ import {
   WidgetSpec,
 } from './analyze';
 import { specializationById } from '../../main/constants';
+import { SPEC_GUIDE } from './specPresets';
 
 const GOOD = '#7CC47F';
 const OK = '#E5A55F';
@@ -37,7 +38,7 @@ const loadLayout = (specId: number, healer: boolean): WidgetSpec[] => {
   } catch {
     // Fall through.
   }
-  return starterLayout(healer);
+  return starterLayout(healer, specId);
 };
 const saveLayout = (specId: number, list: WidgetSpec[]) => {
   try {
@@ -55,9 +56,9 @@ const specInfo = (id: number) =>
     >
   )[id];
 
-const pctColor = (v: number) => {
-  if (v >= 0.9) return GOOD;
-  return v >= 0.75 ? OK : BAD;
+const pctColor = (v: number, good = 0.9) => {
+  if (v >= good) return GOOD;
+  return v >= good - 0.15 ? OK : BAD;
 };
 
 const titleOf = (w: WidgetSpec) => {
@@ -168,17 +169,23 @@ const WidgetBody = ({
   switch (result.kind) {
     case 'empty':
       return <Note>{result.reason}</Note>;
+    case 'notTalented':
+      return <Note>Not talented.</Note>;
     case 'castEfficiency': {
       const idle = result.idle.reduce((s, [a, b]) => s + b - a, 0);
       // On cooldown (brass) everywhere it wasn't ready-but-unused (dark).
       return (
         <>
           <div className="flex items-baseline gap-x-2">
-            <Big color={pctColor(result.efficiency)}>
+            <Big color={pctColor(result.efficiency, spec.target)}>
               {`${Math.round(result.efficiency * 100)}%`}
             </Big>
             <Note>
-              {`of possible casts · ${result.casts.length} cast${result.casts.length === 1 ? '' : 's'}, about ${result.lost.toFixed(1)} lost`}
+              {`of possible casts · ${result.casts.length} cast${result.casts.length === 1 ? '' : 's'}, about ${result.lost.toFixed(1)} lost${
+                spec.target
+                  ? ` · aim for ${Math.round(spec.target * 100)}%`
+                  : ''
+              }`}
             </Note>
           </div>
           <Strip
@@ -983,6 +990,8 @@ const AnalyzeView = ({
       // Not remembered.
     }
   };
+  const results = list.map((w) => runWidget(store, me.guid, w));
+  const hidden = list.filter((_, i) => results[i].kind === 'notTalented');
   const move = (i: number, by: number) => {
     const next = [...list];
     const [w] = next.splice(i, 1);
@@ -1022,7 +1031,7 @@ const AnalyzeView = ({
             <button
               type="button"
               onClick={() => {
-                update(starterLayout(healer));
+                update(starterLayout(healer, specId));
                 setEditing(null);
               }}
               className="min-h-[34px] px-3 rounded-md border border-card bg-[#1E1A17] text-[13px] hover:bg-card/50"
@@ -1041,7 +1050,8 @@ const AnalyzeView = ({
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
           {list.map((w, i) => {
-            const result = runWidget(store, me.guid, w);
+            const result = results[i];
+            if (result.kind === 'notTalented') return null;
             const wide =
               (w.kind === 'cooldownWindow' &&
                 (w.show ?? 'table') === 'table') ||
@@ -1112,6 +1122,24 @@ const AnalyzeView = ({
             );
           })}
         </div>
+        {SPEC_GUIDE[specId]?.sections.length ? (
+          <p className="text-xs text-foreground m-0">
+            {`Starting widgets: the cooldowns WoWAnalyzer grades for ${specName}${
+              SPEC_GUIDE[specId].patch
+                ? ` (patch ${SPEC_GUIDE[specId].patch})`
+                : ''
+            }. Its guide also looks at: ${SPEC_GUIDE[specId].sections
+              .filter(
+                (x) => !/^(Always Be Casting|Defensives|Preparation)$/i.test(x),
+              )
+              .join(', ')}.`}
+          </p>
+        ) : null}
+        {hidden.length > 0 && (
+          <p className="text-xs text-foreground m-0">
+            {`Hidden (not talented or never cast): ${hidden.map(titleOf).join(', ')}.`}
+          </p>
+        )}
         {!list.length && (
           <p className="text-sm text-foreground">
             No widgets for {specName} yet: Add widget, or Reset layout for the
