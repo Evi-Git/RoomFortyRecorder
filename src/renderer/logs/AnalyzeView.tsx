@@ -23,6 +23,8 @@ import {
 } from './analyze';
 import { specializationById } from '../../main/constants';
 import { SPEC_GUIDE } from './specPresets';
+import { usePermissions } from '../usePermissions';
+import { shortDate } from '../clock';
 
 const GOOD = '#7CC47F';
 const OK = '#E5A55F';
@@ -31,15 +33,35 @@ const BRASS = '#CCA85C';
 const BLUE = '#6EA8FE';
 
 const layoutKey = (specId: number) => `rf-analyze-layout-${specId}`;
-const loadLayout = (specId: number, healer: boolean): WidgetSpec[] => {
+/** This PC's own layout for a spec, if it changed one. */
+const loadLayout = (specId: number): WidgetSpec[] | null => {
   try {
     const saved = JSON.parse(localStorage.getItem(layoutKey(specId)) || 'null');
     if (Array.isArray(saved)) return saved;
   } catch {
-    // Fall through.
+    // None.
   }
-  return starterLayout(healer, specId);
+  return null;
 };
+const clearLayout = (specId: number) => {
+  try {
+    localStorage.removeItem(layoutKey(specId));
+  } catch {
+    // Nothing to clear.
+  }
+};
+
+/** A spec's layout shared with the guild (guild server, 1.9.112). */
+type GuildPreset = {
+  widgets: WidgetSpec[];
+  updatedAt: number;
+  updatedBy: string | null;
+};
+type Response<T> = { ok: true; data: T } | { ok: false; error: string };
+const presetCall = (request: Record<string, unknown>) =>
+  window.electron.ipcRenderer.invoke('pullDesk', [request]) as Promise<
+    Response<{ presets: Record<string, GuildPreset> }>
+  >;
 const saveLayout = (specId: number, list: WidgetSpec[]) => {
   try {
     localStorage.setItem(layoutKey(specId), JSON.stringify(list));
@@ -961,13 +983,49 @@ const AnalyzeView = ({
   const specId = me?.specId ?? 0;
   const spec = specInfo(specId);
   const healer = spec?.role === 'healer';
-  const [layouts, setLayouts] = React.useState<Record<number, WidgetSpec[]>>(
-    {},
-  );
-  const list = layouts[specId] ?? loadLayout(specId, healer);
+  const [layouts, setLayouts] = React.useState<
+    Record<number, WidgetSpec[] | null>
+  >({});
+  const perms = usePermissions();
+  // Sharing needs a yes from the server (an older one says nothing).
+  const canShare = Boolean(perms?.owner || perms?.can.analysisEdit === true);
+  const [guild, setGuild] = React.useState<Record<string, GuildPreset>>({});
+  const [shareNote, setShareNote] = React.useState('');
+  React.useEffect(() => {
+    presetCall({ action: 'analyzePresets' })
+      .then((r) => r.ok && setGuild(r.data.presets || {}))
+      .catch(() => {});
+  }, []);
+  const preset = guild[String(specId)];
+  // This PC's layout, else the guild's, else the built-in one.
+  const own = specId in layouts ? layouts[specId] : loadLayout(specId);
+  const list =
+    own ??
+    (preset ? preset.widgets.map((w) => ({ ...w })) : null) ??
+    starterLayout(healer, specId);
   const update = (next: WidgetSpec[]) => {
     setLayouts((l) => ({ ...l, [specId]: next }));
     saveLayout(specId, next);
+  };
+  const resetLayout = () => {
+    clearLayout(specId);
+    setLayouts((l) => ({ ...l, [specId]: null }));
+  };
+  const share = async (clear: boolean) => {
+    setShareNote('');
+    const r = await presetCall(
+      clear
+        ? { action: 'clearAnalyzePreset', specId }
+        : { action: 'setAnalyzePreset', specId, widgets: list },
+    ).catch((e) => ({ ok: false as const, error: String(e) }));
+    if (!r.ok) {
+      setShareNote(r.error);
+      return;
+    }
+    setGuild(r.data.presets || {});
+    // Follow the guild's layout from now on.
+    resetLayout();
+    setShareNote(clear ? 'Guild preset removed.' : 'Shared with the guild.');
   };
   const [editing, setEditing] = React.useState<WidgetSpec | null | 'new'>(null);
 
@@ -1021,21 +1079,61 @@ const AnalyzeView = ({
               })}
             </select>
           </label>
-          <span className="text-xs text-foreground">{`Widgets: ${specName} layout on this PC`}</span>
+          <span className="text-xs text-foreground">
+            {own
+              ? `Widgets: your ${specName} layout on this PC`
+              : preset
+                ? `Widgets: the guild's ${specName} preset${
+                    preset.updatedBy ? `, shared by ${preset.updatedBy}` : ''
+                  } (${shortDate(preset.updatedAt)})`
+                : `Widgets: starting ${specName} layout`}
+          </span>
+          {own && preset && (
+            <span className="text-xs text-foreground">
+              · the guild has a preset: Reset layout to use it
+            </span>
+          )}
+          {canShare && preset && (
+            <button
+              type="button"
+              className="text-xs text-brand hover:underline"
+              onClick={() => share(true)}
+              title="Remove the guild's preset for this spec (everyone goes back to the starting widgets)"
+            >
+              Remove guild preset
+            </button>
+          )}
+          {shareNote && (
+            <span className="text-xs text-foreground-lighter">{shareNote}</span>
+          )}
           {ctx.pulls.length > 1 && (
             <span className="text-xs text-yellow-400">
               Analyze looks at the first pull picked.
             </span>
           )}
           <div className="ml-auto flex gap-2">
+            {canShare && (
+              <button
+                type="button"
+                onClick={() => share(false)}
+                className="min-h-[34px] px-3 rounded-md border border-brand/60 text-brand bg-[#1E1A17] text-[13px] hover:bg-card/50"
+                title={`Make this the ${specName} layout for everyone in the guild who hasn't changed theirs`}
+              >
+                Share as guild preset
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
-                update(starterLayout(healer, specId));
+                resetLayout();
                 setEditing(null);
               }}
               className="min-h-[34px] px-3 rounded-md border border-card bg-[#1E1A17] text-[13px] hover:bg-card/50"
-              title="Back to the starting widgets for this spec"
+              title={
+                preset
+                  ? "Back to the guild's preset for this spec"
+                  : 'Back to the starting widgets for this spec'
+              }
             >
               Reset layout
             </button>
@@ -1122,7 +1220,7 @@ const AnalyzeView = ({
             );
           })}
         </div>
-        {SPEC_GUIDE[specId]?.sections.length ? (
+        {!own && !preset && SPEC_GUIDE[specId]?.sections.length ? (
           <p className="text-xs text-foreground m-0">
             {`Starting widgets: the cooldowns WoWAnalyzer grades for ${specName}${
               SPEC_GUIDE[specId].patch

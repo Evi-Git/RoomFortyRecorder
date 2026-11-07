@@ -184,7 +184,10 @@ export type PullDeskRequest =
   | { action: 'resetPermissions' }
   | { action: 'setViewAs'; role: string | null }
   | { action: 'settings' }
-  | { action: 'setSettings'; combatPotions: string[] };
+  | { action: 'setSettings'; combatPotions: string[] }
+  | { action: 'analyzePresets' }
+  | { action: 'setAnalyzePreset'; specId: number; widgets: unknown[] }
+  | { action: 'clearAnalyzePreset'; specId: number };
 
 export type PullDeskResponse =
   | { ok: true; data: unknown }
@@ -981,6 +984,19 @@ export default class PullDesk {
         return client.pullDeskRequest('get', '/me', undefined, {
           area: 'permissions',
         });
+      case 'analyzePresets':
+        return client.pullDeskRequest('get', '/analyze-presets');
+      case 'setAnalyzePreset':
+        return client.pullDeskRequest(
+          'put',
+          `/analyze-presets/${id(request.specId)}`,
+          { widgets: request.widgets },
+        );
+      case 'clearAnalyzePreset':
+        return client.pullDeskRequest(
+          'delete',
+          `/analyze-presets/${id(request.specId)}`,
+        );
       case 'settings':
         return client.pullDeskRequest('get', '/settings');
       case 'setSettings':

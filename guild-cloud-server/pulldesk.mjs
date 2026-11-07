@@ -131,6 +131,57 @@ export const splitAtFirstKill = (pulls, killedBefore) => {
  * @param {string} options.botToken       Discord bot token, for channel posts
  * @param {object} options.env            process.env
  */
+// Analyze widgets (the app's WidgetSpec): only known fields, sane sizes.
+const WIDGET_KINDS = new Set([
+  'castEfficiency', 'cooldownWindow', 'procConsumption', 'buffUptime',
+  'resourceWaste', 'count', 'breakdown', 'activeTime',
+]);
+const str = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : undefined);
+const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+const spellRef = (v) => {
+  const name = str(v?.name, 80);
+  if (!name) return undefined;
+  const id = int(v?.id, 1, 2 ** 31);
+  return id ? { name, id } : { name };
+};
+const spellList = (v) => (Array.isArray(v) ? v.slice(0, 20).map(spellRef).filter(Boolean) : undefined);
+const oneOf = (v, list) => (list.includes(v) ? v : undefined);
+export const cleanWidgets = (list) => {
+  if (!Array.isArray(list) || list.length > 40) return null;
+  const out = [];
+  const ids = new Set();
+  for (const w of list) {
+    if (!w || typeof w !== 'object' || !WIDGET_KINDS.has(w.kind)) return null;
+    const id = str(w.id, 40);
+    if (!id || ids.has(id)) return null;
+    ids.add(id);
+    const clean = {
+      id,
+      kind: w.kind,
+      title: str(w.title, 80),
+      spell: spellRef(w.spell),
+      cooldown: num(w.cooldown, 0, 3600),
+      charges: int(w.charges, 1, 10),
+      ends: w.ends === 'buff' ? 'buff' : num(w.ends, 0, 600),
+      spells: spellList(w.spells),
+      min: int(w.min, 1, 50),
+      goodSpells: spellList(w.goodSpells),
+      what: oneOf(w.what, ['casts', 'hits', 'dispels', 'interrupts']),
+      power: int(w.power, 0, 100),
+      metric: oneOf(w.metric, ['healing', 'damage']),
+      show: oneOf(w.show, ['table', 'timeline', 'number']),
+      talent: Array.isArray(w.talent) ? w.talent.slice(0, 10).filter((e) => int(e, 1, 2 ** 31)) : undefined,
+      target: num(w.target, 0, 1),
+      optional: w.optional === true ? true : undefined,
+    };
+    Object.keys(clean).forEach((k) => clean[k] === undefined && delete clean[k]);
+    if (clean.talent && !clean.talent.length) delete clean.talent;
+    out.push(clean);
+  }
+  return out;
+};
+
 export const createPullDesk = (options) => {
   const { readBody, json, fail, memberRoleNames, botToken, env } = options;
   // Central permission check (permissions.mjs); without it, the .env roles.
@@ -1547,6 +1598,29 @@ export const createPullDesk = (options) => {
       });
       const older = reanalyzeOlder(() => true);
       return json(res, 200, { settings: index.settings, rechecking: recent.length + older });
+    }
+
+    // Logs → Analyze guild presets: one widget layout per spec, shared with
+    // the guild (1.9.112). Everyone who sees Analysis reads them; editors
+    // set or clear them. Missing spec: the app's built-in starting widgets.
+    if (first === 'analyze-presets') {
+      index.settings.analyzePresets ??= {};
+      const presets = index.settings.analyzePresets;
+      if (!second && req.method === 'GET') return json(res, 200, { presets });
+      if (/^\d+$/.test(second || '') && (req.method === 'PUT' || req.method === 'DELETE')) {
+        if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit guild presets');
+        if (req.method === 'DELETE') {
+          delete presets[second];
+          await persist();
+          return json(res, 200, { presets });
+        }
+        const body = await readBody(req, 64 * 1024);
+        const widgets = cleanWidgets(body?.widgets);
+        if (!widgets) return fail(res, 400, 'Expected a list of up to 40 widgets');
+        presets[second] = { widgets, updatedAt: Date.now(), updatedBy: req.cloudUserName || null };
+        await persist();
+        return json(res, 200, { presets });
+      }
     }
 
     if (first === 'backfill' && second === 'check' && req.method === 'POST') return backfillCheck(req, res);
