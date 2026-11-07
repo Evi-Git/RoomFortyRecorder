@@ -1,3 +1,4 @@
+import { dateTime } from 'renderer/clock';
 import { ErrorReport, Crashes } from 'main/types';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import { Tooltip, IconButton, Popover, Box, Typography } from '@mui/material';
@@ -40,7 +41,7 @@ export default function CrashStatus(props: IProps) {
     return (
       <>
         {crashes.map((ErrorReport: ErrorReport) => {
-          const dateString = ErrorReport.date.toLocaleString();
+          const dateString = dateTime(ErrorReport.date);
           const { reason } = ErrorReport;
 
           return (

@@ -12,7 +12,6 @@ import {
   dungeonsByMapId,
   instanceDifficulty,
   instanceEncountersById,
-  months,
   specializationById,
   WoWCharacterClassType,
   WoWClassColor,
@@ -47,6 +46,7 @@ import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Dispatch, SetStateAction } from 'react';
+import { dateTime, shortDate, timeOfDay } from './clock';
 
 const getVideoResult = (video: RendererVideo): boolean => {
   return video.result;
@@ -448,18 +448,8 @@ const getPlayerClass = (video: RendererVideo): WoWCharacterClassType => {
 
 const getVideoTime = (video: RendererVideo) => {
   const { start, mtime } = video;
-  const date = start ? new Date(start) : new Date(mtime);
-
-  const hours = date
-    .getHours()
-    .toLocaleString('en-US', { minimumIntegerDigits: 2 });
-
-  const mins = date
-    .getMinutes()
-    .toLocaleString('en-US', { minimumIntegerDigits: 2 });
-
-  const timeAsString = `${hours}:${mins}`;
-  return timeAsString;
+  // [RoomFortyRecorder] 12-hour clock in the PC's time zone.
+  return timeOfDay(start ? new Date(start) : new Date(mtime));
 };
 
 const videoToDate = (video: RendererVideo) => {
@@ -476,24 +466,8 @@ const videoToDate = (video: RendererVideo) => {
   return date;
 };
 
-const dateToHumanReadable = (date: Date) => {
-  const day = date.getDate();
-  const month = months[date.getMonth()].slice(0, 3);
-  // const year = date.getFullYear().toString().slice(2, 4);
-  const dateAsString = `${day} ${month}`;
-
-  const hours = date
-    .getHours()
-    .toLocaleString('en-US', { minimumIntegerDigits: 2 });
-
-  const mins = date
-    .getMinutes()
-    .toLocaleString('en-US', { minimumIntegerDigits: 2 });
-
-  const timeAsString = `${hours}:${mins}`;
-
-  return `${timeAsString} ${dateAsString}`;
-};
+// [RoomFortyRecorder] "Nov 7, 9:05 PM" (12-hour clock, the PC's time zone).
+const dateToHumanReadable = (date: Date) => dateTime(date);
 
 const getVideoDate = (video: RendererVideo) => {
   let date;
@@ -506,10 +480,7 @@ const getVideoDate = (video: RendererVideo) => {
     date = new Date(video.mtime);
   }
 
-  const day = date.getDate();
-  const month = months[date.getMonth()].slice(0, 3);
-  const dateAsString = `${day} ${month}`;
-  return dateAsString;
+  return shortDate(date);
 };
 
 /**

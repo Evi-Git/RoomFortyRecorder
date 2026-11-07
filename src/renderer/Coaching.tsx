@@ -1,3 +1,4 @@
+import { timeOfDay } from 'renderer/clock';
 import React from 'react';
 import { Send } from 'lucide-react';
 import {
@@ -492,12 +493,7 @@ export type Flag = {
   note: string;
 };
 
-const clock = (at: number) =>
-  new Date(at).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+const clock = (at: number) => timeOfDay(at, { seconds: true });
 
 /**
  * Tonight's flags on Watch live: newest first, each with an editable note.

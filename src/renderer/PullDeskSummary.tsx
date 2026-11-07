@@ -1,3 +1,4 @@
+import { dateTime, timeOfDay } from 'renderer/clock';
 import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
@@ -2903,12 +2904,6 @@ const fileSize = (bytes: number) =>
     ? `${(bytes / 1e9).toFixed(1)} GB`
     : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 
-const timeOfDay = (at: number) =>
-  new Date(at).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
 /**
  * Send pulls from a saved combat log: for nights nobody had "Send my pull
  * logs" on. Full reports (cooldown plan, avoidable hits, defensives), placed
@@ -3038,12 +3033,8 @@ export const UploadFromLog = ({
       </p>
       {status?.lastAuto && !status.running && (
         <p className="text-xs text-foreground">
-          Last automatic check{' '}
-          {new Date(status.lastAuto.at).toLocaleTimeString(undefined, {
-            hour: 'numeric',
-            minute: '2-digit',
-          })}
-          : {status.lastAuto.uploaded}{' '}
+          Last automatic check {timeOfDay(status.lastAuto.at)}:{' '}
+          {status.lastAuto.uploaded}{' '}
           {status.lastAuto.uploaded === 1 ? 'pull' : 'pulls'} sent.
         </p>
       )}
@@ -3066,13 +3057,7 @@ export const UploadFromLog = ({
           >
             {files.map((f) => (
               <option key={f.name} value={f.name}>
-                {new Date(f.modified).toLocaleString(undefined, {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}{' '}
+                {`${new Date(f.modified).toLocaleDateString('en-US', { weekday: 'short' })} ${dateTime(f.modified)}`}{' '}
                 · {fileSize(f.size)} · {f.name}
               </option>
             ))}

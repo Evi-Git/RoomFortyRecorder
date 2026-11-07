@@ -3,6 +3,7 @@
  * boss, difficulty and spec, Lorrgs-style, with the spec's main cooldowns on
  * the fight clock; Race me opens a Time trial against any raider's pull.
  */
+import { dateTime } from 'renderer/clock';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import { AppState, RendererVideo } from 'main/types';
 import { useRecordingWatch, WatchContext } from '../Meters';
@@ -330,7 +331,7 @@ const RankingsGrid = ({
         })}
         <span className="ml-auto text-foreground">
           {data.pending ? `${data.pending} logs still coming · ` : ''}
-          Rankings from {new Date(data.at).toLocaleString()}
+          Rankings from {dateTime(data.at)}
         </span>
       </div>
 

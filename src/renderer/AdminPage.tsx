@@ -1,3 +1,4 @@
+import { dateTime } from 'renderer/clock';
 import React from 'react';
 import { Check, Eye, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { Button } from './components/Button/Button';
@@ -413,7 +414,7 @@ const AdminPage = () => {
             )}
             <span className="text-xs text-foreground ml-auto">
               {table?.updatedAt
-                ? `Last saved ${new Date(table.updatedAt).toLocaleString()} by ${table.updatedBy}`
+                ? `Last saved ${dateTime(table.updatedAt)} by ${table.updatedBy}`
                 : 'Using the defaults from the server .env'}
             </span>
           </div>

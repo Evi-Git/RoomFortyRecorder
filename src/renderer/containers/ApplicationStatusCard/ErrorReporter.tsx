@@ -1,3 +1,4 @@
+import { dateTime } from 'renderer/clock';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
 import { ShieldAlert } from 'lucide-react';
@@ -28,7 +29,7 @@ const ErrorReporter = ({
           </p>
           <ul className="text-xs text-popover-foreground/60 list-disc pl-4">
             {errorReports.map((report: ErrorReport) => {
-              const dateString = report.date.toLocaleString();
+              const dateString = dateTime(report.date);
               return (
                 <li key={report.date.toISOString()}>
                   <span className="font-bold">{dateString}:</span>{' '}
