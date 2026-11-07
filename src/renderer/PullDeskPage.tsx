@@ -1,3 +1,4 @@
+import { dateTime, timeOfDay } from 'renderer/clock';
 import React from 'react';
 import {
   ChevronRight,
@@ -882,6 +883,9 @@ const PullDeskPage = (props: IProps) => {
                       </span>
                     </div>
                     <div className="flex gap-x-2 text-xs text-foreground/50">
+                      {pull.startedAt ? (
+                        <span>{timeOfDay(pull.startedAt)}</span>
+                      ) : null}
                       <span>{mmss(pull.duration)}</span>
                       {pull.deaths !== null && (
                         <span className="flex items-center gap-x-[2px]">
@@ -1705,6 +1709,11 @@ const PullDeskPage = (props: IProps) => {
               {kill ? 'Kill' : `Wipe at ${r.bossPercent ?? '?'}%`} ·{' '}
               {mmss(r.duration)}
             </span>
+            {r.startedAt ? (
+              <span className="text-sm text-foreground">
+                {dateTime(r.startedAt)}
+              </span>
+            ) : null}
             <span className="text-xs text-foreground/50">
               Pull {r.totalPullNumber} overall · log from{' '}
               {r.uploadedBy || 'unknown'}
@@ -2056,7 +2065,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
           raider is checked against what they cast. Text reminders and lines
           timed in later phases are skipped for now.
           {settings.noteUpdatedAt &&
-            ` Last saved ${new Date(settings.noteUpdatedAt).toLocaleString()} by ${settings.noteUpdatedBy}.`}
+            ` Last saved ${dateTime(settings.noteUpdatedAt)} by ${settings.noteUpdatedBy}.`}
         </p>
         <Textarea
           value={note}

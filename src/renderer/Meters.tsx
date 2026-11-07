@@ -1,3 +1,4 @@
+import { timeOfDay } from 'renderer/clock';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import { ArrowLeft, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
@@ -1548,7 +1549,12 @@ export const LogsView = () => {
                         >
                           {pullResult(p)}
                         </span>
-                        <span className="ml-auto text-xs text-foreground tabular-nums">
+                        <span className="ml-auto text-xs text-foreground tabular-nums whitespace-nowrap">
+                          {p.startedAt ? (
+                            <span className="opacity-70">
+                              {`${timeOfDay(p.startedAt)} · `}
+                            </span>
+                          ) : null}
                           {mmss(p.duration)}
                         </span>
                       </button>

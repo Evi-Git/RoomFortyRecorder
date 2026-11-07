@@ -1,3 +1,4 @@
+import { dateTime, timeOfDay } from 'renderer/clock';
 import { MessageSquare, SendHorizontal, Unplug, X } from 'lucide-react';
 import { Textarea } from './components/TextArea/textarea';
 import { Button } from './components/Button/Button';
@@ -199,7 +200,7 @@ const VideoChat = (props: IProps) => {
           date.getFullYear() === now.getFullYear();
 
         const formattedDate = isToday
-          ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          ? timeOfDay(date)
           : date.toLocaleDateString([], { day: '2-digit', month: 'short' });
 
         return (
@@ -208,7 +209,7 @@ const VideoChat = (props: IProps) => {
               <strong className="text-foreground-lighter mr-1">
                 {chat.userName}
               </strong>
-              <Tooltip content={date.toLocaleString()}>
+              <Tooltip content={dateTime(date)}>
                 <span>{formattedDate}</span>
               </Tooltip>
               {deletePermissions && (

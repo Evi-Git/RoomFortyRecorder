@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.109] - Unreleased
+### Changed
+- **12-hour clock everywhere** ("9:05 PM", dates as "Nov 7"), in the PC's own time zone (the Windows setting). Covers the Recordings tables, chat, coaching flags, crash reports, last-saved notes, Top logs and the Dashboard.
+- **Pull start times:** each pull in the Logs pull list and the Dashboard's pull list now shows when it was pulled, and a pull's report header shows its date and time.
+
 ## [1.9.108] - Unreleased
 ### Added
 - **Logs → Analyze** (a new Tables tab): widgets after WoWAnalyzer for one raider in the pull. Pick the raider; each spec has its own layout on this PC, starting with Active time, a healing or damage breakdown and resource waste. **+ Add widget** opens the builder; each widget can be edited, moved or removed, and Reset layout goes back to the starting ones.
