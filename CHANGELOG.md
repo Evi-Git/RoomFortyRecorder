@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.112] - Unreleased
+### Added
+- **Logs → Analyze: guild presets.** Officers (Analysis edit) get **Share as guild preset**: the layout you're looking at becomes that spec's layout for everyone in the guild who hasn't changed theirs. **Remove guild preset** goes back to the starting widgets.
+  - Everyone else sees "the guild's Holy Paladin preset, shared by …" above the widgets. A raider who changed their own layout keeps it, with a note that the guild has one; **Reset layout** goes back to the guild's preset (or the starting widgets if there's none).
+- Server: `GET /analyze-presets` and `PUT`/`DELETE /analyze-presets/:specId` (Analysis edit), saved with the pull desk settings. **Needs `update-server.cmd`.**
+
 ## [1.9.111] - Unreleased
 ### Added
 - **Logs → Analyze: starting widgets for every spec, from WoWAnalyzer.** Reset layout (or a spec you haven't set up yet) now gives you Active time, the healing or damage breakdown, resource waste (DPS and tanks), and a **Cast efficiency** widget for each cooldown WoWAnalyzer grades for that spec, with its cooldown, charges and the efficiency it aims for ("aim for 90%"; the colour follows it). 37 of 40 specs; Frost DK, Brewmaster and Resto Shaman keep the basic three for now.
