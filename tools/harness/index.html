@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en-GB" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>Harness</title>
+    <link rel="stylesheet" href="/app.css" />
+    <style>
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body class="bg-background text-foreground">
+    <div id="root"></div>
+    <script>
+      // ?entry=logs-explorer loads /entries/logs-explorer.js
+      const entry =
+        new URLSearchParams(location.search).get('entry') || 'logs-explorer';
+      const s = document.createElement('script');
+      s.type = 'module';
+      s.src = `/entries/${entry}.js`;
+      document.body.appendChild(s);
+    </script>
+  </body>
+</html>

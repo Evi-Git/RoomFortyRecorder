@@ -63,6 +63,15 @@ files (as `logs/SpellIcon.tsx` and `AbilityCard.tsx` do), or
 `useSyncExternalStore`. A browser test harness must run the compiler too
 (babel-plugin-react-compiler) or it won't reproduce these bugs.
 
+## Testing UI changes without the app
+
+`tools/harness/` builds renderer pages for a plain browser (esbuild, with
+the React Compiler, and a mocked `window.electron.ipcRenderer`) and drives
+them with Playwright: `node tools/harness/build.mjs`, then
+`node tools/harness/smoke.mjs --log <a pull's .log.gz>`. See its README for
+adding an entry or overriding a mock answer. Dev only; never shipped. Real
+pull logs stay out of the repo.
+
 ## UI conventions
 
 - Colours: Tailwind tokens, not hex. `walnut` (page), `panel`,
