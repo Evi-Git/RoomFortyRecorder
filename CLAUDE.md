@@ -48,6 +48,11 @@ live only in the server's `.env` (see `guild-cloud-server/.env.example`).
 
 A new server module must be added to `server-files.txt` (a test checks).
 
+A release that changes any file in `server-files.txt` must also bump
+`SERVER_CHANGED_IN` in `src/renderer/serverVersion.ts` to that release's
+version: apps then show "The guild server needs an update" until
+`update-server.cmd` has been run.
+
 ## React Compiler (renderer)
 
 The renderer build runs the React Compiler (`react-compiler-webpack`). It
