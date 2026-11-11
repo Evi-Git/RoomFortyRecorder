@@ -107,7 +107,7 @@ export const Menu = ({
             type="button"
             onClick={toggleFold}
             aria-expanded={!hidden}
-            className="group/label self-stretch flex items-center pl-3 pr-1 mb-1.5 text-xs font-semibold leading-none text-foreground hover:text-foreground-lighter font-sans"
+            className="group/label self-stretch flex items-center pl-3 pr-1 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] leading-none text-brand/75 hover:text-brand font-sans"
           >
             <span>{label}</span>
             <ChevronDown

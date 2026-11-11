@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.123] - Unreleased
+### Changed
+- **Sidebar polish (option A from the mockups).** The page you're on gets a brass tint, a brass bar at its left edge and brass text; section headings (Analysis, Recordings, Settings) are small brass capitals; Go live has a soft brass outline.
+- **Brass now means "new":** recording counts are quiet grey pills, and **Dashboard shows "2 new"** when pulls came in since you last had it open (checked every minute and right after you send a pull).
+- **Watch live** shows a green dot and "3 live" when raiders are streaming.
+
 ## [1.9.122] - Unreleased
 ### Changed
 - **Behind the scenes: the walnut and panel colours are named theme colours** instead of hand-typed values on Analyze, Time trial, the ghost overlay, Where the time went and Copy for NSRT. Nothing looks different; it keeps every page in step for the polish to come.

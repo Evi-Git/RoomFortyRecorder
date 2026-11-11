@@ -60,6 +60,7 @@ import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DiagnosticsDialog from './DiagnosticsDialog';
 import { allows, usePermissions } from './usePermissions';
+import { useNewPulls } from './newPulls';
 import { SINGLETON_PAGES, TabsContext } from './tabs/tabs';
 
 const ipc = window.electron.ipcRenderer;
@@ -341,6 +342,11 @@ const SideMenu = (props: IProps) => {
   // [RoomFortyRecorder] Watch raiders live in the app. Shows how many are
   // live; the page itself explains if your role can't watch.
   const [liveCount, setLiveCount] = useState(0);
+  // Pulls since this PC last had the Dashboard open ("2 new").
+  const newPulls = useNewPulls(
+    allows(permissions, 'analysisView'),
+    appState.page === Pages.PullDesk,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -374,12 +380,13 @@ const SideMenu = (props: IProps) => {
       >
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
-            <Tv size={18} className={someoneLive ? 'text-brand' : ''} />
+            <Tv size={18} className={someoneLive ? 'text-green-400' : ''} />
           </Menu.Item.Icon>
           <span>Watch live</span>
           {someoneLive && (
-            <span className="ml-auto rounded-full bg-brand px-2 text-[11px] font-bold text-primary-foreground">
-              {liveCount}
+            <span className="ml-auto flex items-center gap-x-1.5 text-[11px] font-semibold text-green-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
+              {`${liveCount} live`}
             </span>
           )}
         </span>
@@ -389,12 +396,20 @@ const SideMenu = (props: IProps) => {
 
   // [RoomFortyRecorder] Per-pull wipe reports from the guild server.
   const renderPullDeskTab = () => (
-    <Menu.Item value={Pages.PullDesk} label="Dashboard">
+    <Menu.Item
+      value={Pages.PullDesk}
+      label={newPulls ? `Dashboard (${newPulls} new)` : 'Dashboard'}
+    >
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
           <ClipboardList size={18} />
         </Menu.Item.Icon>
         <span>Dashboard</span>
+        {newPulls > 0 && (
+          <span className="ml-auto rounded-full bg-brand px-2 text-[11px] leading-[18px] font-bold text-walnut">
+            {`${newPulls} new`}
+          </span>
+        )}
       </span>
     </Menu.Item>
   );
