@@ -2,7 +2,6 @@ import { PropsWithChildren, ReactNode } from 'react';
 import { useContext } from 'react';
 import { SidebarRailContext, useMenuContext } from './Menu';
 import { cn } from '../utils';
-import { Badge } from '../Badge/Badge';
 
 type MenuItemProps = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,17 +22,17 @@ const Root = ({
   const { currentValue, onValueChange } = useMenuContext();
   const rail = useContext(SidebarRailContext);
   const active = currentValue === value && !disabled;
-  // [RoomFortyRecorder] Brass sidebar: compact rows, the selected one a
-  // filled pill with its icon in brass.
+  // [RoomFortyRecorder] Brass sidebar: compact rows; the selected one gets
+  // a brass tint, a brass bar at its left edge and brass text and icon.
   return (
     <div
       className={cn(
-        'group w-full flex flex-row bg-transparent rounded-md px-3 py-2 items-center transition-colors',
+        'group relative w-full flex flex-row bg-transparent rounded-md px-3 py-2 items-center transition-colors',
         'text-foreground-lighter/80 text-sm font-sans',
         {
           'hover:bg-card/50 hover:text-foreground-lighter':
             !active && !disabled,
-          'bg-card text-foreground-lighter font-semibold': active,
+          'bg-brand/15 text-brand font-semibold': active,
           'opacity-50 cursor-not-allowed': disabled,
           // Icon strip: only the icon shows (text is sized away).
           'justify-center px-0 text-[0px] [&_*]:text-[0px] [&_button]:hidden [&_span]:!w-auto [&_.ml-auto]:hidden':
@@ -58,6 +57,12 @@ const Root = ({
       }}
       role="button"
     >
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-brand"
+        />
+      )}
       {children}
     </div>
   );
@@ -75,11 +80,13 @@ type MenuBadgeProps = {
   value?: number;
 };
 
+// A count (videos in a category): a quiet pill, so brass is left for
+// what's new.
 const MenuBadge = ({ value }: MenuBadgeProps) => {
   return value ? (
-    <Badge variant="default" className="ml-auto">
+    <span className="ml-auto rounded-full bg-panel-line px-2 text-[11px] leading-[18px] font-semibold tabular-nums text-foreground">
       {value <= 99999 ? value : '99999+'}
-    </Badge>
+    </span>
   ) : null;
 };
 

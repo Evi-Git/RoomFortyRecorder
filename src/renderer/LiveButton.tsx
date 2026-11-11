@@ -80,7 +80,7 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           <Button
             variant={live ? 'destructive' : 'outline'}
             size="sm"
-            className={`flex-1 justify-center gap-x-2 text-sm text-foreground-lighter ${connecting ? 'animate-pulse' : ''}`}
+            className={`flex-1 justify-center gap-x-2 text-sm text-foreground-lighter ${live ? '' : 'border-brand/45 bg-brand/[0.08] hover:bg-brand/15'} ${connecting ? 'animate-pulse' : ''}`}
             disabled={busy}
             onClick={toggle}
           >
