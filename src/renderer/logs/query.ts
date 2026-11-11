@@ -526,8 +526,10 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         meter === 'healing' && (kind === K.DMG || kind === K.HEALABSORB);
       const amount = meterAmount(p, i, meter);
       const spell = meterSpell(p, i, meter);
+      // An enemy's row is the enemy itself (even an add the boss summoned),
+      // so only a raider's row marks what its pets did.
       const fromPet =
-        meter !== 'taken' && unit !== p.units[unit].root && !pets
+        meter !== 'taken' && ref.player && unit !== p.units[unit].root
           ? p.units[unit].name
           : '';
       // Pets of one name apart by what summoned them (Wild Imps from Hand
@@ -595,7 +597,7 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
         const spell = p.spells[p.sp[i]];
         if (!abilityOk(ctx, spell?.id)) return;
         const fromPet =
-          unit !== p.units[unit].root && !pets ? p.units[unit].name : '';
+          ref?.player && unit !== p.units[unit].root ? p.units[unit].name : '';
         const ab = row.abilities.get(`${spell?.id ?? 0}|${fromPet}`);
         if (p.k[i] === K.CAST) {
           if (p.f[i] & F.PROC) return;
@@ -623,9 +625,30 @@ export const meterRows = (ctx: Ctx, meter: Meter): MeterRow[] => {
     if (row) row.active = unionLength(list);
   });
 
+  // An enemy whose heals all landed at full health still gets its row (0,
+  // all overheal), so a heal that did nothing isn't mistaken for no heal.
+  const enemyHeals = meter === 'healing' && ctx.filters.side === 'enemy';
   return [...rows.values()]
-    .filter((r) => r.total > 0)
+    .filter((r) => r.total > 0 || (enemyHeals && r.overheal > 0))
     .sort((a, b) => b.total - a.total);
+};
+
+/**
+ * What an empty meter table says: the filters hide everything, or nothing
+ * of the kind happened (an enemy that never heals isn't a broken page).
+ */
+export const emptyMeterText = (ctx: Ctx, meter: Meter | 'prevented') => {
+  const f = ctx.filters;
+  const narrowed =
+    Boolean(f.range || f.enemy || f.expr) ||
+    f.abilities.length > 0 ||
+    f.healExclude.length > 0 ||
+    f.deathCutoff > 0;
+  if (narrowed) return 'Nothing here with these filters.';
+  const where = ctx.pulls.length > 1 ? 'these pulls' : 'this pull';
+  if (meter === 'healing' && f.side === 'enemy')
+    return `No enemy healed or shielded anything in ${where}.`;
+  return `Nothing here in ${where}.`;
 };
 
 /** Seconds a raider's debuff (by spell) was up on any enemy in view. */
