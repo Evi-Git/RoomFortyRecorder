@@ -524,9 +524,21 @@ const LogsExplorer = ({
     <ZoomContext.Provider value={zoom}>
       <div className="flex flex-col gap-y-3 min-w-0">
         {missing.length > 0 && (
-          <p className="text-xs text-yellow-400 m-0">
-            Left out (full log not sent yet):{' '}
-            {missing.map((m) => m.label).join(', ')}.
+          <p className="text-xs text-yellow-400 m-0 flex items-center gap-x-3">
+            <span>
+              Left out (full log not sent yet, or it couldn&apos;t be loaded):{' '}
+              {missing.map((m) => m.label).join(', ')}.
+            </span>
+            <button
+              type="button"
+              className="text-brand hover:underline"
+              onClick={load.retry}
+              title={missing
+                .map((m) => `${m.label}: ${load.errors[m.id]}`)
+                .join('\n')}
+            >
+              Try again
+            </button>
           </p>
         )}
         <div className="flex items-end gap-x-4 flex-wrap border-b border-card pb-0">
