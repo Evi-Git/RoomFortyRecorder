@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.114] - Unreleased
+### Fixed
+- **Go live: a stop now always wins.** If WoW closed or the recording settings changed while Go live was still connecting, the stream could start anyway a few seconds later. Now it doesn't start, and if the engine starts a stream after you stopped, the app stops it again rather than showing LIVE.
+
 ## [1.9.113] - Unreleased
 ### Fixed
 - **Logs: switching nights no longer shows the previous night for a moment.** While a night loads you see "Loading this night's pulls…", and the page no longer starts reading the old night's newest pull (a full-log download) on the way.
