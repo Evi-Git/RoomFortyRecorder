@@ -277,7 +277,7 @@ const WidgetBody = ({
           </thead>
           <tbody>
             {result.windows.map((w, i) => (
-              <tr key={w.at} className="border-t border-[#2A2521]">
+              <tr key={w.at} className="border-t border-panel-line">
                 <td className="px-2 py-1.5 text-foreground">{i + 1}</td>
                 <td className="px-2 py-1.5 tabular-nums">
                   {onWatch ? (
@@ -464,7 +464,7 @@ const WidgetBody = ({
               key={r.name}
               className="grid grid-cols-[minmax(0,1fr)_64px_44px] items-center gap-x-2 text-xs"
             >
-              <span className="relative h-5 rounded-sm bg-[#171412] overflow-hidden">
+              <span className="relative h-5 rounded-sm bg-walnut overflow-hidden">
                 <span
                   className="absolute inset-y-0 left-0 bg-brand/30"
                   style={{
@@ -506,7 +506,7 @@ const WidgetBody = ({
 /* ------------------------------------------------------------------ */
 
 const input =
-  'bg-[#171412] border border-card rounded-md text-foreground-lighter px-2.5 py-1.5 text-[13px] min-h-[34px] box-border';
+  'bg-walnut border border-card rounded-md text-foreground-lighter px-2.5 py-1.5 text-[13px] min-h-[34px] box-border';
 
 const SpellField = ({
   value,
@@ -663,7 +663,7 @@ const Builder = ({
     Boolean(w.spell?.name);
 
   return (
-    <aside className="flex-[1_1_340px] min-w-0 self-start rounded-[10px] border border-brand bg-[#1E1A17] p-4 flex flex-col gap-y-3.5">
+    <aside className="flex-[1_1_340px] min-w-0 self-start rounded-[10px] border border-brand bg-panel p-4 flex flex-col gap-y-3.5">
       <div className="flex items-center">
         <h2 className="m-0 text-base font-semibold">
           {initial ? 'Edit widget' : 'New widget'}
@@ -687,7 +687,7 @@ const Builder = ({
               onClick={() => set({ kind })}
               className={`flex flex-col items-start gap-y-0.5 min-h-[52px] px-2.5 py-2 rounded-md text-left border ${
                 k === kind
-                  ? 'border-brand bg-[#2A2521]'
+                  ? 'border-brand bg-panel-line'
                   : 'border-card hover:bg-card/40'
               }`}
             >
@@ -805,7 +805,7 @@ const Builder = ({
                   onClick={() => set({ show: s })}
                   className={`min-h-[32px] px-2.5 rounded-md border text-xs ${
                     (w.show ?? 'table') === s
-                      ? 'border-brand bg-[#2A2521]'
+                      ? 'border-brand bg-panel-line'
                       : 'border-card'
                   }`}
                 >
@@ -948,7 +948,7 @@ const Builder = ({
           type="button"
           disabled={!ready}
           onClick={() => onSave(w)}
-          className="min-h-[36px] px-4 rounded-md bg-brand text-[#171412] text-[13px] font-semibold disabled:opacity-50"
+          className="min-h-[36px] px-4 rounded-md bg-brand text-walnut text-[13px] font-semibold disabled:opacity-50"
         >
           {initial ? 'Save' : 'Add widget'}
         </button>
@@ -1089,7 +1089,7 @@ const AnalyzeView = ({
     <div className="flex flex-wrap gap-4">
       <div className="flex-[999_1_640px] min-w-0 flex flex-col gap-y-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <label className="flex items-center gap-x-2 px-2.5 py-1.5 rounded-lg border border-card bg-[#1E1A17] text-[13px]">
+          <label className="flex items-center gap-x-2 px-2.5 py-1.5 rounded-lg border border-card bg-panel text-[13px]">
             Raider
             <select
               className="bg-transparent text-foreground-lighter font-semibold"
@@ -1147,7 +1147,7 @@ const AnalyzeView = ({
                 type="button"
                 disabled={waiting}
                 onClick={() => share(false)}
-                className="min-h-[34px] px-3 rounded-md border border-brand/60 text-brand bg-[#1E1A17] text-[13px] hover:bg-card/50"
+                className="min-h-[34px] px-3 rounded-md border border-brand/60 text-brand bg-panel text-[13px] hover:bg-card/50"
                 title={`Make this the ${specName} layout for everyone in the guild who hasn't changed theirs`}
               >
                 Share as guild preset
@@ -1159,7 +1159,7 @@ const AnalyzeView = ({
                 resetLayout();
                 setEditing(null);
               }}
-              className="min-h-[34px] px-3 rounded-md border border-card bg-[#1E1A17] text-[13px] hover:bg-card/50"
+              className="min-h-[34px] px-3 rounded-md border border-card bg-panel text-[13px] hover:bg-card/50"
               title={
                 preset
                   ? "Back to the guild's preset for this spec"
@@ -1171,7 +1171,7 @@ const AnalyzeView = ({
             <button
               type="button"
               onClick={() => setEditing('new')}
-              className="flex items-center gap-x-1 min-h-[34px] px-3.5 rounded-md bg-brand text-[#171412] text-[13px] font-semibold"
+              className="flex items-center gap-x-1 min-h-[34px] px-3.5 rounded-md bg-brand text-walnut text-[13px] font-semibold"
             >
               <Plus size={14} /> Add widget
             </button>
@@ -1202,7 +1202,7 @@ const AnalyzeView = ({
               return (
                 <section
                   key={w.id}
-                  className={`rounded-lg border bg-[#1E1A17] px-4 py-3.5 flex flex-col gap-y-2.5 min-w-0 ${
+                  className={`rounded-lg border bg-panel px-4 py-3.5 flex flex-col gap-y-2.5 min-w-0 ${
                     wide ? 'lg:col-span-2' : ''
                   } ${editing !== 'new' && editing?.id === w.id ? 'border-brand' : 'border-card'}`}
                 >

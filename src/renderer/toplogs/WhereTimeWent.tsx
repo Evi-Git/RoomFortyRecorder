@@ -36,7 +36,7 @@ const WhereTimeWent = ({
   const kinds = byKind(list);
   const top = list[0]?.cost ?? 1;
   const behind = gapEnd < 0;
-  const card = 'rounded-lg border border-card bg-[#1E1A17] px-4 py-3.5';
+  const card = 'rounded-lg border border-card bg-panel px-4 py-3.5';
   const cols =
     'grid grid-cols-[32px_minmax(180px,240px)_minmax(0,1fr)_150px_56px_140px] gap-x-3.5 items-center';
 
@@ -108,7 +108,7 @@ const WhereTimeWent = ({
       </div>
 
       {list.length > 0 && (
-        <div className="rounded-lg border border-card bg-[#1E1A17] overflow-x-auto">
+        <div className="rounded-lg border border-card bg-panel overflow-x-auto">
           <div className="min-w-[900px]">
             <div
               className={`${cols} px-4 py-2 text-xs text-foreground border-b border-card`}
@@ -126,7 +126,7 @@ const WhereTimeWent = ({
               return (
                 <div
                   key={`${f.kind}:${f.key ?? ''}:${f.at}`}
-                  className={`${cols} px-4 py-3 border-b border-[#2A2521] ${
+                  className={`${cols} px-4 py-3 border-b border-panel-line ${
                     on ? 'bg-brand/10' : ''
                   }`}
                 >
@@ -144,7 +144,7 @@ const WhereTimeWent = ({
                         {f.title}
                       </span>
                       <span
-                        className="self-start rounded-full px-2 py-px text-[11px] font-semibold text-[#171412]"
+                        className="self-start rounded-full px-2 py-px text-[11px] font-semibold text-walnut"
                         style={{ background: kind.color }}
                       >
                         {kind.label}
@@ -165,7 +165,7 @@ const WhereTimeWent = ({
                         {` · ${Math.round((f.cost / total) * 100)}%`}
                       </span>
                     </span>
-                    <span className="h-1.5 rounded bg-[#231F1C]">
+                    <span className="h-1.5 rounded bg-panel-raised">
                       <span
                         className="block h-1.5 rounded"
                         style={{
