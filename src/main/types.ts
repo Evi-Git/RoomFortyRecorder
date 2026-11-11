@@ -786,3 +786,25 @@ export {
   InstantReplayState,
   DialogType,
 };
+
+/**
+ * [RoomFortyRecorder] What happened to this PC's last pull upload ("Send my
+ * Logs"), for the renderer to show.
+ */
+export type PullUploadState = {
+  state:
+    | 'waiting' // asking the server which raider's log it wants
+    | 'uploading'
+    | 'sent'
+    | 'otherRaider' // another raider's fuller log was picked
+    | 'undecided' // the server was still collecting; backfill will check
+    | 'skipped' // a difficulty the guild doesn't track
+    | 'notSignedIn'
+    | 'failed';
+  encounterName: string;
+  difficultyId: number;
+  result: 'kill' | 'wipe';
+  /** When this state was reached, epoch ms. */
+  at: number;
+  error?: string;
+};

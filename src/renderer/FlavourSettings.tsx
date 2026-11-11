@@ -12,6 +12,7 @@ import TextBanner from './components/TextBanner/TextBanner';
 import { FolderOpen, Info } from 'lucide-react';
 import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
+import UploadStatus from './UploadStatus';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -254,6 +255,9 @@ const FlavourSettings: React.FC<IProps> = ({
               setConfigValue('pullDeskUpload', value);
             }}
           />
+        </div>
+        <div className="w-[340px]">
+          <UploadStatus />
         </div>
       </div>
     </div>
