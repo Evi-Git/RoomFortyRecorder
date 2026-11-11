@@ -34,6 +34,13 @@ export default class LiveStreamer extends EventEmitter {
 
   private state: LiveState = { status: 'off' };
 
+  /**
+   * Bumped by every start and stop. A start that was waiting on the guild
+   * server checks it before starting the engine, so a stop that came in
+   * meanwhile (WoW closed, recording settings changed) wins.
+   */
+  private attempt = 0;
+
   private statsTimer?: NodeJS.Timeout;
 
   private lastBytes = 0;
@@ -65,6 +72,8 @@ export default class LiveStreamer extends EventEmitter {
 
   public async start() {
     if (this.isActive()) return;
+    this.attempt += 1;
+    const attempt = this.attempt;
 
     if (!Poller.getInstance().isWowRunning()) {
       this.setState({
@@ -96,6 +105,11 @@ export default class LiveStreamer extends EventEmitter {
         whipUrl: string;
         streamName: string;
       };
+
+      if (attempt !== this.attempt || this.state.status !== 'connecting') {
+        console.info('[LiveStreamer] Stopped while connecting; not starting');
+        return;
+      }
       const encoder = LiveStreamer.pickEncoder(
         this.cfg.get<string>('obsRecEncoder'),
         noobs.ListVideoEncoders(),
@@ -128,6 +142,8 @@ export default class LiveStreamer extends EventEmitter {
       );
       // The result arrives as a "stream-start" or "stream-stop" signal.
     } catch (error) {
+      // A stop while the request was out stays a stop.
+      if (attempt !== this.attempt) return;
       const message = LiveStreamer.describeError(error);
       console.error('[LiveStreamer] Failed to start', message);
       this.setState({ status: 'error', error: message });
@@ -136,6 +152,7 @@ export default class LiveStreamer extends EventEmitter {
 
   public stop(reason: string) {
     if (!this.isActive()) return;
+    this.attempt += 1;
     console.info('[LiveStreamer] Stopping stream:', reason);
 
     try {
@@ -168,6 +185,15 @@ export default class LiveStreamer extends EventEmitter {
     console.info('[LiveStreamer] Signal', signal);
 
     if (signal.id === 'stream-start') {
+      // Stopped before the engine confirmed: make sure it really stops.
+      if (this.state.status === 'off') {
+        try {
+          noobs.StopStream();
+        } catch (error) {
+          console.error('[LiveStreamer] StopStream failed', error);
+        }
+        return;
+      }
       this.setState({ status: 'live', streamName: this.state.streamName });
       this.startStats();
       return;
