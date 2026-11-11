@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.115] - Unreleased
+### Added
+- **"The guild server needs an update" card.** When the guild server is older than the last release that changed it, a small card at the bottom right says so. The owner sees "Run update-server.cmd on the server PC"; everyone else that some newer features may not work until it's updated. It goes away on its own once the server is updated (checked every 10 minutes), and × hides it until the next server change.
+- The app reads the version from the server's `/health` (the release tag `update-server.cmd` writes). A server installed some other way shows no card.
+
 ## [1.9.114] - Unreleased
 ### Fixed
 - **Go live: a stop now always wins.** If WoW closed or the recording settings changed while Go live was still connecting, the stream could start anyway a few seconds later. Now it doesn't start, and if the engine starts a stream after you stopped, the app stops it again rather than showing LIVE.

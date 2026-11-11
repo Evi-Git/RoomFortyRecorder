@@ -42,6 +42,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import KillVideoProgress from './KillVideoProgress';
 import { MAX_TABS, TabContext, TabsContext, useTabs } from './tabs/tabs';
 import TabStrip from './tabs/TabStrip';
+import ServerVersionNotice from './ServerVersionNotice';
 
 // One stable context value per tab and visibility.
 const tabContexts = new Map<string, { id: string; active: boolean }>();
@@ -601,6 +602,7 @@ const WarcraftRecorder = () => {
                 </div>
               </TabsContext.Provider>
             </div>
+            <ServerVersionNotice />
           </TooltipProvider>
         </QueryClientProvider>
       </Box>

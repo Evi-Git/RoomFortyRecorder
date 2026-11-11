@@ -11,6 +11,7 @@ import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
 import { makeCoachClip } from './CoachClip';
 import { RendererVideo } from './types';
 import { send } from './main';
+import { cloudService } from './cloudService';
 
 /**
  * [RoomFortyRecorder] Pull desk, app side.
@@ -186,6 +187,7 @@ export type PullDeskRequest =
   | { action: 'settings' }
   | { action: 'setSettings'; combatPotions: string[] }
   | { action: 'analyzePresets' }
+  | { action: 'serverHealth' }
   | { action: 'setAnalyzePreset'; specId: number; widgets: unknown[] }
   | { action: 'clearAnalyzePreset'; specId: number };
 
@@ -666,6 +668,21 @@ export default class PullDesk {
     );
   }
 
+  /**
+   * The guild server's version (its /health, from the release tag
+   * update-server.cmd wrote; null when it wasn't installed that way), and
+   * this app's.
+   */
+  private async serverHealth() {
+    const base = cloudService.apiUrl.replace(/\/api$/, '');
+    const res = await axios.get(`${base}/health`, { timeout: 8000 });
+    const version = (res.data as { version?: unknown })?.version;
+    return {
+      server: typeof version === 'string' ? version : null,
+      app: app.getVersion(),
+    };
+  }
+
   private route(client: CloudClient, request: PullDeskRequest) {
     const id = (value: string | number) => encodeURIComponent(String(value));
 
@@ -986,6 +1003,8 @@ export default class PullDesk {
         });
       case 'analyzePresets':
         return client.pullDeskRequest('get', '/analyze-presets');
+      case 'serverHealth':
+        return this.serverHealth();
       case 'setAnalyzePreset':
         return client.pullDeskRequest(
           'put',
