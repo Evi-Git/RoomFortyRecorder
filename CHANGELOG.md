@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.116] - Unreleased
+### Added
+- **Settings → Game → Send my Logs now says what happened to your last pull**: asking the guild server, sending, "your log was used", "another raider's log was used", not tracked, not signed in, or couldn't send (with the reason; it's sent again automatically later). Under it, when your saved combat logs were last checked and how many missing pulls were sent.
+### Fixed
+- When the guild server was still collecting raiders' logs after every retry, the app logged "Another raider is uploading this pull". It now says the server was still deciding (the automatic check sends it later if needed).
+
 ## [1.9.115] - Unreleased
 ### Added
 - **"The guild server needs an update" card.** When the guild server is older than the last release that changed it, a small card at the bottom right says so. The owner sees "Run update-server.cmd on the server PC"; everyone else that some newer features may not work until it's updated. It goes away on its own once the server is updated (checked every 10 minutes), and × hides it until the next server change.

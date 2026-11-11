@@ -9,7 +9,7 @@ import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
 import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
 import { makeCoachClip } from './CoachClip';
-import { RendererVideo } from './types';
+import { PullUploadState, RendererVideo } from './types';
 import { send } from './main';
 import { cloudService } from './cloudService';
 
@@ -54,6 +54,19 @@ const sleep = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+
+/** A short reason for a failed request, for raiders to read. */
+const describe = (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const reason = (error.response?.data as { error?: string } | undefined)
+      ?.error;
+    if (status)
+      return `Guild server answered ${status}${reason ? `: ${reason}` : ''}`;
+    return 'Could not reach the guild server';
+  }
+  return String((error as Error)?.message ?? error);
+};
 
 export type PullDeskRequest =
   | { action: 'config' }
@@ -188,6 +201,7 @@ export type PullDeskRequest =
   | { action: 'setSettings'; combatPotions: string[] }
   | { action: 'analyzePresets' }
   | { action: 'serverHealth' }
+  | { action: 'uploadState' }
   | { action: 'setAnalyzePreset'; specId: number; widgets: unknown[] }
   | { action: 'clearAnalyzePreset'; specId: number };
 
@@ -216,6 +230,30 @@ export default class PullDesk {
   // Boss % from the recorder's encounter logic, by encounter ID.
   private bossPercents = new Map<number, number>();
 
+  // What happened to this PC's last pull upload (shown under Send my Logs).
+  private lastUpload: PullUploadState | null = null;
+
+  private setUpload(
+    pull: CapturedPull,
+    state: PullUploadState['state'],
+    error?: string,
+  ) {
+    this.lastUpload = {
+      state,
+      encounterName: pull.encounterName,
+      difficultyId: pull.difficultyId,
+      result: pull.result ? 'kill' : 'wipe',
+      at: Date.now(),
+      error,
+    };
+    send('pullDeskUploadState', this.uploadState());
+  }
+
+  /** The last pull upload and the last automatic backfill. */
+  public uploadState() {
+    return { last: this.lastUpload, backfill: this.backfill.lastAuto };
+  }
+
   static getInstance() {
     if (!PullDesk.instance) PullDesk.instance = new PullDesk();
     return PullDesk.instance;
@@ -231,6 +269,7 @@ export default class PullDesk {
         .auto(() => this.capture.capturing)
         .then(() => {
           if (this.backfill.lastAuto?.uploaded) send('pullDeskUpdated');
+          send('pullDeskUploadState', this.uploadState());
         })
         .catch((error) =>
           console.warn('[PullDesk] Automatic backfill failed', String(error)),
@@ -257,9 +296,10 @@ export default class PullDesk {
 
   private onPullFinished(pull: CapturedPull) {
     setTimeout(() => {
-      this.upload(pull).catch((error) =>
-        console.warn('[PullDesk] Pull upload failed', String(error)),
-      );
+      this.upload(pull).catch((error) => {
+        console.warn('[PullDesk] Pull upload failed', String(error));
+        this.setUpload(pull, 'failed', describe(error));
+      });
     }, CLAIM_DELAY_MS);
   }
 
@@ -268,8 +308,10 @@ export default class PullDesk {
 
     if (!client.pullDeskReady()) {
       console.info('[PullDesk] Not signed in to the guild server, skipping');
+      this.setUpload(pull, 'notSignedIn');
       return;
     }
+    this.setUpload(pull, 'waiting');
 
     const bossPercent = this.bossPercents.get(pull.encounterId);
     this.bossPercents.delete(pull.encounterId);
@@ -303,13 +345,24 @@ export default class PullDesk {
 
     if (claim.skip) {
       console.info('[PullDesk] Server does not track this difficulty');
+      this.setUpload(pull, 'skipped');
+      return;
+    }
+
+    if (claim.waitMs && !claim.upload) {
+      // Still collecting after every retry: the automatic backfill checks
+      // this pull again once the log file is finished.
+      console.info('[PullDesk] Server still deciding; backfill will check');
+      this.setUpload(pull, 'undecided');
       return;
     }
 
     if (!claim.upload || !claim.pullId) {
       console.info('[PullDesk] Another raider is uploading this pull');
+      this.setUpload(pull, 'otherRaider');
       return;
     }
+    this.setUpload(pull, 'uploading');
 
     const body = await gzip(Buffer.from(pull.log, 'utf8'));
     console.info(
@@ -338,6 +391,7 @@ export default class PullDesk {
     }
 
     console.info('[PullDesk] Pull report', result.status);
+    this.setUpload(pull, 'sent');
     send('pullDeskUpdated');
     await uploadFullLog(client, claim.pullId as string, pull);
   }
@@ -1005,6 +1059,8 @@ export default class PullDesk {
         return client.pullDeskRequest('get', '/analyze-presets');
       case 'serverHealth':
         return this.serverHealth();
+      case 'uploadState':
+        return Promise.resolve(this.uploadState());
       case 'setAnalyzePreset':
         return client.pullDeskRequest(
           'put',

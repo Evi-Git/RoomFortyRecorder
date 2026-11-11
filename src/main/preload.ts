@@ -70,6 +70,7 @@ export type Channels =
   | 'liveUnwatch'
   | 'pullDesk'
   | 'pullDeskUpdated'
+  | 'pullDeskUploadState'
   | 'coachClipStage';
 
 contextBridge.exposeInMainWorld('electron', {
