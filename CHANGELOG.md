@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.120] - Unreleased
+### Fixed
+- **Logs → Analyze: the widgets no longer jump a moment after opening.** For a spec without its own layout on this PC, Analyze waits for the guild's preset (placeholders show meanwhile) and no longer flashes the starting widgets first.
+- **Logs → Analyze says when the guild's presets couldn't be loaded**, with Try again, instead of quietly showing the starting widgets. Share as guild preset waits until the presets have loaded.
+
 ## [1.9.119] - Unreleased
 ### Added
 - **Try again where things can fail.** Logs (a night or the nights list that won't load, pulls left out of an added-up view), and Time trial (their log, our log, our pulls) now offer **Try again** instead of a dead end.
