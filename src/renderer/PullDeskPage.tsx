@@ -532,14 +532,19 @@ const PullDeskPage = (props: IProps) => {
 
     const wanted = nightsKey ? nightsKey.split(',') : [];
     const days = daysToCover([...wanted].sort()[0], todayKey());
+    // The timer and "a pull was sent" can both ask at once: only the newest
+    // answer is used, so an older one never overwrites it.
+    let asked = 0;
     const fetchList = () => {
+      asked += 1;
+      const mine = asked;
       // The calendar's nights too, so a new raid night shows up.
       call<{ nights: CalendarNight[] }>({ action: 'nights' }).then((r) => {
-        if (!cancelled && r.ok) setNightList(r.data.nights);
+        if (!cancelled && mine === asked && r.ok) setNightList(r.data.nights);
       });
       return call<{ pulls: PullSummary[] }>({ action: 'list', days }).then(
         (response) => {
-          if (cancelled) return;
+          if (cancelled || mine !== asked) return;
           setLoading(false);
           if (!response.ok) {
             setError(response.error);

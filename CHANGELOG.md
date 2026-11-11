@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.121] - Unreleased
+### Fixed
+- **Dashboard: the pull list can no longer jump back to an older state.** The every-30-seconds refresh and "a pull was just sent" could both ask at once; if the older answer came back last it replaced the newer one (a pull you'd just seen would vanish until the next refresh). Only the newest answer is used now.
+
 ## [1.9.120] - Unreleased
 ### Fixed
 - **Logs → Analyze: the widgets no longer jump a moment after opening.** For a spec without its own layout on this PC, Analyze waits for the guild's preset (placeholders show meanwhile) and no longer flashes the starting widgets first.
