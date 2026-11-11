@@ -219,8 +219,8 @@ const TrialTimeline = ({
     marker !== null ? ourPhases.find((p) => p.from > marker) : undefined;
   const gapNow = marker !== null ? gapAt(marker) : gapEnd;
 
-  const leftCell = 'border-b border-[#2A2521] px-3 box-border';
-  const rightCell = 'border-b border-[#2A2521] relative';
+  const leftCell = 'border-b border-panel-line px-3 box-border';
+  const rightCell = 'border-b border-panel-line relative';
 
   // Phase pacing: for each phase both reached, how much later ours started.
   const pacing = ourPhases.slice(1).map((p, i) => {
@@ -229,7 +229,7 @@ const TrialTimeline = ({
   });
 
   return (
-    <div className="rounded-lg border border-card bg-[#1E1A17] overflow-x-auto">
+    <div className="rounded-lg border border-card bg-panel overflow-x-auto">
       <div className="flex min-w-[1000px]">
         {/* Labels */}
         <div className="flex-none w-[230px] border-r border-card flex flex-col">
@@ -499,8 +499,8 @@ const TrialTimeline = ({
                   className={`${rightCell} ${highlight?.key === r.cd.key ? 'bg-brand/10' : ''}`}
                   style={{ height: ROW }}
                 >
-                  <span className="absolute inset-x-0 top-2 h-[18px] rounded-[3px] bg-[#191512]" />
-                  <span className="absolute inset-x-0 top-8 h-[18px] rounded-[3px] bg-[#191512]" />
+                  <span className="absolute inset-x-0 top-2 h-[18px] rounded-[3px] bg-panel-deep" />
+                  <span className="absolute inset-x-0 top-8 h-[18px] rounded-[3px] bg-panel-deep" />
                   {them_.map((p, i) => (
                     <span
                       key={`t${p.them}`}
@@ -605,7 +605,7 @@ const TrialTimeline = ({
                   style={{ left: pct(marker) }}
                 />
                 <span
-                  className="absolute top-8 z-10 pointer-events-none rounded-md border border-card bg-[#171412] px-2.5 py-2 text-xs leading-relaxed whitespace-nowrap tabular-nums"
+                  className="absolute top-8 z-10 pointer-events-none rounded-md border border-card bg-walnut px-2.5 py-2 text-xs leading-relaxed whitespace-nowrap tabular-nums"
                   style={
                     marker / max > 0.6
                       ? { right: `calc(${100 - (marker / max) * 100}% + 8px)` }

@@ -63,6 +63,17 @@ files (as `logs/SpellIcon.tsx` and `AbilityCard.tsx` do), or
 `useSyncExternalStore`. A browser test harness must run the compiler too
 (babel-plugin-react-compiler) or it won't reproduce these bugs.
 
+## UI conventions
+
+- Colours: Tailwind tokens, not hex. `walnut` (page), `panel`,
+  `panel-deep`, `panel-raised`, `panel-line` (surfaces and their lines),
+  `brand` (brass). Literal colours for charts/MUI live in `renderer/brand.ts`.
+- Loading, empty and error states: `components/States/States.tsx`
+  (`LoadingState`, `Skeleton`, `EmptyState`, `ErrorState` with Try again and
+  Copy details; errors go through `renderer/friendlyError.ts`). They set
+  `data-state="loading|empty|failed"` so harness tests can wait on them.
+- Times of day: `renderer/clock.ts` (12-hour, the PC's time zone).
+
 ## Spell icons (how they flow)
 
 Combat logs have spell IDs, not icon names. Icon name: app `SpellIcons`

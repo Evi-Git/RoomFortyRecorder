@@ -17,6 +17,15 @@ module.exports = {
     },
     extend: {
       colors: {
+        // [RoomFortyRecorder] Brand surfaces (literal, so nothing shifts):
+        // walnut page, panels, and their lines. Use these, not hex values.
+        walnut: '#171412',
+        panel: {
+          DEFAULT: '#1E1A17',
+          deep: '#191512',
+          raised: '#231F1C',
+          line: '#2A2521',
+        },
         brand: {
           DEFAULT: 'hsl(var(--brand))',
           soft: 'hsl(var(--brand-soft))',

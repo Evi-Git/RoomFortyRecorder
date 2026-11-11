@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.122] - Unreleased
+### Changed
+- **Behind the scenes: the walnut and panel colours are named theme colours** instead of hand-typed values on Analyze, Time trial, the ghost overlay, Where the time went and Copy for NSRT. Nothing looks different; it keeps every page in step for the polish to come.
+
 ## [1.9.121] - Unreleased
 ### Fixed
 - **Dashboard: the pull list can no longer jump back to an older state.** The every-30-seconds refresh and "a pull was just sent" could both ask at once; if the older answer came back last it replaced the newer one (a pull you'd just seen would vanish until the next refresh). Only the newest answer is used now.

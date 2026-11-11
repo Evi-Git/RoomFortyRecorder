@@ -25,7 +25,7 @@ export const GhostCard = ({ ghost, t }: { ghost: Ghost; t: number }) => {
   const next = comingUp(ghost, t);
   const behind = at.gap < 0;
   return (
-    <div className="absolute top-3 right-3 z-[2] w-[290px] flex flex-col gap-y-2 rounded-lg border border-card bg-[#171412]/90 px-3.5 py-3 text-xs pointer-events-auto">
+    <div className="absolute top-3 right-3 z-[2] w-[290px] flex flex-col gap-y-2 rounded-lg border border-card bg-walnut/90 px-3.5 py-3 text-xs pointer-events-auto">
       <div className="flex items-center gap-x-2 text-foreground">
         <span className="w-2 h-2 rounded-full" style={{ background: THEM }} />
         <span className="truncate">
@@ -58,7 +58,7 @@ export const GhostCard = ({ ghost, t }: { ghost: Ghost; t: number }) => {
         </div>
       )}
       {next.length > 0 && (
-        <div className="flex flex-col gap-y-1.5 pt-1.5 border-t border-[#2A2521]">
+        <div className="flex flex-col gap-y-1.5 pt-1.5 border-t border-panel-line">
           <span className="text-foreground">Coming up</span>
           {next.map((c) => {
             let yours = 'yours: ?';
@@ -143,7 +143,7 @@ export const GhostLanes = ({
                 {ghost.phases.map((p, i) => (
                   <span
                     key={`${p.name}${p.from}`}
-                    className="absolute top-0 h-3.5 rounded-sm px-1 text-[9px] leading-[14px] font-bold text-[#171412] truncate box-border"
+                    className="absolute top-0 h-3.5 rounded-sm px-1 text-[9px] leading-[14px] font-bold text-walnut truncate box-border"
                     style={{
                       left: pct(p.from),
                       width: `calc(${((p.to - p.from) / max) * 100}% - 2px)`,
@@ -167,7 +167,7 @@ export const GhostLanes = ({
                 <SpellIcon spellId={cd.spellId} name={cd.name} />
                 <span className="truncate">{cd.name}</span>
               </span>
-              <div className="relative h-[22px] rounded bg-[#1E1A17]">
+              <div className="relative h-[22px] rounded bg-panel">
                 {castsFor(themSide, cd).map((c) => (
                   <button
                     key={`t${c}`}
@@ -196,7 +196,7 @@ export const GhostLanes = ({
             </React.Fragment>
           ))}
           <span className={label}>Gap (you − them)</span>
-          <div className="relative h-7 rounded bg-[#1E1A17] overflow-hidden">
+          <div className="relative h-7 rounded bg-panel overflow-hidden">
             <svg
               viewBox={`0 0 ${W} ${H}`}
               preserveAspectRatio="none"

@@ -105,7 +105,7 @@ const CopyNsrt = ({
     'bg-card text-foreground-lighter rounded px-2 py-1 text-xs border border-background';
 
   return (
-    <div className="rounded-lg border border-card bg-[#1E1A17] p-4 flex flex-col gap-y-3">
+    <div className="rounded-lg border border-card bg-panel p-4 flex flex-col gap-y-3">
       <div className="flex items-center gap-x-2">
         <span className="font-semibold text-sm">Copy for NSRT</span>
         <span className="text-xs text-foreground">
