@@ -25,6 +25,7 @@ import { specializationById } from '../../main/constants';
 import { SPEC_GUIDE } from './specPresets';
 import { usePermissions } from '../usePermissions';
 import { shortDate } from '../clock';
+import { ErrorState, Skeleton } from '../components/States/States';
 
 const GOOD = '#7CC47F';
 const OK = '#E5A55F';
@@ -990,15 +991,42 @@ const AnalyzeView = ({
   // Sharing needs a yes from the server (an older one says nothing).
   const canShare = Boolean(perms?.owner || perms?.can.analysisEdit === true);
   const [guild, setGuild] = React.useState<Record<string, GuildPreset>>({});
+  // The guild's presets: still coming, here, or couldn't be had (then the
+  // starting widgets show, and say why).
+  const [guildState, setGuildState] = React.useState<
+    'loading' | 'ready' | 'unavailable'
+  >('loading');
+  const [guildError, setGuildError] = React.useState('');
+  const [guildTick, setGuildTick] = React.useState(0);
   const [shareNote, setShareNote] = React.useState('');
   React.useEffect(() => {
+    let live = true;
     presetCall({ action: 'analyzePresets' })
-      .then((r) => r.ok && setGuild(r.data.presets || {}))
-      .catch(() => {});
-  }, []);
+      .then((r) => {
+        if (!live) return;
+        if (r.ok) {
+          setGuild(r.data.presets || {});
+          setGuildState('ready');
+        } else {
+          setGuildError(r.error);
+          setGuildState('unavailable');
+        }
+      })
+      .catch((e) => {
+        if (!live) return;
+        setGuildError(String(e));
+        setGuildState('unavailable');
+      });
+    return () => {
+      live = false;
+    };
+  }, [guildTick]);
   const preset = guild[String(specId)];
   // This PC's layout, else the guild's, else the built-in one.
   const own = specId in layouts ? layouts[specId] : loadLayout(specId);
+  // Without a layout of its own, wait for the guild's (no jump from the
+  // starting widgets to the preset a moment later).
+  const waiting = !own && guildState === 'loading';
   const list =
     own ??
     (preset ? preset.widgets.map((w) => ({ ...w })) : null) ??
@@ -1080,13 +1108,15 @@ const AnalyzeView = ({
             </select>
           </label>
           <span className="text-xs text-foreground">
-            {own
-              ? `Widgets: your ${specName} layout on this PC`
-              : preset
-                ? `Widgets: the guild's ${specName} preset${
-                    preset.updatedBy ? `, shared by ${preset.updatedBy}` : ''
-                  } (${shortDate(preset.updatedAt)})`
-                : `Widgets: starting ${specName} layout`}
+            {waiting
+              ? `Widgets: loading the guild's ${specName} preset…`
+              : own
+                ? `Widgets: your ${specName} layout on this PC`
+                : preset
+                  ? `Widgets: the guild's ${specName} preset${
+                      preset.updatedBy ? `, shared by ${preset.updatedBy}` : ''
+                    } (${shortDate(preset.updatedAt)})`
+                  : `Widgets: starting ${specName} layout`}
           </span>
           {own && preset && (
             <span className="text-xs text-foreground">
@@ -1115,6 +1145,7 @@ const AnalyzeView = ({
             {canShare && (
               <button
                 type="button"
+                disabled={waiting}
                 onClick={() => share(false)}
                 className="min-h-[34px] px-3 rounded-md border border-brand/60 text-brand bg-[#1E1A17] text-[13px] hover:bg-card/50"
                 title={`Make this the ${specName} layout for everyone in the guild who hasn't changed theirs`}
@@ -1146,79 +1177,98 @@ const AnalyzeView = ({
             </button>
           </div>
         </div>
+        {guildState === 'unavailable' && !own && (
+          <ErrorState
+            compact
+            what="Couldn't load the guild's presets, so these are the starting widgets"
+            error={guildError}
+            onRetry={() => {
+              setGuildState('loading');
+              setGuildTick((n) => n + 1);
+            }}
+          />
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-          {list.map((w, i) => {
-            const result = results[i];
-            if (result.kind === 'notTalented') return null;
-            const wide =
-              (w.kind === 'cooldownWindow' &&
-                (w.show ?? 'table') === 'table') ||
-              w.kind === 'breakdown';
-            return (
-              <section
-                key={w.id}
-                className={`rounded-lg border bg-[#1E1A17] px-4 py-3.5 flex flex-col gap-y-2.5 min-w-0 ${
-                  wide ? 'lg:col-span-2' : ''
-                } ${editing !== 'new' && editing?.id === w.id ? 'border-brand' : 'border-card'}`}
-              >
-                <div className="flex items-center gap-x-1.5">
-                  <span className="text-[11px] text-foreground uppercase tracking-wide">
-                    {w.kind === 'breakdown' && w.metric === 'damage'
-                      ? 'Damage breakdown'
-                      : KIND_INFO[w.kind].name}
-                  </span>
-                  <span className="ml-auto flex gap-x-0.5 text-foreground">
-                    <button
-                      type="button"
-                      title="Move up"
-                      disabled={i === 0}
-                      onClick={() => move(i, -1)}
-                      className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
-                    >
-                      <ArrowUp size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Move down"
-                      disabled={i === list.length - 1}
-                      onClick={() => move(i, 1)}
-                      className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
-                    >
-                      <ArrowDown size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Edit"
-                      onClick={() => setEditing(w)}
-                      className="p-1 rounded hover:bg-card/50"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Remove"
-                      onClick={() => update(list.filter((x) => x.id !== w.id))}
-                      className="p-1 rounded hover:bg-card/50"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </span>
-                </div>
-                <h3 className="m-0 text-[15px] font-semibold text-[#E5C46F] flex items-center gap-x-2">
-                  {w.spell && result.kind !== 'empty' && (
-                    <SpellIcon spellId={w.spell.id ?? 0} name={w.spell.name} />
-                  )}
-                  {titleOf(w)}
-                </h3>
-                <WidgetBody
-                  spec={w}
-                  result={result}
-                  duration={store.duration}
-                  onWatch={watch}
-                />
-              </section>
-            );
-          })}
+          {waiting &&
+            [0, 1, 2, 3].map((k) => <Skeleton key={k} className="h-40" />)}
+          {!waiting &&
+            list.map((w, i) => {
+              const result = results[i];
+              if (result.kind === 'notTalented') return null;
+              const wide =
+                (w.kind === 'cooldownWindow' &&
+                  (w.show ?? 'table') === 'table') ||
+                w.kind === 'breakdown';
+              return (
+                <section
+                  key={w.id}
+                  className={`rounded-lg border bg-[#1E1A17] px-4 py-3.5 flex flex-col gap-y-2.5 min-w-0 ${
+                    wide ? 'lg:col-span-2' : ''
+                  } ${editing !== 'new' && editing?.id === w.id ? 'border-brand' : 'border-card'}`}
+                >
+                  <div className="flex items-center gap-x-1.5">
+                    <span className="text-[11px] text-foreground uppercase tracking-wide">
+                      {w.kind === 'breakdown' && w.metric === 'damage'
+                        ? 'Damage breakdown'
+                        : KIND_INFO[w.kind].name}
+                    </span>
+                    <span className="ml-auto flex gap-x-0.5 text-foreground">
+                      <button
+                        type="button"
+                        title="Move up"
+                        disabled={i === 0}
+                        onClick={() => move(i, -1)}
+                        className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
+                      >
+                        <ArrowUp size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Move down"
+                        disabled={i === list.length - 1}
+                        onClick={() => move(i, 1)}
+                        className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
+                      >
+                        <ArrowDown size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Edit"
+                        onClick={() => setEditing(w)}
+                        className="p-1 rounded hover:bg-card/50"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Remove"
+                        onClick={() =>
+                          update(list.filter((x) => x.id !== w.id))
+                        }
+                        className="p-1 rounded hover:bg-card/50"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </span>
+                  </div>
+                  <h3 className="m-0 text-[15px] font-semibold text-[#E5C46F] flex items-center gap-x-2">
+                    {w.spell && result.kind !== 'empty' && (
+                      <SpellIcon
+                        spellId={w.spell.id ?? 0}
+                        name={w.spell.name}
+                      />
+                    )}
+                    {titleOf(w)}
+                  </h3>
+                  <WidgetBody
+                    spec={w}
+                    result={result}
+                    duration={store.duration}
+                    onWatch={watch}
+                  />
+                </section>
+              );
+            })}
         </div>
         {!own && !preset && SPEC_GUIDE[specId]?.sections.length ? (
           <p className="text-xs text-foreground m-0">
