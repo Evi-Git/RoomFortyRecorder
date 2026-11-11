@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.119] - Unreleased
+### Added
+- **Try again where things can fail.** Logs (a night or the nights list that won't load, pulls left out of an added-up view), and Time trial (their log, our log, our pulls) now offer **Try again** instead of a dead end.
+- **Plainer errors.** Common guild server and network errors read as something you can act on ("Couldn't reach the guild server. It may be restarting…", "it needs update-server.cmd"), with **Copy details** for the original text when you report a bug.
+### Fixed
+- **Time trial no longer waits on Warcraft Logs forever.** After about two minutes it says it's still waiting, with Try again.
+
 ## [1.9.118] - Unreleased
 ### Fixed
 - **Logs: a pull's progress bar no longer sits on "Waiting" when that pull is already being read elsewhere** (Compare side by side on the same pull, Time trial and Logs at once, or picking a pull again quickly). Every place showing it now follows the same progress.

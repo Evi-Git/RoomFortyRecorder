@@ -28,6 +28,7 @@ import { findings } from './whereTime';
 import { setGhost } from './ghost';
 import WhereTimeWent from './WhereTimeWent';
 import CopyNsrt from './CopyNsrt';
+import { ErrorState } from '../components/States/States';
 import TrialTimeline from './TrialTimeline';
 import { call, RankRow, specTitle, useSpellNames } from './shared';
 
@@ -45,6 +46,8 @@ type OurPull = {
 };
 
 const CHARACTER_KEY = 'rf-trial-character';
+// Their track is asked for every 3 s while Warcraft Logs works on it.
+const MAX_POLLS = 40;
 const LINE_UP_KEY = 'rf-trial-line-up';
 type LineUp = 'start' | 'phase';
 
@@ -77,8 +80,11 @@ const TimeTrial = ({
 }) => {
   const [track, setTrack] = React.useState<Track | null>(null);
   const [trackState, setTrackState] = React.useState<
-    'loading' | 'queued' | 'failed'
+    'loading' | 'queued' | 'slow' | 'failed'
   >('loading');
+  // Try again (their track, our pulls).
+  const [trackTick, setTrackTick] = React.useState(0);
+  const [pullsTick, setPullsTick] = React.useState(0);
   const [trackError, setTrackError] = React.useState('');
   const [poll, setPoll] = React.useState(0);
   const [pulls, setPulls] = React.useState<OurPull[] | null>(null);
@@ -129,6 +135,9 @@ const TimeTrial = ({
       } else if (r.data.state === 'failed') {
         setTrackState('failed');
         setTrackError(r.data.error || 'Warcraft Logs refused');
+      } else if (poll >= MAX_POLLS) {
+        // About two minutes: stop asking and offer Try again.
+        setTrackState('slow');
       } else {
         setTrackState('queued');
         setTimeout(() => live && setPoll((n) => n + 1), 3000);
@@ -137,7 +146,13 @@ const TimeTrial = ({
     return () => {
       live = false;
     };
-  }, [them, metric, poll]);
+  }, [them, metric, poll, trackTick]);
+  const retryTrack = () => {
+    setTrackState('loading');
+    setTrackError('');
+    setPoll(0);
+    setTrackTick((n) => n + 1);
+  };
 
   React.useEffect(() => {
     call<{ pulls: OurPull[] }>({
@@ -149,10 +164,11 @@ const TimeTrial = ({
         setPullsError(r.error);
         return;
       }
+      setPullsError('');
       setPulls(r.data.pulls);
       setPullId((id) => id || r.data.pulls[0]?.id || '');
     });
-  }, [encounterId, difficultyId]);
+  }, [encounterId, difficultyId, pullsTick]);
 
   const pull = pulls?.find((p) => p.id === pullId);
   const metas: PullMeta[] = React.useMemo(
@@ -342,14 +358,24 @@ const TimeTrial = ({
         )}
       </div>
 
-      {pullsError && <p className="text-sm text-red-400">{pullsError}</p>}
+      {pullsError && (
+        <ErrorState
+          what="Couldn't load our pulls"
+          error={pullsError}
+          onRetry={() => setPullsTick((n) => n + 1)}
+        />
+      )}
       {pulls && !pulls.length && (
         <p className="text-sm text-foreground">
           No pulls of ours with a full log on this boss and difficulty yet.
         </p>
       )}
       {pull && load.errors[pull.id] && (
-        <p className="text-sm text-red-400">{load.errors[pull.id]}</p>
+        <ErrorState
+          what="Couldn't load our log"
+          error={load.errors[pull.id]}
+          onRetry={load.retry}
+        />
       )}
       {pull && !store && !load.errors[pull.id] && (
         <p className="text-sm text-foreground">
@@ -357,15 +383,26 @@ const TimeTrial = ({
           {loadingPct !== undefined ? ` ${Math.round(loadingPct * 100)}%` : ''}…
         </p>
       )}
-      {!track && trackState !== 'failed' && (
+      {!track && (trackState === 'loading' || trackState === 'queued') && (
         <p className="text-sm text-foreground">
           {trackState === 'queued'
             ? 'Asking Warcraft Logs for their damage and casts (only the first time)…'
             : 'Loading their log…'}
         </p>
       )}
+      {!track && trackState === 'slow' && (
+        <ErrorState
+          what="Their log"
+          error="Still waiting on Warcraft Logs after two minutes."
+          onRetry={retryTrack}
+        />
+      )}
       {!track && trackState === 'failed' && (
-        <p className="text-sm text-red-400">{trackError}</p>
+        <ErrorState
+          what="Couldn't load their log"
+          error={trackError}
+          onRetry={retryTrack}
+        />
       )}
 
       {you && track && nsrtOpen && (

@@ -27,6 +27,7 @@ import LogsTrends from './LogsTrends';
 import LogsExplorer, { Watch } from './logs/LogsExplorer';
 import NightPicker from './logs/NightPicker';
 import BossStrip from './logs/BossStrip';
+import { ErrorState, LoadingState } from './components/States/States';
 import type { PullMeta } from './logs/store';
 
 /**
@@ -1464,16 +1465,11 @@ const LogsPane = ({
 
   if (error && !nights)
     return (
-      <div className="flex items-center gap-x-3 text-sm" data-state="failed">
-        <span className="text-red-400">{error}</span>
-        <button
-          type="button"
-          className="text-brand hover:underline text-xs"
-          onClick={() => setRefresh((n) => n + 1)}
-        >
-          Try again
-        </button>
-      </div>
+      <ErrorState
+        what="Couldn't load the nights"
+        error={error}
+        onRetry={() => setRefresh((n) => n + 1)}
+      />
     );
   if (!nights)
     return (
@@ -1611,27 +1607,14 @@ const LogsPane = ({
       </div>
 
       {nightState === 'loading' && (
-        <div className="flex flex-col gap-y-2" data-state="loading">
-          <p className="text-sm text-foreground m-0">
-            Loading this night&apos;s pulls…
-          </p>
-          <div className="h-8 w-[420px] max-w-full rounded-md bg-card/40 animate-pulse" />
-          <div className="h-48 w-full rounded-md bg-card/30 animate-pulse" />
-        </div>
+        <LoadingState label="Loading this night's pulls…" />
       )}
       {nightState === 'failed' && (
-        <div className="flex items-center gap-x-3 text-sm" data-state="failed">
-          <span className="text-red-400">
-            {`Couldn't load this night: ${nightError?.error}`}
-          </span>
-          <button
-            type="button"
-            className="text-brand hover:underline text-xs"
-            onClick={() => setRefresh((n) => n + 1)}
-          >
-            Try again
-          </button>
-        </div>
+        <ErrorState
+          what="Couldn't load this night"
+          error={nightError?.error ?? ''}
+          onRetry={() => setRefresh((n) => n + 1)}
+        />
       )}
       {nightState === 'ready' && !boss && (
         <p className="text-sm text-foreground">No pulls on this night.</p>

@@ -130,12 +130,18 @@ export type LoadState = {
   /** Pull id -> why it couldn't load. */
   errors: Record<string, string>;
   loading: boolean;
+  /** Load the pulls that failed again (Try again). */
+  retry: () => void;
 };
 
 /** Loads the given pulls; stores come back in the same order. */
 export const usePullStores = (metas: PullMeta[]): LoadState => {
   const key = metas.map((m) => m.id).join(',');
-  const [state, setState] = React.useState<LoadState & { key: string }>({
+  const [attempt, setAttempt] = React.useState(0);
+  const retry = React.useCallback(() => setAttempt((n) => n + 1), []);
+  const [state, setState] = React.useState<
+    Omit<LoadState, 'retry'> & { key: string }
+  >({
     key: '',
     stores: [],
     progress: {},
@@ -189,10 +195,10 @@ export const usePullStores = (metas: PullMeta[]): LoadState => {
     };
     // `key` stands for the list of pulls.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, attempt]);
   if (!metas.length)
-    return { stores: [], progress: {}, errors: {}, loading: false };
+    return { stores: [], progress: {}, errors: {}, loading: false, retry };
   if (state.key !== key)
-    return { stores: [], progress: {}, errors: {}, loading: true };
-  return state;
+    return { stores: [], progress: {}, errors: {}, loading: true, retry };
+  return { ...state, retry };
 };
