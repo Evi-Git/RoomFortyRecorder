@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.118] - Unreleased
+### Fixed
+- **Logs: a pull's progress bar no longer sits on "Waiting" when that pull is already being read elsewhere** (Compare side by side on the same pull, Time trial and Logs at once, or picking a pull again quickly). Every place showing it now follows the same progress.
+
 ## [1.9.117] - Unreleased
 ### Fixed
 - **Server: a pull left "analyzing" by a restart is finished when the server starts.** If Node restarted while it was analyzing a pull (for example `update-server.cmd` during raid), the Dashboard showed that pull as pending until a raider's app happened to send it again. The log is already on the server, so it's now analyzed again at startup.

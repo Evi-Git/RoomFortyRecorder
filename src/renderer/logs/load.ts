@@ -13,6 +13,28 @@ const ipc = window.electron.ipcRenderer;
 
 const KEEP = 8;
 const memory = new Map<string, Promise<PullStore>>();
+// Everyone waiting on a pull that's still being read gets its progress
+// (Compare side by side on the same pull, Time trial and Logs together).
+const watchers = new Map<string, Set<(f: number) => void>>();
+const lastProgress = new Map<string, number>();
+const watch = (id: string, onProgress: (f: number) => void) => {
+  let set = watchers.get(id);
+  if (!set) {
+    set = new Set();
+    watchers.set(id, set);
+  }
+  set.add(onProgress);
+  const known = lastProgress.get(id);
+  if (known !== undefined) onProgress(known);
+};
+const report = (id: string, f: number) => {
+  lastProgress.set(id, f);
+  watchers.get(id)?.forEach((fn) => fn(f));
+};
+const settle = (id: string) => {
+  watchers.delete(id);
+  lastProgress.delete(id);
+};
 
 const remember = (id: string, p: Promise<PullStore>) => {
   memory.delete(id);
@@ -77,16 +99,27 @@ export const loadPull = (
   onProgress: (f: number) => void,
 ): Promise<PullStore> => {
   const known = memory.get(meta.id);
-  if (known) return known;
+  if (known) {
+    // Still being read: follow its progress too.
+    if (watchers.has(meta.id)) watch(meta.id, onProgress);
+    return known;
+  }
+  watch(meta.id, onProgress);
   const job = (async () => {
     const response = (await ipc.invoke('pullDesk', [
       { action: 'fullLog', id: meta.id },
     ])) as Response<{ bytes: Uint8Array }>;
     if (!response.ok) throw new Error(response.error);
-    return readLog(response.data.bytes, meta, onProgress);
+    return readLog(response.data.bytes, meta, (f) => report(meta.id, f));
   })();
   remember(meta.id, job);
-  job.catch(() => memory.delete(meta.id));
+  job.then(
+    () => settle(meta.id),
+    () => {
+      settle(meta.id);
+      memory.delete(meta.id);
+    },
+  );
   return job;
 };
 
