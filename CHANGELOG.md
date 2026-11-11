@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.124] - Unreleased
+### Fixed
+- **Logs → Enemies → Healing only lists enemies.** With **Mitigations** left switched on from the Friendlies side, the raid's damage-reduction rows were added to the enemies' table, so a boss that never heals (Kith'ix) showed twenty-odd raiders. Mitigations now only counts, and its switch only shows, under Friendlies; the "leave out healing to" picks don't carry over to Enemies either.
+- **A boss that doesn't heal says so:** "No enemy healed or shielded anything in this pull." instead of "Nothing here with these filters." (that line is now kept for when a filter really is hiding things).
+- **An add's abilities are listed once.** Adds the boss summoned (Blightscale Spawn on Ula'tek) had each ability twice in their own row, once plain and once as "by Blightscale Spawn", in Healing and in Damage Done.
+- An enemy whose heals all landed at full health keeps its row (0, all overheal) instead of vanishing.
+- Under Healing → Done to target, clicking a name no longer sets the enemy filter (it's who was healed, not an enemy to filter by).
+
 ## [1.9.123] - Unreleased
 ### Changed
 - **Sidebar polish (option A from the mockups).** The page you're on gets a brass tint, a brass bar at its left edge and brass text; section headings (Analysis, Recordings, Settings) are small brass capitals; Go live has a soft brass outline.

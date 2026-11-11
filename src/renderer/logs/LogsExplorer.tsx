@@ -317,20 +317,28 @@ const LogsExplorer = ({
   }, [layers]);
   // Healing exclusions only count where they can be seen and changed.
   const healTab = tab === 'healing' || tab === 'prevented';
+  const friendlySide = filters.side === 'friendly';
   const ctx = React.useMemo(
     () =>
       makeCtx(stores, {
         ...filters,
-        healExclude: healTab ? filters.healExclude : [],
+        healExclude: healTab && friendlySide ? filters.healExclude : [],
         expr: layerExpr,
       }),
-    [stores, filters, layerExpr, healTab],
+    [stores, filters, layerExpr, healTab, friendlySide],
   );
+  // Mitigations are the raid's: under Enemies the Healing tab is only what
+  // enemies healed and shielded.
+  const mitigations = prevented && friendlySide;
 
   // Raiders' passive reduction talents, when passives are counted.
-  const talentDrs = usePassiveTalents(stores, prevented && passive, isCooldown);
+  const talentDrs = usePassiveTalents(
+    stores,
+    mitigations && passive,
+    isCooldown,
+  );
   // Buffs that cut damage taken (Elemental Resistance...), from their text.
-  const auraDrs = useAuraDrs(stores, prevented, isCooldown, loadSpellTexts);
+  const auraDrs = useAuraDrs(stores, mitigations, isCooldown, loadSpellTexts);
 
   const meter: MeterKind | null = METER_TABS.has(tab)
     ? (tab as MeterKind)
@@ -343,13 +351,22 @@ const LogsExplorer = ({
         talents: talentDrs,
         auras: auraDrs,
       });
-    if (meter === 'healing' && prevented)
+    if (meter === 'healing' && mitigations)
       return withPrevented(
         meterRows(ctx, 'healing'),
         preventedRows(ctx, { passive, talents: talentDrs, auras: auraDrs }),
       );
     return meterRows(ctx, meter);
-  }, [ctx, meter, stores.length, mode, prevented, passive, talentDrs, auraDrs]);
+  }, [
+    ctx,
+    meter,
+    stores.length,
+    mode,
+    mitigations,
+    passive,
+    talentDrs,
+    auraDrs,
+  ]);
   const enemies = React.useMemo(() => enemyOptions(stores), [stores]);
   // Abilities to pick from: this tab's, whatever is picked now.
   const abilityRows = React.useMemo(() => {
@@ -660,7 +677,7 @@ const LogsExplorer = ({
                 </option>
               ))}
             </select>
-            {meter === 'healing' && (
+            {meter === 'healing' && friendlySide && (
               <label
                 className="flex items-center gap-x-1.5 text-xs text-foreground"
                 title="Count damage kept off raiders by damage-reduction cooldowns as healing, for whoever cast them"
@@ -675,7 +692,7 @@ const LogsExplorer = ({
                 Mitigations
               </label>
             )}
-            {meter === 'healing' && prevented && (
+            {meter === 'healing' && mitigations && (
               <label
                 className="flex items-center gap-x-1.5 text-xs text-foreground"
                 title="Also count what talents (Elemental Warding and the like) and versatility took off damage taken, for the raider who has them"
@@ -688,7 +705,7 @@ const LogsExplorer = ({
               </label>
             )}
             {meter === 'healing' &&
-              prevented &&
+              mitigations &&
               (!auraDrs || (passive && !talentDrs)) && (
                 <span className="text-xs text-foreground animate-pulse">
                   Looking up buffs and talents…

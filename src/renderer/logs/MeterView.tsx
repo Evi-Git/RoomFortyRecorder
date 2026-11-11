@@ -9,12 +9,14 @@ import {
   byTarget,
   groupAbilities,
   Ctx,
+  emptyMeterText,
   Meter,
   MeterRow,
   meterRows,
   preventedRows,
   viewSeconds,
 } from './query';
+import { EmptyState } from '../components/States/States';
 
 /** The same view over the whole fight: charts show it all, with the slice highlighted. */
 const wholeFight = (ctx: Ctx): Ctx =>
@@ -1017,9 +1019,7 @@ const MeterView = ({
     return (
       <div className="flex flex-col gap-y-3">
         {chart}
-        <p className="text-sm text-foreground">
-          Nothing here with these filters.
-        </p>
+        <EmptyState>{emptyMeterText(ctx, meter)}</EmptyState>
       </div>
     );
   }
@@ -1035,8 +1035,9 @@ const MeterView = ({
     });
     const max = Math.max(1, ...targets.map((a) => a.total));
     const sum = targets.reduce((n, a) => n + a.total, 0);
+    // Healing's targets are who was healed, not an enemy to filter by.
     const clickable = (a: (typeof targets)[number]) =>
-      Boolean(onEnemy) && !a.player && a.npcId > 0;
+      Boolean(onEnemy) && meter !== 'healing' && !a.player && a.npcId > 0;
     return (
       <div className="flex flex-col gap-y-3">
         {chart}
