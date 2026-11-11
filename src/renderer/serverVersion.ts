@@ -6,7 +6,7 @@
  * as any such change, so raiders and the owner are told to run
  * update-server.cmd.
  */
-export const SERVER_CHANGED_IN = '1.9.112';
+export const SERVER_CHANGED_IN = '1.9.117';
 
 /** "v1.9.112" or "1.9.112" -> [1, 9, 112]; anything else -> null. */
 export const parseVersion = (text: string | null | undefined) => {
