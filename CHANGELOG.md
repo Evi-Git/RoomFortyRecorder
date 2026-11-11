@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.113] - Unreleased
+### Fixed
+- **Logs: switching nights no longer shows the previous night for a moment.** While a night loads you see "Loading this night's pulls…", and the page no longer starts reading the old night's newest pull (a full-log download) on the way.
+- **Logs: a night that won't load says so**, with **Try again**, instead of quietly showing the night you were on. The same goes for the list of nights.
+### Added
+- **Logs: new pulls show up while you're on the page.** Every minute (and right after this PC sends a pull), the night's pulls are fetched again. What you're looking at stays put; a "Pull 14 just came in" chip opens the new pull when you want it.
+
 ## [1.9.112] - Unreleased
 ### Added
 - **Logs → Analyze: guild presets.** Officers (Analysis edit) get **Share as guild preset**: the layout you're looking at becomes that spec's layout for everyone in the guild who hasn't changed theirs. **Remove guild preset** goes back to the starting widgets.

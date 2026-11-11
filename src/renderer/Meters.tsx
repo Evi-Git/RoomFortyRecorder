@@ -1276,14 +1276,31 @@ const LogsPane = ({
   extra?: React.ReactNode;
 }) => {
   const watcher = React.useContext(WatchContext);
+  const tabActive = React.useContext(TabContext).active;
   const [nights, setNights] = React.useState<
     { night: string; bosses: NightBoss[] }[] | null
   >(null);
   // Kept for this window so a reload (Ctrl+R) opens the same pulls.
   const [night, setNight] = useSessionState(`rf-logs-night${suffix}`, '');
-  const [bosses, setBosses] = React.useState<
-    (NightBoss & { pullsList: NightPull[] })[] | null
-  >(null);
+  // A night's bosses, kept with the night they belong to: while another
+  // night loads, nothing of the previous one is shown (or read).
+  const [nightData, setNightData] = React.useState<{
+    night: string;
+    bosses: (NightBoss & { pullsList: NightPull[] })[];
+  } | null>(null);
+  const [nightError, setNightError] = React.useState<{
+    night: string;
+    error: string;
+  } | null>(null);
+  // Bumped to fetch again: Try again, a pull this PC sent, every minute.
+  const [refresh, setRefresh] = React.useState(0);
+  // Pulls that came in while this pane was open (offered, never jumped to).
+  const [arrived, setArrived] = React.useState<string[]>([]);
+  const bosses = nightData?.night === night ? nightData.bosses : null;
+  const nightDataRef = React.useRef(nightData);
+  React.useEffect(() => {
+    nightDataRef.current = nightData;
+  }, [nightData]);
   const [bossKey, setBossKey] = useSessionState(`rf-logs-boss${suffix}`, '');
   const [pullId, setPullId] = useSessionState(`rf-logs-pull${suffix}`, '');
   const [picked, setPicked] = useSessionState<string[]>(
@@ -1308,15 +1325,23 @@ const LogsPane = ({
     }
   };
   const [error, setError] = React.useState('');
+  // What's on screen now, so a refresh can keep it there.
+  const shownRef = React.useRef<{ boss: string; pull: string }>({
+    boss: '',
+    pull: '',
+  });
 
   React.useEffect(() => {
+    let cancelled = false;
     call<{ nights: { night: string; bosses: NightBoss[] }[] }>({
       action: 'nights',
     }).then((response) => {
+      if (cancelled) return;
       if (!response.ok) {
         setError(response.error);
         return;
       }
+      setError('');
       setNights(response.data.nights);
       // A night kept from before a reload may have aged out.
       setNight((n) =>
@@ -1325,7 +1350,12 @@ const LogsPane = ({
           : response.data.nights[0]?.night || '',
       );
     });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+    // setNight (useSessionState) doesn't change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh]);
 
   React.useEffect(() => {
     if (!night) return undefined;
@@ -1336,15 +1366,50 @@ const LogsPane = ({
     }).then((response) => {
       if (cancelled) return;
       if (!response.ok) {
-        setError(response.error);
+        // A refresh that fails keeps what's shown; a new night says why.
+        setNightError({ night, error: response.error });
         return;
       }
-      setBosses(response.data.bosses);
+      setNightError(null);
+      const before = nightDataRef.current;
+      if (before?.night === night) {
+        // Same night again: stay on the boss and pull being looked at, and
+        // offer the pulls that are new.
+        const known = new Set(
+          before.bosses.flatMap((b) => b.pullsList.map((p) => p.id)),
+        );
+        const fresh = response.data.bosses
+          .flatMap((b) => b.pullsList)
+          .filter((p) => !known.has(p.id))
+          .map((p) => p.id);
+        if (fresh.length) setArrived((a) => [...a, ...fresh]);
+        const { boss: shownBoss, pull: shownPull } = shownRef.current;
+        if (shownBoss) setBossKey((k) => k || shownBoss);
+        if (shownPull) setPullId((id) => id || shownPull);
+      } else {
+        setArrived([]);
+      }
+      setNightData({ night, bosses: response.data.bosses });
     });
     return () => {
       cancelled = true;
     };
-  }, [night]);
+    // The setters from useSessionState don't change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [night, refresh]);
+
+  // New pulls: when this PC sends one, and every minute while the tab is
+  // open (other raiders' pulls only show up that way).
+  React.useEffect(() => {
+    if (!tabActive) return undefined;
+    const again = () => setRefresh((n) => n + 1);
+    const timer = setInterval(again, 60000);
+    const unsubscribe = ipc.on('pullDeskUpdated', again);
+    return () => {
+      clearInterval(timer);
+      unsubscribe?.();
+    };
+  }, [tabActive]);
 
   const keyOf = (b: NightBoss) => `${b.encounterId}:${b.difficultyId}`;
   const shownBosses = bosses ?? [];
@@ -1379,13 +1444,47 @@ const LogsPane = ({
   }
   useTabTitle(tabTitle);
 
-  if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
-  if (!nights) return <p className="text-sm text-foreground">Loading…</p>;
+  const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  const shownBoss = boss ? keyOf(boss) : '';
+  const shownPull = pull?.id ?? '';
+  React.useEffect(() => {
+    shownRef.current = { boss: shownBoss, pull: shownPull };
+  }, [shownBoss, shownPull]);
+  // The night's state: its bosses are here, still on the way, or refused.
+  let nightState: 'loading' | 'ready' | 'failed' = 'loading';
+  if (bosses) nightState = 'ready';
+  else if (nightError?.night === night) nightState = 'failed';
+  // Pulls of this boss that came in since the pane opened.
+  const newPulls = pulls.filter(
+    (p) =>
+      arrived.includes(p.id) &&
+      p.pullNumber > (pull?.pullNumber ?? 0) &&
+      picked.length < 2,
+  );
+
+  if (error && !nights)
+    return (
+      <div className="flex items-center gap-x-3 text-sm" data-state="failed">
+        <span className="text-red-400">{error}</span>
+        <button
+          type="button"
+          className="text-brand hover:underline text-xs"
+          onClick={() => setRefresh((n) => n + 1)}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  if (!nights)
+    return (
+      <p className="text-sm text-foreground" data-state="loading">
+        Loading…
+      </p>
+    );
   if (!nights.length) {
     return <p className="text-sm text-foreground">No pulls yet.</p>;
   }
 
-  const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
   const metaOf = (p: NightPull): PullMeta => ({
     id: p.id,
     label: `Pull ${p.pullNumber}`,
@@ -1491,8 +1590,52 @@ const LogsPane = ({
             </button>
           </span>
         )}
+        {newPulls.length > 0 && (
+          <button
+            type="button"
+            className="flex items-center gap-x-1.5 rounded-full border border-brand/50 bg-brand/10 px-2.5 h-7 text-xs text-brand hover:bg-brand/20"
+            onClick={() => {
+              setPullId(newPulls[0].id);
+              setPicked([]);
+              setArrived((a) => a.filter((id) => id !== newPulls[0].id));
+            }}
+            title="Open the newest pull"
+          >
+            {newPulls.length === 1
+              ? `Pull ${newPulls[0].pullNumber} just came in`
+              : `${newPulls.length} new pulls`}
+            <ChevronsRight size={14} />
+          </button>
+        )}
         {extra && <div className="ml-auto">{extra}</div>}
       </div>
+
+      {nightState === 'loading' && (
+        <div className="flex flex-col gap-y-2" data-state="loading">
+          <p className="text-sm text-foreground m-0">
+            Loading this night&apos;s pulls…
+          </p>
+          <div className="h-8 w-[420px] max-w-full rounded-md bg-card/40 animate-pulse" />
+          <div className="h-48 w-full rounded-md bg-card/30 animate-pulse" />
+        </div>
+      )}
+      {nightState === 'failed' && (
+        <div className="flex items-center gap-x-3 text-sm" data-state="failed">
+          <span className="text-red-400">
+            {`Couldn't load this night: ${nightError?.error}`}
+          </span>
+          <button
+            type="button"
+            className="text-brand hover:underline text-xs"
+            onClick={() => setRefresh((n) => n + 1)}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      {nightState === 'ready' && !boss && (
+        <p className="text-sm text-foreground">No pulls on this night.</p>
+      )}
 
       {boss && (
         <div
