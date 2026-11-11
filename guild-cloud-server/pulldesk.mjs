@@ -35,7 +35,7 @@ import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 const WCL_EXTRAS_VERSION = 3;
 
 // Bump to recheck old pulls (with logs still kept) for new report fields.
-const PREP_VERSION = 3;
+export const PREP_VERSION = 3;
 const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
@@ -64,6 +64,10 @@ const MAX_IMPORT_REPORTS = 10;
 // pull for this long, the rest skip it (and retry later if it never lands).
 const BACKFILL_LOCK_MS = 5 * 60 * 1000;
 const MAX_BACKFILL_CHECK = 500;
+// A pull whose analysis keeps failing on this server's code: stop asking
+// raiders' apps to send it again after this many tries (a new PREP_VERSION
+// tries again).
+const MAX_ANALYSIS_TRIES = 3;
 const MAX_NOTE_CHARS = 100 * 1024;
 
 // 233 is flex Mythic (raids like Kith'ix whose Mythic takes 10-30 players):
@@ -338,6 +342,8 @@ export const createPullDesk = (options) => {
 
   const ready = () => {
     loaded ??= load().then(() => {
+      const r = resumeAnalyzing();
+      if (r) console.info(`[pulldesk] Finishing ${r} pulls a restart cut short`);
       const n = recheckForPrep();
       if (n) console.info(`[pulldesk] Rechecking ${n} pulls for consumables`);
       const w = queueWclExtras((pull) => (pull.wclExtras || 0) < WCL_EXTRAS_VERSION, true);
@@ -545,6 +551,9 @@ export const createPullDesk = (options) => {
       if (complete(pull)) return;
       // Another raider's app is sending it right now.
       if (pull?.backfillBy && pull.backfillBy !== who && now - (pull.backfillAt || 0) < BACKFILL_LOCK_MS) return;
+      // Its analysis failed every time on this server's code: sending the
+      // log again won't help until the server changes.
+      if (pull?.status === 'failed' && pull.failedPrep === PREP_VERSION && (pull.failures || 0) >= MAX_ANALYSIS_TRIES) return;
       // A live pull still in its claim window: the live upload will come.
       if (pull && pull.status === 'claimed' && now - pull.createdAt < STALE_CLAIM_MS) return;
       missing.push(i);
@@ -779,6 +788,8 @@ export const createPullDesk = (options) => {
     report.hasMeters = Boolean(pull.appMeters);
     await fsp.writeFile(reportFile(pull.id), JSON.stringify(report));
 
+    delete pull.failures;
+    delete pull.failedPrep;
     Object.assign(pull, {
       status: 'ready',
       error: null,
@@ -945,6 +956,29 @@ export const createPullDesk = (options) => {
   };
 
   // Pulls analyzed before consumables existed, with their logs still kept.
+  // Pulls left 'analyzing' by a restart (update-server.cmd mid-raid): their
+  // log is on disk, so finish the analysis instead of waiting for a re-send.
+  const resumeAnalyzing = () => {
+    const pulls = index.pulls.filter((pull) => pull.status === 'analyzing' && pull.hasLog);
+    if (!pulls.length) return 0;
+    backgroundQueue = backgroundQueue.then(async () => {
+      for (const pull of pulls) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await runAnalysis(pull);
+        } catch (error) {
+          console.error('[pulldesk] Analysis failed again', pull.id, error);
+          pull.status = 'failed';
+          pull.error = error.message;
+          pull.failures = (pull.failures || 0) + 1;
+          pull.failedPrep = PREP_VERSION;
+        }
+      }
+      await persist();
+    });
+    return pulls.length;
+  };
+
   const recheckForPrep = () => {
     const pulls = index.pulls.filter(
       (pull) => pull.status === 'ready' && pull.hasLog && pull.source !== 'wcl' && (pull.prepVersion || 0) < PREP_VERSION,
@@ -1277,6 +1311,8 @@ export const createPullDesk = (options) => {
       console.error('[pulldesk] Analysis failed', pull.id, error);
       pull.status = 'failed';
       pull.error = error.message;
+      pull.failures = (pull.failures || 0) + 1;
+      pull.failedPrep = PREP_VERSION;
       await persist();
       return json(res, 200, { status: 'failed' });
     }
@@ -1961,5 +1997,6 @@ export const createPullDesk = (options) => {
     return fail(res, 404, 'Unknown pull desk route');
   };
 
-  return { handle, ready, analyze: runAnalysis };
+  // `idle` resolves once background work (re-analysis) is done; for tests.
+  return { handle, ready, analyze: runAnalysis, idle: () => backgroundQueue };
 };
