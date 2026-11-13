@@ -265,6 +265,13 @@ export type PullStore = PullMeta & {
   powers: Map<number, Map<number, [number, number, number][]>>;
   /** Raiders' versatility rating (COMBATANT_INFO), by GUID. */
   vers: Map<string, number>;
+  /**
+   * Raiders' crit, haste and mastery rating at the pull (COMBATANT_INFO),
+   * by GUID: which stat is highest decides what some potions give.
+   */
+  secondary: Map<string, [number, number, number]>;
+  /** The encounter's name as the log gives it ('' in older stores). */
+  encounter: string;
   deaths: Death[];
   /** The enemy the raid hit hardest. */
   boss: number;
@@ -375,6 +382,10 @@ export class StoreBuilder {
   private gear = new Map<string, GearItem[]>();
 
   private vers = new Map<string, number>();
+
+  private secondary = new Map<string, [number, number, number]>();
+
+  private encounter = '';
 
   /** Buffs each raider had at the pull (COMBATANT_INFO): [caster, spell]. */
   private prepull = new Map<number, [number, number][]>();
@@ -544,6 +555,7 @@ export class StoreBuilder {
     if (line.includes('  ENCOUNTER_START,')) {
       this.start = lineSeconds(line);
       if (!Number.isFinite(this.start)) this.start = 0;
+      this.encounter = /ENCOUNTER_START,\d+,"([^"]*)"/.exec(line)?.[1] ?? '';
       return;
     }
     if (this.start < 0) return;
@@ -561,6 +573,11 @@ export class StoreBuilder {
       this.specs.set(fields[1], Number(fields[25]) || 0);
       // Versatility rating (damage taken), the last of the three.
       this.vers.set(fields[1], Number(fields[23]) || 0);
+      this.secondary.set(fields[1], [
+        Number(fields[11]) || 0,
+        Number(fields[16]) || 0,
+        Number(fields[20]) || 0,
+      ]);
       // The first [...] is the talents: (node, entry, rank), ...
       const open = line.indexOf('[');
       const close = line.indexOf(']', open);
@@ -1023,6 +1040,8 @@ export class StoreBuilder {
       power: this.power,
       powers: this.powers,
       vers: this.vers,
+      secondary: this.secondary,
+      encounter: this.encounter,
       deaths,
       boss,
     };
