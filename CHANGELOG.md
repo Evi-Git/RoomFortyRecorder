@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.125] - Unreleased
+### Fixed
+- **Versatility in Damage Prevented follows what was really up.** The log gives one versatility number per raider, taken at the pull. A potion drunk just before the pull (Liquid Luster, 3 stacks = 1,260 rating) was in that number and was counted for the whole fight: a paladin showed 24.87m prevented by Versatility where Warcraft Logs shows 7.19m. The potion is now taken out of the pull's number and counted only while it's up, stack by stack (the same for a pre-pull Potion of Recklessness, which lowers versatility).
+- **Vantus Runes count** (162 rating, about 3%) for every raider who has the rune of the boss being fought. The rune's buff stays all week and names its boss, so it adds nothing on other bosses.
+- **Versatility procs and buffs count while they're up:** Liquid Luster and Potion of Recklessness drunk mid-fight, Versatile Ritual, Brittle Torga Totem, Golden Luster, Nature's Tenacity, Rune of the Versatile Warrior, 50-Lb Midnight Salmon and Rotting Voidfin, the Venomcursed procs (which lower it), Shifting Sands and Ox Stance. Buffs that give a random stat can't be read from the log and aren't counted.
+- **Mark of the Wild has its own row, credited to the druid who cast it** (as Warcraft Logs lists it), instead of sitting inside every raider's Versatility.
+
 ## [1.9.124] - Unreleased
 ### Fixed
 - **Logs → Enemies → Healing only lists enemies.** With **Mitigations** left switched on from the Friendlies side, the raid's damage-reduction rows were added to the enemies' table, so a boss that never heals (Kith'ix) showed twenty-odd raiders. Mitigations now only counts, and its switch only shows, under Friendlies; the "leave out healing to" picks don't carry over to Enemies either.

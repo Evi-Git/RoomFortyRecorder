@@ -10,6 +10,10 @@ import {
 export { DEFERRED_ABSORBS };
 import { F, K, PullStore, Unit } from './store';
 import type { PassiveDr } from './talents';
+import { versPercent, versTimelines } from './versatility';
+import type { VersShare } from './versatility';
+
+export { versPercent };
 
 /**
  * [RoomFortyRecorder] Logs page: tables worked out from one or more pulls'
@@ -1640,35 +1644,6 @@ export const lustBands = (ctx: Ctx) => {
 
 const VERSATILITY_NAME = 'Versatility';
 
-/** Buffs that add versatility percentage (not rating): spell ID -> %. */
-const VERS_BUFFS: Record<number, number> = {
-  1126: 3, // Mark of the Wild
-};
-
-/**
- * Versatility percentage (damage done; damage taken is half of it) from
- * rating at level 90: 54 rating a percent, less in the higher brackets.
- */
-const VERS_PER_PCT = 54;
-const VERS_BRACKETS: [number, number][] = [
-  [1620, 1],
-  [2160, 0.9],
-  [2700, 0.8],
-  [3240, 0.7],
-  [3780, 0.6],
-  [10800, 0.5],
-];
-export const versPercent = (rating: number) => {
-  let pctSum = 0;
-  let from = 0;
-  for (const [to, keep] of VERS_BRACKETS) {
-    if (rating <= from) break;
-    pctSum += ((Math.min(rating, to) - from) * keep) / VERS_PER_PCT;
-    from = to;
-  }
-  return pctSum;
-};
-
 // Auras this weak that are up all fight (Devotion Aura) aren't cooldowns.
 const STEADY_R = 0.05;
 
@@ -1803,23 +1778,9 @@ export const preventedRows = (
     if (!spans.size && !opts.passive) return;
     const cuts = (sp: Span, school: number) =>
       school ? (sp.schools & school) !== 0 : sp.schools === 127;
-    // Buffs that add versatility (a percentage, not rating), by raider.
-    const versBuffs = new Map<number, [number, number, number][]>();
-    if (opts.passive)
-      p.auras.forEach((a) => {
-        const pctUp = VERS_BUFFS[p.spells[a.spell]?.id ?? 0];
-        if (!pctUp || a.dst < 0 || a.debuff) return;
-        const list = versBuffs.get(a.dst) ?? [];
-        list.push([a.start, a.end, pctUp]);
-        versBuffs.set(a.dst, list);
-      });
-    const versAt = (d: number, t: number) => {
-      let v = versPercent(p.vers.get(p.units[d].guid) ?? 0);
-      (versBuffs.get(d) ?? []).forEach(([s0, e0, pctUp]) => {
-        if (t >= s0 && t < e0) v += pctUp;
-      });
-      return v;
-    };
+    // Versatility over the pull: gear, plus the buffs up at each moment.
+    const versAt = opts.passive ? versTimelines(p) : () => 0;
+    const shares: VersShare[] = [];
     const add = (
       caster: number,
       spellId: number,
@@ -1888,6 +1849,7 @@ export const preventedRows = (
         talent?: boolean;
       }[] = [];
       let v = 0;
+      let own = 0;
       list.forEach((span) => {
         if (t < span.start || t >= span.end) return;
         if (!cuts(span, school)) return;
@@ -1908,7 +1870,8 @@ export const preventedRows = (
           });
         });
         // Versatility: half its percentage off all damage taken.
-        v = versAt(d, t) / 200;
+        own = versAt(d, t, shares) / 200;
+        v = shares.reduce((n, x) => n + x.pct / 200, own);
         if (!(v > 0 && v < 1)) v = 0;
       }
       // How each reduction is credited, matched to Warcraft Logs on a
@@ -1916,8 +1879,23 @@ export const preventedRows = (
       // their share of the damage before every reduction (versatility
       // included); talents, before everything but versatility; and
       // versatility, before itself alone.
-      if (v > 0 && abilityOk(ctx, 0))
-        add(d, 0, VERSATILITY_NAME, (amount * v) / (1 - v), t, d);
+      // A raid buff that adds versatility (Mark of the Wild) is its
+      // caster's, under its own name.
+      if (v > 0) {
+        if (own > 0 && abilityOk(ctx, 0))
+          add(d, 0, VERSATILITY_NAME, (amount * own) / (1 - v), t, d);
+        shares.forEach((x) => {
+          if (abilityOk(ctx, x.spellId))
+            add(
+              x.caster,
+              x.spellId,
+              x.name,
+              (amount * x.pct) / 200 / (1 - v),
+              t,
+              d,
+            );
+        });
+      }
       if (!on.length) continue;
       // Never more than the log says the hit was before any reduction.
       const unmitigated =
