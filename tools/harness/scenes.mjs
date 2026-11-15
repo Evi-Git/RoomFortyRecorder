@@ -412,7 +412,9 @@ export const scenes = [
     continue: true,
     steps: async (t) => {
       await t.page.getByRole('button', { name: /Add widget/ }).first().click();
-      await t.page.locator('aside').last().waitFor({ timeout: 10000 });
+      const builder = t.page.locator('aside').last();
+      await builder.waitFor({ timeout: 10000 });
+      await builder.evaluate((e) => e.scrollIntoView({ block: 'center' }));
       await t.settle(600);
     },
   },
