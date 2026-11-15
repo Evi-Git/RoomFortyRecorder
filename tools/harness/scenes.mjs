@@ -246,10 +246,10 @@ export const scenes = [
   },
   {
     name: 'logs-ulatek-player',
-    shows: 'Damage Done: one player drilled into',
+    shows: 'Damage Done: one player drilled into (their abilities)',
     continue: true,
     steps: async (t) => {
-      await t.page.locator('table tbody tr').first().click();
+      await t.page.locator('table tbody tr').first().getByRole('button').first().click();
       await t.settle(800);
     },
   },
@@ -385,7 +385,7 @@ export const scenes = [
   },
   {
     name: 'logs-analyze',
-    shows: 'Analyze tab: a spec with a preset',
+    shows: 'Analyze tab: the starting widgets for a spec',
     steps: async (t) => {
       await t.nav('Logs');
       await t.logsLoaded();
@@ -393,12 +393,27 @@ export const scenes = [
     },
   },
   {
-    name: 'logs-analyze-builder',
-    shows: 'Analyze: widget builder open',
+    name: 'logs-analyze-preset',
+    shows: "Analyze: after 'Share as guild preset' the header says the guild's preset (undone afterwards)",
     continue: true,
     steps: async (t) => {
-      await t.page.getByText(/Add widget|Customi[sz]e|Edit/).first().click();
+      await t.page.getByRole('button', { name: /Share as guild preset/ }).click();
+      await t.text('Shared with the guild');
       await t.settle(800);
+    },
+    after: async (page) => {
+      await page.getByRole('button', { name: /Remove guild preset/ }).click();
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'logs-analyze-builder',
+    shows: 'Analyze: the widget builder open',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('button', { name: /Add widget/ }).first().click();
+      await t.page.locator('aside').last().waitFor({ timeout: 10000 });
+      await t.settle(600);
     },
   },
 

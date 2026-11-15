@@ -213,7 +213,7 @@ const startupState: [string, unknown[]][] = [
   ],
   [
     'updateCombatLoggingStatus',
-    [{ retail: { advanced: true, latestLogAgeMs: 4000 }, retailPtr: { advanced: true, latestLogAgeMs: -1 } }],
+    [{ retail: { advanced: true, latestLogAgeMs: Date.now() - 4000 /* an mtime, despite the name */ }, retailPtr: { advanced: true, latestLogAgeMs: -1 } }],
   ],
   ['updateVersionDisplay', [`v${version}`]],
   ['updateStatus', [{ state: 'idle' }]],
