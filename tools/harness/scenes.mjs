@@ -416,7 +416,8 @@ export const scenes = [
     shows: 'Time trial: a fixture track against our pull',
     continue: true,
     steps: async (t) => {
-      await t.page.getByText(/Time trial|Trial/).first().click();
+      await t.page.getByRole('button', { name: /Race me/ }).first().click();
+      await t.page.waitForTimeout(2500);
       await t.settle(1500);
     },
   },

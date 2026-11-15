@@ -29,8 +29,8 @@ const ipcPullDesk = async (req, res, backend) => {
     return;
   }
   const request = await readJson(req);
-  const fixture = await fixtureAnswer(request);
-  const answer = fixture ?? (await backend.desk.handle(request));
+  const real = (r) => backend.desk.handle(r);
+  const answer = (await fixtureAnswer(request, real)) ?? (await real(request));
   // A full log is bytes: send them as is, not as a JSON number array.
   if (request.action === 'fullLog' && answer.ok) {
     res.writeHead(200, { 'content-type': 'application/octet-stream' });

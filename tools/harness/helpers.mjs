@@ -15,7 +15,9 @@ export const makeHelpers = (page) => {
     },
     /** Click a sidebar item by its visible text. */
     async nav(text) {
-      await sidebar().getByText(text, { exact: true }).first().click({ timeout: T });
+      // Menu items are role=button; their name can carry a badge ("Raids 7").
+      const esc = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      await sidebar().getByRole('button', { name: new RegExp(`^${esc}( |$)`) }).first().click({ timeout: T });
       await h.settle();
     },
     async role(role, name, opts = {}) {
