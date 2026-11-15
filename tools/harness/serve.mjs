@@ -1,8 +1,14 @@
-// Static server for the build output, plus GET /log.gz (the file from --log).
+// Static server for the build output, plus:
+//   GET  /log.gz           the file from --log (the single-page smoke test)
+//   POST /ipc/pullDesk     the app's pullDesk IPC, answered by the app's own
+//                          PullDesk.handle() against the local guild server
+//                          (backend.mjs) when one is given; fixtures first
+//                          for what needs the outside world (fixtures.mjs).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fixtureAnswer } from './fixtures.mjs';
 
 const TYPES = {
   '.html': 'text/html',
@@ -11,10 +17,41 @@ const TYPES = {
   '.map': 'application/json',
 };
 
-export const serve = ({ out, log, port = 4173 }) => {
+const readJson = async (req) => {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+};
+
+const ipcPullDesk = async (req, res, backend) => {
+  if (!backend) {
+    res.writeHead(404).end('no backend');
+    return;
+  }
+  const request = await readJson(req);
+  const fixture = await fixtureAnswer(request);
+  const answer = fixture ?? (await backend.desk.handle(request));
+  // A full log is bytes: send them as is, not as a JSON number array.
+  if (request.action === 'fullLog' && answer.ok) {
+    res.writeHead(200, { 'content-type': 'application/octet-stream' });
+    res.end(Buffer.from(answer.data.bytes));
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(answer));
+};
+
+export const serve = ({ out, log, port = 4173, backend }) => {
   const root = path.resolve(out);
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/ipc/pullDesk' && req.method === 'POST') {
+      ipcPullDesk(req, res, backend).catch((e) => {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      });
+      return;
+    }
     if (url.pathname === '/log.gz') {
       if (!log || !fs.existsSync(log)) {
         res.writeHead(404).end('no --log given');
@@ -50,10 +87,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return i > -1 ? process.argv[i + 1] : d;
   };
   const port = Number(arg('port', 4173));
-  await serve({
-    out: arg('out', '/tmp/rf-harness-out'),
-    log: arg('log'),
-    port,
-  });
-  console.log(`http://127.0.0.1:${port}/?entry=logs-explorer`);
+  const out = arg('out', '/tmp/rf-harness-out');
+  let backend;
+  if (arg('logs')) {
+    const { startBackend } = await import('./backend.mjs');
+    backend = await startBackend({ out, logsDir: arg('logs'), keep: arg('keep') });
+  }
+  await serve({ out, log: arg('log'), port, backend });
+  console.log(`http://127.0.0.1:${port}/?entry=${backend ? 'app' : 'logs-explorer'}`);
 }

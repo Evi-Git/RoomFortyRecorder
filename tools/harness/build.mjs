@@ -23,6 +23,54 @@ const arg = (name, fallback) => {
   return i > -1 ? process.argv[i + 1] : fallback;
 };
 
+// The app's PullDesk (action -> guild server route table, backfill) bundled
+// for Node, with the Electron-bound pieces swapped for node/*.ts stubs.
+const buildNode = async (esbuild, out) => {
+  const stubFor = (specifier, importer) => {
+    const base = path.join(here, 'node');
+    if (/^electron$/.test(specifier)) return path.join(base, 'electron.ts');
+    if (/(^|\/)config\/ConfigService$/.test(specifier))
+      return path.join(base, 'ConfigService.ts');
+    if (/(^|\/)storage\/CloudClient$/.test(specifier))
+      return path.join(base, 'CloudClient.ts');
+    if (/^(\.\/|main\/)main$/.test(specifier) && /\/src\//.test(importer))
+      return path.join(base, 'main.ts');
+    if (/^\.\/CoachClip$/.test(specifier))
+      return path.join(base, 'CoachClip.ts');
+    return null;
+  };
+  await esbuild.build({
+    entryPoints: [path.join(here, 'node/pulldesk-entry.ts')],
+    outfile: path.join(out, 'node/pulldesk.mjs'),
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node22',
+    nodePaths: [nm, path.join(repo, 'src')],
+    banner: {
+      js: [
+        "import { createRequire as __cr } from 'node:module';",
+        'const require = __cr(import.meta.url);',
+        // PullDesk starts background timers; never keep the process alive.
+        'for (const k of ["setTimeout", "setInterval"]) { const f = globalThis[k]; globalThis[k] = (...a) => { const t = f(...a); t?.unref?.(); return t; }; }',
+      ].join('\n'),
+    },
+    plugins: [
+      {
+        name: 'node-stubs',
+        setup(b) {
+          b.onResolve({ filter: /.*/ }, (a) => {
+            if (a.kind === 'entry-point') return undefined;
+            const stub = stubFor(a.path, a.importer.replace(/\\/g, '/'));
+            return stub ? { path: stub } : undefined;
+          });
+        },
+      },
+    ],
+    logLevel: 'warning',
+  });
+};
+
 export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
   const esbuild = resolveTool('esbuild');
   const babel = createRequire(path.join(nm, 'x.js'))('@babel/core');
@@ -59,6 +107,14 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
   const stubs = {
     name: 'stubs',
     setup(b) {
+      // Package CSS that esbuild can't resolve (export conditions): not needed.
+      b.onResolve({ filter: /\.css$/ }, (a) =>
+        /^[./]/.test(a.path) ? undefined : { path: a.path, namespace: 'empty-css' },
+      );
+      b.onLoad({ filter: /.*/, namespace: 'empty-css' }, () => ({
+        contents: '',
+        loader: 'css',
+      }));
       b.onResolve(
         {
           filter:
@@ -100,12 +156,17 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
       '.woff2': 'empty',
       '.ttf': 'empty',
       '.mp4': 'empty',
+      '.mp3': 'empty',
+      '.wav': 'empty',
+      '.ogg': 'empty',
       '.node': 'empty',
     },
     define: { 'process.env.NODE_ENV': '"development"' },
     plugins: [compiler, stubs],
     logLevel: 'warning',
   });
+
+  await buildNode(esbuild, out);
 
   fs.copyFileSync(path.join(here, 'index.html'), path.join(out, 'index.html'));
   execFileSync(
