@@ -26,7 +26,7 @@ const repo = path.resolve(here, '../..');
 
 export const GUILD = 'Room Forty';
 export const SECRET = 'harness-secret';
-export const USER = { id: '1001', name: 'Harness Raider' };
+export const USER = { id: '100000000000000001', name: 'Harness Raider' };
 
 const freePort = () =>
   new Promise((resolve, reject) => {
