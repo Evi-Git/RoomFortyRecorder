@@ -72,6 +72,13 @@ them with Playwright: `node tools/harness/build.mjs`, then
 adding an entry or overriding a mock answer. Dev only; never shipped. Real
 pull logs stay out of the repo.
 
+The whole app also runs there (`?entry=app`) against the real guild server
+started locally and seeded from a folder of pull logs:
+`node tools/harness/shots.mjs --logs <folder> --out <dir>` saves a screenshot
+of every page (scenes in `scenes.mjs`, including failure variants). Use it to
+check a UI change before a PR. `tools/audit/` describes how a full audit is
+run with worker agents.
+
 ## UI conventions
 
 - Colours: Tailwind tokens, not hex. `walnut` (page), `panel`,
