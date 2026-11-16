@@ -86,3 +86,22 @@ test('only the owner reads and saves the table; saved grants apply', async () =>
   assert.equal((await call('99999', 'POST', ['reset'])).status, 200);
   assert.equal(await perms.can(req('3'), 'liveWatch'), false);
 });
+
+test('recording and chat moderation default to officers and can be granted', async () => {
+  const { perms, call } = await setup();
+  for (const key of ['videoManage', 'chatModerate']) {
+    assert.equal(await perms.can(req('1'), key), true); // officer
+    assert.equal(await perms.can(req('2'), key), false); // raider
+    assert.equal(await perms.can(req('99999'), key), true); // owner
+  }
+  const table = await call('99999', 'GET', []);
+  const video = table.body.capabilities.find((c) => c.key === 'videoManage');
+  assert.equal(video.group, 'Recordings');
+  assert.deepEqual(video.grants, ['officer']);
+
+  const grants = Object.fromEntries(table.body.capabilities.map((c) => [c.key, c.grants]));
+  grants.videoManage = ['raider'];
+  assert.equal((await call('99999', 'PUT', [], { grants })).status, 200);
+  assert.equal(await perms.can(req('2'), 'videoManage'), true);
+  assert.equal(await perms.can(req('2'), 'chatModerate'), false);
+});
