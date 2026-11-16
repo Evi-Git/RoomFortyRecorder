@@ -1,4 +1,5 @@
 import React, { ComponentProps } from 'react';
+import { Copy, Minus, X } from 'lucide-react';
 import { cn } from './components/utils';
 import KeyholeMark from './components/Brand/KeyholeMark';
 import { setViewAs, usePermissions } from './usePermissions';
@@ -14,7 +15,7 @@ const TitleBarButton = ({
     <button
       type="button"
       className={cn(
-        'w-8 h-8 bg-transparent border-0 text-white text-base outline-none hover:bg-foreground',
+        'w-8 h-8 inline-flex items-center justify-center align-top bg-transparent border-0 text-foreground-lighter outline-none hover:bg-card',
         className,
       )}
       {...props}
@@ -73,19 +74,33 @@ export default function RendererTitleBar() {
         <span className="font-sans text-foreground">Toolkit</span>
       </div>
       <ViewAsBanner />
-      <div id="title-bar-btns" className="ml-auto absolute right-0 top-0">
-        <TitleBarButton id="min-btn" onClick={clickedHide}>
-          🗕
+      {/* Above the tab strip and the pages: both are positioned layers that
+          start at the top of the window and would otherwise cover these. */}
+      <div id="title-bar-btns" className="absolute right-0 top-0 z-30 flex">
+        <TitleBarButton
+          id="min-btn"
+          aria-label="Minimize"
+          title="Minimize"
+          onClick={clickedHide}
+        >
+          <Minus size={14} />
         </TitleBarButton>
-        <TitleBarButton id="max-btn" onClick={clickedResize}>
-          🗗
+        <TitleBarButton
+          id="max-btn"
+          aria-label="Maximize or restore"
+          title="Maximize or restore"
+          onClick={clickedResize}
+        >
+          <Copy size={12} />
         </TitleBarButton>
         <TitleBarButton
           id="close-btn"
-          className="hover:bg-destructive"
+          aria-label="Close"
+          title="Close"
+          className="hover:bg-destructive hover:text-white"
           onClick={clickedQuit}
         >
-          ✖
+          <X size={14} />
         </TitleBarButton>
       </div>
     </div>
