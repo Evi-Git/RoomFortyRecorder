@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.128] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **Anyone signed in could delete, protect, tag or overwrite any recording, and delete anyone's chat messages.** Now you can do that to your own, and officers to anyone's. Recordings uploaded before this update have no owner on record, so until they age out only officers can delete, protect or tag them; new uploads are marked with who uploaded them. Chat messages are matched to their writer; older ones are matched by name where only one person has had that name, otherwise only officers can delete them.
+- **If part of a selection isn't yours,** the rest still goes through and the app says how many were left alone. If none are yours the app shows "You can only delete your own recordings. Ask an officer to remove the others."
+- **Two new rows on the Admin page,** under Recordings: "Manage anyone's recordings" and "Delete anyone's chat messages". Both start as Officer only (the same role list as flags); the owner can give them to other roles.
+- **Roles are checked again as you go,** not only when you sign in. Someone who loses their Room Forty role is locked out within 5 minutes instead of when their 30-day sign-in runs out, and can no longer go live. If Discord can't be reached, nobody is signed out.
+
 ## [1.9.127] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **The server keeps its own backups of the four files it can't rebuild:** `state.json` (video list, chat, share links), `pulldesk\index.json` (every pull), `coach.json` (flags) and `permissions.json` (the Admin table). A copy goes into a `backups` folder next to each file whenever the server starts (so also right before an update takes effect) and at most once an hour while the file changes. It keeps the newest 24 copies, then one a day for 14 days. Until now nothing backed these up; the updater only backed up the code.

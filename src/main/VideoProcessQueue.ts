@@ -384,6 +384,17 @@ export default class VideoProcessQueue {
       if (axios.isAxiosError(error)) {
         const msg = '[CloudClient] Axios error processing video';
         logAxiosError(msg, error);
+
+        if (error.response?.status === 403) {
+          // The guild server refuses uploads over someone else's recording.
+          const reason = error.response.data?.error;
+          send(
+            'cloudActionFailed',
+            typeof reason === 'string'
+              ? reason
+              : 'The guild server refused this upload.',
+          );
+        }
       } else {
         console.error('[CloudClient] Error processing video', error);
       }

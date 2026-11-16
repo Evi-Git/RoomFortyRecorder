@@ -388,6 +388,35 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
+   * The guild server only lets people change their own recordings (officers
+   * any). Show its refusal, which is plain language, instead of failing
+   * silently.
+   */
+  private reportFailure(error: unknown) {
+    console.error('[CloudClient] Request refused or failed', error);
+    const rsp = axios.isAxiosError(error) ? error.response?.data : undefined;
+    const message =
+      rsp && typeof rsp.error === 'string'
+        ? rsp.error
+        : error instanceof Error
+          ? error.message
+          : 'The guild server did not accept that.';
+    send('cloudActionFailed', message);
+  }
+
+  /**
+   * Some of a bulk change was refused: the rest went through.
+   */
+  private reportRefused(data: unknown) {
+    const refused = (data as { refused?: unknown } | null)?.refused;
+    if (!Array.isArray(refused) || refused.length < 1) return;
+    send(
+      'cloudActionFailed',
+      `${refused.length} recording(s) weren't yours, so they were left alone. Ask an officer to change those.`,
+    );
+  }
+
+  /**
    * Delete a set of cloud videos. This is a bulk delete operation, but
    * totally valid to call this on one video at a time.
    */
@@ -398,11 +427,12 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/bulk/delete`;
     const headers = { Authorization: this.authHeader };
 
-    await axios.post(url, videoNames, {
+    const response = await axios.post(url, videoNames, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
+    this.reportRefused(response.data);
     console.info('[CloudClient] Successfully deleted videos', videoNames);
     await this.refreshAfterMutation();
   }
@@ -421,11 +451,12 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const body = { videos: videoNames, protect: protect };
 
-    await axios.post(url, body, {
+    const response = await axios.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
+    this.reportRefused(response.data);
     console.info(
       `[CloudClient] Successfully ${protect ? 'protected' : 'unprotected'}`,
       videoNames,
@@ -444,11 +475,12 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const body = { videos: videoNames, tag };
 
-    await axios.post(url, body, {
+    const response = await axios.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
+    this.reportRefused(response.data);
     console.info('[CloudClient] Successfully set tag', tag, 'on', videoNames);
     await this.refreshAfterMutation();
   }
@@ -1424,7 +1456,7 @@ export default class CloudClient implements StorageClient {
       const videos = args as RendererVideo[];
       const toDelete = videos.filter((v) => v.cloud).map((v) => v.videoName);
       if (toDelete.length < 1) return;
-      this.deleteVideos(toDelete);
+      this.deleteVideos(toDelete).catch((e) => this.reportFailure(e));
     });
 
     // VideoButton event listeners.
@@ -1443,7 +1475,9 @@ export default class CloudClient implements StorageClient {
         const cloud = videos.filter((v) => v.cloud);
         const toProtect = cloud.map((v) => v.videoName);
         if (toProtect.length < 1) return;
-        this.protectVideos(toProtect, protect);
+        this.protectVideos(toProtect, protect).catch((e) =>
+          this.reportFailure(e),
+        );
       }
 
       if (action === 'tag') {
@@ -1452,7 +1486,7 @@ export default class CloudClient implements StorageClient {
         const cloud = videos.filter((v) => v.cloud);
         const toTag = cloud.map((v) => v.videoName);
         if (toTag.length < 1) return;
-        this.tagVideos(toTag, tag);
+        this.tagVideos(toTag, tag).catch((e) => this.reportFailure(e));
       }
 
       if (action === 'download') {
@@ -1679,10 +1713,15 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/chat/${id}`;
     const headers = { Authorization: this.authHeader };
 
-    await axios.delete(url, {
-      headers,
-      validateStatus: (s) => this.validateResponseStatus(s),
-    });
+    try {
+      await axios.delete(url, {
+        headers,
+        validateStatus: (s) => this.validateResponseStatus(s),
+      });
+    } catch (error) {
+      this.reportFailure(error);
+      return;
+    }
 
     console.info('[CloudClient] Successfully deleted chat message with id', id);
 

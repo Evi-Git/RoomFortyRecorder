@@ -26,6 +26,14 @@ import {
   sendFile,
 } from './startup.mjs';
 import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
+import {
+  backfillChatOwners,
+  canDeleteMessage,
+  createChangeCheck,
+  roleRecheck,
+  splitByAccess,
+  stampVideo,
+} from './video-access.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -263,7 +271,19 @@ const sessionFromToken = (token) => {
   }
 };
 
-const authorized = (req, res) => {
+// Roles are otherwise only checked at sign-in and sessions last 30 days.
+// memberRoleNames is cached for 5 minutes.
+const rolesStillAllowed = async (discordId) => {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID || DISCORD_ALLOWED_ROLES.length === 0) return { ok: true };
+  const owner = permissions.isOwner(discordId);
+  return roleRecheck({
+    isOwner: owner,
+    roleNames: owner ? null : await memberRoleNames(discordId),
+    allowedRoles: DISCORD_ALLOWED_ROLES,
+  });
+};
+
+const authorized = async (req, res) => {
   const match = /^Bearer\s+(.+)$/.exec(req.headers.authorization || '');
 
   if (!match) {
@@ -276,6 +296,13 @@ const authorized = (req, res) => {
   if (!session) {
     res.setHeader('WWW-Authenticate', 'Bearer realm="Guild Cloud"');
     fail(res, 401, 'Invalid or expired Discord session');
+    return false;
+  }
+
+  const check = await rolesStillAllowed(session.discordId);
+  if (!check.ok) {
+    res.setHeader('WWW-Authenticate', 'Bearer realm="Guild Cloud"');
+    fail(res, 401, check.message);
     return false;
   }
 
@@ -314,25 +341,43 @@ const ROLE_CACHE_MS = 5 * 60 * 1000;
 const memberRoleCache = new Map();
 let guildRoleCache = { at: 0, names: new Map() };
 
+let guildRoleLookup = null;
+
 const guildRoleNames = async () => {
   if (Date.now() - guildRoleCache.at < ROLE_CACHE_MS) return guildRoleCache.names;
-  const roles = await discordJson(
+  // Requests arriving together share one lookup; if Discord fails, the last
+  // list we had (even stale) is better than none.
+  guildRoleLookup ??= discordJson(
     `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/roles`,
     { headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` } },
-  );
-  const names = new Map(
-    Array.isArray(roles)
-      ? roles.map((role) => [role.id, String(role.name || '').trim().toLowerCase()])
-      : [],
-  );
-  guildRoleCache = { at: Date.now(), names };
-  return names;
+  )
+    .then((roles) => {
+      const names = new Map(
+        Array.isArray(roles)
+          ? roles.map((role) => [role.id, String(role.name || '').trim().toLowerCase()])
+          : [],
+      );
+      guildRoleCache = { at: Date.now(), names };
+      return names;
+    })
+    .catch((error) => {
+      if (guildRoleCache.at > 0) return guildRoleCache.names;
+      throw error;
+    })
+    .finally(() => {
+      guildRoleLookup = null;
+    });
+  return guildRoleLookup;
 };
 
-const memberRoleNames = async (discordId) => {
-  const cached = memberRoleCache.get(discordId);
-  if (cached && Date.now() - cached.at < ROLE_CACHE_MS) return cached.names;
+// A failed lookup isn't retried for this long. Every API request asks for
+// the member's roles, so without it a Discord outage would add the 5 s
+// timeout to each one.
+const ROLE_RETRY_MS = 30 * 1000;
+const memberRoleLookups = new Map();
 
+const fetchMemberRoleNames = async (discordId) => {
+  const cached = memberRoleCache.get(discordId);
   try {
     const response = await fetch(
       `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/members/${encodeURIComponent(discordId)}`,
@@ -355,8 +400,24 @@ const memberRoleNames = async (discordId) => {
     return names;
   } catch (error) {
     console.warn('[live] Role lookup failed', error.message);
-    return cached ? cached.names : null;
+    const names = cached ? cached.names : null;
+    memberRoleCache.set(discordId, { at: Date.now() - ROLE_CACHE_MS + ROLE_RETRY_MS, names });
+    return names;
   }
+};
+
+const memberRoleNames = async (discordId) => {
+  if (!DISCORD_BOT_TOKEN || !DISCORD_GUILD_ID) return null;
+  const cached = memberRoleCache.get(discordId);
+  if (cached && Date.now() - cached.at < ROLE_CACHE_MS) return cached.names;
+
+  // Requests arriving together share one lookup.
+  let lookup = memberRoleLookups.get(discordId);
+  if (!lookup) {
+    lookup = fetchMemberRoleNames(discordId).finally(() => memberRoleLookups.delete(discordId));
+    memberRoleLookups.set(discordId, lookup);
+  }
+  return lookup;
 };
 
 // [RoomFortyRecorder] Who can do what, per Discord role (Admin page in the
@@ -429,8 +490,10 @@ const handleMediamtxAuth = async (req, res) => {
   if (action === 'publish') {
     if (session) {
       const expected = `rf/${liveStreamName(session.userName, session.discordId)}`;
-      if (streamPath === expected) return text(res, 200, 'OK');
-      return deny(`${session.userName} may only publish to ${expected}`);
+      if (streamPath !== expected) return deny(`${session.userName} may only publish to ${expected}`);
+      const check = await rolesStillAllowed(session.discordId);
+      if (!check.ok) return deny(`${session.userName}: ${check.message}`);
+      return text(res, 200, 'OK');
     }
     if (user === 'raider' && passwordMatches(password, LIVE_RAIDER_PASSWORD)) {
       return text(res, 200, 'OK');
@@ -528,7 +591,7 @@ const callbackResult = (callback, values) => {
 };
 
 const discordJson = async (url, options) => {
-  const response = await fetch(url, options);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000), ...options });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Discord request failed: ${response.status}`);
   return data;
@@ -925,6 +988,7 @@ const loadState = async () => {
   state.revokedAllBefore = Number.isFinite(state.revokedAllBefore)
     ? state.revokedAllBefore
     : 0;
+  if (backfillChatOwners(state)) await persist();
 };
 
 const limitBytes = () =>
@@ -1246,7 +1310,11 @@ const handleApi = async (req, res, url, parts) => {
     return fail(res, 404, 'Unknown admin route');
   }
 
-  if (!authorized(req, res)) return;
+  if (!(await authorized(req, res))) return;
+
+  // Own recordings and messages are always allowed; the officer capability
+  // is only looked up (Discord) when one isn't, and once per request.
+  const mayChangeVideo = createChangeCheck(req.cloudUserId, () => permissions.can(req, 'videoManage'));
 
   // The app's bug button: one short report to the bug channel in Discord.
   if (parts[1] === 'bug-report' && req.method === 'POST') {
@@ -1372,11 +1440,27 @@ const handleApi = async (req, res, url, parts) => {
         return fail(res, 400, 'Invalid video metadata');
       }
 
+      // Replacing an entry is changing it.
+      const existing = state.videos.find((video) => video.videoKey === key);
+      if (existing && !(await mayChangeVideo(existing))) {
+        return fail(res, 403, 'You can only replace your own recordings. Ask an officer to replace this one.');
+      }
+
+      // Nor may it take the name of someone else's recording.
+      for (const other of state.videos) {
+        if (other.videoName === body.videoName && other.videoKey !== key && !(await mayChangeVideo(other))) {
+          return fail(res, 403, 'A recording with that name already exists and isn’t yours.');
+        }
+      }
+
       // Confirm the upload actually landed in R2 before trusting the client.
       if (!(await r2Exists(key))) return fail(res, 409, 'Video upload missing');
 
       state.videos = state.videos.filter((video) => video.videoKey !== key);
-      state.videos.push({ ...body, videoKey: key });
+      state.videos.push({
+        ...stampVideo(body, existing, req.cloudUserId, req.cloudUserName),
+        videoKey: key,
+      });
       // New object in the bucket: any cached listing is now out of date.
       invalidateListingCache();
       await persist();
@@ -1404,8 +1488,10 @@ const handleApi = async (req, res, url, parts) => {
     }
 
     if (req.method === 'PUT') {
-      if (!state.videos.some((video) => video.videoKey === key)) {
-        return fail(res, 404, 'Video not found');
+      const video = state.videos.find((entry) => entry.videoKey === key);
+      if (!video) return fail(res, 404, 'Video not found');
+      if (!(await mayChangeVideo(video))) {
+        return fail(res, 403, 'You can only change the timeline of your own recordings.');
       }
       const body = await readBody(req, MAX_TIMELINE_BYTES);
       if (!body || body.v !== 1 || !Array.isArray(body.casts)) {
@@ -1443,6 +1529,12 @@ const handleApi = async (req, res, url, parts) => {
       return fail(res, 400, 'Invalid upload request');
     }
 
+    // The URL overwrites whatever is stored under this key.
+    const existing = state.videos.find((video) => video.videoKey === body.key);
+    if (existing && !(await mayChangeVideo(existing))) {
+      return fail(res, 403, 'You can only replace your own recordings. Ask an officer to replace this one.');
+    }
+
     await housekeep();
     if ((await usageBytes({ fresh: true })) + body.bytes > limitBytes()) {
       return fail(res, 413, 'Guild storage limit reached');
@@ -1471,9 +1563,12 @@ const handleApi = async (req, res, url, parts) => {
     const names = await readBody(req, 2 * 1024 * 1024);
     if (!Array.isArray(names)) return fail(res, 400, 'Expected video names');
 
-    const matched = names
-      .map((name) => state.videos.find((entry) => entry.videoName === name))
-      .filter(Boolean);
+    // Every entry with a requested name, as protect and tag do.
+    const requested = state.videos.filter((entry) => names.includes(entry.videoName));
+    const { allowed: matched, refused } = await splitByAccess(requested, mayChangeVideo);
+    if (matched.length === 0 && refused.length > 0) {
+      return fail(res, 403, 'You can only delete your own recordings. Ask an officer to remove the others.');
+    }
 
     const failedKeys = new Set(await r2DeleteObjects(matched.map((video) => video.videoKey)));
     invalidateListingCache();
@@ -1496,7 +1591,7 @@ const handleApi = async (req, res, url, parts) => {
         `Failed to delete ${failedVideos.length} of ${matched.length} video(s) from storage -- please retry`,
       );
     }
-    return json(res, 200, {});
+    return json(res, 200, refused.length ? { refused: refused.map((video) => video.videoName) } : {});
   }
 
   if (parts[3] === 'bulk' && parts[4] === 'protect' && req.method === 'POST') {
@@ -1504,11 +1599,18 @@ const handleApi = async (req, res, url, parts) => {
     if (!Array.isArray(body.videos) || typeof body.protect !== 'boolean') {
       return fail(res, 400, 'Invalid protection request');
     }
-    state.videos.forEach((video) => {
-      if (body.videos.includes(video.videoName)) video.protected = body.protect;
+    const { allowed, refused } = await splitByAccess(
+      state.videos.filter((video) => body.videos.includes(video.videoName)),
+      mayChangeVideo,
+    );
+    if (allowed.length === 0 && refused.length > 0) {
+      return fail(res, 403, 'You can only protect your own recordings. Ask an officer to protect the others.');
+    }
+    allowed.forEach((video) => {
+      video.protected = body.protect;
     });
     await persist();
-    return json(res, 200, {});
+    return json(res, 200, refused.length ? { refused: refused.map((video) => video.videoName) } : {});
   }
 
   if (parts[3] === 'bulk' && parts[4] === 'tag' && req.method === 'POST') {
@@ -1516,11 +1618,18 @@ const handleApi = async (req, res, url, parts) => {
     if (!Array.isArray(body.videos) || typeof body.tag !== 'string') {
       return fail(res, 400, 'Invalid tag request');
     }
-    state.videos.forEach((video) => {
-      if (body.videos.includes(video.videoName)) video.tag = body.tag || undefined;
+    const { allowed, refused } = await splitByAccess(
+      state.videos.filter((video) => body.videos.includes(video.videoName)),
+      mayChangeVideo,
+    );
+    if (allowed.length === 0 && refused.length > 0) {
+      return fail(res, 403, 'You can only tag your own recordings. Ask an officer to tag the others.');
+    }
+    allowed.forEach((video) => {
+      video.tag = body.tag || undefined;
     });
     await persist();
-    return json(res, 200, {});
+    return json(res, 200, refused.length ? { refused: refused.map((video) => video.videoName) } : {});
   }
 
   if (parts[3] === 'chat') {
@@ -1546,6 +1655,7 @@ const handleApi = async (req, res, url, parts) => {
         correlator: parts[4],
         message: body.message.trim().slice(0, 2000),
         userName: req.cloudUserName,
+        discordId: req.cloudUserId,
         timestamp: Date.now(),
       };
       chat.messages.push(message);
@@ -1555,6 +1665,14 @@ const handleApi = async (req, res, url, parts) => {
 
     if (parts.length === 5 && req.method === 'DELETE') {
       const id = Number.parseInt(parts[4], 10);
+      const target = state.chats.flatMap((chat) => chat.messages).find((message) => message.id === id);
+      if (
+        target &&
+        !canDeleteMessage(target, req.cloudUserId, false) &&
+        !(await permissions.can(req, 'chatModerate'))
+      ) {
+        return fail(res, 403, 'You can only delete your own chat messages.');
+      }
       state.chats.forEach((chat) => {
         chat.messages = chat.messages.filter((message) => message.id !== id);
       });

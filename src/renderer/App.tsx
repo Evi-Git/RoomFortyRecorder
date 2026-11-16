@@ -243,6 +243,14 @@ const WarcraftRecorder = () => {
     setErrorReports((prevArray) => [...prevArray, report as ErrorReport]);
   };
 
+  const cloudActionFailed = (message: unknown) => {
+    toast({
+      title: "Couldn't change that",
+      description: String(message),
+      variant: 'destructive',
+    });
+  };
+
   const updateDiskStatus = (status: unknown) => {
     setAppState((prevState) => {
       return {
@@ -490,6 +498,7 @@ const WarcraftRecorder = () => {
     ipc.on('updateErrorReport', updateErrorReports);
     ipc.on('updateDiskStatus', updateDiskStatus);
     ipc.on('updateCloudStatus', updateCloudStatus);
+    ipc.on('cloudActionFailed', cloudActionFailed);
     ipc.on('updateAvailable', onUpdateAvailable);
     ipc.on('playAudio', playAudio);
     ipc.on('setCloudVideos', setCloudVideos);
@@ -510,6 +519,7 @@ const WarcraftRecorder = () => {
       ipc.removeAllListeners('updateErrorReport');
       ipc.removeAllListeners('updateDiskStatus');
       ipc.removeAllListeners('updateCloudStatus');
+      ipc.removeAllListeners('cloudActionFailed');
       ipc.removeAllListeners('updateAvailable');
       ipc.removeAllListeners('playAudio');
       ipc.removeAllListeners('setCloudVideos');

@@ -226,13 +226,15 @@ gets an **Admin** item under Settings:
 - **Permissions by Discord role**: one row per capability (see Analysis,
   edit Analysis, top-guild watcher, watch live, send clips to their own
   channel or any channel, edit personal channels, edit anyone's flags,
-  recruiting page), one column per role. Someone with several roles gets
+  recruiting page, manage anyone's recordings, delete anyone's chat
+  messages), one column per role. Someone with several roles gets
   everything any of them allows. The owner always has everything. Saved to
   `<storage>/permissions.json`. Until then each capability uses its old
   `.env` role list (`GUILD_CLOUD_LIVE_VIEWER_ROLES`,
   `GUILD_CLOUD_PULLDESK_EDITOR_ROLES`, `GUILD_CLOUD_COACH_OFFICER_ROLES`,
   `GUILD_CLOUD_RECRUIT_ROLES`). Who can sign in at all stays
-  `GUILD_CLOUD_DISCORD_ALLOWED_ROLES`.
+  `GUILD_CLOUD_DISCORD_ALLOWED_ROLES`, checked again on every request (roles
+  are cached 5 minutes).
 - **View as role**: the app sends `X-View-As-Role` and the server answers
   as that role (owner only; the Admin routes ignore it). A pill in the title
   bar shows it, with Exit. A restart always comes back as yourself.

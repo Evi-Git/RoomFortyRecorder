@@ -65,6 +65,20 @@ export const capabilities = (env = {}) => {
       defaults: orEveryone(liveViewers),
     },
     {
+      key: 'videoManage',
+      group: 'Recordings',
+      label: 'Manage anyone’s recordings',
+      help: 'Delete, protect, tag or replace recordings other people uploaded (everyone can manage their own).',
+      defaults: orEveryone(officers),
+    },
+    {
+      key: 'chatModerate',
+      group: 'Recordings',
+      label: 'Delete anyone’s chat messages',
+      help: 'Remove video chat messages other people wrote (everyone can delete their own).',
+      defaults: orEveryone(officers),
+    },
+    {
       key: 'clipSendOwn',
       group: 'Coaching',
       label: 'Send clips to their own channel',
