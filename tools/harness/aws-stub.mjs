@@ -82,7 +82,7 @@ export const installAwsStub = () => {
       }
     }
     export const getSignedUrl = (client, command) =>
-      keys || file ? Promise.resolve('https://r2.test/' + command.input.Key) : Promise.reject(new Error('R2 is not configured (harness)'));
+      keys || file ? Promise.resolve('https://r2.test/' + command.input.Key + (command.input.ContentLength ? '?signed-content-length=' + command.input.ContentLength : '')) : Promise.reject(new Error('R2 is not configured (harness)'));
   `;
   const url = `data:text/javascript,${encodeURIComponent(source)}`;
   const hooks = `

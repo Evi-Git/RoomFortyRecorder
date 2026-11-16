@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.132] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **An upload link only accepts a file of exactly the size the app said it would send.** The link the server hands out for a recording is good for an hour, and until now it took a file of any size, as many times as you liked in that hour, so the size check made when the recording is added to the library could be sidestepped afterwards. The size is now part of the link's signature, so storage itself refuses anything else. The app already sends the right size and needs no update. If uploads ever start failing with a signature error after this release, add `GUILD_CLOUD_SIGN_UPLOAD_SIZE=off` to the server's `.env` and restart it.
+
 ## [1.9.131] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **A pull's log is only accepted from a raider the server asked for it.** After a pull the server picks one raider's app to send the log, and a backfill asks before it sends. Until now the server took a log for any pull from any signed-in member, asked or not. It now answers "Another raider is sending this pull's log." to anyone it didn't ask. A raider who was picked and then replaced by another (a slow upload, a backfill that ran long) can still finish theirs. The app needs no update.
