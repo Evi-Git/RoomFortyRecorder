@@ -29,6 +29,7 @@ import { createTopLogs } from './toplogs.mjs';
 import { createWclCompare } from './pulldesk-wcl-compare.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
+import { sendFile } from './startup.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
 // 3: also damage, healing and damage taken (for Trends).
@@ -1826,7 +1827,7 @@ export const createPullDesk = (options) => {
           return fail(res, 404, "This pull's full log is gone");
         }
         res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': stat.size });
-        fs.createReadStream(fullFile(pull.id)).pipe(res);
+        sendFile(fullFile(pull.id), res);
         return undefined;
       }
 

@@ -19,6 +19,12 @@ import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 import { createPermissions } from './permissions.mjs';
 import { createBugReport } from './bug-report.mjs';
+import {
+  logUnhandledRejections,
+  secretProblem,
+  secretWarning,
+  sendFile,
+} from './startup.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -79,7 +85,13 @@ const timelineFile = (key) => path.join(TIMELINE_DIR, `${key}.json`);
 const MAX_TIMELINE_BYTES = 4 * 1024 * 1024;
 
 const LIMIT_GB = Number.parseFloat(process.env.GUILD_CLOUD_LIMIT_GB || '1000');
-const SECRET = process.env.GUILD_CLOUD_SECRET || `${GUILD}:${DISCORD_CLIENT_ID}`;
+// Signs app sessions and video links. There is no fallback: the old one
+// (guild name + Discord client ID) could be worked out by anyone, who could
+// then sign a session as any raider, the owner included.
+// Used exactly as given (not trimmed), so an existing value keeps signing
+// the same way.
+const SECRET = process.env.GUILD_CLOUD_SECRET || '';
+const SECRET_PROBLEM = secretProblem(SECRET, [`${GUILD}:${DISCORD_CLIENT_ID}`]);
 const ADMIN_SECRET = process.env.GUILD_CLOUD_ADMIN_SECRET || '';
 
 // Public HTTPS hostname for THIS server's own API (auth, chat, admin,
@@ -1705,7 +1717,8 @@ const requestHandler = async (req, res) => {
     const file = await coach.thumbnailPath(parts[1]);
     if (!file) return fail(res, 404, 'No preview');
     res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
-    return fs.createReadStream(file).pipe(res);
+    sendFile(file, res);
+    return undefined;
   }
   if (parts[0] === 'link' && parts[2] === 'like' && req.method === 'POST') {
     return handleLike(res, parts[1]);
@@ -1721,6 +1734,14 @@ const requestHandler = async (req, res) => {
 };
 
 const main = async () => {
+  if (SECRET_PROBLEM) {
+    throw new Error(
+      `${SECRET_PROBLEM}. Put a long random value in GUILD_CLOUD_SECRET in the server's .env (the same value the R2 Worker has), then start the server again.`,
+    );
+  }
+  const shortSecret = secretWarning(SECRET);
+  if (shortSecret) console.warn(`[guild-cloud] ${shortSecret}`);
+  logUnhandledRejections();
   await loadState();
   await pullDesk.ready();
   const server = http.createServer((req, res) => {
@@ -1729,6 +1750,13 @@ const main = async () => {
       if (!res.headersSent) fail(res, 500, 'Internal server error');
       else res.destroy();
     });
+  });
+
+  // Port already taken (a second copy started) or similar: say so and stop,
+  // instead of an uncaught exception with a stack trace.
+  server.on('error', (error) => {
+    console.error('[guild-cloud] The server could not listen', error?.message || error);
+    process.exit(1);
   });
 
   server.listen(PORT, HOST, () => {
@@ -1741,6 +1769,8 @@ const main = async () => {
 };
 
 main().catch((error) => {
-  console.error('[guild-cloud] Failed to start', error);
-  process.exitCode = 1;
+  console.error('[guild-cloud] Failed to start', error?.message || error);
+  // Exit now: background timers (crawls, clean-up) would otherwise keep a
+  // server that isn't listening alive.
+  process.exit(1);
 });

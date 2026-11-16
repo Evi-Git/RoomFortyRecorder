@@ -33,7 +33,8 @@ private `.env` file; they are never included in the installer.
 
 The guild is fixed by `GUILD_CLOUD_GUILD` and is not selected in the app.
 `GUILD_CLOUD_SECRET` signs video URLs and app sessions; it is only for the
-server.
+server (and the R2 Worker, which must have the same value). The server
+refuses to start when it is missing or still the example value.
 
 ## Capacity
 
