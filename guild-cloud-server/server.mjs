@@ -34,6 +34,14 @@ import {
   splitByAccess,
   stampVideo,
 } from './video-access.mjs';
+import {
+  expired as expiredReservations,
+  heldByOther,
+  isReserved,
+  ownReservation,
+  release as releaseReservation,
+  reserve as reserveUpload,
+} from './upload-reservations.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -146,6 +154,8 @@ const R2_SECRET_ACCESS_KEY = process.env.GUILD_CLOUD_R2_SECRET_ACCESS_KEY || '';
 const R2_BUCKET = process.env.GUILD_CLOUD_R2_BUCKET || '';
 
 const TOKEN_TTL_SECONDS = 60 * 60;
+const MAX_UPLOAD_BYTES = 5 * 1024 ** 3;
+const UPLOAD_TAKEN_MESSAGE = 'Another member is uploading a file with this name.';
 // Download tokens live much longer than a typical API token. The URL is
 // handed to a <video> element and the app polls metadata every 30 seconds;
 // keeping the URL stable across that polling avoids remounting the player
@@ -1012,6 +1022,12 @@ const loadState = async () => {
   state.revokedAllBefore = Number.isFinite(state.revokedAllBefore)
     ? state.revokedAllBefore
     : 0;
+  state.uploadReservations =
+    state.uploadReservations &&
+    typeof state.uploadReservations === 'object' &&
+    !Array.isArray(state.uploadReservations)
+      ? state.uploadReservations
+      : {};
   if (backfillChatOwners(state)) await persist();
 };
 
@@ -1020,8 +1036,7 @@ const limitBytes = () =>
 
 // Cross-references state.videos against what's REALLY in R2 right now.
 // Sizes always come from R2 itself, never from a client-declared value.
-const videoEntries = async ({ fresh = false } = {}) => {
-  const objects = await r2ListAllObjectsCached({ fresh });
+const videoEntriesFrom = (objects) => {
   const bySize = new Map(objects.map((object) => [object.key, object]));
   const entries = [];
   for (const video of state.videos) {
@@ -1031,9 +1046,53 @@ const videoEntries = async ({ fresh = false } = {}) => {
   return entries;
 };
 
+const videoEntries = async ({ fresh = false } = {}) =>
+  videoEntriesFrom(await r2ListAllObjectsCached({ fresh }));
+
 const usageBytes = async (options) => {
   const entries = await videoEntries(options);
   return entries.reduce((total, entry) => total + entry.size, 0);
+};
+
+// Is this R2 key still wanted by the library? A registered video's file is
+// `videoKey` (the app names it `<videoName>.mp4`); a share link also points
+// at a key. Anything sharing a registered video's name with another
+// extension is treated as its companion, though the server only ever hands
+// out `.mp4` upload URLs (isSafeKey) so none exist today.
+const keyInUse = (key) => {
+  const base = key.replace(/\.[^./]+$/, '');
+  return (
+    state.links.some((link) => link.key === key) ||
+    state.videos.some(
+      (video) =>
+        video.videoKey === key ||
+        `${video.videoName}.mp4` === key ||
+        String(video.videoKey).replace(/\.[^./]+$/, '') === base ||
+        video.videoName === base,
+    )
+  );
+};
+
+// An upload URL was handed out, nothing was ever registered, and the
+// reservation has run out: the file is paid-for storage nobody can reach.
+// Takes the expired reservations out of the state and returns which of their
+// files to delete. Deletes nothing when state.json came back from a backup
+// (a newer registered video would look abandoned, as with the orphan route),
+// nor a key someone holds a live reservation for, nor anything keyInUse.
+// Synchronous on purpose: `state` must not change between the checks and the
+// caller's delete.
+const abandonedUploadKeys = (objects) => {
+  const lapsed = expiredReservations(state.uploadReservations, Date.now());
+  if (lapsed.length === 0) return { keys: [], entries: [], changed: false };
+  if (stateRestoredAt) return { keys: [], entries: [], changed: true };
+  const inBucket = new Set(objects.map((object) => object.key));
+  const entries = lapsed.filter(
+    (entry) =>
+      inBucket.has(entry.key) &&
+      !keyInUse(entry.key) &&
+      !isReserved(state.uploadReservations, entry.key, Date.now()),
+  );
+  return { keys: entries.map((entry) => entry.key), entries, changed: true };
 };
 
 const housekeep = async () => {
@@ -1043,7 +1102,8 @@ const housekeep = async () => {
   // is not in that snapshot, and dropping it would leave its file orphaned in
   // R2 with no library entry (this happened on busy raid nights).
   const trackedBeforeListing = new Set(state.videos.map((video) => video.videoKey));
-  let entries = await videoEntries({ fresh: true });
+  const objects = await r2ListAllObjectsCached({ fresh: true });
+  let entries = videoEntriesFrom(objects);
   let usage = entries.reduce((total, entry) => total + entry.size, 0);
   let changed = false;
 
@@ -1054,13 +1114,19 @@ const housekeep = async () => {
       entries.some((entry) => entry.video.videoKey === video.videoKey),
   );
 
+  // Uploads that were asked for but never registered (see
+  // abandonedUploadKeys). Decided now, against the state as it is after the
+  // listing came back, and deleted below with the evictions.
+  const abandoned = abandonedUploadKeys(objects);
+  if (abandoned.changed) changed = true;
+
+  // Oldest first by when the file reached R2 (the server's own clock); the
+  // client's `start` is only a fallback, as a client can set it to anything.
+  const uploadedAt = (entry) =>
+    entry.lastModified?.getTime() || Number(entry.video.start) || 0;
   entries = entries
     .filter((entry) => !entry.video.protected)
-    .sort(
-      (left, right) =>
-        Number(left.video.start || left.lastModified?.getTime() || 0) -
-        Number(right.video.start || right.lastModified?.getTime() || 0),
-    );
+    .sort((left, right) => uploadedAt(left) - uploadedAt(right));
 
   const toDelete = [];
   for (const entry of entries) {
@@ -1072,9 +1138,18 @@ const housekeep = async () => {
     usage -= entry.size;
     changed = true;
   }
-  if (toDelete.length > 0) {
-    await r2DeleteObjects(toDelete);
+  if (toDelete.length > 0 || abandoned.keys.length > 0) {
+    const failed = new Set(await r2DeleteObjects([...toDelete, ...abandoned.keys]));
     invalidateListingCache();
+    // A file that would not delete keeps its (expired) reservation so the
+    // next run tries again, instead of becoming an unaccounted orphan.
+    for (const entry of abandoned.entries) {
+      if (failed.has(entry.key)) {
+        const { key, ...rest } = entry;
+        state.uploadReservations[key] = rest;
+        changed = true;
+      }
+    }
   }
 
   if (changed) await persist();
@@ -1473,14 +1548,39 @@ const handleApi = async (req, res, url, parts) => {
         }
       }
 
+      // A new recording must come from the member who asked for its upload
+      // URL. Officers get no exception: they can replace, not adopt.
+      const reservation = ownReservation(state.uploadReservations, key, req.cloudUserId, Date.now());
+      if (!existing && !reservation) {
+        return fail(res, 403, 'This upload was not started by you, or it took too long. Start the upload again.');
+      }
+
       // Confirm the upload actually landed in R2 before trusting the client.
-      if (!(await r2Exists(key))) return fail(res, 409, 'Video upload missing');
+      const head = await r2HeadObject(key);
+      if (!head) return fail(res, 409, 'Video upload missing');
+
+      // The file may not be bigger than the size declared with the URL.
+      if (reservation && head.ContentLength > reservation.bytes) {
+        const failedDeletes = await r2DeleteObjects([key]);
+        invalidateListingCache();
+        if (failedDeletes.length > 0) {
+          // Still there: keep the reservation so it can be cleaned up later.
+          return fail(res, 502, 'The file is bigger than you said it would be, and it could not be removed. Try again in a moment.');
+        }
+        releaseReservation(state.uploadReservations, key);
+        // A replace has just lost its file: the list must not show it.
+        if (existing) state.videos = state.videos.filter((video) => video.videoKey !== key);
+        await persist();
+        await pruneTimelines();
+        return fail(res, 413, 'The file is bigger than you said it would be, so it was removed. Start the upload again.');
+      }
 
       state.videos = state.videos.filter((video) => video.videoKey !== key);
       state.videos.push({
         ...stampVideo(body, existing, req.cloudUserId, req.cloudUserName),
         videoKey: key,
       });
+      releaseReservation(state.uploadReservations, key);
       // New object in the bucket: any cached listing is now out of date.
       invalidateListingCache();
       await persist();
@@ -1549,16 +1649,37 @@ const handleApi = async (req, res, url, parts) => {
       return fail(res, 400, 'Invalid upload request');
     }
 
+    // The app sends a file under 5 GiB in one piece and switches to a
+    // multipart upload from there, which this server has no route for, so a
+    // bigger request could never be completed.
+    if (body.bytes > MAX_UPLOAD_BYTES) {
+      return fail(res, 413, 'That file is too big to upload (the limit is 5 GB).');
+    }
+
     // The URL overwrites whatever is stored under this key.
     const existing = state.videos.find((video) => video.videoKey === body.key);
     if (existing && !(await mayChangeVideo(existing))) {
       return fail(res, 403, 'You can only replace your own recordings. Ask an officer to replace this one.');
     }
 
+    const taken = () => heldByOther(state.uploadReservations, body.key, req.cloudUserId, Date.now());
+    if (taken()) return fail(res, 409, UPLOAD_TAKEN_MESSAGE);
+
     await housekeep();
     if ((await usageBytes({ fresh: true })) + body.bytes > limitBytes()) {
       return fail(res, 413, 'Guild storage limit reached');
     }
+
+    // Checked again: someone may have reserved it while the above ran.
+    if (taken()) return fail(res, 409, UPLOAD_TAKEN_MESSAGE);
+    reserveUpload(state.uploadReservations, {
+      key: body.key,
+      userId: req.cloudUserId,
+      userName: req.cloudUserName,
+      bytes: body.bytes,
+      now: Date.now(),
+    });
+    await persist();
 
     // The client PUTs the file straight to R2 with this URL -- never
     // touching this server. Same interface the client already used for the

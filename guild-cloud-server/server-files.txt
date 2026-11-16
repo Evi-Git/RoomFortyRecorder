@@ -28,3 +28,4 @@ toplogs.mjs
 startup.mjs
 safe-json.mjs
 video-access.mjs
+upload-reservations.mjs
