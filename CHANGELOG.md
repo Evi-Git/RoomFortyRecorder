@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.129] - Unreleased
+### Added (guild server: run `update-server.cmd` after this release)
+- **Sign someone out from the Admin page.** A new "Members" section under the permissions table lists everyone who has signed in, newest first, with when they last did. "Sign out" next to a name (after you confirm) ends their sign-in on every PC right away; the row then says "Signed out" until they sign in again. Sign-ins last 30 days, so use this when a PC is lost or someone should be locked out now. They can still sign in again while they have a Room Forty role, so to keep someone out, remove their Discord role first. You can't sign yourself out here. Until the server is updated the section stays hidden. Does the same as the `/api/admin/revoke` call with the admin secret, without needing the server PC.
+
 ## [1.9.128] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **Anyone signed in could delete, protect, tag or overwrite any recording, and delete anyone's chat messages.** Now you can do that to your own, and officers to anyone's. Recordings uploaded before this update have no owner on record, so until they age out only officers can delete, protect or tag them; new uploads are marked with who uploaded them. Chat messages are matched to their writer; older ones are matched by name where only one person has had that name, otherwise only officers can delete them.

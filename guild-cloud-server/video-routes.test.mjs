@@ -40,8 +40,8 @@ const fixture = {
   },
 };
 
-const tokenFor = (discordId, userName) => {
-  const now = Math.floor(Date.now() / 1000);
+const tokenFor = (discordId, userName, iat = Math.floor(Date.now() / 1000)) => {
+  const now = iat;
   const body = Buffer.from(
     JSON.stringify({ action: 'session', guild: GUILD, discordId, userName, iat: now, exp: now + 3600 }),
   ).toString('base64url');
@@ -128,10 +128,10 @@ const start = async () => {
     child.on('exit', () => reject(new Error(`server exited\n${out}`)));
   });
   const call = async (who, method, route, body) => {
-    const [id, name] = who;
+    const [id, name, iat] = who;
     const res = await fetch(`${base}/api/guild/${encodeURIComponent(GUILD)}${route}`, {
       method,
-      headers: { Authorization: `Bearer ${tokenFor(id, name)}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${tokenFor(id, name, iat)}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     return { status: res.status, body: await res.json().catch(() => null) };
@@ -268,6 +268,47 @@ test('recordings and chat messages can only be changed by their owner or an offi
     assert.equal((await call(bob, 'DELETE', '/chat/99')).status, 200); // unknown stays fine
     assert.equal((await call(owner, 'DELETE', '/chat/1')).status, 200);
     assert.deepEqual(messages().map((m) => m.message), ['ghost', 'gg']);
+  } finally {
+    stop();
+  }
+});
+
+test('the owner signs a member out: old sessions stop, a later sign-in works', async () => {
+  const { call, stop } = await start();
+  try {
+    // Sessions are whole seconds and only those issued before the sign-out
+    // are refused, so mint one clearly in the past and one clearly after.
+    const now = Math.floor(Date.now() / 1000);
+    const before = [BOB, 'Bob', now - 60];
+    const after = [BOB, 'Bob', now + 60];
+    assert.equal((await call(before, 'GET', '/usage')).status, 200);
+
+    let r = await call(bob, 'GET', '/permissions/members');
+    assert.equal(r.status, 403);
+    r = await call(bob, 'POST', '/permissions/sign-out', { discordId: EVI });
+    assert.equal(r.status, 403);
+    assert.equal((await call(before, 'GET', '/usage')).status, 200);
+
+    r = await call(owner, 'GET', '/permissions/members');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.members.find((m) => m.discordId === BOB).signedOut, false);
+
+    r = await call(owner, 'POST', '/permissions/sign-out', { discordId: BOB });
+    assert.equal(r.status, 200);
+    r = await call(before, 'GET', '/usage');
+    assert.equal(r.status, 401);
+    assert.equal((await call(after, 'GET', '/usage')).status, 200);
+    assert.equal((await call(evi, 'GET', '/usage')).status, 200); // others untouched
+
+    // Their last sign-in is older than the sign-out until they sign in again.
+    r = await call(owner, 'GET', '/permissions/members');
+    assert.equal(r.body.members.find((m) => m.discordId === BOB).signedOut, true);
+    assert.equal(r.body.members.find((m) => m.discordId === EVI).signedOut, false);
+
+    r = await call(owner, 'POST', '/permissions/sign-out', { discordId: '1' });
+    assert.equal(r.status, 400);
+    r = await call(owner, 'POST', '/permissions/sign-out', { discordId: OWNER });
+    assert.equal(r.status, 400);
   } finally {
     stop();
   }

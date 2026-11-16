@@ -124,8 +124,17 @@ const cleanRole = (role) => String(role ?? '').trim().toLowerCase().slice(0, 100
  * @param {object} options.env
  * @param {(discordId: string) => Promise<string[]|null>} options.memberRoleNames lower-case names
  * @param {() => Promise<{id:string,name:string,position:number,color:number}[]>} [options.guildRoles]
+ * @param {() => {now:number,members:object[]}} [options.listMembers] everyone who has signed in
+ * @param {(discordId: string) => Promise<boolean>} [options.signOutMember] false when unknown
  */
-export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRoles }) => {
+export const createPermissions = ({
+  storage,
+  env = {},
+  memberRoleNames,
+  guildRoles,
+  listMembers,
+  signOutMember,
+}) => {
   const file = path.join(storage, 'permissions.json');
   const caps = capabilities(env);
   const capKeys = new Set(caps.map((c) => c.key));
@@ -217,6 +226,8 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
    *   GET  /api/permissions/me   what this person (or the role they view as) can do
    *   GET  /api/permissions      the table (owner only)
    *   PUT  /api/permissions      { grants, columns } (owner only)
+   *   GET  /api/permissions/members   who has signed in (owner only)
+   *   POST /api/permissions/sign-out  { discordId } ends that person's sessions (owner only)
    */
   const handle = async (req, res, rest, { readBody, json, fail }) => {
     await ready();
@@ -236,6 +247,29 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
     }
 
     if (!isOwner(req.cloudUserId)) return fail(res, 403, 'Only the owner can change permissions');
+
+    // Owner only and never "view as": the isOwner check above ignores it.
+    if (first === 'members' && req.method === 'GET') {
+      if (!listMembers) return fail(res, 404, 'Not found');
+      const { now, members } = listMembers();
+      return json(res, 200, {
+        now,
+        members: members
+          .map((m) => (isOwner(m.discordId) ? { ...m, owner: true } : m))
+          .sort((a, b) => (b.lastLogin || 0) - (a.lastLogin || 0)),
+      });
+    }
+
+    if (first === 'sign-out' && req.method === 'POST') {
+      if (!signOutMember) return fail(res, 404, 'Not found');
+      const body = await readBody(req, 4 * 1024);
+      const discordId = typeof body?.discordId === 'string' ? body.discordId : '';
+      if (isOwner(discordId)) return fail(res, 400, "The owner can't be signed out here.");
+      if (!discordId || !(await signOutMember(discordId))) {
+        return fail(res, 400, 'Unknown member');
+      }
+      return json(res, 200, {});
+    }
 
     let roleList = [];
     let roleError = '';

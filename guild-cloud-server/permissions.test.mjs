@@ -7,7 +7,7 @@ import { createPermissions, EVERYONE } from './permissions.mjs';
 
 const ROLES = { '1': ['officer'], '2': ['raider'], '3': ['trial'], '9': ['evi', 'officer'] };
 
-const setup = async (env = {}) => {
+const setup = async (env = {}, extra = {}) => {
   const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'perm-'));
   const perms = createPermissions({
     storage,
@@ -19,6 +19,7 @@ const setup = async (env = {}) => {
       { id: 'c', name: 'Trial', position: 1, color: 0 },
       { id: 'd', name: 'Evi', position: 9, color: 0 },
     ],
+    ...extra,
   });
   const res = () => ({});
   const io = {
@@ -104,4 +105,54 @@ test('recording and chat moderation default to officers and can be granted', asy
   assert.equal((await call('99999', 'PUT', [], { grants })).status, 200);
   assert.equal(await perms.can(req('2'), 'videoManage'), true);
   assert.equal(await perms.can(req('2'), 'chatModerate'), false);
+});
+
+test('only the owner lists members and signs one out', async () => {
+  const signedOut = [];
+  const known = ['1', '2', '99999'];
+  const { call } = await setup(
+    {},
+    {
+      listMembers: () => ({
+        now: 500,
+        members: [
+          { discordId: '1', userName: 'Old', lastLogin: 100, signedOut: false },
+          { discordId: '99999', userName: 'Boss', lastLogin: 300, signedOut: false },
+          { discordId: '2', userName: 'New', lastLogin: 200, signedOut: true },
+        ],
+      }),
+      signOutMember: async (id) => {
+        if (!known.includes(id)) return false;
+        signedOut.push(id);
+        return true;
+      },
+    },
+  );
+
+  let r = await call('99999', 'GET', ['members'], undefined, { 'x-view-as-role': 'trial' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.now, 500);
+  assert.deepEqual(r.body.members.map((m) => m.userName), ['Boss', 'New', 'Old']);
+  assert.deepEqual(r.body.members.map((m) => m.owner), [true, undefined, undefined]);
+
+  for (const who of ['1', '9']) {
+    r = await call(who, 'GET', ['members']);
+    assert.equal(r.status, 403);
+    r = await call(who, 'POST', ['sign-out'], { discordId: '2' });
+    assert.equal(r.status, 403);
+  }
+  assert.deepEqual(signedOut, []);
+
+  r = await call('99999', 'POST', ['sign-out'], { discordId: '2' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(signedOut, ['2']);
+
+  r = await call('99999', 'POST', ['sign-out'], { discordId: '777' });
+  assert.equal(r.status, 400);
+  r = await call('99999', 'POST', ['sign-out'], {});
+  assert.equal(r.status, 400);
+  r = await call('99999', 'POST', ['sign-out'], { discordId: '99999' });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error, "The owner can't be signed out here.");
+  assert.deepEqual(signedOut, ['2']);
 });

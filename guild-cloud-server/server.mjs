@@ -271,6 +271,14 @@ const sessionFromToken = (token) => {
   }
 };
 
+// True when the sessions from this person's last sign-in no longer work.
+const sessionsRevoked = (discordId, info) =>
+  Boolean(
+    (state.revokedUsers[discordId] &&
+      state.revokedUsers[discordId] > (info?.lastLogin || 0)) ||
+      state.revokedAllBefore > (info?.lastLogin || 0),
+  );
+
 // Roles are otherwise only checked at sign-in and sessions last 30 days.
 // memberRoleNames is cached for 5 minutes.
 const rolesStillAllowed = async (discordId) => {
@@ -426,6 +434,22 @@ const permissions = createPermissions({
   storage: STORAGE,
   env: process.env,
   memberRoleNames,
+  listMembers: () => ({
+    now: Math.floor(Date.now() / 1000),
+    members: Object.entries(state.knownUsers).map(([discordId, info]) => ({
+      discordId,
+      userName: info.userName,
+      lastLogin: info.lastLogin || 0,
+      signedOut: sessionsRevoked(discordId, info),
+    })),
+  }),
+  // Same effect as the secret-protected /admin/revoke.
+  signOutMember: async (discordId) => {
+    if (!Object.hasOwn(state.knownUsers, discordId)) return false;
+    state.revokedUsers[discordId] = Math.floor(Date.now() / 1000);
+    await persist();
+    return true;
+  },
   guildRoles: async () => {
     const roles = await discordJson(
       `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/roles`,
@@ -1239,11 +1263,7 @@ const handleApi = async (req, res, url, parts) => {
         discordId,
         userName: info.userName,
         lastLogin: info.lastLogin,
-        revoked: Boolean(
-          (state.revokedUsers[discordId] &&
-            state.revokedUsers[discordId] > (info.lastLogin || 0)) ||
-            state.revokedAllBefore > (info.lastLogin || 0),
-        ),
+        revoked: sessionsRevoked(discordId, info),
       }));
       return json(res, 200, { now, users });
     }

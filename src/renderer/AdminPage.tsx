@@ -3,6 +3,20 @@ import React from 'react';
 import { Check, Eye, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './components/Dialog/Dialog';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from './components/States/States';
+import {
   refreshPermissions,
   setViewAs,
   usePermissions,
@@ -64,6 +78,174 @@ const Card = ({
     {children}
   </section>
 );
+
+type Member = {
+  discordId: string;
+  userName: string;
+  /** Epoch seconds. */
+  lastLogin: number;
+  signedOut: boolean;
+  owner?: boolean;
+};
+
+/**
+ * Who has signed in, and a way to end someone's 30-day sign-in. An older
+ * guild server answers "Not found" for the route: the section stays hidden.
+ */
+const MembersCard = () => {
+  const [members, setMembers] = React.useState<Member[] | null>(null);
+  const [error, setError] = React.useState('');
+  const [oldServer, setOldServer] = React.useState(false);
+  const [target, setTarget] = React.useState<Member | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [actionError, setActionError] = React.useState('');
+  const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    call<{ members: Member[] }>({ action: 'permissionMembers' }).then(
+      (response) => {
+        if (cancelled) return;
+        if (response.ok) {
+          setError('');
+          setMembers(response.data.members);
+        } else if (/^not found\.?$/i.test(response.error.trim())) {
+          setOldServer(true);
+        } else {
+          setError(response.error);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [tick]);
+
+  const signOut = async () => {
+    if (!target) return;
+    setBusy(true);
+    const response = await call({
+      action: 'signOutMember',
+      discordId: target.discordId,
+    });
+    setBusy(false);
+    setTarget(null);
+    if (!response.ok) {
+      setActionError(response.error);
+      return;
+    }
+    setActionError('');
+    setTick((t) => t + 1);
+  };
+
+  if (oldServer) return null;
+
+  return (
+    <Card title="Members">
+      <p className="text-sm text-foreground m-0">
+        Everyone who has signed in to the Toolkit with Discord. Signing someone
+        out ends their sign-in on every PC.
+      </p>
+      {actionError && (
+        <ErrorState error={actionError} what="Couldn't sign them out" />
+      )}
+      {error && (
+        <ErrorState
+          error={error}
+          what="Couldn't load the members"
+          onRetry={() => setTick((t) => t + 1)}
+        />
+      )}
+      {!members && !error && <LoadingState label="Loading members…" />}
+      {members && members.length === 0 && (
+        <EmptyState>Nobody has signed in yet.</EmptyState>
+      )}
+      {members && members.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="text-sm border-collapse w-full">
+            <thead>
+              <tr className="text-xs text-foreground border-b border-card">
+                <th className="px-2 py-2 text-left font-normal">Member</th>
+                <th className="px-2 py-2 text-left font-normal">
+                  Last sign-in
+                </th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr
+                  key={m.discordId}
+                  className="border-b border-card/40 hover:bg-card/20"
+                >
+                  <td className="px-2 py-1.5 text-foreground-lighter">
+                    {m.userName}
+                    {m.owner && (
+                      <span className="ml-2 text-[11px] text-foreground">
+                        Owner
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-foreground whitespace-nowrap">
+                    {m.signedOut
+                      ? 'Signed out'
+                      : m.lastLogin
+                        ? dateTime(m.lastLogin * 1000)
+                        : 'Unknown'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <span
+                      className="inline-block"
+                      title={
+                        m.owner
+                          ? "The owner can't be signed out here"
+                          : m.signedOut
+                            ? 'Already signed out'
+                            : undefined
+                      }
+                    >
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={m.owner || m.signedOut || busy}
+                        onClick={() => setTarget(m)}
+                      >
+                        Sign out
+                      </Button>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <Dialog
+        open={target !== null}
+        onOpenChange={(open) => !open && !busy && setTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{`Sign out ${target?.userName ?? ''}?`}</DialogTitle>
+            <DialogDescription>
+              They&apos;re signed out of the Toolkit on every PC right away.
+              They can sign in again if they still have a Room Forty role, so to
+              keep someone out, remove their Discord role first.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={signOut} disabled={busy}>
+              Sign out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+};
 
 const AdminPage = () => {
   const permissions = usePermissions();
@@ -424,6 +606,8 @@ const AdminPage = () => {
             on the server.
           </p>
         </Card>
+
+        <MembersCard />
       </div>
     </div>
   );

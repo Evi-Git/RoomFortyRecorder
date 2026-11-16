@@ -482,6 +482,25 @@ export const scenes = [
       await t.settle(1000);
     },
   },
+  {
+    name: 'admin-members',
+    shows: 'Admin > Members list (owner row and a signed-out row disabled)',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('heading', { name: 'Members' }).scrollIntoViewIfNeeded();
+      await t.settle();
+    },
+  },
+  {
+    name: 'admin-sign-out-confirm',
+    shows: 'Admin > Members: confirm signing a member out',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('row', { name: /Fixture Raider/ }).getByRole('button', { name: 'Sign out' }).click();
+      await t.text('Sign out Fixture Raider?');
+      await t.settle();
+    },
+  },
 
   // ---- Dialogs and notices -------------------------------------------------
   {

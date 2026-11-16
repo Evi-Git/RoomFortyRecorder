@@ -112,6 +112,23 @@ export const startBackend = async ({
   const logDir = path.join(root, 'wowlogs');
   for (const d of [storage, userData, logDir]) await fsp.mkdir(d, { recursive: true });
 
+  // People who have signed in, for the Admin page's Members list (the
+  // harness user's own token is minted, not a real sign-in). Written before
+  // the server starts; an existing list is left alone.
+  const stateFile = path.join(storage, 'state.json');
+  const saved = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : {};
+  if (!saved.knownUsers || !Object.keys(saved.knownUsers).length) {
+    const now = Math.floor(Date.now() / 1000);
+    saved.knownUsers = {
+      [USER.id]: { userName: USER.name, lastLogin: now - 600 },
+      '100000000000000002': { userName: 'Fixture Raider', lastLogin: now - 3 * 3600 },
+      '100000000000000003': { userName: 'Fixture Healer', lastLogin: now - 5 * 86400 },
+      '100000000000000004': { userName: 'Fixture Trial', lastLogin: now - 9 * 86400 },
+    };
+    saved.revokedUsers = { '100000000000000004': now - 86400 };
+    fs.writeFileSync(stateFile, JSON.stringify(saved));
+  }
+
   port ??= await freePort();
   const base = `http://127.0.0.1:${port}`;
   const env = {
