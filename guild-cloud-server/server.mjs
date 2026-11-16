@@ -154,6 +154,7 @@ const R2_BUCKET = process.env.GUILD_CLOUD_R2_BUCKET || '';
 
 const TOKEN_TTL_SECONDS = 60 * 60;
 const MAX_UPLOAD_BYTES = 5 * 1024 ** 3;
+const SIGN_UPLOAD_SIZE = String(process.env.GUILD_CLOUD_SIGN_UPLOAD_SIZE || 'on').trim().toLowerCase() !== 'off';
 const UPLOAD_TAKEN_MESSAGE = 'Another member is uploading a file with this name.';
 // Download tokens live much longer than a typical API token. The URL is
 // handed to a <video> element and the app polls metadata every 30 seconds;
@@ -836,10 +837,20 @@ const r2HeadObject = async (key) => {
 
 const r2Exists = async (key) => Boolean(await r2HeadObject(key));
 
-const r2PresignedPutUrl = async (key, expiresInSeconds = 60 * 60) =>
+// The declared size goes into the signature (X-Amz-SignedHeaders gets
+// content-length), so the URL only takes a body of exactly that many bytes:
+// the app already sends that Content-Length. Without it the URL would take
+// any size, and again and again for its whole hour, whatever was checked
+// when the recording was registered. GUILD_CLOUD_SIGN_UPLOAD_SIZE=off goes
+// back to an unsigned size if R2 ever refuses these uploads.
+const r2PresignedPutUrl = async (key, bytes, expiresInSeconds = 60 * 60) =>
   getSignedUrl(
     s3,
-    new PutObjectCommand({ Bucket: R2_BUCKET, Key: key }),
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      ...(SIGN_UPLOAD_SIZE && Number.isInteger(bytes) && bytes > 0 ? { ContentLength: bytes } : {}),
+    }),
     { expiresIn: expiresInSeconds },
   );
 
@@ -1680,7 +1691,7 @@ const handleApi = async (req, res, url, parts) => {
     // The client PUTs the file straight to R2 with this URL -- never
     // touching this server. Same interface the client already used for the
     // old home-server upload URL, so no app changes needed on this side.
-    const signed = await r2PresignedPutUrl(body.key, TOKEN_TTL_SECONDS);
+    const signed = await r2PresignedPutUrl(body.key, body.bytes, TOKEN_TTL_SECONDS);
     return json(res, 200, { signed });
   }
 

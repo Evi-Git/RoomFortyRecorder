@@ -586,3 +586,25 @@ test('the housekeeper evicts by when a file reached R2, not by the start the cli
     stop();
   }
 });
+
+// ---- Signed upload size (1.9.132) ------------------------------------------
+
+test('the upload URL is signed for the declared size, unless that is switched off', async () => {
+  let server = await start({ bucket: {} });
+  try {
+    const r = await server.call(evi, 'POST', '/upload', { key: 'sized.mp4', bytes: 123456 });
+    assert.equal(r.status, 200);
+    // The stub shows the ContentLength the server asked the presigner to sign.
+    assert.match(r.body.signed, /sized\.mp4\?signed-content-length=123456$/);
+  } finally {
+    server.stop();
+  }
+  server = await start({ bucket: {}, env: { GUILD_CLOUD_SIGN_UPLOAD_SIZE: 'off' } });
+  try {
+    const r = await server.call(evi, 'POST', '/upload', { key: 'sized.mp4', bytes: 123456 });
+    assert.equal(r.status, 200);
+    assert.match(r.body.signed, /sized\.mp4$/);
+  } finally {
+    server.stop();
+  }
+});
