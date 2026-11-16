@@ -58,16 +58,23 @@ const freePort = () =>
     });
   });
 
-const start = async () => {
+// `bucket` (key -> { size, lastModified }) gives R2 objects of a chosen size
+// and age that a test can read and rewrite while the server runs; without it
+// the bucket is the five fixed 1000-byte keys. `state` is merged into the
+// seeded state.json; `restored` makes the server load it from a backup, as
+// after a damaged state.json; `env` adds server settings. `reuse` (the
+// `storage` and `bucketFile` of a server stopped with stop(true)) starts a
+// new server on the same files, as a restart does.
+const start = async ({ bucket, state: extraState, restored = false, env = {}, reuse } = {}) => {
   const port = await freePort();
   const fixtureFile = path.join(os.tmpdir(), `rf-discord-${port}.json`);
   const setFixture = (changes = {}) =>
     fs.writeFileSync(fixtureFile, JSON.stringify({ ...fixture, ...changes }));
   setFixture();
-  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-routes-'));
-  fs.writeFileSync(
-    path.join(storage, 'state.json'),
-    JSON.stringify({
+  const bucketFile = reuse?.bucketFile ?? path.join(os.tmpdir(), `rf-r2-${port}.json`);
+  if (bucket) fs.writeFileSync(bucketFile, JSON.stringify(bucket));
+  const storage = reuse?.storage ?? fs.mkdtempSync(path.join(os.tmpdir(), 'rf-routes-'));
+  const seeded = {
       videos: [
         { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
         { videoKey: 'old.mp4', videoName: 'old' },
@@ -86,8 +93,17 @@ const start = async () => {
       links: [],
       knownUsers: { [EVI]: { userName: 'Evi' }, [BOB]: { userName: 'Bob' } },
       nextMessageId: 4,
-    }),
-  );
+      ...extraState,
+  };
+  if (reuse) {
+    // Keep the files as the last server left them.
+  } else if (restored) {
+    fs.mkdirSync(path.join(storage, 'backups'));
+    fs.writeFileSync(path.join(storage, 'backups', 'state.2026-01-01T00-00-00.json'), JSON.stringify(seeded));
+    fs.writeFileSync(path.join(storage, 'state.json'), 'damaged {');
+  } else {
+    fs.writeFileSync(path.join(storage, 'state.json'), JSON.stringify(seeded));
+  }
   const child = spawn(process.execPath, [
     '--import',
     path.join(harness, 'aws-stub.mjs'),
@@ -98,7 +114,9 @@ const start = async () => {
     env: {
       PATH: process.env.PATH,
       RF_HARNESS_AWS_STUB: '1',
-      RF_HARNESS_R2_KEYS: 'evi.mp4,old.mp4,bob.mp4,new.mp4,forged.mp4',
+      ...(bucket || reuse?.bucketFile
+        ? { RF_HARNESS_R2_FILE: bucketFile }
+        : { RF_HARNESS_R2_KEYS: 'evi.mp4,old.mp4,bob.mp4,new.mp4,forged.mp4' }),
       RF_HARNESS_DISCORD_FIXTURE: fixtureFile,
       GUILD_CLOUD_DISCORD_BOT_TOKEN: 'stub',
       GUILD_CLOUD_DISCORD_GUILD_ID: '1234',
@@ -109,6 +127,7 @@ const start = async () => {
       GUILD_CLOUD_SECRET: SECRET,
       GUILD_CLOUD_GUILD: GUILD,
       GUILD_CLOUD_OWNER_IDS: OWNER,
+      ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -136,14 +155,23 @@ const start = async () => {
     });
     return { status: res.status, body: await res.json().catch(() => null) };
   };
-  const stop = () => {
+  const stop = async (keep = false) => {
     child.removeAllListeners('exit');
     child.kill();
+    if (keep) {
+      await new Promise((resolve) => (child.exitCode === null ? child.once('exit', resolve) : resolve()));
+      return;
+    }
     fs.rmSync(storage, { recursive: true, force: true });
     fs.rmSync(fixtureFile, { force: true });
+    fs.rmSync(bucketFile, { force: true });
   };
   const library = () => JSON.parse(fs.readFileSync(path.join(storage, 'state.json'), 'utf8'));
-  return { call, stop, library, setFixture };
+  const objects = () => {
+    const { failDeletes, ...rest } = JSON.parse(fs.readFileSync(bucketFile, 'utf8'));
+    return rest;
+  };
+  return { call, stop, library, setFixture, objects, storage, bucketFile };
 };
 
 const owner = [OWNER, 'Owner'];
@@ -193,7 +221,9 @@ test('the video routes stamp owners and refuse changes to other people\'s record
   const { call, stop, library } = await start();
   const meta = (extra) => ({ videoName: 'x', videoKey: 'x.mp4', ...extra });
   try {
-    // A forged owner in the body is ignored.
+    // A forged owner in the body is ignored. (A new recording needs the
+    // upload URL first: that is what makes it his.)
+    assert.equal((await call(bob, 'POST', '/upload', { key: 'new.mp4', bytes: 1000 })).status, 200);
     let r = await call(bob, 'POST', '/video', meta({ videoName: 'new', videoKey: 'new.mp4', uploadedBy: EVI, uploadedByName: 'Evi' }));
     assert.equal(r.status, 200);
     const added = library().videos.find((v) => v.videoKey === 'new.mp4');
@@ -309,6 +339,249 @@ test('the owner signs a member out: old sessions stop, a later sign-in works', a
     assert.equal(r.status, 400);
     r = await call(owner, 'POST', '/permissions/sign-out', { discordId: OWNER });
     assert.equal(r.status, 400);
+  } finally {
+    stop();
+  }
+});
+
+// ---- Upload reservations (1.9.130) -----------------------------------------
+
+const HOUR = 60 * 60 * 1000;
+const GIB = 1024 ** 3;
+const old = (hours) => new Date(Date.now() - hours * HOUR).toISOString();
+const expiredFor = (userId, userName) => ({ userId, userName, bytes: 1000, at: 1, expiresAt: 2 });
+const meta = (key) => ({ videoName: key.replace(/\.mp4$/, ''), videoKey: key });
+
+test('a new recording can only be registered by the member who asked for its upload URL', async () => {
+  const { call, stop, library } = await start({
+    bucket: { 'night.mp4': { size: 1000 }, 'big.mp4': { size: 1000 } },
+  });
+  try {
+    // Nothing reserved: refused for everyone, officers and owner included.
+    for (const who of [bob, officer, owner]) {
+      const r = await call(who, 'POST', '/video', meta('night.mp4'));
+      assert.equal(r.status, 403);
+      assert.match(r.body.error, /Start the upload again/);
+    }
+    assert.equal(library().videos.some((v) => v.videoKey === 'night.mp4'), false);
+
+    // Evi asks for a URL. Nobody else can get one for that name or register it.
+    let r = await call(evi, 'POST', '/upload', { key: 'night.mp4', bytes: 1000 });
+    assert.equal(r.status, 200);
+    assert.match(r.body.signed, /night\.mp4/);
+    assert.equal(library().uploadReservations['night.mp4'].userId, EVI);
+    r = await call(bob, 'POST', '/upload', { key: 'night.mp4', bytes: 1000 });
+    assert.deepEqual([r.status, r.body.error], [409, 'Another member is uploading a file with this name.']);
+    r = await call(officer, 'POST', '/upload', { key: 'night.mp4', bytes: 1000 });
+    assert.equal(r.status, 409);
+    for (const who of [bob, officer, owner]) {
+      assert.equal((await call(who, 'POST', '/video', meta('night.mp4'))).status, 403);
+    }
+    assert.equal(library().uploadReservations['night.mp4'].userId, EVI); // untouched
+
+    // Evi registers it: hers, and the reservation is used up.
+    r = await call(evi, 'POST', '/video', { ...meta('night.mp4'), uploadedBy: BOB });
+    assert.equal(r.status, 200);
+    const added = library().videos.find((v) => v.videoKey === 'night.mp4');
+    assert.deepEqual([added.uploadedBy, added.uploadedByName], [EVI, 'Evi']);
+    assert.deepEqual(library().uploadReservations, {});
+
+    // A second try with no new URL is refused (it is in the list now: only
+    // the owner may replace it, and Bob is not).
+    assert.equal((await call(bob, 'POST', '/video', meta('night.mp4'))).status, 403);
+
+    // Over 5 GiB is refused: the app cannot send that in one piece.
+    r = await call(evi, 'POST', '/upload', { key: 'huge.mp4', bytes: 5 * GIB + 1 });
+    assert.equal(r.status, 413);
+    assert.equal(library().uploadReservations['huge.mp4'], undefined);
+    assert.equal((await call(evi, 'POST', '/upload', { key: 'huge.mp4', bytes: 5 * GIB })).status, 200);
+  } finally {
+    stop();
+  }
+});
+
+test('a file bigger than the size declared is deleted and refused; a smaller one is fine', async () => {
+  const { call, stop, library, objects } = await start({
+    bucket: {
+      'big.mp4': { size: 5000 },
+      'small.mp4': { size: 400 },
+      'evi.mp4': { size: 9000 },
+      'bob.mp4': { size: 1000 },
+      'old.mp4': { size: 1000 },
+    },
+  });
+  try {
+    let r = await call(evi, 'POST', '/upload', { key: 'big.mp4', bytes: 1000 });
+    assert.equal(r.status, 200);
+    r = await call(evi, 'POST', '/video', meta('big.mp4'));
+    assert.equal(r.status, 413);
+    assert.match(r.body.error, /bigger than you said/);
+    assert.equal('big.mp4' in objects(), false);
+    assert.equal(library().videos.some((v) => v.videoKey === 'big.mp4'), false);
+    assert.equal(library().uploadReservations['big.mp4'], undefined);
+    // Nothing is left to register.
+    assert.equal((await call(evi, 'POST', '/video', meta('big.mp4'))).status, 403);
+
+    r = await call(evi, 'POST', '/upload', { key: 'small.mp4', bytes: 1000 });
+    assert.equal(r.status, 200);
+    assert.equal((await call(evi, 'POST', '/video', meta('small.mp4'))).status, 200);
+    assert.ok('small.mp4' in objects());
+
+    // Replacing her own recording with a file bigger than she declared: the
+    // file is gone from R2, so the entry goes from the list too.
+    r = await call(evi, 'POST', '/upload', { key: 'evi.mp4', bytes: 1000 });
+    assert.equal(r.status, 200);
+    r = await call(evi, 'POST', '/video', meta('evi.mp4'));
+    assert.equal(r.status, 413);
+    assert.equal('evi.mp4' in objects(), false);
+    assert.equal(library().videos.some((v) => v.videoKey === 'evi.mp4'), false);
+    assert.equal(library().uploadReservations['evi.mp4'], undefined);
+    assert.ok(library().videos.some((v) => v.videoKey === 'bob.mp4')); // others untouched
+  } finally {
+    stop();
+  }
+});
+
+test('replacing an existing recording works with or without an upload URL', async () => {
+  const { call, stop, library, objects } = await start({
+    bucket: { 'evi.mp4': { size: 1000 }, 'bob.mp4': { size: 1000 }, 'old.mp4': { size: 1000 } },
+  });
+  try {
+    // The owner, as the app does it: URL, then register.
+    assert.equal((await call(evi, 'POST', '/upload', { key: 'evi.mp4', bytes: 1000 })).status, 200);
+    assert.equal((await call(evi, 'POST', '/video', { ...meta('evi.mp4'), tag: 'v2' })).status, 200);
+    assert.equal(library().videos.find((v) => v.videoKey === 'evi.mp4').tag, 'v2');
+    assert.deepEqual(library().uploadReservations, {});
+    assert.ok('evi.mp4' in objects());
+
+    // No reservation needed for an existing entry (today's rule: own or officer).
+    assert.equal((await call(evi, 'POST', '/video', { ...meta('evi.mp4'), tag: 'v3' })).status, 200);
+    assert.equal((await call(officer, 'POST', '/video', { ...meta('bob.mp4'), tag: 'x' })).status, 200);
+    assert.equal(library().videos.find((v) => v.videoKey === 'bob.mp4').uploadedBy, BOB);
+    assert.equal((await call(bob, 'POST', '/video', meta('evi.mp4'))).status, 403);
+    // An unstamped old recording is officers' only.
+    assert.equal((await call(bob, 'POST', '/video', meta('old.mp4'))).status, 403);
+    assert.equal((await call(officer, 'POST', '/video', meta('old.mp4'))).status, 200);
+  } finally {
+    stop();
+  }
+});
+
+test('the housekeeper removes the file of an upload nobody registered, and nothing that is in use', async () => {
+  const { call, stop, library, objects } = await start({
+    bucket: {
+      'abandoned.mp4': { size: 1000 },
+      'evi.mp4': { size: 1000 },
+      'evil.mp4': { size: 1000 }, // named after a registered recording, never registered itself
+      'shared.mp4': { size: 1000 },
+      'bob.mp4': { size: 1000 },
+      'old.mp4': { size: 1000 },
+      'a.mp4': { size: 1000 },
+      'live.mp4': { size: 1000 },
+      'grace.mp4': { size: 1000 },
+      'unreserved.mp4': { size: 1000 }, // no reservation at all: the orphan route's job
+    },
+    state: {
+      links: [{ id: 'l1', guild: GUILD, key: 'shared.mp4', likes: 0 }],
+      // A member can name a recording anything: `videoName: 'evil'` must not
+      // shield an unregistered evil.mp4.
+      videos: [
+        { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
+        { videoKey: 'old.mp4', videoName: 'old' },
+        { videoKey: 'bob.mp4', videoName: 'bob', uploadedBy: BOB, uploadedByName: 'Bob' },
+        { videoKey: 'a.mp4', videoName: 'evil', uploadedBy: BOB, uploadedByName: 'Bob' },
+      ],
+      uploadReservations: {
+        'abandoned.mp4': expiredFor(BOB, 'Bob'),
+        'evi.mp4': expiredFor(EVI, 'Evi'),
+        'evil.mp4': expiredFor(BOB, 'Bob'),
+        'shared.mp4': expiredFor(EVI, 'Evi'),
+        'gone.mp4': expiredFor(EVI, 'Evi'), // not in R2: just dropped
+        // One still live, one past its day but inside the grace hours: both kept.
+        'live.mp4': { userId: BOB, userName: 'Bob', bytes: 1000, at: Date.now(), expiresAt: Date.now() + HOUR },
+        'grace.mp4': { userId: BOB, userName: 'Bob', bytes: 1000, at: 1, expiresAt: Date.now() - HOUR },
+      },
+    },
+  });
+  try {
+    const r = await call(bob, 'POST', '/housekeeper');
+    assert.equal(r.status, 200);
+    assert.deepEqual(Object.keys(objects()).sort(), [
+      'a.mp4', 'bob.mp4', 'evi.mp4', 'grace.mp4', 'live.mp4', 'old.mp4', 'shared.mp4', 'unreserved.mp4',
+    ]);
+    assert.deepEqual(Object.keys(library().uploadReservations).sort(), ['grace.mp4', 'live.mp4']);
+    assert.equal(library().videos.length, 4);
+  } finally {
+    stop();
+  }
+});
+
+test('after a state restore the housekeeper deletes no files, even after a restart', async () => {
+  const first = await start({
+    restored: true,
+    bucket: { 'abandoned.mp4': { size: 1000 }, 'evi.mp4': { size: 1000 } },
+    state: { uploadReservations: { 'abandoned.mp4': expiredFor(BOB, 'Bob') } },
+  });
+  let second;
+  try {
+    // No housekeeper run here: loading from the backup must itself drop and
+    // save the reservations.
+    assert.deepEqual(first.library().uploadReservations, {});
+    await first.stop(true);
+
+    // A normal restart (stateRestoredAt is gone) must not revive anything:
+    // the restored reservation was dropped and saved at load.
+    second = await start({ reuse: first });
+    assert.deepEqual(second.library().uploadReservations, {});
+    assert.equal((await second.call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.ok('abandoned.mp4' in second.objects());
+  } finally {
+    second?.stop();
+    if (!second) first.stop();
+  }
+});
+
+test('a file that will not delete keeps its reservation and goes on the next run', async () => {
+  const { call, stop, library, objects, bucketFile } = await start({
+    bucket: { 'abandoned.mp4': { size: 1000 }, failDeletes: ['abandoned.mp4'] },
+    state: { uploadReservations: { 'abandoned.mp4': expiredFor(BOB, 'Bob') } },
+  });
+  try {
+    assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.ok('abandoned.mp4' in objects());
+    assert.equal(library().uploadReservations['abandoned.mp4'].userId, BOB);
+
+    // Deletes work again: the next run removes it and the reservation.
+    fs.writeFileSync(bucketFile, JSON.stringify({ 'abandoned.mp4': objects()['abandoned.mp4'] }));
+    assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.equal('abandoned.mp4' in objects(), false);
+    assert.deepEqual(library().uploadReservations, {});
+  } finally {
+    stop();
+  }
+});
+
+test('the housekeeper evicts by when a file reached R2, not by the start the client wrote', async () => {
+  const { call, stop, library, objects } = await start({
+    // 3 recordings of 1000 bytes; room for two.
+    env: { GUILD_CLOUD_LIMIT_GB: String(2500 / GIB) },
+    bucket: {
+      'evi.mp4': { size: 1000, lastModified: old(1) },
+      'old.mp4': { size: 1000, lastModified: old(48) }, // oldest upload, newest `start` below
+      'bob.mp4': { size: 1000, lastModified: old(24) },
+    },
+    state: {
+      videos: [
+        { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi', start: 1 },
+        { videoKey: 'old.mp4', videoName: 'old', start: Date.now() + 10 * HOUR },
+        { videoKey: 'bob.mp4', videoName: 'bob', uploadedBy: BOB, uploadedByName: 'Bob', start: 2 },
+      ],
+    },
+  });
+  try {
+    assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.deepEqual(Object.keys(objects()).sort(), ['bob.mp4', 'evi.mp4']);
+    assert.deepEqual(library().videos.map((v) => v.videoKey), ['evi.mp4', 'bob.mp4']);
   } finally {
     stop();
   }
