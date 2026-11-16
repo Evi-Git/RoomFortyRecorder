@@ -190,6 +190,8 @@ export type PullDeskRequest =
   | { action: 'deleteFlag'; id: string }
   | { action: 'permissionsMe' }
   | { action: 'permissions' }
+  | { action: 'permissionMembers' }
+  | { action: 'signOutMember'; discordId: string }
   | {
       action: 'setPermissions';
       grants: Record<string, string[]>;
@@ -1037,6 +1039,17 @@ export default class PullDesk {
         return client.pullDeskRequest('get', '', undefined, {
           area: 'permissions',
         });
+      case 'permissionMembers':
+        return client.pullDeskRequest('get', '/members', undefined, {
+          area: 'permissions',
+        });
+      case 'signOutMember':
+        return client.pullDeskRequest(
+          'post',
+          '/sign-out',
+          { discordId: request.discordId },
+          { area: 'permissions' },
+        );
       case 'setPermissions':
         return client.pullDeskRequest(
           'put',

@@ -238,6 +238,10 @@ gets an **Admin** item under Settings:
 - **View as role**: the app sends `X-View-As-Role` and the server answers
   as that role (owner only; the Admin routes ignore it). A pill in the title
   bar shows it, with Exit. A restart always comes back as yourself.
+- **Members**: everyone who has signed in, newest first, with a **Sign out**
+  button (after a confirmation). It ends that person's sessions on every PC,
+  like `POST /api/admin/revoke`; they can sign in again while they keep a
+  Room Forty role. The owner can't be signed out here.
 - **Combat potions**: the names counted as combat potions.
 
 ## Per-boss settings (in the app)
