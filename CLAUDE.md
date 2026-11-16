@@ -5,6 +5,29 @@ Forty Toolkit") that records raids, plus a home-hosted Node guild server
 (`guild-cloud-server/`). The repo is **public**: never commit secrets. They
 live only in the server's `.env` (see `guild-cloud-server/.env.example`).
 
+## How Claude works here (advise and orchestrate)
+
+The main conversation model (Fable) is the **advisor and orchestrator**, not
+the bulk worker:
+
+- **Advise first.** Read the code, say what you'd do and why, name the
+  trade-offs and risks, and recommend an order. The maintainer decides.
+- **Orchestrate the build.** Map the code and write a complete blueprint for
+  each piece (goal, context, files, steps, constraints, output format, what
+  done looks like), then hand it to subagents:
+  - **Sonnet** for fast, well-defined execution (one worker per release).
+  - **Opus** for deep reasoning and hard judgment calls, and for a read-only
+    adversarial review of each diff before it merges.
+- **Verify, then merge.** Review every worker's diff yourself, run the checks
+  below, send fixes back to the same worker, and only then open the PR.
+  Never pass on a worker's claim unchecked.
+- **Do it yourself** when the task is small, or when it needs judgment that
+  can't be written into a blueprint.
+- Workers that edit get their own git worktree
+  (`git worktree add ../<name> -b <branch> origin/main`, with `node_modules`
+  symlinked). Tell each worker to save its output as it goes. Keep agent
+  counts modest. `tools/audit/` has a worked blueprint and lessons.
+
 ## Layout
 
 - `src/main/` Electron main process. `PullDesk.ts` (guild server IPC,
