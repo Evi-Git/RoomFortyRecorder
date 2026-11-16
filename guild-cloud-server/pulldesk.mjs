@@ -31,6 +31,7 @@ import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 import { sendFile } from './startup.mjs';
 import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
+import { mayUploadFor, scanFullLog } from './pull-upload-access.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
 // 3: also damage, healing and damage taken (for Trends).
@@ -204,40 +205,9 @@ export const createPullDesk = (options) => {
   // second) and talent trees (Blizzard). Fetched on first open, that took a
   // minute or two; done here when the full log arrives, the page finds them
   // cached. Buffs: friendly casters on players. Specs: from COMBATANT_INFO.
-  const warmFullLog = async (gz) => {
-    const buffs = new Set();
-    const specs = new Set();
-    let rest = '';
-    const take = (line) => {
-      const at = line.indexOf('  ');
-      if (at < 0) return;
-      const body = line.slice(at + 2);
-      if (body.startsWith('SPELL_AURA_APPLIED,')) {
-        const f = body.split(',', 14);
-        // src flags: friendly (0x10); dst a player; a buff.
-        if (!(Number(f[3]) & 0x10) || !f[5]?.startsWith('Player-')) return;
-        if (!/,BUFF(,|$)/.test(body)) return;
-        const id = Number(f[9]);
-        if (id > 1) buffs.add(id);
-      } else if (body.startsWith('COMBATANT_INFO,')) {
-        const spec = Number(body.split(',', 26)[25]);
-        if (spec > 0) specs.add(spec);
-      }
-    };
-    await new Promise((resolve, reject) => {
-      const stream = zlib.createGunzip();
-      stream.on('data', (chunk) => {
-        const lines = (rest + chunk.toString('utf8')).split('\n');
-        rest = lines.pop() ?? '';
-        lines.forEach((l) => take(l.endsWith('\r') ? l.slice(0, -1) : l));
-      });
-      stream.on('end', () => {
-        if (rest) take(rest);
-        resolve();
-      });
-      stream.on('error', reject);
-      stream.end(gz);
-    });
+  // Takes a scan of the full log (scanFullLog) or the gzipped log itself.
+  const warmFullLog = async (source) => {
+    const { buffs, specs } = Buffer.isBuffer(source) ? await scanFullLog(source) : source;
     await Promise.all([...specs].map((id) => journal.talents(id).catch(() => null)));
     const ids = [...buffs];
     // The same lookup the app makes (no difficulty), all of it, at the
@@ -1292,6 +1262,11 @@ export const createPullDesk = (options) => {
       return fail(res, 400, 'Upload is not a gzipped log');
     }
     if (!text.includes('ENCOUNTER_START')) return fail(res, 400, 'Log has no ENCOUNTER_START');
+    // The app always keeps the ENCOUNTER_START line (PullLogFilter), so a log
+    // for another boss is not this pull's.
+    if (!text.includes(`ENCOUNTER_START,${pull.encounterId},`)) {
+      return fail(res, 400, 'This log is for a different boss than the pull it was sent to.');
+    }
     // A pull that already has a log only takes a new one that brings meters.
     if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`)) return json(res, 200, { status: pull.status });
 
@@ -1300,6 +1275,7 @@ export const createPullDesk = (options) => {
     // A Warcraft Logs import gets the full report from the real log.
     if (pull.source === 'wcl') delete pull.source;
     pull.uploadedBy = req.cloudUserName;
+    pull.uploadedById = String(req.cloudUserId || req.cloudUserName);
     pull.status = 'analyzing';
     await persist();
 
@@ -1775,6 +1751,14 @@ export const createPullDesk = (options) => {
       const pull = index.pulls.find((entry) => entry.id === second);
       if (!pull) return fail(res, 404, 'Pull not found');
 
+      // Only the raider the server picked (or who asked to backfill it) sends
+      // this pull's logs. Refused before the body is read.
+      if ((third === 'log' || third === 'full') && req.method === 'PUT') {
+        if (!mayUploadFor(pull, String(req.cloudUserId || req.cloudUserName))) {
+          return fail(res, 403, "Another raider is sending this pull's log.");
+        }
+      }
+
       if (third === 'log' && req.method === 'PUT') {
         try {
           return await uploadLog(req, res, pull);
@@ -1794,6 +1778,18 @@ export const createPullDesk = (options) => {
           throw error;
         }
         if (gz.length < 20 || gz[0] !== 0x1f || gz[1] !== 0x8b) return fail(res, 400, 'Upload is not a gzipped log');
+        // Check it is a real log of this boss before it can replace anything.
+        let scan;
+        try {
+          scan = await scanFullLog(gz);
+        } catch (error) {
+          if (error.status === 413) return fail(res, 413, 'Full log is too large once unpacked');
+          return fail(res, 400, 'Upload is not a gzipped log');
+        }
+        if (!scan.encounterIds.size) return fail(res, 400, 'Log has no ENCOUNTER_START');
+        if (!scan.encounterIds.has(pull.encounterId)) {
+          return fail(res, 400, 'This log is for a different boss than the pull it was sent to.');
+        }
         if (pull.hasFull && (pull.fullBytes || 0) >= gz.length) return json(res, 200, { status: 'kept' });
         await fsp.mkdir(path.dirname(fullFile(pull.id)), { recursive: true });
         const temp = `${fullFile(pull.id)}.tmp`;
@@ -1803,7 +1799,7 @@ export const createPullDesk = (options) => {
         pull.fullBytes = gz.length;
         await persist();
         // Look up what the Logs page will ask for while nobody is waiting.
-        warmFullLog(gz).catch((error) => console.warn(`[pulldesk] Warm-up for ${pull.id} failed: ${error.message}`));
+        warmFullLog(scan).catch((error) => console.warn(`[pulldesk] Warm-up for ${pull.id} failed: ${error.message}`));
         return json(res, 200, { status: 'stored' });
       }
       if (third === 'full' && req.method === 'GET') {
