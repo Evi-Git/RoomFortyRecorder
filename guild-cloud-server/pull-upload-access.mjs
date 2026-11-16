@@ -3,20 +3,34 @@ import zlib from 'node:zlib';
 import { StringDecoder } from 'node:string_decoder';
 
 // A full log may be 150 MB gzipped (MAX_FULL_BYTES in pulldesk.mjs) and
-// combat logs compress roughly 10-20x, so a real one is at most about 3 GB
-// of text. Anything that expands past that is a gzip bomb, not a pull.
-export const MAX_FULL_TEXT_BYTES = 3 * 1024 ** 3;
+// combat logs compress roughly 10-20x, but the app never sends a full log
+// of more than 1 GiB of text (MAX_FULL_BYTES in src/parsing/PullLogCapture.ts
+// drops it). 1.5 GiB leaves headroom; anything that expands past it is a
+// gzip bomb, not a pull.
+export const MAX_FULL_TEXT_BYTES = 1.5 * 1024 ** 3;
 
 // A line longer than this is not a combat log line: skip it rather than
 // hold it all in memory.
 const MAX_LINE_CHARS = 1024 * 1024;
 
-// The raider this server asked to send the pull: the one it picked live
-// (claim) or the one that asked to backfill it. Nobody else, whatever their role.
+// Remembers that the server told this raider to upload the pull. Kept for
+// good: a raider who was picked (or took a backfill) and was then replaced
+// by a standby raider or another backfiller can still finish their upload.
+export const addUploader = (pull, who) => {
+  const id = typeof who === 'string' ? who : '';
+  if (!pull || !id) return;
+  if (!Array.isArray(pull.uploaders)) pull.uploaders = [];
+  if (!pull.uploaders.includes(id)) pull.uploaders.push(id);
+};
+
+// Anyone this server has told to send the pull: the raider it picked live
+// (claim), one that asked to backfill it, or any earlier one of those. Nobody
+// else, whatever their role. Pulls stored before `uploaders` existed have
+// only chosen and backfillBy.
 export const mayUploadFor = (pull, who) => {
   const id = typeof who === 'string' ? who : '';
   if (!pull || !id) return false;
-  return (typeof pull.chosen === 'string' && pull.chosen === id) || (typeof pull.backfillBy === 'string' && pull.backfillBy === id);
+  return pull.chosen === id || pull.backfillBy === id || (Array.isArray(pull.uploaders) && pull.uploaders.includes(id));
 };
 
 // Gunzips a full log as a stream (never all in memory) and reads what the

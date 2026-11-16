@@ -11,7 +11,7 @@ import zlib from 'node:zlib';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { createPullDesk } from './pulldesk.mjs';
-import { mayUploadFor, scanFullLog } from './pull-upload-access.mjs';
+import { addUploader, mayUploadFor, scanFullLog } from './pull-upload-access.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const lines = fs.readFileSync(path.join(here, '../tests/logs/retail/beloren_boss_hp.txt'), 'utf8').split('\n');
@@ -33,6 +33,8 @@ const setup = async () => {
     json: (res, status, body) => Object.assign(res, { status, body }),
     fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
     memberRoleNames: async () => ['officer'],
+    // No journal lookups: the full-log warm-up would fetch hundreds of spells.
+    journal: { configured: false, talents: async () => null, spells: async () => ({ spells: {} }) },
     botToken: '',
     env: {},
     wcl: { configured: false },
@@ -74,6 +76,14 @@ test('mayUploadFor: only the chosen or backfilling raider, never an empty id', (
   assert.equal(mayUploadFor({ chosen: null, backfillBy: undefined }, ''), false);
   assert.equal(mayUploadFor({ chosen: '', backfillBy: '' }, ''), false);
   assert.equal(mayUploadFor({}, 'x'), false);
+  // Everyone the server ever told to upload, once recorded.
+  assert.equal(mayUploadFor({ chosen: '2', uploaders: ['1', '2'] }, '1'), true);
+  assert.equal(mayUploadFor({ chosen: '2', uploaders: ['1', '2'] }, '3'), false);
+  const pull = {};
+  addUploader(pull, '1');
+  addUploader(pull, '1');
+  addUploader(pull, '');
+  assert.deepEqual(pull.uploaders, ['1']);
   assert.equal(mayUploadFor(null, 'x'), false);
 });
 
@@ -149,8 +159,10 @@ test('live: when the picked raider never uploads, the standby raider claims agai
     assert.equal(takeover.body.upload, true);
     assert.equal((await put(call, id, 'log', LOG, '2')).status, 200);
     assert.equal((await put(call, id, 'full', FULL, '2')).body.status, 'stored');
-    // The first raider is no longer the one the server asked.
-    assert.equal((await put(call, id, 'full', FULL, '1')).status, 403);
+    // The first raider was picked once, so their own upload still lands.
+    assert.equal((await put(call, id, 'full', FULL, '1')).status, 200);
+    // Someone the server never picked is still refused.
+    assert.equal((await put(call, id, 'full', FULL, '3')).status, 403);
   });
 });
 
@@ -239,4 +251,58 @@ test('a filtered log for another boss is refused', async () => {
   const wrong = await put(call, id, 'log', other, '2');
   assert.equal(wrong.status, 400);
   assert.match(wrong.body.error, /different boss/);
+});
+
+test('a picked raider whose first upload failed can still retry after a standby raider takes over', async () => {
+  await withClock(async (advance) => {
+    const { call } = await setup();
+    const id = (await call('POST', ['claim'], claimBody(500), '1')).body.pullId;
+    await call('POST', ['claim'], claimBody(100), '2');
+    advance(3500);
+    assert.equal((await call('POST', ['claim'], claimBody(500), '1')).body.upload, true);
+    // Raider 1's first PUT times out; ~75 s in, raider 2's re-claim takes over.
+    advance(75 * 1000);
+    assert.equal((await call('POST', ['claim'], claimBody(100), '2')).body.upload, true);
+    // Raider 1's retry still lands, and so does their full log.
+    assert.equal((await put(call, id, 'log', LOG, '1')).status, 200);
+    assert.equal((await put(call, id, 'full', FULL, '1')).body.status, 'stored');
+    assert.equal((await put(call, id, 'full', FULL, '3')).status, 403);
+  });
+});
+
+test('a backfiller whose lock passed to another raider can still send their full log', async () => {
+  const { call } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pull = { encounterId, encounterName, difficultyId, startedAt: at, duration: 172, result: false };
+  const id = (await call('POST', ['backfill'], pull, '2')).body.pullId;
+  assert.equal((await put(call, id, 'log', LOG, '2')).status, 200);
+  await withClock(async (advance) => {
+    advance(6 * 60 * 1000);
+    assert.equal((await call('POST', ['backfill'], pull, '3')).body.upload, true);
+    assert.equal((await put(call, id, 'full', FULL, '2')).body.status, 'stored');
+    assert.equal((await put(call, id, 'full', FULL, '4')).status, 403);
+  });
+});
+
+test('an equal or smaller valid full log is kept as it was; a truncated one is refused', async () => {
+  const { call, storage } = await setup();
+  const at = Date.parse('2026-10-21T20:05:00');
+  const pull = { encounterId, encounterName, difficultyId, startedAt: at, duration: 172, result: false };
+  const id = (await call('POST', ['backfill'], pull, '2')).body.pullId;
+  await put(call, id, 'log', LOG, '2');
+  const bigger = zlib.gzipSync(`${slice}${crypto.randomBytes(FULL.length * 2).toString('hex')}\n`);
+  assert.equal((await put(call, id, 'full', bigger, '2')).body.status, 'stored');
+  const file = path.join(storage, 'pulldesk', 'full', `${id}.log.gz`);
+
+  assert.equal((await put(call, id, 'full', bigger, '2')).body.status, 'kept');
+  assert.equal((await put(call, id, 'full', FULL, '2')).body.status, 'kept');
+  assert.ok((await fsp.readFile(file)).equals(bigger));
+
+  // Valid header, cut short, and still bigger than the stored one.
+  const bigger2 = zlib.gzipSync(`${slice}${crypto.randomBytes(bigger.length * 2).toString('hex')}\n`);
+  const cut = bigger2.subarray(0, bigger2.length - 100);
+  assert.ok(cut.length > bigger.length);
+  const refused = await put(call, id, 'full', cut, '2');
+  assert.equal(refused.status, 400);
+  assert.ok((await fsp.readFile(file)).equals(bigger));
 });

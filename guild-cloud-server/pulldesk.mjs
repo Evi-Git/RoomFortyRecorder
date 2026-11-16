@@ -31,7 +31,7 @@ import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 import { sendFile } from './startup.mjs';
 import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
-import { mayUploadFor, scanFullLog } from './pull-upload-access.mjs';
+import { addUploader, mayUploadFor, scanFullLog } from './pull-upload-access.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
 // 3: also damage, healing and damage taken (for Trends).
@@ -492,6 +492,7 @@ export const createPullDesk = (options) => {
       pull.appBossPercent = bossPercent;
     }
     pull.backfillBy = who;
+    addUploader(pull, who);
     pull.backfillAt = Date.now();
     await persist();
     return json(res, 200, { pullId: pull.id, upload: true });
@@ -1240,6 +1241,7 @@ export const createPullDesk = (options) => {
         }
       }
       pull.chosen = best ? best.id : who;
+      addUploader(pull, pull.chosen);
       pull.chosenAt = now;
     }
     await persist();
