@@ -62,16 +62,18 @@ const freePort = () =>
 // and age that a test can read and rewrite while the server runs; without it
 // the bucket is the five fixed 1000-byte keys. `state` is merged into the
 // seeded state.json; `restored` makes the server load it from a backup, as
-// after a damaged state.json; `env` adds server settings.
-const start = async ({ bucket, state: extraState, restored = false, env = {} } = {}) => {
+// after a damaged state.json; `env` adds server settings. `reuse` (the
+// `storage` and `bucketFile` of a server stopped with stop(true)) starts a
+// new server on the same files, as a restart does.
+const start = async ({ bucket, state: extraState, restored = false, env = {}, reuse } = {}) => {
   const port = await freePort();
   const fixtureFile = path.join(os.tmpdir(), `rf-discord-${port}.json`);
   const setFixture = (changes = {}) =>
     fs.writeFileSync(fixtureFile, JSON.stringify({ ...fixture, ...changes }));
   setFixture();
-  const bucketFile = path.join(os.tmpdir(), `rf-r2-${port}.json`);
+  const bucketFile = reuse?.bucketFile ?? path.join(os.tmpdir(), `rf-r2-${port}.json`);
   if (bucket) fs.writeFileSync(bucketFile, JSON.stringify(bucket));
-  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-routes-'));
+  const storage = reuse?.storage ?? fs.mkdtempSync(path.join(os.tmpdir(), 'rf-routes-'));
   const seeded = {
       videos: [
         { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
@@ -93,7 +95,9 @@ const start = async ({ bucket, state: extraState, restored = false, env = {} } =
       nextMessageId: 4,
       ...extraState,
   };
-  if (restored) {
+  if (reuse) {
+    // Keep the files as the last server left them.
+  } else if (restored) {
     fs.mkdirSync(path.join(storage, 'backups'));
     fs.writeFileSync(path.join(storage, 'backups', 'state.2026-01-01T00-00-00.json'), JSON.stringify(seeded));
     fs.writeFileSync(path.join(storage, 'state.json'), 'damaged {');
@@ -110,7 +114,7 @@ const start = async ({ bucket, state: extraState, restored = false, env = {} } =
     env: {
       PATH: process.env.PATH,
       RF_HARNESS_AWS_STUB: '1',
-      ...(bucket
+      ...(bucket || reuse?.bucketFile
         ? { RF_HARNESS_R2_FILE: bucketFile }
         : { RF_HARNESS_R2_KEYS: 'evi.mp4,old.mp4,bob.mp4,new.mp4,forged.mp4' }),
       RF_HARNESS_DISCORD_FIXTURE: fixtureFile,
@@ -151,16 +155,23 @@ const start = async ({ bucket, state: extraState, restored = false, env = {} } =
     });
     return { status: res.status, body: await res.json().catch(() => null) };
   };
-  const stop = () => {
+  const stop = async (keep = false) => {
     child.removeAllListeners('exit');
     child.kill();
+    if (keep) {
+      await new Promise((resolve) => (child.exitCode === null ? child.once('exit', resolve) : resolve()));
+      return;
+    }
     fs.rmSync(storage, { recursive: true, force: true });
     fs.rmSync(fixtureFile, { force: true });
     fs.rmSync(bucketFile, { force: true });
   };
   const library = () => JSON.parse(fs.readFileSync(path.join(storage, 'state.json'), 'utf8'));
-  const objects = () => JSON.parse(fs.readFileSync(bucketFile, 'utf8'));
-  return { call, stop, library, setFixture, objects };
+  const objects = () => {
+    const { failDeletes, ...rest } = JSON.parse(fs.readFileSync(bucketFile, 'utf8'));
+    return rest;
+  };
+  return { call, stop, library, setFixture, objects, storage, bucketFile };
 };
 
 const owner = [OWNER, 'Owner'];
@@ -461,22 +472,34 @@ test('the housekeeper removes the file of an upload nobody registered, and nothi
     bucket: {
       'abandoned.mp4': { size: 1000 },
       'evi.mp4': { size: 1000 },
-      'evi.png': { size: 100 }, // beside a registered recording
+      'evil.mp4': { size: 1000 }, // named after a registered recording, never registered itself
       'shared.mp4': { size: 1000 },
-      'live.mp4': { size: 1000 },
       'bob.mp4': { size: 1000 },
       'old.mp4': { size: 1000 },
+      'a.mp4': { size: 1000 },
+      'live.mp4': { size: 1000 },
+      'grace.mp4': { size: 1000 },
       'unreserved.mp4': { size: 1000 }, // no reservation at all: the orphan route's job
     },
     state: {
       links: [{ id: 'l1', guild: GUILD, key: 'shared.mp4', likes: 0 }],
+      // A member can name a recording anything: `videoName: 'evil'` must not
+      // shield an unregistered evil.mp4.
+      videos: [
+        { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
+        { videoKey: 'old.mp4', videoName: 'old' },
+        { videoKey: 'bob.mp4', videoName: 'bob', uploadedBy: BOB, uploadedByName: 'Bob' },
+        { videoKey: 'a.mp4', videoName: 'evil', uploadedBy: BOB, uploadedByName: 'Bob' },
+      ],
       uploadReservations: {
         'abandoned.mp4': expiredFor(BOB, 'Bob'),
         'evi.mp4': expiredFor(EVI, 'Evi'),
-        'evi.png': expiredFor(EVI, 'Evi'),
+        'evil.mp4': expiredFor(BOB, 'Bob'),
         'shared.mp4': expiredFor(EVI, 'Evi'),
         'gone.mp4': expiredFor(EVI, 'Evi'), // not in R2: just dropped
+        // One still live, one past its day but inside the grace hours: both kept.
         'live.mp4': { userId: BOB, userName: 'Bob', bytes: 1000, at: Date.now(), expiresAt: Date.now() + HOUR },
+        'grace.mp4': { userId: BOB, userName: 'Bob', bytes: 1000, at: 1, expiresAt: Date.now() - HOUR },
       },
     },
   });
@@ -484,24 +507,54 @@ test('the housekeeper removes the file of an upload nobody registered, and nothi
     const r = await call(bob, 'POST', '/housekeeper');
     assert.equal(r.status, 200);
     assert.deepEqual(Object.keys(objects()).sort(), [
-      'bob.mp4', 'evi.mp4', 'evi.png', 'live.mp4', 'old.mp4', 'shared.mp4', 'unreserved.mp4',
+      'a.mp4', 'bob.mp4', 'evi.mp4', 'grace.mp4', 'live.mp4', 'old.mp4', 'shared.mp4', 'unreserved.mp4',
     ]);
-    assert.deepEqual(Object.keys(library().uploadReservations), ['live.mp4']);
-    assert.equal(library().videos.length, 3);
+    assert.deepEqual(Object.keys(library().uploadReservations).sort(), ['grace.mp4', 'live.mp4']);
+    assert.equal(library().videos.length, 4);
   } finally {
     stop();
   }
 });
 
-test('after a state restore the housekeeper drops old reservations but deletes no files', async () => {
-  const { call, stop, library, objects } = await start({
+test('after a state restore the housekeeper deletes no files, even after a restart', async () => {
+  const first = await start({
     restored: true,
     bucket: { 'abandoned.mp4': { size: 1000 }, 'evi.mp4': { size: 1000 } },
+    state: { uploadReservations: { 'abandoned.mp4': expiredFor(BOB, 'Bob') } },
+  });
+  let second;
+  try {
+    // No housekeeper run here: loading from the backup must itself drop and
+    // save the reservations.
+    assert.deepEqual(first.library().uploadReservations, {});
+    await first.stop(true);
+
+    // A normal restart (stateRestoredAt is gone) must not revive anything:
+    // the restored reservation was dropped and saved at load.
+    second = await start({ reuse: first });
+    assert.deepEqual(second.library().uploadReservations, {});
+    assert.equal((await second.call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.ok('abandoned.mp4' in second.objects());
+  } finally {
+    second?.stop();
+    if (!second) first.stop();
+  }
+});
+
+test('a file that will not delete keeps its reservation and goes on the next run', async () => {
+  const { call, stop, library, objects, bucketFile } = await start({
+    bucket: { 'abandoned.mp4': { size: 1000 }, failDeletes: ['abandoned.mp4'] },
     state: { uploadReservations: { 'abandoned.mp4': expiredFor(BOB, 'Bob') } },
   });
   try {
     assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
     assert.ok('abandoned.mp4' in objects());
+    assert.equal(library().uploadReservations['abandoned.mp4'].userId, BOB);
+
+    // Deletes work again: the next run removes it and the reservation.
+    fs.writeFileSync(bucketFile, JSON.stringify({ 'abandoned.mp4': objects()['abandoned.mp4'] }));
+    assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.equal('abandoned.mp4' in objects(), false);
     assert.deepEqual(library().uploadReservations, {});
   } finally {
     stop();

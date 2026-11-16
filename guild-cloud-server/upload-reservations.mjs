@@ -14,6 +14,14 @@
  */
 export const RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * After `expiresAt` a reservation is no longer live (it can't register a
+ * recording and another member may take the key), but it stays on record
+ * this much longer before expired() hands it over for clean-up. A jump of
+ * the server PC's clock then can't make the server delete files at once.
+ */
+export const RESERVATION_GRACE_MS = 6 * 60 * 60 * 1000;
+
 const has = (reservations, key) => Object.hasOwn(reservations, key);
 const same = (a, b) => a != null && b != null && String(a) !== '' && String(a) === String(b);
 const isLive = (entry, now) => Number.isFinite(entry?.expiresAt) && entry.expiresAt > now;
@@ -39,24 +47,22 @@ export const heldByOther = (reservations, key, userId, now) => {
   return isLive(entry, now) && !same(entry.userId, userId);
 };
 
-/** Is there any live reservation for `key`? */
-export const isReserved = (reservations, key, now) =>
-  has(reservations, key) && isLive(reservations[key], now);
-
 /** Drops the reservation for `key`. */
 export const release = (reservations, key) => {
   delete reservations[key];
 };
 
 /**
- * Removes every expired reservation and returns them as `{ key, ...entry }`.
- * A malformed entry counts as expired.
+ * Removes every reservation that is past `expiresAt` plus the grace period
+ * and returns them as `{ key, ...entry }`. A malformed entry counts as
+ * past it. One in its grace hours stays (not live, not removed); a member
+ * who reserves that key meanwhile simply overwrites it.
  */
 export const expired = (reservations, now) => {
   const gone = [];
   for (const key of Object.keys(reservations)) {
     const entry = reservations[key];
-    if (isLive(entry, now)) continue;
+    if (Number.isFinite(entry?.expiresAt) && entry.expiresAt + RESERVATION_GRACE_MS > now) continue;
     gone.push({ key, ...(entry && typeof entry === 'object' ? entry : {}) });
     delete reservations[key];
   }

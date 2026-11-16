@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.130] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **A recording can only be added to the library by the member who started its upload.** Until now the server accepted any file that happened to be in storage, so someone could claim another member's upload while it was still arriving, or a leftover file, and have it listed as theirs. When the app asks for an upload link, the server now notes who asked; only that member can add the recording afterwards, and nobody else can get an upload link for the same file name ("Another member is uploading a file with this name."). Replacing a recording you already own works as before. The app needs no update.
-- **The size of the uploaded file is checked** against what the app said it would be. A file that turns out bigger is deleted and refused. Files over 5 GB are refused up front, as the app can't upload them anyway.
-- **Uploads that were started but never finished or added are cleaned up.** Their files used to stay in paid storage for good; the server now removes them a day after the upload link was given out (and never after a restore from backup, or if the recording is in the library).
+- **The size of the uploaded file is checked when the recording is added to the library,** against what the app said it would be. A file that turns out bigger is deleted and refused. Files over 5 GB are refused up front, as the app can't upload them anyway.
+- **Uploads that were started but never finished or added are cleaned up.** Their files used to stay in paid storage for good; the server now removes them a day and a few hours after the upload link was given out (and never after a restore from backup, or if the recording is in the library).
 - **When storage is full, the oldest upload goes first.** This used the date the app wrote on the recording, which can be wrong; it now uses when the file actually reached storage.
 
 ## [1.9.129] - Unreleased

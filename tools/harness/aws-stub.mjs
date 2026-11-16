@@ -6,6 +6,8 @@
 // RF_HARNESS_R2_FILE=<json file> gives a bucket a test can change while the
 // server runs (the file is read on every call and rewritten on every delete):
 //   { "a.mp4": { "size": 1234, "lastModified": "2026-01-01T00:00:00Z" } }
+// A top-level "failDeletes": ["a.mp4"] makes bulk deletes of those keys fail
+// (answered in DeleteObjects' `Errors` shape) and leaves the objects in place.
 // `lastModified` is optional (now). Takes the place of RF_HARNESS_R2_KEYS.
 import { register } from 'node:module';
 
@@ -28,7 +30,8 @@ export const installAwsStub = () => {
     export const DeleteObjectsCommand = cmd('deleteMany');
     export const ListObjectsV2Command = cmd('list');
     const sendToFile = (command) => {
-      const objects = readFile();
+      const { failDeletes = [], ...objects } = readFile();
+      const save = () => writeFile({ ...objects, failDeletes });
       const { Key } = command.input;
       switch (command.kind) {
         case 'head':
@@ -36,12 +39,13 @@ export const installAwsStub = () => {
           return { ContentLength: objects[Key].size, LastModified: lastModified(objects[Key]) };
         case 'delete':
           delete objects[Key];
-          writeFile(objects);
+          save();
           return {};
         case 'deleteMany':
-          command.input.Delete.Objects.forEach((o) => delete objects[o.Key]);
-          writeFile(objects);
-          return {};
+          const refused = command.input.Delete.Objects.filter((o) => failDeletes.includes(o.Key));
+          command.input.Delete.Objects.forEach((o) => { if (!failDeletes.includes(o.Key)) delete objects[o.Key]; });
+          save();
+          return { Errors: refused.map((o) => ({ Key: o.Key, Code: 'AccessDenied', Message: 'stub: delete refused' })) };
         case 'list':
           return {
             Contents: Object.entries(objects).map(([k, o]) => ({ Key: k, Size: o.size, LastModified: lastModified(o) })),

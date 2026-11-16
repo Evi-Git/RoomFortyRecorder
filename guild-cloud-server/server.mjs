@@ -37,7 +37,6 @@ import {
 import {
   expired as expiredReservations,
   heldByOther,
-  isReserved,
   ownReservation,
   release as releaseReservation,
   reserve as reserveUpload,
@@ -1028,6 +1027,13 @@ const loadState = async () => {
     !Array.isArray(state.uploadReservations)
       ? state.uploadReservations
       : {};
+  // A backup's reservations are older than the bucket: a file uploaded and
+  // registered since would look abandoned once they expire. Drop them and
+  // save now, so no later run (or restart) can delete on their strength.
+  if (read.from === 'backup') {
+    state.uploadReservations = {};
+    await persist();
+  }
   if (backfillChatOwners(state)) await persist();
 };
 
@@ -1054,31 +1060,23 @@ const usageBytes = async (options) => {
   return entries.reduce((total, entry) => total + entry.size, 0);
 };
 
-// Is this R2 key still wanted by the library? A registered video's file is
-// `videoKey` (the app names it `<videoName>.mp4`); a share link also points
-// at a key. Anything sharing a registered video's name with another
-// extension is treated as its companion, though the server only ever hands
-// out `.mp4` upload URLs (isSafeKey) so none exist today.
-const keyInUse = (key) => {
-  const base = key.replace(/\.[^./]+$/, '');
-  return (
-    state.links.some((link) => link.key === key) ||
-    state.videos.some(
-      (video) =>
-        video.videoKey === key ||
-        `${video.videoName}.mp4` === key ||
-        String(video.videoKey).replace(/\.[^./]+$/, '') === base ||
-        video.videoName === base,
-    )
-  );
-};
+// Is this R2 key still wanted by the library? Only a registered video's
+// `videoKey` or a share link's key count. Names are the client's to choose
+// (a member could name a small recording "evil" to shield a big evil.mp4),
+// and the server only hands out `.mp4` upload URLs (isSafeKey), so there
+// are no companion files to protect.
+const keyInUse = (key) =>
+  state.links.some((link) => link.key === key) ||
+  state.videos.some((video) => video.videoKey === key);
 
 // An upload URL was handed out, nothing was ever registered, and the
 // reservation has run out: the file is paid-for storage nobody can reach.
-// Takes the expired reservations out of the state and returns which of their
-// files to delete. Deletes nothing when state.json came back from a backup
-// (a newer registered video would look abandoned, as with the orphan route),
-// nor a key someone holds a live reservation for, nor anything keyInUse.
+// Takes the reservations that are past their grace period out of the state
+// and returns which of their files to delete. Deletes nothing when state.json
+// came back from a backup (a newer registered video would look abandoned, as
+// with the orphan route; loadState also empties the reservations then, so a
+// restart can't revive one), nor anything keyInUse. A key someone reserved
+// again is not a case: reserve() overwrites the entry, so it is not here.
 // Synchronous on purpose: `state` must not change between the checks and the
 // caller's delete.
 const abandonedUploadKeys = (objects) => {
@@ -1087,10 +1085,7 @@ const abandonedUploadKeys = (objects) => {
   if (stateRestoredAt) return { keys: [], entries: [], changed: true };
   const inBucket = new Set(objects.map((object) => object.key));
   const entries = lapsed.filter(
-    (entry) =>
-      inBucket.has(entry.key) &&
-      !keyInUse(entry.key) &&
-      !isReserved(state.uploadReservations, entry.key, Date.now()),
+    (entry) => inBucket.has(entry.key) && !keyInUse(entry.key),
   );
   return { keys: entries.map((entry) => entry.key), entries, changed: true };
 };
@@ -1143,8 +1138,9 @@ const housekeep = async () => {
     invalidateListingCache();
     // A file that would not delete keeps its (expired) reservation so the
     // next run tries again, instead of becoming an unaccounted orphan.
+    // (Unless the key was reserved again meanwhile: that newer one stays.)
     for (const entry of abandoned.entries) {
-      if (failed.has(entry.key)) {
+      if (failed.has(entry.key) && !Object.hasOwn(state.uploadReservations, entry.key)) {
         const { key, ...rest } = entry;
         state.uploadReservations[key] = rest;
         changed = true;
