@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.126] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **The server won't start without a real `GUILD_CLOUD_SECRET`.** That value signs every app session and video link. If it was ever missing from `.env`, the server quietly used the guild's name plus the Discord app's ID instead, which anyone could work out and then sign in as any raider, the owner included. Now a missing value, or the example one from `.env.example`, stops the server with a line saying what to set (the updater then puts the previous version back). A value that's set keeps working unchanged; nobody is signed out. A short one (under 32 characters) gets a reminder in the server window.
+- **A failed background task no longer stops the server.** A save or a crawl step that failed with nothing waiting on it used to end the whole process (uploads and Watch live with it). It's now written to the server window and the server carries on.
+- **A file that can't be read mid-download ends that one download**, not the server: a pull's full log or a shared clip's preview that was deleted or locked while being sent.
+- A second copy of the server started by mistake says the port is taken and exits, instead of a stack trace.
+
 ## [1.9.125] - Unreleased
 ### Fixed
 - **Versatility in Damage Prevented follows what was really up.** The log gives one versatility number per raider, taken at the pull. A potion drunk just before the pull (Liquid Luster, 3 stacks = 1,260 rating) was in that number and was counted for the whole fight: a paladin showed 24.87m prevented by Versatility where Warcraft Logs shows 7.19m. The potion is now taken out of the pull's number and counted only while it's up, stack by stack (the same for a pre-pull Potion of Recklessness, which lowers versatility).

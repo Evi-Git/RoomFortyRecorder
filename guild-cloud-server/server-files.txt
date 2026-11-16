@@ -25,3 +25,4 @@ icon-pack.mjs
 bug-report.mjs
 season.mjs
 toplogs.mjs
+startup.mjs
