@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.131] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **A pull's log is only accepted from a raider the server asked for it.** After a pull the server picks one raider's app to send the log, and a backfill asks before it sends. Until now the server took a log for any pull from any signed-in member, asked or not. It now answers "Another raider is sending this pull's log." to anyone it didn't ask. A raider who was picked and then replaced by another (a slow upload, a backfill that ran long) can still finish theirs. The app needs no update.
+- **A full log is checked before it replaces the stored one.** It has to unpack and be a log of that pull's boss. Before, any bigger file with the right first two bytes replaced the good log.
+- **The log that comes with a pull has to be for that pull's boss** too.
+- **A full log that unpacks to more than 1.5 GB is refused** (the app never sends more than 1 GB), so a small file made to unpack into a huge one can't tie up the server.
+
 ## [1.9.130] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **A recording can only be added to the library by the member who started its upload.** Until now the server accepted any file that happened to be in storage, so someone could claim another member's upload while it was still arriving, or a leftover file, and have it listed as theirs. When the app asks for an upload link, the server now notes who asked; only that member can add the recording afterwards, and nobody else can get an upload link for the same file name ("Another member is uploading a file with this name."). Replacing a recording you already own works as before. The app needs no update.
