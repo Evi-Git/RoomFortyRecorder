@@ -30,6 +30,7 @@ import { createWclCompare } from './pulldesk-wcl-compare.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { buildPrep, RAID_BUFFS, rawPrep } from './consumables.mjs';
 import { sendFile } from './startup.mjs';
+import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
 
 // Bump to refetch extras (consumables, avoidable hits) for imported pulls.
 // 3: also damage, healing and damage taken (for Trends).
@@ -326,8 +327,11 @@ export const createPullDesk = (options) => {
   const load = async () => {
     await fsp.mkdir(path.join(dir, 'reports'), { recursive: true });
     await fsp.mkdir(path.join(dir, 'logs'), { recursive: true });
-    try {
-      const parsed = JSON.parse(await fsp.readFile(indexFile, 'utf8'));
+    // A damaged or missing index comes back from its newest backup
+    // (safe-json.mjs); with no backup that reads, the server stops here.
+    const read = await readJsonSafe(indexFile);
+    if (read.from !== 'none') {
+      const parsed = read.value || {};
       index = {
         pulls: Array.isArray(parsed.pulls) ? parsed.pulls : [],
         bosses: parsed.bosses && typeof parsed.bosses === 'object' ? parsed.bosses : {},
@@ -336,8 +340,6 @@ export const createPullDesk = (options) => {
       index.settings.combatPotions = [
         ...new Set([...COMBAT_POTIONS, ...(Array.isArray(index.settings.combatPotions) ? index.settings.combatPotions : [])]),
       ];
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
     }
   };
 
@@ -383,12 +385,8 @@ export const createPullDesk = (options) => {
   const persist = () => {
     indexVersion += 1;
     const snapshot = JSON.stringify(index);
-    const temp = `${indexFile}.${process.pid}.tmp`;
     saveQueue = saveQueue
-      .then(async () => {
-        await fsp.writeFile(temp, snapshot, 'utf8');
-        await fsp.rename(temp, indexFile);
-      })
+      .then(() => writeJsonSafe(indexFile, snapshot, { backup: true }))
       .catch((error) => console.error('[pulldesk] Failed to save index', error));
     return saveQueue;
   };

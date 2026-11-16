@@ -25,6 +25,7 @@ import {
   secretWarning,
   sendFile,
 } from './startup.mjs';
+import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -203,6 +204,9 @@ let state = {
   revokedAllBefore: 0,
 };
 let saveQueue = Promise.resolve();
+// Set when this run started from a backup of state.json: videos uploaded
+// after that copy are in R2 but not in the list.
+let stateRestoredAt = null;
 
 const json = (res, status, body, headers = {}) => {
   const data = JSON.stringify(body);
@@ -886,12 +890,8 @@ const readBody = async (req, maxBytes = 2 * 1024 * 1024) => {
 
 const persist = () => {
   const snapshot = JSON.stringify(state, null, 2);
-  const temp = `${STATE_FILE}.${process.pid}.tmp`;
   saveQueue = saveQueue
-    .then(async () => {
-      await fsp.writeFile(temp, snapshot, 'utf8');
-      await fsp.rename(temp, STATE_FILE);
-    })
+    .then(() => writeJsonSafe(STATE_FILE, snapshot, { backup: true }))
     .catch((error) => {
       console.error('[guild-cloud] Failed to save state', error);
     });
@@ -901,12 +901,12 @@ const persist = () => {
 const loadState = async () => {
   await fsp.mkdir(STORAGE, { recursive: true });
 
-  try {
-    state = JSON.parse(await fsp.readFile(STATE_FILE, 'utf8'));
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    await persist();
-  }
+  // A damaged or missing state.json comes back from its newest backup
+  // (safe-json.mjs); with no backup that reads, the server stops here.
+  const read = await readJsonSafe(STATE_FILE);
+  if (read.from === 'none') await persist();
+  else state = read.value;
+  if (read.from === 'backup') stateRestoredAt = read.at;
 
   state.videos = Array.isArray(state.videos) ? state.videos : [];
   state.chats = Array.isArray(state.chats) ? state.chats : [];
@@ -1219,6 +1219,15 @@ const handleApi = async (req, res, url, parts) => {
     // deletes whatever is still orphaned and still older than
     // ORPHAN_MIN_AGE_MS at the moment this runs.
     if (parts[2] === 'orphans' && parts[3] === 'delete' && req.method === 'POST') {
+      // After a restore the list is older than R2: every video uploaded
+      // since the backup would count as an orphan and be deleted for good.
+      if (stateRestoredAt && url.searchParams.get('afterRestore') !== 'yes') {
+        return fail(
+          res,
+          409,
+          `state.json was restored from a backup made ${new Date(stateRestoredAt).toISOString()}. Videos uploaded after that are not in the list and would be deleted. Check the orphans list first; add ?afterRestore=yes to delete anyway.`,
+        );
+      }
       const orphans = await findOrphanedR2Objects();
       const keys = orphans.map((o) => o.key);
       const failedKeys = new Set(await r2DeleteObjects(keys));

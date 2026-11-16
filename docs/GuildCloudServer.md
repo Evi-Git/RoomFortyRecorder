@@ -286,10 +286,23 @@ do not offer likes. Full-video like counts are stored in `state.json`.
 
 ## Backups and maintenance
 
-- `D:\GuildCloud\videos` contains the MP4 recordings.
-- `D:\GuildCloud\state.json` contains metadata, chat, and share-link state.
-- Back up both locations to a second disk or off-site storage. Tailscale and
-  Caddy are not backups.
+- The recordings themselves are in the R2 bucket, not on this PC.
+- The storage folder (`GUILD_CLOUD_STORAGE_PATH`) holds everything else. Four
+  files can't be rebuilt: `state.json` (the video list, chat, share links),
+  `pulldesk\index.json` (every pull), `coach.json` (flags) and
+  `permissions.json` (the Admin table).
+- The server copies each of those four into a `backups` folder next to it:
+  when it starts (so also right before an update takes effect) and at most
+  once an hour while it changes. It keeps the newest 24 copies, then the last
+  copy of each day for 14 days.
+- If one of the four is damaged or missing at start, the server puts the
+  newest copy that reads back, keeps the damaged file as
+  `<name>.damaged-<time>` and says so in its window. If no copy reads, it
+  stops instead of starting empty. After `state.json` was restored, the
+  admin "delete orphans" route refuses until you add `?afterRestore=yes`:
+  videos uploaded after the copy are not in the list and would be deleted.
+- Those copies are on the same disk. Back up the storage folder to a second
+  disk or off-site storage as well. Tailscale and Caddy are not backups.
 - Server code updates: use the updater below rather than copying files by
   hand.
 - Keep port `8787` closed in the router and keep the `.env` file private.
