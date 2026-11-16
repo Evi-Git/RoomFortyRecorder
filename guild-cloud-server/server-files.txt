@@ -26,3 +26,4 @@ bug-report.mjs
 season.mjs
 toplogs.mjs
 startup.mjs
+safe-json.mjs

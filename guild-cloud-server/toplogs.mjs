@@ -32,6 +32,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createWclClient } from './recruit-clients.mjs';
+import { writeJsonSafe } from './safe-json.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 export const TOP_N = 25;
@@ -278,9 +279,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
     }
   };
   const writeJson = async (file, value) => {
-    await fsp.mkdir(path.dirname(file), { recursive: true });
-    await fsp.writeFile(`${file}.tmp`, JSON.stringify(value));
-    await fsp.rename(`${file}.tmp`, file);
+    await writeJsonSafe(file, value);
   };
   const rankingsFile = path.join(dir, 'rankings.json');
   let rankings = null; // { lastCrawl, sets: { key: { at, rows } } }

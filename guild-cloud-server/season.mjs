@@ -8,6 +8,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { writeJsonSafe } from './safe-json.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const RETRY = 60 * 60 * 1000; // after a failed refresh
@@ -69,9 +70,7 @@ export const createSeason = ({ storage, env, wcl }) => {
       zoneName,
       zone: { id: zone.id, name: zone.name, encounters: (zone.encounters || []).map((e) => ({ id: e.id, name: e.name })) },
     };
-    await fsp.mkdir(path.dirname(file), { recursive: true });
-    await fsp.writeFile(`${file}.tmp`, JSON.stringify(value));
-    await fsp.rename(`${file}.tmp`, file);
+    await writeJsonSafe(file, value);
     memo = value;
     return value;
   };

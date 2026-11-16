@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.127] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **The server keeps its own backups of the four files it can't rebuild:** `state.json` (video list, chat, share links), `pulldesk\index.json` (every pull), `coach.json` (flags) and `permissions.json` (the Admin table). A copy goes into a `backups` folder next to each file whenever the server starts (so also right before an update takes effect) and at most once an hour while the file changes. It keeps the newest 24 copies, then one a day for 14 days. Until now nothing backed these up; the updater only backed up the code.
+- **A damaged or missing file is put back from the newest copy that reads**, instead of the server refusing to start (or, for a missing `state.json`, starting with an empty video list). The damaged file is kept as `<name>.damaged-<time>` and the server window says which copy was used. If no copy reads, the server stops with a line saying so.
+- **After `state.json` was restored, "delete orphans" refuses to run** until told to: videos uploaded after the backup aren't in the list and would have been deleted from R2 for good.
+- **One failed save of coaching flags no longer blocks every later save** until a restart.
+- **Every JSON file is saved the same safe way** (written in full to a file of its own, flushed to disk, then swapped in), including the Top logs, journal, season, watcher and recruiting caches, which shared one temp-file name between saves that could overlap.
+
 ## [1.9.126] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **The server won't start without a real `GUILD_CLOUD_SECRET`.** That value signs every app session and video link. If it was ever missing from `.env`, the server quietly used the guild's name plus the Discord app's ID instead, which anyone could work out and then sign in as any raider, the owner included. Now a missing value, or the example one from `.env.example`, stops the server with a line saying what to set (the updater then puts the previous version back). A value that's set keeps working unchanged; nobody is signed out. A short one (under 32 characters) gets a reminder in the server window.

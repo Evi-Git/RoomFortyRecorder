@@ -22,6 +22,7 @@
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
 
 const CACHE_MS = 5 * 60 * 1000;
 const MAX_NOTE = 500;
@@ -65,15 +66,14 @@ export const createCoach = ({
 
   const ready = () => {
     loaded ??= (async () => {
-      try {
-        const parsed = JSON.parse(await fsp.readFile(file, 'utf8'));
+      const read = await readJsonSafe(file);
+      if (read.from !== 'none') {
+        const parsed = read.value || {};
         data = {
           flags: Array.isArray(parsed.flags) ? parsed.flags : [],
           channels: parsed.channels && typeof parsed.channels === 'object' ? parsed.channels : {},
           users: parsed.users && typeof parsed.users === 'object' ? parsed.users : {},
         };
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
       }
     })();
     return loaded;
@@ -83,13 +83,13 @@ export const createCoach = ({
     const cutoff = Date.now() - FLAG_DAYS_KEPT * 86400000;
     data.flags = data.flags.filter((flag) => flag.at >= cutoff).slice(-MAX_FLAGS);
     const body = JSON.stringify(data);
-    saveQueue = saveQueue.then(async () => {
-      await fsp.mkdir(storage, { recursive: true });
-      const tmp = `${file}.tmp`;
-      await fsp.writeFile(tmp, body);
-      await fsp.rename(tmp, file);
+    // One failed save must not poison the queue: before, every later save
+    // was skipped until a restart. The caller still gets the failure.
+    const save = saveQueue.then(() => writeJsonSafe(file, body, { backup: true }));
+    saveQueue = save.catch((error) => {
+      console.error('[coach] Failed to save', error?.message || error);
     });
-    return saveQueue;
+    return save;
   };
 
   // `capability` is the permissions.mjs key; without it, the .env roles.
@@ -185,7 +185,8 @@ export const createCoach = ({
     const before = data.users[req.cloudUserId];
     if (before?.name === req.cloudUserName && Date.now() - (before.seenAt || 0) < 86400000) return;
     data.users[req.cloudUserId] = { name: req.cloudUserName, seenAt: Date.now() };
-    persist();
+    // Not awaited (it runs on every request); a failure is logged above.
+    persist().catch(() => {});
   };
 
   const flagView = (flag) => ({
@@ -356,5 +357,6 @@ export const createCoach = ({
     }
   };
 
-  return { handle, ready, thumbnailPath };
+  // persist is exposed for tests.
+  return { handle, ready, thumbnailPath, persist };
 };

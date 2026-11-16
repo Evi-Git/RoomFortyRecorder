@@ -14,6 +14,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
 
 export const EVERYONE = '@everyone';
 
@@ -125,14 +126,12 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
   let saved = null;
   let loaded = null;
   const ready = () => {
-    loaded ??= fsp
-      .readFile(file, 'utf8')
-      .then((text) => {
-        const parsed = JSON.parse(text);
-        if (parsed && typeof parsed === 'object') saved = parsed;
+    loaded ??= readJsonSafe(file)
+      .then(({ value }) => {
+        if (value && typeof value === 'object') saved = value;
       })
       .catch((error) => {
-        if (error.code !== 'ENOENT') console.warn('[permissions] Could not read', error.message);
+        console.warn('[permissions] Could not read', error.message);
       });
     return loaded;
   };
@@ -185,10 +184,7 @@ export const createPermissions = ({ storage, env = {}, memberRoleNames, guildRol
   };
 
   const save = async (next) => {
-    await fsp.mkdir(storage, { recursive: true });
-    const tmp = `${file}.tmp`;
-    await fsp.writeFile(tmp, JSON.stringify(next, null, 1));
-    await fsp.rename(tmp, file);
+    await writeJsonSafe(file, JSON.stringify(next, null, 1), { backup: true });
     saved = next;
   };
 

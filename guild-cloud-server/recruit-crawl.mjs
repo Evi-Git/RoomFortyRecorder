@@ -21,6 +21,7 @@ import {
   specsFromPlayerDetails,
 } from './recruit-analyze.mjs';
 import { fetchRaiderIoGuilds } from './recruit-clients.mjs';
+import { writeJsonSafe } from './safe-json.mjs';
 
 export const DEFAULT_SETTINGS = {
   raidSlug: 'the-venomous-abyss',
@@ -93,10 +94,7 @@ export const createRecruitCrawler = ({
     }
   };
   const writeJson = async (name, value) => {
-    await fs.mkdir(path.dirname(name), { recursive: true });
-    const tmp = `${name}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(value));
-    await fs.rename(tmp, name);
+    await writeJsonSafe(name, value);
   };
 
   // The first version ranked only Arms Warriors and Warlocks; settings saved

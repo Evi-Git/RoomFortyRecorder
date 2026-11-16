@@ -18,6 +18,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createWclClient } from './recruit-clients.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
+import { writeJsonSafe } from './safe-json.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const MAX_GUILDS = 3;
@@ -122,9 +123,7 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
     }
   };
   const writeJson = async (name, value) => {
-    await fsp.mkdir(path.dirname(name), { recursive: true });
-    await fsp.writeFile(`${name}.tmp`, JSON.stringify(value));
-    await fsp.rename(`${name}.tmp`, name);
+    await writeJsonSafe(name, value);
   };
 
   const getSettings = async () => ({ ...DEFAULT_WATCHER_SETTINGS, ...(await readJson(file('settings.json'), {})) });

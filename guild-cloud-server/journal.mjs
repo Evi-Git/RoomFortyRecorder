@@ -13,6 +13,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { toPng } from './icon-pack.mjs';
+import { writeJsonSafe } from './safe-json.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const JOURNAL_TTL = DAY;
@@ -190,10 +191,7 @@ export const createJournal = ({ storage, env, fetchImpl = fetch, wcl = null, bos
     }
   };
   const writeJson = async (file, value) => {
-    await fsp.mkdir(dir, { recursive: true });
-    const full = path.join(dir, file);
-    await fsp.writeFile(`${full}.tmp`, JSON.stringify(value));
-    await fsp.rename(`${full}.tmp`, full);
+    await writeJsonSafe(path.join(dir, file), value);
   };
 
   const getToken = async () => {
