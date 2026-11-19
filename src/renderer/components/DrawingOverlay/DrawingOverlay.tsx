@@ -5,7 +5,8 @@ import '@excalidraw/excalidraw/index.css';
 import './DrawingOverlay.css';
 import { AppState, RawCombatant } from 'main/types';
 import { Language } from 'localisation/phrases';
-import { WoWClassColor, specializationById } from '../../../main/constants';
+import { specializationById } from '../../../main/constants';
+import { READABLE_CLASS_COLOR } from '../../classColors';
 import { classImages, specImages } from '../../images';
 import {
   CLASS_PRESETS,
@@ -180,7 +181,7 @@ const RaidRoster = ({ raiders }: { raiders: readonly RawCombatant[] }) => {
               ? specializationById[member._specID]
               : undefined;
             const className = specialization?.class || 'UNKNOWN';
-            const classColor = WoWClassColor[className];
+            const classColor = READABLE_CLASS_COLOR[className];
             const specIcon =
               specImages[member._specID as keyof typeof specImages] ||
               specImages[0];

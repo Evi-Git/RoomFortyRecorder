@@ -9,11 +9,8 @@ import {
 } from 'lucide-react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
-import {
-  getCategoryIndex,
-  getSpecClass,
-  getWoWClassColor,
-} from './rendererutils';
+import { getCategoryIndex } from './rendererutils';
+import { classColor } from './logs/format';
 import { setConfigValue } from './useSettings';
 import { TabContext, TabsContext, useTabTitle } from './tabs/tabs';
 import AbilityName from './AbilityCard';
@@ -235,9 +232,6 @@ export const compactNumber = (n: number) =>
 
 const mmss = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-const classColor = (specId: number) =>
-  getWoWClassColor(getSpecClass(specId)) || 'hsl(var(--foreground-lighter))';
 
 const bucketsOf = (data: MetersData) =>
   Math.max(1, Math.ceil(data.duration / data.bucketSeconds));

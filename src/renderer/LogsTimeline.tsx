@@ -1,6 +1,6 @@
 import React from 'react';
 import { Play } from 'lucide-react';
-import { getSpecClass, getWoWClassColor } from './rendererutils';
+import { classColor } from './logs/format';
 
 /**
  * [RoomFortyRecorder] Logs: the cast timeline (each raider's cooldowns over
@@ -25,9 +25,6 @@ export type TimelineData = {
   deaths?: { t: number; name: string; spell: string | null }[];
 };
 type Range = { from: number; to: number } | null; // seconds
-
-const classColor = (specId: number) =>
-  getWoWClassColor(getSpecClass(specId)) || 'hsl(var(--foreground-lighter))';
 
 const mmss = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
