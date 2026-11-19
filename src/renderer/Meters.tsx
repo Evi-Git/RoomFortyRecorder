@@ -11,6 +11,16 @@ import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
 import { getCategoryIndex } from './rendererutils';
 import { classColor } from './logs/format';
+import { PageHeader } from './components/PageHeader/PageHeader';
+import BossBar from './components/BossBar/BossBar';
+import { isReset, useShowResets } from './resets';
+import { LogsTarget, takeLogsTarget } from './logs/openTarget';
+import {
+  allResets,
+  findTargetPull,
+  hiddenResets,
+  visiblePulls,
+} from './logs/pullList';
 import { setConfigValue } from './useSettings';
 import { TabContext, TabsContext, useTabTitle } from './tabs/tabs';
 import AbilityName from './AbilityCard';
@@ -1231,13 +1241,6 @@ type NightPull = {
   startedAt?: number | null;
 };
 
-const pullResult = (p: NightPull) =>
-  p.result === 'kill'
-    ? 'Kill'
-    : p.bossPercent !== null
-      ? `${p.bossPercent}%`
-      : 'Wipe';
-
 /** State that lasts through a reload of this window (sessionStorage). */
 const useSessionState = <T,>(key: string, initial: T) => {
   const [value, setValue] = React.useState<T>(() => {
@@ -1303,6 +1306,13 @@ const LogsPane = ({
     [],
   );
   const anchorRef = React.useRef<string | null>(null);
+  const [showResets, setShowResets] = useShowResets();
+  // "Open in Logs" (from the Dashboard): the first pane takes the target
+  // once, on mount, and shows that night and pull instead of the last pick.
+  const [initialTarget] = React.useState<LogsTarget | null>(() =>
+    suffix === '' ? takeLogsTarget() : null,
+  );
+  const targetRef = React.useRef<LogsTarget | null>(initialTarget);
   // The pull list folds to a thin strip so the logs get the width.
   const [listFolded, setListFolded] = React.useState(() => {
     try {
@@ -1339,11 +1349,16 @@ const LogsPane = ({
       setError('');
       setNights(response.data.nights);
       // A night kept from before a reload may have aged out.
-      setNight((n) =>
-        response.data.nights.some((x) => x.night === n)
+      const wanted = targetRef.current?.night;
+      if (wanted && !response.data.nights.some((x) => x.night === wanted))
+        targetRef.current = null;
+      setNight((n) => {
+        if (wanted && response.data.nights.some((x) => x.night === wanted))
+          return wanted;
+        return response.data.nights.some((x) => x.night === n)
           ? n
-          : response.data.nights[0]?.night || '',
-      );
+          : response.data.nights[0]?.night || '';
+      });
     });
     return () => {
       cancelled = true;
@@ -1367,6 +1382,18 @@ const LogsPane = ({
       }
       setNightError(null);
       const before = nightDataRef.current;
+      const target = targetRef.current;
+      let found: ReturnType<typeof findTargetPull> = null;
+      if (target && target.night === night) {
+        targetRef.current = null;
+        found = findTargetPull(response.data.bosses, target.pullId);
+      }
+      if (found) {
+        setBossKey(found.bossKey);
+        setPullId(found.pullId);
+        setPicked([]);
+        anchorRef.current = found.pullId;
+      }
       if (before?.night === night) {
         // Same night again: stay on the boss and pull being looked at, and
         // offer the pulls that are new.
@@ -1379,8 +1406,8 @@ const LogsPane = ({
           .map((p) => p.id);
         if (fresh.length) setArrived((a) => [...a, ...fresh]);
         const { boss: shownBoss, pull: shownPull } = shownRef.current;
-        if (shownBoss) setBossKey((k) => k || shownBoss);
-        if (shownPull) setPullId((id) => id || shownPull);
+        if (shownBoss && !found) setBossKey((k) => k || shownBoss);
+        if (shownPull && !found) setPullId((id) => id || shownPull);
       } else {
         setArrived([]);
       }
@@ -1429,8 +1456,14 @@ const LogsPane = ({
     [pulls, picked],
   );
 
+  // The list leaves resets out (unless switched on); the pull being looked
+  // at and any picked pulls always stay.
+  const listed = visiblePulls(pulls, showResets, [pullId, ...picked]);
+  const hiddenCount = hiddenResets(pulls, listed);
+  const onlyResets = !showResets && allResets(pulls);
+
   // [RoomFortyRecorder] The tab is named after the pull (or pulls) shown.
-  const titlePull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  const titlePull = pulls.find((p) => p.id === pullId) ?? listed[0];
   let tabTitle: string | undefined;
   if (boss && comparing.length > 1) {
     tabTitle = `${boss.encounterName} ×${comparing.length}`;
@@ -1439,7 +1472,7 @@ const LogsPane = ({
   }
   useTabTitle(tabTitle);
 
-  const pull = pulls.find((p) => p.id === pullId) ?? pulls[0];
+  const pull = pulls.find((p) => p.id === pullId) ?? listed[0];
   const shownBoss = boss ? keyOf(boss) : '';
   const shownPull = pull?.id ?? '';
   React.useEffect(() => {
@@ -1453,6 +1486,7 @@ const LogsPane = ({
   const newPulls = pulls.filter(
     (p) =>
       arrived.includes(p.id) &&
+      (showResets || !isReset(p)) &&
       p.pullNumber > (pull?.pullNumber ?? 0) &&
       picked.length < 2,
   );
@@ -1510,13 +1544,13 @@ const LogsPane = ({
     const current = picked.length >= 2 ? picked : pull ? [pull.id] : [];
     let next: string[];
     if (e.shiftKey) {
-      const from = pulls.findIndex(
+      const from = listed.findIndex(
         (p) => p.id === (anchorRef.current ?? pull?.id),
       );
-      const to = pulls.findIndex((p) => p.id === id);
+      const to = listed.findIndex((p) => p.id === id);
       const lo = Math.min(from < 0 ? to : from, to);
       const hi = Math.max(from < 0 ? to : from, to);
-      const range = pulls.slice(lo, hi + 1).map((p) => p.id);
+      const range = listed.slice(lo, hi + 1).map((p) => p.id);
       next = ctrl ? [...new Set([...current, ...range])] : range;
     } else if (ctrl) {
       anchorRef.current = id;
@@ -1537,10 +1571,11 @@ const LogsPane = ({
 
   return (
     <div className="relative flex flex-col gap-y-4">
-      <div className="flex items-center gap-x-3 flex-wrap">
+      <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
         <NightPicker
           nights={nights}
           night={night}
+          showLabel={false}
           onPick={(n, key) => {
             if (n !== night || key) {
               setNight(n);
@@ -1567,7 +1602,7 @@ const LogsPane = ({
             <button
               type="button"
               className="text-brand hover:underline text-xs"
-              onClick={() => setPicked(pulls.map((p) => p.id))}
+              onClick={() => setPicked(listed.map((p) => p.id))}
             >
               Pick all
             </button>
@@ -1619,7 +1654,7 @@ const LogsPane = ({
           className={`grid grid-cols-1 gap-4 items-start ${
             listFolded
               ? 'lg:grid-cols-[36px_minmax(0,1fr)]'
-              : 'lg:grid-cols-[230px_minmax(0,1fr)]'
+              : 'lg:grid-cols-[260px_minmax(0,1fr)]'
           }`}
         >
           {listFolded ? (
@@ -1627,7 +1662,7 @@ const LogsPane = ({
               type="button"
               title="Show the pull list"
               onClick={() => foldList(false)}
-              className="flex lg:flex-col items-center gap-2 rounded-md border border-card bg-background/40 hover:bg-card/40 px-2 lg:px-0 py-2 text-foreground hover:text-foreground-lighter"
+              className="flex lg:flex-col items-center gap-2 rounded-lg border border-panel-line bg-panel hover:bg-panel-line px-2 lg:px-0 py-2 text-foreground hover:text-foreground-lighter"
             >
               <ChevronsRight size={16} className="shrink-0" />
               <span className="text-xs whitespace-nowrap lg:[writing-mode:vertical-rl]">
@@ -1639,67 +1674,90 @@ const LogsPane = ({
               </span>
             </button>
           ) : (
-            <div className="flex flex-col gap-y-1">
-              <div className="flex items-center justify-between text-xs text-foreground px-1">
-                <span>Pulls</span>
+            <div className="flex flex-col gap-y-1.5">
+              <div className="flex items-center gap-x-2 px-1 text-[13px] font-medium text-foreground">
                 <button
                   type="button"
                   title="Fold the pull list"
+                  aria-label="Fold the pull list"
                   onClick={() => foldList(true)}
-                  className="rounded p-0.5 hover:bg-card/50 hover:text-foreground-lighter"
+                  className="rounded p-0.5 hover:bg-panel-line hover:text-foreground-lighter"
                 >
                   <ChevronsLeft size={16} />
                 </button>
+                <span className="min-w-0 flex-1 truncate">
+                  {boss.encounterName} · {listed.length}{' '}
+                  {listed.length === 1 ? 'pull' : 'pulls'}
+                </span>
+                <label className="flex shrink-0 items-center gap-x-1.5 text-xs font-normal cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showResets}
+                    onChange={(e) => setShowResets(e.target.checked)}
+                    className="accent-[hsl(var(--brand))]"
+                  />
+                  {!showResets && hiddenCount > 0
+                    ? `Show resets (${hiddenCount})`
+                    : 'Show resets'}
+                </label>
               </div>
-              <div className="rounded-md border border-card bg-background/40 flex flex-col max-h-[70vh] overflow-y-auto">
-                {pulls.map((p) => {
+              {onlyResets && (
+                <p className="m-0 px-1 text-[11px] text-foreground">
+                  Every pull of this boss was a reset (under 10 seconds), so
+                  they are all shown.
+                </p>
+              )}
+              <div className="rounded-lg border border-panel-line bg-panel flex flex-col max-h-[70vh] overflow-y-auto">
+                {listed.map((p) => {
                   const active =
                     picked.length >= 2
                       ? picked.includes(p.id)
                       : pull?.id === p.id;
+                  const kill = p.result === 'kill';
                   return (
-                    <div
+                    <button
                       key={p.id}
-                      className={`flex items-center gap-x-2 px-2 border-b border-card/40 ${
-                        active ? 'bg-brand/15' : 'hover:bg-card/30'
+                      type="button"
+                      aria-pressed={active}
+                      onMouseDown={(e) => {
+                        // Shift-click would otherwise select the page's text.
+                        if (e.shiftKey) e.preventDefault();
+                      }}
+                      onClick={(e) => choose(p.id, e)}
+                      className={`flex h-11 shrink-0 items-center gap-x-2.5 px-3 text-sm text-left select-none border-b border-panel-line last:border-b-0 ${
+                        active ? 'bg-panel-line' : 'hover:bg-panel-raised'
                       }`}
                     >
-                      <button
-                        type="button"
-                        aria-pressed={active}
-                        onMouseDown={(e) => {
-                          // Shift-click would otherwise select the page's text.
-                          if (e.shiftKey) e.preventDefault();
-                        }}
-                        onClick={(e) => choose(p.id, e)}
-                        className="flex flex-1 items-center gap-x-2 py-2 text-sm text-left select-none"
-                      >
-                        <span className="font-semibold tabular-nums w-14 text-foreground-lighter">
-                          Pull {p.pullNumber}
+                      <span className="w-6 shrink-0 text-xs tabular-nums text-foreground">
+                        {p.pullNumber}
+                      </span>
+                      {kill ? (
+                        <span className="font-semibold text-green-400">
+                          Kill
                         </span>
-                        <span
-                          className={`tabular-nums ${
-                            p.result === 'kill'
-                              ? 'text-green-400'
-                              : 'text-foreground'
-                          }`}
-                        >
-                          {pullResult(p)}
-                        </span>
-                        <span className="ml-auto text-xs text-foreground tabular-nums whitespace-nowrap">
-                          {p.startedAt ? (
-                            <span className="opacity-70">
-                              {`${timeOfDay(p.startedAt)} · `}
-                            </span>
-                          ) : null}
-                          {mmss(p.duration)}
-                        </span>
-                      </button>
-                    </div>
+                      ) : (
+                        <>
+                          <BossBar
+                            bossPercent={p.bossPercent}
+                            kill={false}
+                            className="w-9 shrink-0"
+                          />
+                          <span className="tabular-nums text-foreground-lighter">
+                            {p.bossPercent !== null
+                              ? `${p.bossPercent}%`
+                              : 'Wipe'}
+                          </span>
+                        </>
+                      )}
+                      <span className="ml-auto text-xs text-foreground tabular-nums whitespace-nowrap">
+                        {p.startedAt ? `${timeOfDay(p.startedAt)} · ` : ''}
+                        {mmss(p.duration)}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
-              <p className="text-[11px] text-foreground m-0">
+              <p className="text-[11px] text-foreground m-0 px-1">
                 Ctrl-click to add a pull, Shift-click for a range. Two or more
                 picked pulls are added up.
               </p>
@@ -1767,17 +1825,24 @@ const seedSecondPane = () => {
   }
 };
 
+const compareButton =
+  'inline-flex items-center gap-x-1.5 rounded-lg border border-panel-line bg-panel-line px-3 h-9 text-[13px] text-foreground-lighter hover:bg-panel-raised';
+
 /**
  * Logs: one pane, or two side by side (Compare) to cross-reference pulls
- * from any night on the same boss or another.
+ * from any night on the same boss or another. The Compare button is in the
+ * page header, so `split` is the page's.
  */
-export const LogsView = () => {
+export const LogsView = ({
+  split,
+  setSplit,
+}: {
+  split: boolean;
+  setSplit: (split: boolean) => void;
+}) => {
   const tab = React.useContext(TabContext);
-  const [split, setSplit] = useSessionState('rf-logs-split', false);
   // Only the first pane names the tab.
   const quiet = React.useMemo(() => ({ id: '', active: tab.active }), [tab]);
-  const button =
-    'flex items-center gap-x-1.5 rounded-md border border-card px-2.5 h-8 text-xs text-foreground-lighter hover:bg-card/50';
   // The first pane stays where it is in the tree, so opening or closing
   // the second doesn't reset it.
   return (
@@ -1788,27 +1853,10 @@ export const LogsView = () => {
     >
       <div
         className={`min-w-0 ${
-          split ? 'xl:border-r xl:border-card xl:pr-6' : ''
+          split ? 'xl:border-r xl:border-panel-line xl:pr-6' : ''
         }`}
       >
-        <LogsPane
-          suffix=""
-          extra={
-            split ? null : (
-              <button
-                type="button"
-                className={button}
-                title="Open a second pane to compare with any pull from any night"
-                onClick={() => {
-                  seedSecondPane();
-                  setSplit(true);
-                }}
-              >
-                <Columns2 size={14} /> Compare side by side
-              </button>
-            )
-          }
-        />
+        <LogsPane suffix="" />
       </div>
       {split && (
         <div className="min-w-0">
@@ -1818,7 +1866,7 @@ export const LogsView = () => {
               extra={
                 <button
                   type="button"
-                  className={button}
+                  className={compareButton}
                   title="Close this pane"
                   onClick={() => setSplit(false)}
                 >
@@ -1865,39 +1913,46 @@ export const LogsPage = ({
       // Not remembered.
     }
   };
+  const [split, setSplit] = useSessionState('rf-logs-split', false);
   return (
     <WatchContext.Provider value={watcher}>
-      <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
-        <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
-          <span className="font-display text-lg font-bold mr-1">Logs</span>
-          <div className="flex rounded-md border border-card overflow-hidden">
-            {(
-              [
-                ['pulls', 'Pulls'],
-                ['trends', 'Trends'],
-              ] as ['pulls' | 'trends', string][]
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => change(key)}
-                className={`px-3 h-9 text-xs ${
-                  mode === key
-                    ? 'bg-brand text-background font-semibold'
-                    : 'text-foreground-lighter hover:bg-card/50'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-foreground">
-            Damage, healing, damage taken and prevented, casts and buffs, from
-            our own combat logs.
-          </span>
+      <div className="flex flex-col w-full h-full bg-walnut text-foreground-lighter pt-[32px]">
+        <div className="px-7 pt-5">
+          <PageHeader
+            title={
+              <span title="Damage, healing, damage taken and prevented, casts and buffs, from our own combat logs.">
+                Logs
+              </span>
+            }
+            tabs={[
+              { key: 'pulls', label: 'Pulls' },
+              { key: 'trends', label: 'Trends' },
+            ]}
+            tab={mode}
+            onTab={change}
+            actions={
+              mode === 'pulls' && !split ? (
+                <button
+                  type="button"
+                  className={compareButton}
+                  title="Open a second pane to compare with any pull from any night"
+                  onClick={() => {
+                    seedSecondPane();
+                    setSplit(true);
+                  }}
+                >
+                  <Columns2 size={14} /> Compare side by side
+                </button>
+              ) : null
+            }
+          />
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {mode === 'pulls' ? <LogsView /> : <LogsTrends />}
+        <div className="flex-1 overflow-y-auto px-7 py-4">
+          {mode === 'pulls' ? (
+            <LogsView split={split} setSplit={setSplit} />
+          ) : (
+            <LogsTrends />
+          )}
         </div>
       </div>
     </WatchContext.Provider>

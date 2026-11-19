@@ -1,5 +1,5 @@
 import React from 'react';
-import { compact, mmss } from './format';
+import { clock, compact, mmss } from './format';
 import { ZoomContext } from './zoom';
 
 /**
@@ -20,7 +20,7 @@ export type ChartSeries = {
 };
 
 const H = 220;
-const LEFT = 52;
+const LEFT = 56;
 const RIGHT = 12;
 const TOP = 10;
 const BOTTOM = 24;
@@ -282,14 +282,33 @@ const TimeChart = ({
         {bands
           .filter(([s, e]) => e > v0 && s < v1)
           .map(([s, e]) => (
-            <rect
-              key={`b${s}`}
-              x={x(s)}
-              y={TOP}
-              width={Math.max(2, x(e) - x(s))}
-              height={plotH}
-              fill="hsl(200 70% 55% / 0.13)"
-            />
+            <g key={`b${s}`}>
+              <rect
+                x={x(s)}
+                y={TOP}
+                width={Math.max(2, x(e) - x(s))}
+                height={plotH}
+                fill="hsl(var(--brand) / 0.12)"
+              />
+              {s >= v0 && (
+                <line
+                  x1={x(s)}
+                  x2={x(s)}
+                  y1={TOP}
+                  y2={TOP + plotH}
+                  stroke="hsl(var(--brand) / 0.7)"
+                  strokeDasharray="3 3"
+                />
+              )}
+              <text
+                x={x(s) + 4}
+                y={TOP + 11}
+                fontSize="10"
+                fill="hsl(var(--brand))"
+              >
+                Bloodlust
+              </text>
+            </g>
           ))}
         {ticks.map((v) => (
           <g key={`t${v}`}>
@@ -298,7 +317,7 @@ const TimeChart = ({
               x2={W - RIGHT}
               y1={y(v)}
               y2={y(v)}
-              stroke="hsl(var(--card))"
+              className="stroke-panel-line"
             />
             <text
               x={LEFT - 6}
@@ -323,9 +342,17 @@ const TimeChart = ({
             fontSize="11"
             fill="hsl(var(--foreground))"
           >
-            {mmss(t)}
+            {clock(t)}
           </text>
         ))}
+        <text
+          transform={`translate(10 ${TOP + plotH / 2}) rotate(-90)`}
+          textAnchor="middle"
+          fontSize="10"
+          fill="hsl(var(--foreground))"
+        >
+          {rateLabel}
+        </text>
         {boundaries
           .filter((b) => b.t >= v0 && b.t <= v1)
           .map((b) => (
@@ -456,14 +483,14 @@ const TimeChart = ({
         <button
           type="button"
           onClick={() => setZoomOn(!zoomed)}
-          className="absolute top-1 right-3 rounded border border-card bg-background/90 px-2 py-0.5 text-[11px] text-brand hover:underline"
+          className="absolute top-1 right-3 rounded border border-panel-line bg-panel/90 px-2 py-0.5 text-[11px] text-brand hover:underline"
         >
           {zoomed ? 'Zoom out' : 'Zoom to slice'}
         </button>
       )}
       {hover !== null && hoverIndex !== null && !drag && (
         <div
-          className="absolute top-1 pointer-events-none rounded-md border border-card bg-background px-2 py-1 text-xs shadow-lg z-10 max-w-[260px]"
+          className="absolute top-1 pointer-events-none rounded-md border border-panel-line bg-panel-raised px-2 py-1 text-xs shadow-lg z-10 max-w-[260px]"
           style={{
             left: `${(x(hover) / W) * 100}%`,
             transform:

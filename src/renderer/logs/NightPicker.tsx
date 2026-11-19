@@ -124,7 +124,7 @@ export const nightLabel = (night: string) => {
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const iconButton =
-  'inline-flex items-center justify-center w-8 h-8 rounded-md border border-card text-foreground-lighter hover:bg-card/60 disabled:opacity-40 disabled:hover:bg-transparent';
+  'inline-flex items-center justify-center w-8 h-8 rounded-lg border border-panel-line bg-panel text-foreground-lighter hover:bg-panel-line disabled:opacity-40 disabled:hover:bg-panel';
 
 const resultClass = (b: CalendarBoss) =>
   b.kills > 0 ? 'text-green-400' : 'text-foreground';
@@ -255,9 +255,18 @@ type Props = {
   /** Several nights: the picked ones (newest first) and the change. */
   picked?: string[];
   onPickMany?: (nights: string[]) => void;
+  /** The word "Night" before the button (default on; the Logs page hides it). */
+  showLabel?: boolean;
 };
 
-const NightPicker = ({ nights, night, onPick, picked, onPickMany }: Props) => {
+const NightPicker = ({
+  nights,
+  night,
+  onPick,
+  picked,
+  onPickMany,
+  showLabel = true,
+}: Props) => {
   const multi = Boolean(onPickMany);
   const chosen = multi ? (picked ?? []) : [night];
   const isChosen = (date: string) => chosen.includes(date);
@@ -556,14 +565,14 @@ const NightPicker = ({ nights, night, onPick, picked, onPickMany }: Props) => {
   return (
     <>
       <div ref={box} className="relative flex items-center gap-x-2">
-        <span className="text-sm">Night</span>
+        {showLabel && <span className="text-sm">Night</span>}
         <button
           type="button"
           aria-haspopup="dialog"
           aria-expanded={popOpen || fullOpen}
           onClick={() => (popOpen || fullOpen ? close() : open())}
-          className={`inline-flex items-center gap-x-2 min-h-[32px] px-3 rounded-md border bg-card text-sm font-semibold text-foreground-lighter ${
-            popOpen ? 'border-brand' : 'border-background hover:border-card'
+          className={`inline-flex items-center gap-x-2 h-10 px-3 rounded-lg border bg-panel text-sm font-semibold text-foreground-lighter ${
+            popOpen ? 'border-brand' : 'border-panel-line hover:border-brand/50'
           }`}
         >
           <CalendarDays size={16} className="text-brand shrink-0" />

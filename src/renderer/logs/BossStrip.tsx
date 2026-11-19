@@ -4,7 +4,6 @@
  * Bosses not pulled this night at the shown difficulty are greyed out.
  */
 import React from 'react';
-import { Check } from 'lucide-react';
 import { GameIcon } from '../AbilityCard';
 import {
   SeasonBoss,
@@ -68,28 +67,28 @@ export const BossButton = ({
     title={title}
     disabled={!enabled}
     onClick={onClick}
-    className={`relative h-11 w-11 shrink-0 rounded-md overflow-hidden bg-card transition ${
+    className={`relative h-10 w-10 shrink-0 rounded-md bg-panel transition ${
       picked
-        ? 'ring-2 ring-white'
+        ? 'ring-2 ring-brand'
         : enabled
-          ? 'ring-1 ring-background hover:ring-foreground hover:brightness-110'
+          ? 'ring-1 ring-panel-line hover:ring-foreground hover:brightness-110'
           : 'opacity-30 grayscale cursor-default'
     }`}
   >
-    <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-foreground">
+    <span className="absolute inset-0 flex items-center justify-center overflow-hidden rounded-md text-xs font-semibold text-foreground">
       {initials(name)}
     </span>
     <GameIcon
       icon={`wclboss-${encounterId}`}
-      className="absolute inset-0 h-full w-full object-cover"
+      className="absolute inset-0 h-full w-full rounded-md object-cover"
     />
     {killed && (
       <span
-        className="absolute bottom-0 right-0 rounded-tl bg-green-600 p-px"
+        className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-walnut bg-green-400"
         title="Killed this night"
-      >
-        <Check size={10} className="text-white" strokeWidth={3} />
-      </span>
+        role="img"
+        aria-label="Killed this night"
+      />
     )}
   </button>
 );
@@ -133,7 +132,7 @@ const BossStrip = <B extends StripNightBoss>({
 
   return (
     <div className="flex items-center gap-x-3 flex-wrap gap-y-2">
-      <div className="flex items-center gap-x-1.5" role="listbox">
+      <div className="flex items-center gap-x-2" role="listbox">
         {items.map((item) => {
           const picked = Boolean(
             item.boss && boss?.encounterId === item.encounterId,
@@ -155,7 +154,7 @@ const BossStrip = <B extends StripNightBoss>({
           );
         })}
       </div>
-      <div className="flex rounded-lg border border-card bg-background/60 p-0.5">
+      <div className="flex h-[34px] overflow-hidden rounded-lg border border-panel-line">
         {modes.map(({ mode: m, count }) => {
           const on = m === mode;
           return (
@@ -173,12 +172,13 @@ const BossStrip = <B extends StripNightBoss>({
                 const next = pickForMode(bosses, m, boss?.encounterId ?? null);
                 if (next) onPick(bossKey(next));
               }}
-              className={`rounded-md px-3 py-1 text-sm font-medium transition ${
+              aria-pressed={on}
+              className={`px-3.5 text-[13px] font-medium transition ${
                 on
-                  ? `bg-card ${MODE_TEXT[m] ?? 'text-foreground-lighter'}`
+                  ? 'bg-brand text-walnut'
                   : count
-                    ? 'text-foreground hover:text-foreground-lighter'
-                    : 'text-foreground/40 cursor-default'
+                    ? 'bg-panel text-foreground hover:text-foreground-lighter'
+                    : 'bg-panel text-foreground/40 cursor-default'
               }`}
             >
               {m}

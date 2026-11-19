@@ -34,6 +34,7 @@ import {
   ENEMY_COLOR,
   OTHER_COLOR,
   pct,
+  specLabel,
   thousands,
 } from './format';
 
@@ -64,8 +65,19 @@ export type ChartExtras = {
 const rowColor = (r: { specId: number; player: boolean; pet: boolean }) =>
   r.player || r.pet ? classColor(r.specId) : ENEMY_COLOR;
 
-const th = 'px-2 py-1.5 font-normal whitespace-nowrap';
+// The header sticks to the top of its scroll container (see `TABLE_BOX`).
+const th =
+  'sticky top-0 z-10 h-9 bg-panel px-2 text-[13px] font-normal whitespace-nowrap';
 const td = 'px-2 py-1 tabular-nums whitespace-nowrap';
+/** The scroll container of a table: its header row stays in view. */
+const TABLE_BOX =
+  'overflow-auto max-h-[70vh] rounded-lg border border-panel-line bg-panel';
+const TITLE: Record<MeterKind, string> = {
+  damage: 'Damage per second',
+  healing: 'Healing per second',
+  taken: 'Damage taken per second',
+  prevented: 'Damage prevented per second',
+};
 
 type Look = 'solid' | 'faint' | 'striped' | 'ghost';
 type Part = { value: number; look: Look; label: string };
@@ -398,7 +410,7 @@ const Drill = ({
           ))}
         </span>
       </div>
-      <div className="rounded-md border border-card bg-background/40 p-3">
+      <div className="rounded-lg border border-panel-line bg-panel px-[18px] py-4">
         <TimeChart
           duration={ctx.total}
           zoomable
@@ -430,9 +442,9 @@ const Drill = ({
           </div>
         )}
       </div>
-      <div className="relative overflow-x-auto" ref={box}>
+      <div className={`relative ${TABLE_BOX}`} ref={box}>
         <table className="w-full text-sm">
-          <thead className="text-xs text-foreground border-b border-card bg-card/30">
+          <thead className="text-foreground">
             <tr>
               {sh('Name', 'name', true)}
               {sh('Amount', 'total', true)}
@@ -452,8 +464,8 @@ const Drill = ({
             {lines.map(({ a, child, group }) => (
               <tr
                 key={a.key}
-                className={`border-b border-card/40 hover:bg-card/30 ${
-                  child ? 'bg-card/10' : ''
+                className={`border-t border-panel-line hover:bg-panel-raised ${
+                  child ? 'bg-panel-deep' : ''
                 }`}
                 onMouseEnter={(e) => {
                   if (meter === 'prevented' && !a.split) return;
@@ -725,8 +737,8 @@ const ByAbilityTable = ({
   const line = (a: AbilityRow, child: boolean, g: (typeof groups)[number]) => (
     <tr
       key={a.key}
-      className={`border-b border-card/40 hover:bg-card/30 ${
-        child ? 'bg-card/10' : ''
+      className={`border-t border-panel-line hover:bg-panel-raised ${
+        child ? 'bg-panel-deep' : ''
       }`}
     >
       <td className={`${td} text-foreground-lighter`}>
@@ -800,9 +812,9 @@ const ByAbilityTable = ({
     </tr>
   );
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_BOX}>
       <table className="w-full text-sm">
-        <thead className="text-xs text-foreground border-b border-card bg-card/30">
+        <thead className="text-foreground">
           <tr>
             {sh('Ability', 'name', true)}
             {sh('Amount', 'total', true)}
@@ -841,6 +853,7 @@ const MeterView = ({
   setWho,
   extras,
   onEnemy,
+  chartInfo,
 }: {
   ctx: Ctx;
   meter: MeterKind;
@@ -849,6 +862,8 @@ const MeterView = ({
   who: string | null;
   setWho: (key: string | null) => void;
   extras: ChartExtras;
+  /** Muted, next to the chart's title: "Pull 1 · 4:52". */
+  chartInfo?: string;
   /** Click an enemy in "Done to enemy": filter to it. */
   onEnemy?: (npcId: number, name: string) => void;
 }) => {
@@ -939,7 +954,22 @@ const MeterView = ({
   }
 
   const chart = (
-    <div className="rounded-md border border-card bg-background/40 p-3">
+    <div className="rounded-lg border border-panel-line bg-panel px-[18px] py-4">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[17px] font-bold text-foreground-lighter">
+          {TITLE[meter]}
+          {chartInfo && (
+            <span className="font-sans text-xs font-normal text-foreground">
+              {chartInfo}
+            </span>
+          )}
+        </h3>
+        <span className="text-xs text-foreground">
+          {extras.onPick
+            ? 'Drag to zoom · click a moment to watch it'
+            : 'Drag to zoom'}
+        </span>
+      </div>
       <TimeChart
         duration={ctx.total}
         zoomable
@@ -952,14 +982,14 @@ const MeterView = ({
         bands={extras.bands}
         boundaries={extras.boundaries}
       />
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-foreground mt-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground mt-2">
         <button
           type="button"
           onClick={() => setShowTotal(!showTotal)}
           aria-pressed={showTotal}
           title={showTotal ? 'Hide the raid total' : 'Show the raid total'}
           className={`inline-flex items-center gap-x-1.5 rounded px-1 ${
-            showTotal ? 'bg-card text-foreground-lighter' : 'opacity-70'
+            showTotal ? 'bg-panel-line text-foreground-lighter' : 'opacity-70'
           }`}
         >
           <LineSwatch color="hsl(var(--brand))" />
@@ -989,7 +1019,7 @@ const MeterView = ({
             aria-pressed={picked.includes(r.key)}
             className={`inline-flex items-center gap-x-1.5 rounded px-1 hover:text-foreground-lighter ${
               picked.includes(r.key)
-                ? 'bg-card text-foreground-lighter'
+                ? 'bg-panel-line text-foreground-lighter'
                 : 'opacity-70'
             }`}
           >
@@ -1041,9 +1071,9 @@ const MeterView = ({
     return (
       <div className="flex flex-col gap-y-3">
         {chart}
-        <div className="overflow-x-auto">
+        <div className={TABLE_BOX}>
           <table className="w-full text-sm">
-            <thead className="text-xs text-foreground border-b border-card bg-card/30">
+            <thead className="text-foreground">
               <tr>
                 {sh(meter === 'taken' ? 'Done by' : 'Done to', 'name', true)}
                 {sh('Amount', 'total', true)}
@@ -1060,7 +1090,7 @@ const MeterView = ({
               {targets.map((a) => (
                 <tr
                   key={a.key}
-                  className="border-b border-card/40 hover:bg-card/30"
+                  className="h-10 border-t border-panel-line hover:bg-panel-raised"
                 >
                   <td className={td}>
                     {clickable(a) ? (
@@ -1151,9 +1181,9 @@ const MeterView = ({
   return (
     <div className="flex flex-col gap-y-3">
       {chart}
-      <div className="overflow-x-auto">
+      <div className={TABLE_BOX}>
         <table className="w-full text-sm">
-          <thead className="text-xs text-foreground border-b border-card bg-card/30">
+          <thead className="text-foreground">
             <tr>
               {sh('Name', 'name', true)}
               {sh('Amount', 'total', true)}
@@ -1179,7 +1209,7 @@ const MeterView = ({
             }).map((r) => (
               <tr
                 key={r.key}
-                className="border-b border-card/40 hover:bg-card/30"
+                className="h-10 border-t border-panel-line hover:bg-panel-raised"
               >
                 <td className={td}>
                   <button
@@ -1191,6 +1221,11 @@ const MeterView = ({
                   >
                     {r.name}
                   </button>
+                  {r.player && specLabel(r.specId) && (
+                    <span className="ml-2 text-[11px] font-normal text-foreground">
+                      {specLabel(r.specId)}
+                    </span>
+                  )}
                 </td>
                 <td className={td}>
                   <AmountBar

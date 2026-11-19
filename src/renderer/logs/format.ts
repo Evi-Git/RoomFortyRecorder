@@ -1,3 +1,4 @@
+import { specializationById } from 'main/constants';
 import { getSpecClass, getWoWClassColor } from '../rendererutils';
 
 /** [RoomFortyRecorder] Logs page: number and time formatting, colours. */
@@ -18,6 +19,18 @@ export const mmss = (s: number) => {
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(
     Math.floor(sec % 60),
   ).padStart(2, '0')}`;
+};
+
+/** Clock time without the leading zero: 0:00, 4:52, 12:05 (chart axes). */
+export const clock = (s: number) => {
+  const sec = Math.max(0, Math.round(s));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+};
+
+/** "Fire Mage" for a spec id; empty when unknown (enemies, pets). */
+export const specLabel = (specId: number) => {
+  const spec = specializationById[specId];
+  return spec ? `${spec.name} ${spec.label}` : '';
 };
 
 export const mmssms = (s: number) => {
