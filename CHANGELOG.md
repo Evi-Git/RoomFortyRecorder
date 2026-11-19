@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.139] - Unreleased
+### Changed
+- **Quitting or updating mid-pull now asks first.** If a pull or Mythic+ run is being recorded, a recording is still being saved or uploaded, or you're live, Quit and "Install update" show what's running and let you **Quit when it's done** (the default), **Quit now** or **Cancel**. While it waits, the tray icon says so, and clicking Quit again lets you quit now, keep waiting or not quit after all. The few seconds after a kill, while the recording is finished, count too.
+- **Updates no longer download in the background during a pull or stream.** The app waits until you're idle; "Check for updates" still downloads straight away when you ask.
+
 ## [1.9.138] - Unreleased
 ### Changed
 - **The Dashboard has the new look** (design A, "Brass & Walnut everywhere"). The page title is a serif heading with Pulls, Night summary, Progression, Reclears, Compare and Journal as tabs; the night picker, refresh and the officer buttons sit beside them.
