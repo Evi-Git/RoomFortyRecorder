@@ -20,7 +20,20 @@ jest.mock('../../main/util', () => {
         birthTime: st.birthtime.getTime(),
       };
     },
-    getSortedFiles: async () => [],
+    getSortedFiles: async (dir: string) =>
+      nodeFs
+        .readdirSync(dir)
+        .filter((f: string) => f.startsWith('WoWCombatLog'))
+        .map((f: string) => {
+          const name = nodePath.join(dir, f);
+          const st = nodeFs.statSync(name);
+          return {
+            name,
+            size: st.size,
+            mtime: st.mtime.getTime(),
+            birthTime: st.birthtime.getTime(),
+          };
+        }),
   };
 });
 
@@ -43,6 +56,7 @@ type Internals = {
   process: (file: string) => Promise<void>;
   queue: { add: (task: () => Promise<void>) => void };
   tails: Record<string, Buffer>;
+  getLogDirectoryState: () => Promise<void>;
 };
 
 const internals = () => watcher as unknown as Internals;
@@ -262,5 +276,85 @@ describe('CombatLogWatcher chunk boundaries', () => {
     internals().queue.add(() => internals().process(FILE));
     await new Promise((r) => setTimeout(r, 200));
     expect(seen).toEqual(['l1', 'l2', 'l3', 'l4']);
+  });
+
+  it('handles lines once when a line throws, and keeps the tail consistent', async () => {
+    const bad = '1/1 00:00:01.500  C,3),(3,4)],0';
+    append(
+      `1/1 00:00:01.000  FOO,1\n${bad}\n1/1 00:00:02.000  FOO,2\n1/1 00:00:03`,
+    );
+    await feed();
+    append('.000  FOO,3\n1/1 00:00:04.000  FOO,4\n');
+    await feed();
+    expect(seen).toEqual([
+      '1/1 00:00:01.000  FOO,1',
+      bad,
+      '1/1 00:00:02.000  FOO,2',
+      '1/1 00:00:03.000  FOO,3',
+      '1/1 00:00:04.000  FOO,4',
+    ]);
+  });
+
+  it('survives a throwing listener without duplicating lines', async () => {
+    watcher.on('FOO', (l: { arg: (n: number) => unknown }) => {
+      if (String(l.arg(1)) === '2') throw new Error('listener boom');
+    });
+    append(
+      '1/1 00:00:01.000  FOO,1\n1/1 00:00:02.000  FOO,2\n1/1 00:00:03.000  FOO,3\n1/1 00:00:04',
+    );
+    await feed();
+    append('.000  FOO,4\n');
+    await feed();
+    expect(seen).toEqual([
+      '1/1 00:00:01.000  FOO,1',
+      '1/1 00:00:02.000  FOO,2',
+      '1/1 00:00:03.000  FOO,3',
+      '1/1 00:00:04.000  FOO,4',
+    ]);
+  });
+
+  describe('file seeded at startup', () => {
+    const seed = async (initial: string) => {
+      append(initial);
+      await internals().getLogDirectoryState();
+    };
+
+    it('drops the fragment when the saved size is mid-line', async () => {
+      await seed('1/1 00:00:01.000  FOO,1\n1/1 00:00:02.000  FO');
+      append('O,2\n1/1 00:00:03.000  FOO,3\n');
+      await feed();
+      expect(seen).toEqual(['1/1 00:00:03.000  FOO,3']);
+    });
+
+    it('keeps discarding until a newline arrives', async () => {
+      await seed('1/1 00:00:01.000  FOO,1\n1/1 00:00:02');
+      append('.000  FO');
+      await feed();
+      expect(seen).toEqual([]);
+      append('O,2\n1/1 00:00:03.000  FOO,3\n');
+      await feed();
+      expect(seen).toEqual(['1/1 00:00:03.000  FOO,3']);
+    });
+
+    it('keeps the first line when the saved size is on a line boundary', async () => {
+      await seed('1/1 00:00:01.000  FOO,1\n');
+      append('1/1 00:00:02.000  FOO,2\n');
+      await feed();
+      expect(seen).toEqual(['1/1 00:00:02.000  FOO,2']);
+    });
+  });
+
+  it('resets a file on a rename event through the queue', async () => {
+    await watcher.watch();
+    try {
+      append('a line\nb line\n');
+      const deadline = Date.now() + 3000;
+      while (seen.length < 2 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(seen).toEqual(['a line', 'b line']);
+    } finally {
+      await watcher.unwatch();
+    }
   });
 });
