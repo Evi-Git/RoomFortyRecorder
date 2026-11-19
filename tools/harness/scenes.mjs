@@ -34,6 +34,62 @@ const tab = async (t, name) => {
 
 const small = { width: 1100, height: 700 };
 
+// A made-up night for the Dashboard: a kill, two wipes and a reset, with
+// deaths, a boss health curve, prep and meters (the test logs have none).
+const dashFixture = () => {
+  const roster = [
+    { guid: 'P-1', name: 'Smoggw', specId: 73, role: 'tank' },
+    { guid: 'P-2', name: 'Azraelus', specId: 65, role: 'healer' },
+    { guid: 'P-3', name: 'Evipaladin', specId: 70, role: 'dps' },
+    { guid: 'P-4', name: 'Milkbagman', specId: 62, role: 'dps' },
+  ];
+  const night = '2026-10-21';
+  const mk = (i, result, bossPercent, duration, deaths, startedAt) => ({
+    id: `fx${i}`, encounterId: 3182, encounterName: "Kith'ix", difficultyId: 16, night,
+    pullNumber: i, totalPullNumber: i, createdAt: startedAt, startedAt, uploadedBy: 'Shadeaux',
+    status: 'done', result, duration, bossPercent, deaths, wipeText: null,
+    plan: i === 3 ? { ontime: 3, late: 1, early: 0, missed: 2, dead: 0 } : null,
+    avoidableHits: i === 3 ? 6 : 0, error: null,
+  });
+  const base = Date.parse('2026-10-21T23:00:00');
+  const pulls = [
+    mk(4, 'kill', 0, 292, 2, base + 3e6),
+    mk(3, 'wipe', 38, 159, 5, base + 2e6),
+    mk(2, 'wipe', 71, 6, 0, base + 1.5e6),
+    mk(1, 'wipe', 55, 201, 3, base + 1e6),
+  ];
+  const hit = (t, spellName, amount, overkill) => ({ t, spellId: 1, spellName, source: 'Kith\'ix', amount, overkill });
+  const report = {
+    id: 'fx4', encounterId: 3182, encounterName: "Kith'ix", difficultyId: 16, difficulty: 'Mythic',
+    result: 'kill', duration: 292, bossPercent: 0, pullNumber: 4, totalPullNumber: 4,
+    startedAt: base + 3e6, uploadedBy: 'Shadeaux', roster,
+    bossHpCurve: [[0, 100], [40, 90], [80, 74], [120, 60], [160, 41], [200, 28], [240, 12], [292, 0]],
+    deaths: [
+      { t: 119, name: 'Smoggw', role: 'tank', killingBlow: hit(119, 'Void Slam', 612000, 88000), lastHits: [hit(118, 'Void Slam', 612000, 88000)],
+        available: [{ ability: 'Shield Wall', kind: 'personal', status: 'ready', readyIn: 0, lastUsed: null, usedCount: 0 }, { ability: 'Rallying Cry', kind: 'raid', status: 'ready', readyIn: 0, lastUsed: null, usedCount: 0 }] },
+      { t: 203, name: 'Milkbagman', role: 'dps', killingBlow: hit(203, 'Dark Eruption', 240000, 0), lastHits: [], available: [] },
+    ],
+    defensives: { players: [], raid: [], warlockInRaid: false },
+    wipe: null,
+    plan: { parsed: 0, phaseSkipped: 0, unmatched: 0, items: [], summary: { ontime: 0, late: 0, early: 0, missed: 0, dead: 0 } },
+    avoidable: [
+      { name: 'Evipaladin', hits: 3, damage: 90000, bySpell: {}, spells: [{ spellId: 11, spellName: 'Void Pool', hits: 3, damage: 90000 }] },
+      { name: 'Milkbagman', hits: 2, damage: 40000, bySpell: {}, spells: [{ spellId: 11, spellName: 'Void Pool', hits: 1, damage: 20000 }, { spellId: 12, spellName: 'Cleave', hits: 1, damage: 20000 }] },
+    ],
+    prep: {
+      players: roster.map((p, i) => ({ name: p.name, specId: p.specId, food: i === 3 ? null : 'Feast', flask: 'Flask', augment: null, vantus: null, weaponOil: null, prepot: true, potsUsed: 1, potsPossible: 1, enchants: [], gems: [], enchantsMissing: 0, gemsMissing: 0 })),
+      raidBuffs: [],
+    },
+  };
+  const row = (name, specId, total) => ({ name, specId, total, abilities: [] });
+  return {
+    'pullDesk:list': { ok: true, data: { pulls } },
+    'pullDesk:report': { ok: true, data: report },
+    'pullDesk:meters': { ok: true, data: { v: 2, bucketSeconds: 5, duration: 292, damage: roster.map((p, i) => row(p.name, p.specId, 90e6 - i * 12e6)), healing: [], taken: [], mitigation: [] } },
+  };
+};
+
+
 export const scenes = [
   // ---- Shell ---------------------------------------------------------------
   {
@@ -160,6 +216,38 @@ export const scenes = [
     steps: async (t) => {
       await t.page.getByText('#3', { exact: false }).first().click();
       await t.settle(800);
+    },
+  },
+  {
+    name: 'dash-fixture-report',
+    shows: 'Dashboard > Pulls with a made-up night: wipes, a kill, a reset; deaths, boss health, stat tiles',
+    init: { answers: dashFixture() },
+    steps: async (t) => {
+      await t.nav('Dashboard');
+      await t.text('Smoggw');
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'dash-fixture-small',
+    shows: 'The made-up night at 1100x700',
+    viewport: small,
+    init: { answers: dashFixture() },
+    steps: async (t) => {
+      await t.nav('Dashboard');
+      await t.text('Smoggw');
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'dash-fixture-resets',
+    shows: 'Same night with Show resets on; Meters section',
+    init: { answers: dashFixture() },
+    steps: async (t) => {
+      await t.nav('Dashboard');
+      await t.text('Smoggw');
+      await t.page.getByLabel(/Show resets/).check();
+      await t.settle(500);
     },
   },
   {

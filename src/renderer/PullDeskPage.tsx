@@ -1,12 +1,11 @@
 import { dateTime, timeOfDay } from 'renderer/clock';
 import React from 'react';
 import {
+  BarChart3,
   ChevronRight,
-  ClipboardList,
   Play,
   RefreshCw,
   Settings2,
-  Skull,
 } from 'lucide-react';
 import { Dispatch, RefObject, SetStateAction } from 'react';
 import { AppState, Pages, RendererVideo, StorageFilter } from 'main/types';
@@ -16,7 +15,6 @@ import { Input } from './components/Input/Input';
 import { Textarea } from './components/TextArea/textarea';
 import { getCategoryIndex } from './rendererutils';
 import { setConfigValue } from './useSettings';
-import { BRAND } from 'renderer/brand';
 import {
   BossPercentHint,
   ImportFromLogs,
@@ -30,6 +28,22 @@ import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
 import PullMeters, { useRecordingWatch, WatchContext } from './Meters';
 import NightPicker from './logs/NightPicker';
+import { classColor, compact } from './logs/format';
+import { setLogsTarget } from './logs/openTarget';
+import { TabsContext } from './tabs/tabs';
+import { isReset, useShowResets } from './resets';
+import { PageHeader, UnderlineTabs } from './components/PageHeader/PageHeader';
+import BossBar from './components/BossBar/BossBar';
+import { ErrorState, LoadingState } from './components/States/States';
+import BossHealthChart from './dashboard/BossHealthChart';
+import StatTiles from './dashboard/StatTiles';
+import {
+  avoidableStat,
+  consumablesStat,
+  deathsStat,
+  raidDpsStat,
+} from './dashboard/stats';
+import type { MetersData } from './Meters';
 import { CalendarNight, daysToCover, recentNights } from './logs/nightCalendar';
 
 /**
@@ -203,10 +217,14 @@ interface IProps {
 const ipc = window.electron.ipcRenderer;
 const REFRESH_MS = 30000;
 
-const todayKey = () => {
-  const d = new Date();
+// The raid night a moment belongs to: the server counts pulls before 6 AM
+// as the night before (guild-cloud-server/pulldesk.mjs nightOf).
+const NIGHT_CUTOFF_MS = 6 * 60 * 60 * 1000;
+const nightOf = (ms: number) => {
+  const d = new Date(ms - NIGHT_CUTOFF_MS);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+const todayKey = () => nightOf(Date.now());
 
 // Seconds of video to show before a death or an assignment.
 const WATCH_LEAD_SECONDS = 10;
@@ -224,12 +242,6 @@ const mmss = (seconds: number) => {
 };
 
 const lines = (count: number) => `${count} ${count === 1 ? 'line' : 'lines'}`;
-
-const compact = (value: number) => {
-  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `${Math.round(value / 1e3)}k`;
-  return String(value);
-};
 
 // "+3.2s" / "-6s": how far a cast was from its assigned time.
 const signed = (seconds: number) => {
@@ -360,78 +372,16 @@ const loadView = (): View => {
   return 'pulls';
 };
 
-const ROLE_STYLE: Record<string, string> = {
-  tank: 'text-sky-300',
-  healer: 'text-green-300',
-  dps: '',
-};
+const SECONDARY_BUTTON =
+  'inline-flex h-9 items-center gap-x-1.5 whitespace-nowrap rounded-lg border border-panel-line bg-panel-line px-3 text-[13px] font-medium text-foreground-lighter transition-colors hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:pointer-events-none disabled:opacity-50';
 
-/** Boss HP over the pull, with a red tick for each death. */
-const HpCurve = ({
-  report,
-  flagTimes = [],
-}: {
-  report: Report;
-  flagTimes?: number[];
-}) => {
-  const width = 600;
-  const height = 70;
-  const duration = Math.max(report.duration, 1);
-  const x = (t: number) => (t / duration) * width;
-  const y = (pct: number) => height - 8 - (pct / 100) * (height - 16);
-  const points = report.bossHpCurve.map(([t, pct]) => `${x(t)},${y(pct)}`);
-
-  if (points.length < 2) return null;
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full h-[70px]"
-      preserveAspectRatio="none"
-      role="img"
-      aria-label="Boss health over the pull"
-    >
-      <line
-        x1={0}
-        x2={width}
-        y1={y(0)}
-        y2={y(0)}
-        stroke="currentColor"
-        strokeOpacity={0.15}
-      />
-      <polyline
-        points={points.join(' ')}
-        fill="none"
-        stroke={BRAND}
-        strokeWidth={2}
-        vectorEffect="non-scaling-stroke"
-      />
-      {flagTimes.map((t) => (
-        <line
-          key={`flag-${t}`}
-          x1={x(t)}
-          x2={x(t)}
-          y1={0}
-          y2={8}
-          stroke={BRAND}
-          strokeWidth={2}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-      {report.deaths.map((death) => (
-        <line
-          key={`${death.name}-${death.t}`}
-          x1={x(death.t)}
-          x2={x(death.t)}
-          y1={height - 6}
-          y2={height}
-          stroke="#f87171"
-          strokeWidth={2}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-    </svg>
-  );
+/** A raider's class colour, from the report's roster (spec id by name). */
+const nameColor = (
+  roster: { name: string; specId: number }[] | undefined,
+  name: string,
+) => {
+  const spec = roster?.find((player) => player.name === name)?.specId;
+  return typeof spec === 'number' ? classColor(spec) : undefined;
 };
 
 const PullDeskPage = (props: IProps) => {
@@ -443,6 +393,18 @@ const PullDeskPage = (props: IProps) => {
     persistentProgressRef,
   );
 
+  const [showResets, setShowResets] = useShowResets();
+  // The list effect reads the switch without re-running when it changes.
+  const showResetsRef = React.useRef(showResets);
+  React.useEffect(() => {
+    showResetsRef.current = showResets;
+  }, [showResets]);
+  // Where the list opens: the newest pull, skipping resets while they're hidden.
+  const firstPull = (list: PullSummary[]) =>
+    (showResetsRef.current ? undefined : list.find((p) => !isReset(p))) ??
+    list[0];
+  // Opens the Logs page in a new tab (with tabs on), for "Open in Logs".
+  const tabsApi = React.useContext(TabsContext);
   const [pulls, setPulls] = React.useState<PullSummary[]>([]);
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -467,6 +429,12 @@ const PullDeskPage = (props: IProps) => {
   });
   const [report, setReport] = React.useState<Report | null>(null);
   const [reportError, setReportError] = React.useState('');
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+  // The pull's meters, only for the Raid DPS tile (Meters loads its own).
+  const [dpsMeters, setDpsMeters] = React.useState<{
+    id: string;
+    data: MetersData | null;
+  } | null>(null);
   const [tab, setTab] = React.useState<'report' | 'boss'>('report');
   const [canEdit, setCanEdit] = React.useState(false);
   const [expandedDeath, setExpandedDeath] = React.useState<number | null>(null);
@@ -561,7 +529,7 @@ const PullDeskPage = (props: IProps) => {
             (current === openedRef.current ||
               list.some((p) => p.id === current))
               ? current
-              : (list[0]?.id ?? null),
+              : (firstPull(list)?.id ?? null),
           );
         },
       );
@@ -605,12 +573,15 @@ const PullDeskPage = (props: IProps) => {
       if (cancelled) return;
       if (!response.ok) {
         setReportError(response.error);
+        setPendingId(null);
         setReport(null);
       } else if (response.data.pending) {
-        setReportError('This pull is still being analyzed.');
+        setReportError('');
+        setPendingId(selectedId);
         setReport(null);
       } else {
         setReportError('');
+        setPendingId(null);
         setReport(response.data);
       }
     });
@@ -619,6 +590,21 @@ const PullDeskPage = (props: IProps) => {
       cancelled = true;
     };
   }, [selectedId, summaryKey, reportTick]);
+
+  React.useEffect(() => {
+    if (!selectedId) return undefined;
+    let cancelled = false;
+    call<MetersData>({ action: 'meters', id: selectedId }).then((response) => {
+      if (cancelled) return;
+      setDpsMeters({
+        id: selectedId,
+        data: response.ok && response.data.v === 2 ? response.data : null,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, reportTick]);
 
   /** This raider's recording of the selected pull, if we have it. */
   const findVideo = (name?: string) => {
@@ -707,12 +693,14 @@ const PullDeskPage = (props: IProps) => {
     }));
   };
 
+  const WATCH_LINK =
+    'inline-flex items-center gap-x-1 whitespace-nowrap rounded-sm px-1 text-[13px] font-medium text-brand enabled:hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-default disabled:opacity-40';
+
   const renderWatch = (name: string, seconds: number) => {
     const video = findVideo(name);
     return (
-      <Button
-        size="xs"
-        variant="ghost"
+      <button
+        type="button"
         disabled={!video}
         title={
           video
@@ -720,40 +708,41 @@ const PullDeskPage = (props: IProps) => {
             : `No recording from ${name} for this pull`
         }
         onClick={() => video && watch(video, seconds)}
-        className="gap-x-1 h-6 px-2"
+        className={WATCH_LINK}
       >
         <Play size={12} /> Watch
-      </Button>
+      </button>
     );
   };
 
   const renderFlagWatch = (streamer: string, seconds: number) => {
     const video = flagVideo(streamer);
     return (
-      <Button
-        size="xs"
-        variant="ghost"
+      <button
+        type="button"
         disabled={!video}
         title={
           video
-            ? `Open ${video.player?._name ?? 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
+            ? `Open ${video.player?._name ? `${video.player._name}'s` : 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
             : 'No recording of this pull'
         }
         onClick={() => video && watch(video, seconds)}
-        className="gap-x-1 h-6 px-2"
+        className={WATCH_LINK}
       >
         <Play size={12} /> Watch
-      </Button>
+      </button>
     );
   };
 
   // ---- Pull list ------------------------------------------------------------
 
   const renderPullList = () => {
-    if (loading) return <p className="p-4 text-foreground/60">Loading…</p>;
+    if (loading) return <LoadingState label="Loading pulls…" />;
     if (!pulls.length) {
+      // A failed load is shown above the page, not as "no pulls".
+      if (error) return null;
       return (
-        <p className="p-4 text-sm text-foreground/60">
+        <p data-state="empty" className="p-1 text-sm text-foreground">
           No pulls yet. Reports appear here a few seconds after each tracked
           raid pull ends.
         </p>
@@ -771,10 +760,25 @@ const PullDeskPage = (props: IProps) => {
     });
     const mixed = present.length > 1;
     const active = mixed && present.includes(difficulty) ? difficulty : 'All';
-    const shown =
+    const byDifficulty =
       active === 'All'
         ? pulls
         : pulls.filter((pull) => difficultyOf(pull.difficultyId) === active);
+
+    // Resets (pulls under 10 s) are hidden unless "Show resets" is on. The
+    // open pull always stays; if every pull is a reset they all show.
+    const resets = byDifficulty.filter((pull) => isReset(pull));
+    const onlyResets = resets.length === byDifficulty.length;
+    const hiddenResets =
+      showResets || onlyResets
+        ? 0
+        : resets.filter((pull) => pull.id !== selectedId).length;
+    const shown =
+      showResets || onlyResets
+        ? byDifficulty
+        : byDifficulty.filter(
+            (pull) => !isReset(pull) || pull.id === selectedId,
+          );
 
     const pickDifficulty = (next: string) => {
       setDifficulty(next);
@@ -789,7 +793,7 @@ const PullDeskPage = (props: IProps) => {
           ? pulls
           : pulls.filter((pull) => difficultyOf(pull.difficultyId) === next);
       if (visible.length && !visible.some((pull) => pull.id === selectedId)) {
-        setSelectedId(visible[0].id);
+        setSelectedId(firstPull(visible)?.id ?? visible[0].id);
         setExpandedDeath(null);
         setOpenGroups([]);
         setReportError('');
@@ -801,11 +805,22 @@ const PullDeskPage = (props: IProps) => {
       if (!nights.includes(pull.night)) nights.push(pull.night);
     });
 
+    // Before the nights call answers (or if it fails) there's no night to
+    // name, so the header is just the count.
+    const title =
+      shownNights.length === 1
+        ? shownNights[0] === todayKey()
+          ? 'Tonight'
+          : nightLabel(shownNights[0])
+        : shownNights.length > 1
+          ? `${shownNights.length} nights`
+          : '';
+
     const filter = mixed && (
       <div
         role="group"
         aria-label="Difficulty"
-        className="sticky top-0 z-10 flex flex-wrap gap-1 px-2 py-2 bg-background-higher border-b border-card"
+        className="mb-2 flex flex-wrap gap-1"
       >
         {['All', ...present].map((d) => {
           const on = d === active;
@@ -822,8 +837,8 @@ const PullDeskPage = (props: IProps) => {
               onClick={() => pickDifficulty(d)}
               className={`h-7 px-2.5 rounded-full text-xs font-semibold border transition-colors ${
                 on
-                  ? 'bg-card border-brand text-foreground-lighter'
-                  : 'border-card text-foreground hover:bg-card/60'
+                  ? 'bg-panel-line border-brand text-foreground-lighter'
+                  : 'border-panel-line text-foreground hover:bg-panel'
               }`}
             >
               {d} <span className="font-normal opacity-60">{count}</span>
@@ -835,21 +850,55 @@ const PullDeskPage = (props: IProps) => {
 
     return (
       <>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <h2 className="text-[13px] font-medium text-foreground">
+            {title ? `${title} · ` : ''}
+            {shown.length} {shown.length === 1 ? 'pull' : 'pulls'}
+          </h2>
+          <label className="flex cursor-pointer items-center gap-x-1.5 text-[13px] text-foreground">
+            <input
+              type="checkbox"
+              checked={showResets}
+              onChange={(event) => setShowResets(event.target.checked)}
+              className="accent-[hsl(var(--brand))]"
+            />
+            Show resets{hiddenResets ? ` (${hiddenResets})` : ''}
+          </label>
+        </div>
         {filter}
+        {onlyResets && !showResets && (
+          <p className="mb-2 text-xs text-foreground">
+            Every pull here was a reset (under 10 s), so they are all shown.
+          </p>
+        )}
         {nights.map((night) => (
-          <div key={night} className="mb-2">
-            <div className="px-3 pt-2 pb-1 text-xs font-bold uppercase text-foreground/50">
-              {nightLabel(night)}
-            </div>
+          <div key={night} className="mb-3 flex flex-col gap-y-1">
+            {nights.length > 1 && (
+              <div className="px-1 pt-1 text-[13px] font-medium text-foreground">
+                {nightLabel(night)}
+              </div>
+            )}
             {shown
               .filter((pull) => pull.night === night)
               .map((pull) => {
                 const selected = pull.id === selectedId;
                 const kill = pull.result === 'kill';
+                const failed = !kill && pull.status === 'failed';
+                const result = kill
+                  ? 'Kill'
+                  : failed
+                    ? 'Failed'
+                    : `${pull.bossPercent ?? '?'}%`;
+                const deathText =
+                  pull.deaths === null
+                    ? '–'
+                    : `${pull.deaths} ${pull.deaths === 1 ? 'death' : 'deaths'}`;
                 return (
                   <button
                     type="button"
                     key={pull.id}
+                    aria-current={selected ? 'true' : undefined}
+                    title={`Pull ${pull.totalPullNumber} overall`}
                     onClick={() => {
                       setSelectedId(pull.id);
                       setExpandedDeath(null);
@@ -857,51 +906,64 @@ const PullDeskPage = (props: IProps) => {
                       setReportError('');
                       setTab('report');
                     }}
-                    className={`w-full text-left px-3 py-2 border-l-2 hover:bg-card/60 ${
-                      selected ? 'bg-card border-brand' : 'border-transparent'
+                    className={`w-full rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                      selected ? 'bg-panel-line' : 'hover:bg-panel'
                     }`}
                   >
-                    <div className="flex items-center gap-x-2 text-sm">
-                      <span className="font-bold">#{pull.pullNumber}</span>
-                      <span className="truncate">{pull.encounterName}</span>
+                    <div className="flex items-center gap-x-2">
+                      <span className="text-[13px] tabular-nums text-foreground">
+                        #{pull.pullNumber}
+                      </span>
+                      <span className="truncate text-sm font-medium">
+                        {pull.encounterName}
+                      </span>
                       {mixed && active === 'All' && (
                         <span
                           title={difficultyOf(pull.difficultyId)}
                           className={`shrink-0 px-1 rounded border text-[10px] leading-4 font-bold ${
                             DIFFICULTY_BADGE[difficultyOf(pull.difficultyId)] ??
-                            'border-card'
+                            'border-panel-line'
                           }`}
                         >
                           {difficultyOf(pull.difficultyId).charAt(0)}
                         </span>
                       )}
                       <span
-                        className={`ml-auto font-semibold ${
-                          kill ? 'text-green-400' : ''
+                        className={`ml-auto shrink-0 text-sm font-semibold tabular-nums ${
+                          kill
+                            ? 'text-green-400'
+                            : failed
+                              ? 'text-red-400'
+                              : 'text-foreground-lighter'
                         }`}
                       >
-                        {kill
-                          ? 'Kill'
-                          : pull.status === 'failed'
-                            ? 'Failed'
-                            : `${pull.bossPercent ?? '?'}%`}
+                        {result}
                       </span>
                     </div>
-                    <div className="flex gap-x-2 text-xs text-foreground/50">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground [&>span]:whitespace-nowrap">
                       {pull.startedAt ? (
-                        <span>{timeOfDay(pull.startedAt)}</span>
-                      ) : null}
-                      <span>{mmss(pull.duration)}</span>
-                      {pull.deaths !== null && (
-                        <span className="flex items-center gap-x-[2px]">
-                          <Skull size={11} /> {pull.deaths}
+                        <span className="tabular-nums">
+                          {timeOfDay(pull.startedAt)} ·
                         </span>
-                      )}
+                      ) : null}
+                      <span className="tabular-nums">
+                        {mmss(pull.duration)}
+                      </span>
+                      <span>{deathText}</span>
+                      {typeof pull.avoidableHits === 'number' &&
+                        pull.avoidableHits > 0 && (
+                          <span>{pull.avoidableHits} avoidable</span>
+                        )}
                       {pull.plan && pull.plan.missed > 0 && (
                         <span className="text-red-400">
                           {pull.plan.missed} missed
                         </span>
                       )}
+                      <BossBar
+                        bossPercent={pull.bossPercent}
+                        kill={kill}
+                        className="ml-1 min-w-[40px] flex-1"
+                      />
                     </div>
                   </button>
                 );
@@ -1042,7 +1104,9 @@ const PullDeskPage = (props: IProps) => {
                   className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
-                  className={`font-semibold w-40 truncate ${ROLE_STYLE[player.role] || ''}`}
+                  className="font-semibold w-40 truncate"
+                  style={{ color: classColor(player.specId) }}
+                  title={player.role || undefined}
                 >
                   {player.name}
                 </span>
@@ -1116,99 +1180,126 @@ const PullDeskPage = (props: IProps) => {
     );
   };
 
+  // The row opens on a click anywhere; the chevron is the keyboard path
+  // (the row holds the ability's own hover card and a Watch button, so the
+  // row itself is not a button).
+  const renderChevron = (open: boolean, toggle: () => void, label: string) => (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        toggle();
+      }}
+      className="shrink-0 rounded-sm p-0.5 text-foreground hover:text-foreground-lighter focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+    >
+      <ChevronRight
+        size={14}
+        className={`transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+    </button>
+  );
+
   const renderDeathRow = (death: Report['deaths'][number], index: number) => {
     const kb = death.killingBlow;
     const open = expandedDeath === index;
     const ready = (death.available || []).filter((a) => a.status === 'ready');
+    const readyText = ready.map((a) => a.ability).join(', ');
     return (
-      <React.Fragment key={`${death.name}-${death.t}`}>
-        <tr
-          className="border-b border-card hover:bg-card/40 cursor-pointer"
-          onClick={() => setExpandedDeath(open ? null : index)}
-        >
-          <td className="py-1 pr-3 font-mono text-foreground/60 w-14">
-            {mmss(death.t)}
-          </td>
-          <td
-            className={`py-1 pr-3 font-semibold ${ROLE_STYLE[death.role] || ''}`}
+      <div
+        key={`${death.name}-${death.t}`}
+        className="border-b border-panel-line last:border-b-0"
+      >
+        <div className="flex items-center gap-x-3 px-3 hover:bg-panel-raised">
+          <div
+            onClick={() => setExpandedDeath(open ? null : index)}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-x-3 py-2 text-sm"
           >
-            {death.name}
-          </td>
-          <td className="py-1 pr-3">
-            {kb ? (
-              <>
-                <AbilityName
-                  name={kb.spellName}
-                  spellId={kb.spellId}
-                  encounterId={report?.encounterId}
-                  difficultyId={report?.difficultyId}
-                  canEdit={canEdit}
-                />
-                <span className="text-foreground/50">
-                  {sourceText(kb.source)}
-                  {kb.amount > 0 && ` · ${compact(kb.amount)}`}
-                  {kb.overkill > 0 && ` (${compact(kb.overkill)} over)`}
-                </span>
-              </>
-            ) : (
-              <span className="text-foreground/50">Unknown</span>
+            {renderChevron(
+              open,
+              () => setExpandedDeath(open ? null : index),
+              `Details of ${death.name}'s death at ${mmss(death.t)}`,
             )}
-          </td>
-          <td
-            className="py-1 pr-3 text-xs w-28 text-right"
-            title={
-              ready.length
-                ? `Still available: ${ready.map((a) => a.ability).join(', ')}`
-                : undefined
-            }
-          >
-            {death.available &&
-              (ready.length ? (
-                <span className="text-yellow-400">{ready.length} ready</span>
+            <span className="w-11 shrink-0 tabular-nums text-foreground">
+              {mmss(death.t)}
+            </span>
+            <span
+              className="w-32 shrink-0 truncate font-semibold"
+              style={{ color: nameColor(report?.roster, death.name) }}
+              title={death.role || undefined}
+            >
+              {death.name}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {kb ? (
+                <>
+                  <AbilityName
+                    name={kb.spellName}
+                    spellId={kb.spellId}
+                    encounterId={report?.encounterId}
+                    difficultyId={report?.difficultyId}
+                    canEdit={canEdit}
+                  />
+                  <span className="text-foreground">
+                    {sourceText(kb.source)}
+                    {kb.amount > 0 && ` · ${compact(kb.amount)}`}
+                    {kb.overkill > 0 && ` (overkill ${compact(kb.overkill)})`}
+                  </span>
+                </>
               ) : (
-                <span className="text-foreground/40">none ready</span>
-              ))}
-          </td>
-          <td
-            className="py-1 text-right w-20"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {renderWatch(death.name, death.t)}
-          </td>
-        </tr>
+                <span className="text-foreground">Unknown</span>
+              )}
+            </span>
+            {death.available && (
+              <span
+                className="max-w-[40%] shrink truncate text-right text-xs text-foreground"
+                title={
+                  ready.length ? `Still available: ${readyText}` : undefined
+                }
+              >
+                {ready.length
+                  ? `Defensives ready: ${readyText}`
+                  : 'No defensives ready'}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0">{renderWatch(death.name, death.t)}</div>
+        </div>
         {open && (
-          <tr className="bg-card/30">
-            <td />
-            <td colSpan={4} className="py-2 pr-2 text-xs text-foreground/70">
-              <div className="grid grid-cols-2 gap-x-6">
-                <div>
-                  <div className="mb-1 font-semibold text-foreground/80">
-                    Last hits
-                  </div>
-                  {death.lastHits.length === 0
-                    ? 'No damage recorded in the last 10 s.'
-                    : death.lastHits.map((hit) => (
-                        <div key={`${hit.t}-${hit.spellId}`}>
-                          <span className="font-mono">{mmss(hit.t)}</span>{' '}
-                          {hit.spellName}
-                          {sourceText(hit.source)} · {compact(hit.amount)}
-                          {hit.overkill > 0 &&
-                            ` (${compact(hit.overkill)} over)`}
-                        </div>
-                      ))}
+          <div className="bg-panel-deep px-3 py-2 pl-[90px] text-xs text-foreground">
+            <div className="grid grid-cols-2 gap-x-6">
+              <div>
+                <div className="mb-1 font-semibold text-foreground-lighter">
+                  Last hits
                 </div>
-                <div>{renderAvailable(death)}</div>
+                {death.lastHits.length === 0
+                  ? 'No damage recorded in the last 10 s.'
+                  : death.lastHits.map((hit) => (
+                      <div key={`${hit.t}-${hit.spellId}`}>
+                        <span className="tabular-nums">{mmss(hit.t)}</span>{' '}
+                        {hit.spellName}
+                        {sourceText(hit.source)} · {compact(hit.amount)}
+                        {hit.overkill > 0 &&
+                          ` (overkill ${compact(hit.overkill)})`}
+                      </div>
+                    ))}
               </div>
-            </td>
-          </tr>
+              <div>{renderAvailable(death)}</div>
+            </div>
+          </div>
         )}
-      </React.Fragment>
+      </div>
     );
   };
 
   const renderDeaths = (r: Report) => {
     if (!r.deaths.length) {
-      return <p className="text-sm text-foreground/60">No deaths.</p>;
+      return (
+        <div data-state="empty" className="text-sm text-foreground">
+          No deaths.
+        </div>
+      );
     }
 
     // Fold a raid-wide mechanic (4+ deaths to one ability inside 2 s) into
@@ -1250,23 +1341,33 @@ const PullDeskPage = (props: IProps) => {
       const first = r.deaths[segment[0]];
       const key = segment[0];
       const open = openGroups.includes(key);
+      const toggleGroup = () =>
+        setOpenGroups((groups) =>
+          open ? groups.filter((g) => g !== key) : [...groups, key],
+        );
+      const withReady = segment.filter((i) =>
+        (r.deaths[i].available || []).some(
+          (a) => a.status === 'ready' && a.kind !== 'potion',
+        ),
+      ).length;
       rows.push(
-        <tr
+        <div
           key={`group-${key}`}
-          className="border-b border-card hover:bg-card/40 cursor-pointer"
-          onClick={() =>
-            setOpenGroups((groups) =>
-              open ? groups.filter((g) => g !== key) : [...groups, key],
-            )
-          }
+          onClick={toggleGroup}
+          className="flex cursor-pointer items-center gap-x-3 border-b border-panel-line px-3 py-2 text-sm hover:bg-panel-raised"
         >
-          <td className="py-1 pr-3 font-mono text-foreground/60 w-14">
+          {renderChevron(
+            open,
+            toggleGroup,
+            `${segment.length} deaths at ${mmss(first.t)}`,
+          )}
+          <span className="w-11 shrink-0 tabular-nums text-foreground">
             {mmss(first.t)}
-          </td>
-          <td className="py-1 pr-3 font-semibold text-red-400">
+          </span>
+          <span className="w-32 shrink-0 truncate font-semibold text-red-400">
             {segment.length} raiders
-          </td>
-          <td className="py-1 pr-3">
+          </span>
+          <span className="min-w-0 flex-1 truncate">
             {first.killingBlow && (
               <AbilityName
                 name={first.killingBlow.spellName}
@@ -1276,26 +1377,19 @@ const PullDeskPage = (props: IProps) => {
                 canEdit={canEdit}
               />
             )}
-            <span className="text-foreground/50">
+            <span className="text-foreground">
               {sourceText(first.killingBlow?.source)}
             </span>
-          </td>
-          <td className="py-1 pr-3 text-xs w-28 text-right text-foreground/50">
-            {(() => {
-              const withReady = segment.filter((i) =>
-                (r.deaths[i].available || []).some(
-                  (a) => a.status === 'ready' && a.kind !== 'potion',
-                ),
-              ).length;
-              return r.deaths[segment[0]].available && withReady
-                ? `${withReady} had a defensive ready`
-                : '';
-            })()}
-          </td>
-          <td className="py-1 pr-2 text-right text-xs text-foreground/50 w-20">
+          </span>
+          <span className="max-w-[40%] shrink truncate text-right text-xs text-foreground">
+            {first.available && withReady
+              ? `${withReady} had a defensive ready`
+              : ''}
+          </span>
+          <span className="w-12 shrink-0 text-right text-xs font-medium text-brand">
             {open ? 'Hide' : 'Show'}
-          </td>
-        </tr>,
+          </span>
+        </div>,
       );
       if (open) {
         segment.forEach((index) =>
@@ -1305,9 +1399,9 @@ const PullDeskPage = (props: IProps) => {
     });
 
     return (
-      <table className="w-full text-sm">
-        <tbody>{rows}</tbody>
-      </table>
+      <div className="overflow-hidden rounded-lg border border-panel-line bg-panel">
+        {rows}
+      </div>
     );
   };
 
@@ -1409,7 +1503,9 @@ const PullDeskPage = (props: IProps) => {
                   className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
-                  className={`font-semibold w-40 truncate ${ROLE_STYLE[roleOf(r, player.name)] || ''}`}
+                  className="font-semibold w-40 truncate"
+                  style={{ color: nameColor(r.roster, player.name) }}
+                  title={roleOf(r, player.name) || undefined}
                 >
                   {player.name}
                 </span>
@@ -1602,7 +1698,9 @@ const PullDeskPage = (props: IProps) => {
                   className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
-                  className={`font-semibold w-40 truncate ${ROLE_STYLE[roleOf(r, row.name)] || ''}`}
+                  className="font-semibold w-40 truncate"
+                  style={{ color: nameColor(r.roster, row.name) }}
+                  title={roleOf(r, row.name) || undefined}
                 >
                   {row.name}
                 </span>
@@ -1661,134 +1759,220 @@ const PullDeskPage = (props: IProps) => {
     }
   };
 
-  const sectionTab = (
-    id: Section,
-    label: string,
-    badge: string,
-    alert = false,
-  ) => (
-    <button
-      type="button"
-      onClick={() => pickSection(id)}
-      className={`-mb-px px-3 py-1.5 border-b-2 font-display text-base font-bold transition-colors ${
-        section === id
-          ? 'border-brand text-foreground-lighter'
-          : 'border-transparent text-foreground/60 hover:text-foreground-lighter'
-      }`}
-    >
+  // "Open in Logs": the Logs page opens (in a new tab) on this pull.
+  const openInLogs = (r: Report) => {
+    const night =
+      selectedSummary?.night ??
+      (r.startedAt ? nightOf(r.startedAt) : todayKey());
+    setLogsTarget({ night, pullId: r.id });
+    if (tabsApi) {
+      tabsApi.openTab({ page: Pages.Logs });
+    } else {
+      setAppState((prev) => ({ ...prev, page: Pages.Logs }));
+    }
+  };
+
+  const sectionLabel = (label: string, badge: string, alert = false) => (
+    <>
       {label}
       {badge && (
         <span
-          className={`ml-1.5 font-sans text-xs font-normal ${alert ? 'text-red-400' : 'text-foreground/50'}`}
+          className={`text-xs font-normal ${alert ? 'text-red-400' : 'text-foreground/70'}`}
         >
           {badge}
         </span>
       )}
-    </button>
+    </>
   );
 
   const renderReport = () => {
-    if (reportError) return <p className="text-red-400">{reportError}</p>;
-    // While a newly picked pull loads, don't show the previous one.
-    if (!report || report.id !== selectedId) {
+    if (reportError) {
       return (
-        <p className="text-foreground/60">
-          {pulls.length ? 'Pick a pull.' : ''}
-        </p>
+        <ErrorState
+          what="Couldn't load this report"
+          error={reportError}
+          onRetry={() => setReportTick((tick) => tick + 1)}
+        />
       );
+    }
+    // While a newly picked pull loads, don't show the previous one.
+    if (pendingId === selectedId && (!report || report.id !== selectedId)) {
+      return <LoadingState label="Still analyzing this pull…" />;
+    }
+    if (!report || report.id !== selectedId) {
+      return pulls.length ? <LoadingState label="Loading the report…" /> : null;
     }
 
     const r = report;
     const kill = r.result === 'kill';
+    const flagsHere = pullFlags(r);
+    const wholeRaidVideo = findVideo();
+    const meters = dpsMeters && dpsMeters.id === r.id ? dpsMeters.data : null;
+    const consumables = consumablesStat(r.prep);
 
     return (
-      <div className="flex flex-col gap-y-5">
+      <div className="flex flex-col gap-y-4">
         <div>
-          <div className="flex items-baseline gap-x-3 flex-wrap">
-            <h2 className="font-display text-xl font-bold">
-              Pull {r.pullNumber} · {r.encounterName} ({r.difficulty})
-            </h2>
-            <span
-              className={`font-semibold ${kill ? 'text-green-400' : 'text-brand-soft'}`}
-            >
-              {kill ? 'Kill' : `Wipe at ${r.bossPercent ?? '?'}%`} ·{' '}
-              {mmss(r.duration)}
-            </span>
-            {r.startedAt ? (
-              <span className="text-sm text-foreground">
-                {dateTime(r.startedAt)}
-              </span>
-            ) : null}
-            <span className="text-xs text-foreground/50">
-              Pull {r.totalPullNumber} overall · log from{' '}
-              {r.uploadedBy || 'unknown'}
-            </span>
-            <Button
-              size="xs"
-              variant="ghost"
-              className="ml-auto h-6"
-              onClick={reanalyze}
-              title="Rebuild this report with the current note and avoidable list"
-            >
-              <RefreshCw size={12} className="mr-1" /> Re-run
-            </Button>
-          </div>
-          {r.wipe?.text && <p className="mt-1 text-sm">{r.wipe.text}</p>}
-          <div className="mt-2 text-foreground/80">
-            <HpCurve report={r} flagTimes={pullFlags(r).map((f) => f.t)} />
-          </div>
-          {pullFlags(r).length > 0 && (
-            <div className="mt-2 flex flex-col gap-y-1">
-              {pullFlags(r).map((f) => {
-                return (
-                  <div key={f.id} className="flex items-center gap-x-2 text-sm">
-                    <span className="text-brand font-semibold tabular-nums">
-                      ⚑ {mmss(f.t)}
-                    </span>
-                    <span className="text-foreground-lighter">
-                      {f.note || 'Flagged'}
-                    </span>
-                    <span className="text-xs text-foreground/60">
-                      {f.by}
-                      {f.streamer ? ` watching ${f.streamer}` : ''}
-                    </span>
-                    {renderFlagWatch(f.streamer, f.t)}
-                  </div>
-                );
-              })}
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+            <div className="min-w-0">
+              <h2 className="font-display text-[22px] font-bold leading-tight text-foreground-lighter">
+                Pull {r.pullNumber} · {r.encounterName}
+              </h2>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
+                <span
+                  className={`font-semibold tabular-nums ${kill ? 'text-green-400' : 'text-foreground-lighter'}`}
+                >
+                  {kill ? 'Kill' : `${r.bossPercent ?? '?'}%`} ·{' '}
+                  {mmss(r.duration)}
+                </span>
+                <span
+                  className="text-[13px] text-foreground"
+                  title={`Pull ${r.totalPullNumber} overall · ${r.difficulty}`}
+                >
+                  {r.startedAt ? `${dateTime(r.startedAt)} · ` : ''}
+                  {r.difficulty} · log from {r.uploadedBy || 'unknown'}
+                </span>
+              </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={SECONDARY_BUTTON}
+                disabled={!wholeRaidVideo}
+                title={
+                  wholeRaidVideo
+                    ? `Open ${wholeRaidVideo.player?._name ? `${wholeRaidVideo.player._name}'s` : 'a'} recording at the pull start`
+                    : 'No recording of this pull'
+                }
+                onClick={() => wholeRaidVideo && watch(wholeRaidVideo, 0, 0)}
+              >
+                <Play size={14} /> Watch pull
+              </button>
+              <button
+                type="button"
+                className={SECONDARY_BUTTON}
+                onClick={() => openInLogs(r)}
+                title="Open this pull on the Logs page"
+              >
+                <BarChart3 size={14} /> Open in Logs
+              </button>
+              <button
+                type="button"
+                className={SECONDARY_BUTTON}
+                onClick={reanalyze}
+                title="Rebuild this report with the current note and avoidable list"
+              >
+                <RefreshCw size={14} /> Re-run
+              </button>
+            </div>
+          </div>
+          {r.wipe?.text && (
+            <p className="mt-2 text-sm text-foreground-lighter">
+              {r.wipe.text}
+            </p>
           )}
         </div>
 
+        <StatTiles
+          tiles={[
+            {
+              key: 'dps',
+              label: 'Raid DPS',
+              stat:
+                dpsMeters && dpsMeters.id === r.id
+                  ? raidDpsStat(meters, compact)
+                  : 'loading',
+            },
+            { key: 'deaths', label: 'Deaths', stat: deathsStat(r.deaths) },
+            {
+              key: 'avoidable',
+              label: 'Avoidable hits',
+              stat: avoidableStat(r.avoidable, r.spellNames),
+            },
+            { key: 'consumables', label: 'Consumables', stat: consumables },
+          ]}
+        />
+
+        <BossHealthChart
+          curve={r.bossHpCurve ?? []}
+          duration={r.duration}
+          deaths={r.deaths}
+          flags={flagsHere.map((f) => ({ t: f.t, label: f.note || 'Flagged' }))}
+          canWatchDeath={(death) => Boolean(findVideo(death.name))}
+          onWatchDeath={(death) => {
+            const video = findVideo(death.name);
+            if (video) watch(video, death.t);
+          }}
+        />
+
+        {flagsHere.length > 0 && (
+          <div className="flex flex-col gap-y-1">
+            {flagsHere.map((f) => (
+              <div key={f.id} className="flex items-center gap-x-2 text-sm">
+                <span className="font-semibold tabular-nums text-brand">
+                  ⚑ {mmss(f.t)}
+                </span>
+                <span className="text-foreground-lighter">
+                  {f.note || 'Flagged'}
+                </span>
+                <span className="text-xs text-foreground">
+                  {f.by}
+                  {f.streamer ? ` watching ${f.streamer}` : ''}
+                </span>
+                {renderFlagWatch(f.streamer, f.t)}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div>
-          <div className="flex items-end gap-x-1 border-b border-card mb-3">
-            {sectionTab('deaths', 'Deaths', String(r.deaths.length))}
-            {sectionTab('meters', 'Meters', '')}
-            {sectionTab(
-              'defensives',
-              'Defensives',
-              r.defensives
-                ? String(
-                    r.defensives.players.reduce((n, p) => n + p.uses.length, 0),
-                  )
-                : '',
-            )}
-            {sectionTab(
-              'plan',
-              'Cooldown plan',
-              r.plan.parsed
-                ? r.plan.summary.missed
-                  ? `${r.plan.summary.missed} missed`
-                  : 'all good'
-                : '',
-              r.plan.summary.missed > 0,
-            )}
-            {sectionTab(
-              'avoidable',
-              'Avoidable hits',
-              String(r.avoidable.length),
-            )}
-            {sectionTab('consumables', 'Consumables & buffs', '')}
+          <div className="mb-3 border-b border-panel-line">
+            <UnderlineTabs<Section>
+              label="Pull sections"
+              value={section}
+              onChange={pickSection}
+              items={[
+                {
+                  key: 'deaths',
+                  label: sectionLabel('Deaths', String(r.deaths.length)),
+                },
+                { key: 'meters', label: 'Meters' },
+                {
+                  key: 'defensives',
+                  label: sectionLabel(
+                    'Defensives',
+                    r.defensives
+                      ? String(
+                          r.defensives.players.reduce(
+                            (n, p) => n + p.uses.length,
+                            0,
+                          ),
+                        )
+                      : '',
+                  ),
+                },
+                {
+                  key: 'plan',
+                  label: sectionLabel(
+                    'Cooldown plan',
+                    r.plan.parsed
+                      ? r.plan.summary.missed
+                        ? `${r.plan.summary.missed} missed`
+                        : 'all good'
+                      : '',
+                    r.plan.summary.missed > 0,
+                  ),
+                },
+                {
+                  key: 'avoidable',
+                  label: sectionLabel(
+                    'Avoidable hits',
+                    String(r.avoidable.length),
+                  ),
+                },
+                { key: 'consumables', label: 'Consumables & buffs' },
+              ]}
+            />
           </div>
           {section === 'deaths' && renderDeaths(r)}
           {section === 'meters' && (
@@ -1818,84 +2002,87 @@ const PullDeskPage = (props: IProps) => {
   const encounterId =
     selectedSummary?.encounterId ?? currentReport?.encounterId;
 
-  return (
-    <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
-      <div className="flex items-center gap-x-3 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
-        <span className="flex items-center gap-x-2 font-bold mr-2">
-          <ClipboardList size={18} className="text-brand" />
-          <span className="font-display text-lg">Dashboard</span>
-        </span>
-        <div className="flex rounded-md border border-card overflow-hidden mr-2">
-          {(
-            [
-              ['pulls', 'Pulls'],
-              ['night', 'Night summary'],
-              ['progression', 'Progression'],
-              ['reclears', 'Reclears'],
-              ['compare', 'Compare'],
-              ['journal', 'Journal'],
-            ] as [View, string][]
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => changeView(key)}
-              className={`px-3 h-9 text-xs ${
-                view === key
-                  ? 'bg-brand text-background font-semibold'
-                  : 'hover:bg-card'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {view === 'pulls' && (
-          <>
-            <NightPicker
-              nights={nightList}
-              night={shownNights[0] ?? ''}
-              picked={shownNights}
-              onPick={(n) => setPicked([n])}
-              onPickMany={setPicked}
-            />
-            <Button size="sm" variant="ghost" onClick={() => loadPulls()}>
-              <RefreshCw size={14} />
-            </Button>
-          </>
-        )}
-        {error && <span className="text-sm text-red-400">{error}</span>}
-        {officer && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="ml-auto"
-            onClick={() => setChannelsOpen(true)}
-            title="Which raider owns which Discord channel, for sending clips"
+  const viewTabs: { key: View; label: string }[] = [
+    { key: 'pulls', label: 'Pulls' },
+    { key: 'night', label: 'Night summary' },
+    { key: 'progression', label: 'Progression' },
+    { key: 'reclears', label: 'Reclears' },
+    { key: 'compare', label: 'Compare' },
+    { key: 'journal', label: 'Journal' },
+  ];
+
+  const actions = (
+    <>
+      {view === 'pulls' && (
+        <>
+          <NightPicker
+            nights={nightList}
+            night={shownNights[0] ?? ''}
+            picked={shownNights}
+            onPick={(n) => setPicked([n])}
+            onPickMany={setPicked}
+          />
+          <button
+            type="button"
+            className={`${SECONDARY_BUTTON} w-9 justify-center px-0`}
+            aria-label="Refresh"
+            title="Refresh"
+            onClick={() => loadPulls()}
           >
-            Personal channels
-          </Button>
-        )}
-        <PersonalChannelsDialog
-          open={channelsOpen}
-          onOpenChange={setChannelsOpen}
-        />
-      </div>
+            <RefreshCw size={14} />
+          </button>
+        </>
+      )}
+      {view !== 'pulls' && view !== 'journal' && (
+        <>
+          <UploadFromLog
+            hints={bossPercentHints}
+            tracked={tracked}
+            onUploaded={reloadSummaries}
+          />
+          {canEdit && <ImportFromLogs onImported={reloadSummaries} />}
+        </>
+      )}
+      {officer && (
+        <button
+          type="button"
+          className={SECONDARY_BUTTON}
+          onClick={() => setChannelsOpen(true)}
+          title="Which raider owns which Discord channel, for sending clips"
+        >
+          Personal channels
+        </button>
+      )}
+      <PersonalChannelsDialog
+        open={channelsOpen}
+        onOpenChange={setChannelsOpen}
+      />
+    </>
+  );
+
+  return (
+    <div className="flex flex-col w-full h-full bg-walnut text-foreground-lighter pt-[32px]">
+      <PageHeader
+        title="Dashboard"
+        tabs={viewTabs}
+        tab={view}
+        onTab={changeView}
+        actions={actions}
+        className="px-7 pt-5"
+      />
+
+      {error && (
+        <div className="px-7 pt-4">
+          <ErrorState
+            what="Couldn't load the pulls"
+            error={error}
+            onRetry={() => loadPulls()}
+          />
+        </div>
+      )}
 
       {view !== 'pulls' && (
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-y-3">
-          {view !== 'journal' && (
-            <div className="flex flex-col gap-y-2 items-start">
-              <div className="flex gap-x-2">
-                <UploadFromLog
-                  hints={bossPercentHints}
-                  tracked={tracked}
-                  onUploaded={reloadSummaries}
-                />
-                {canEdit && <ImportFromLogs onImported={reloadSummaries} />}
-              </div>
-            </div>
-          )}
+        <div className="flex-1 min-h-0 overflow-y-auto px-7 py-4 flex flex-col gap-y-4">
           {view === 'night' && (
             <NightSummaryView
               key={importTick}
@@ -1935,33 +2122,34 @@ const PullDeskPage = (props: IProps) => {
       )}
 
       <div
-        className={`flex flex-1 min-h-0 ${view === 'pulls' ? '' : 'hidden'}`}
+        className={`flex flex-1 min-h-0 gap-x-6 px-7 pt-4 ${view === 'pulls' ? '' : 'hidden'}`}
       >
-        <div className="w-72 shrink-0 border-r border-card overflow-y-auto">
+        <div className="w-[280px] shrink-0 overflow-y-auto pb-4 pr-1">
           {renderPullList()}
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
           {encounterId !== undefined && (
-            <div className="flex gap-x-2 px-4 pt-3">
-              <Button
-                size="sm"
-                variant={tab === 'report' ? 'default' : 'ghost'}
-                onClick={() => setTab('report')}
-              >
-                Report
-              </Button>
-              <Button
-                size="sm"
-                variant={tab === 'boss' ? 'default' : 'ghost'}
-                onClick={() => setTab('boss')}
-                className="gap-x-1"
-              >
-                <Settings2 size={14} /> Boss settings
-              </Button>
+            <div className="mb-3 border-b border-panel-line">
+              <UnderlineTabs<'report' | 'boss'>
+                label="Report or boss settings"
+                value={tab}
+                onChange={setTab}
+                items={[
+                  { key: 'report', label: 'Report' },
+                  {
+                    key: 'boss',
+                    label: (
+                      <>
+                        <Settings2 size={14} /> Boss settings
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
-          <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="flex-1 overflow-y-auto pb-4">
             {tab === 'report' || encounterId === undefined ? (
               renderReport()
             ) : (
