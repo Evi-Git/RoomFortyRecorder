@@ -110,13 +110,47 @@ function Get-NodePath {
   throw 'Node.js was not found. Install it or add it to PATH.'
 }
 
-function Wait-Healthy([int]$Seconds) {
+# Waits for /health. With $ExpectedVersion (the release just installed) the
+# server only counts as up when it answers 200 with ok: true AND reports that
+# version: an old copy still running, or a copy that started half-broken
+# (/health answers 503), is not accepted. Without it (checking the version we
+# rolled back to) any healthy answer will do. What it sees is written to the
+# log, once per change.
+function Wait-Healthy([int]$Seconds, [string]$ExpectedVersion = '') {
   $deadline = (Get-Date).AddSeconds($Seconds)
+  $lastSeen = ''
   while ((Get-Date) -lt $deadline) {
+    $seen = ''
     try {
       $response = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 3
-      if ($response.StatusCode -eq 200) { return $true }
-    } catch { }
+      $health = $null
+      try { $health = [string]$response.Content | ConvertFrom-Json } catch { }
+      if ($response.StatusCode -ne 200) {
+        $seen = "status $($response.StatusCode)"
+      } elseif (-not $health) {
+        $seen = 'status 200 but the answer is not JSON'
+      } elseif ($health.ok -ne $true) {
+        $seen = 'status 200 but ok is not true'
+      } else {
+        $running = [string]$health.version
+        if (-not $ExpectedVersion) { return $true }
+        if ($running.TrimStart('v') -ieq $ExpectedVersion.TrimStart('v')) { return $true }
+        $seen = "ok, but it is running version '$running', not '$ExpectedVersion'"
+      }
+    } catch {
+      $seen = "no answer ($($_.Exception.Message))"
+      if ($_.Exception.Response) {
+        $seen = "status $([int]$_.Exception.Response.StatusCode)"
+        try {
+          $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+          $seen = "$seen $($reader.ReadToEnd())"
+        } catch { }
+      }
+    }
+    if ($seen -ne $lastSeen) {
+      Write-Log "  /health: $seen"
+      $lastSeen = $seen
+    }
     Start-Sleep -Seconds 1
   }
   return $false
@@ -338,8 +372,8 @@ Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
 
 if (-not $NoRestart) {
   Write-Log '  waiting for the server to answer /health...'
-  if (-not (Wait-Healthy 45)) {
-    Write-Log "The server didn't come back on $Tag." 'Red'
+  if (-not (Wait-Healthy 45 $Tag)) {
+    Write-Log "The server didn't come back healthy on $Tag (it has to answer /health with ok and report $Tag)." 'Red'
     Restore-Backup
     if (Wait-Healthy 45) {
       Write-Log "Back on $fromLabel. Check the server window or Task Scheduler for the error." 'Yellow'

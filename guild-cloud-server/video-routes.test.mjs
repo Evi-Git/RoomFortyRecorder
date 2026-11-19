@@ -171,7 +171,11 @@ const start = async ({ bucket, state: extraState, restored = false, env = {}, re
     const { failDeletes, ...rest } = JSON.parse(fs.readFileSync(bucketFile, 'utf8'));
     return rest;
   };
-  return { call, stop, library, setFixture, objects, storage, bucketFile };
+  const get = async (route) => {
+    const res = await fetch(`${base}${route}`);
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+  return { call, get, stop, library, setFixture, objects, storage, bucketFile };
 };
 
 const owner = [OWNER, 'Owner'];
@@ -606,5 +610,50 @@ test('the upload URL is signed for the declared size, unless that is switched of
     assert.match(r.body.signed, /sized\.mp4$/);
   } finally {
     server.stop();
+  }
+});
+
+test('/health checks storage and state, and writes the log file', async () => {
+  const { get, stop, storage } = await start({
+    env: { GUILD_CLOUD_HEALTH_CACHE_MS: '0', GUILD_CLOUD_LOG_DAYS: '3' },
+  });
+  try {
+    let r = await get('/health');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.ok, true);
+    assert.deepEqual(r.body.checks, { storage: { ok: true }, state: { ok: true }, log: { ok: true } });
+    assert.equal(typeof r.body.uptimeSec, 'number');
+    assert.equal(JSON.stringify(r.body).includes(storage), false);
+
+    // The server's own start-up lines are in today's log file.
+    const logs = fs.readdirSync(path.join(storage, 'logs'));
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /^server-\d{4}-\d{2}-\d{2}\.log$/);
+    assert.match(fs.readFileSync(path.join(storage, 'logs', logs[0]), 'utf8'), / INFO \[guild-cloud\] Listening on /);
+
+    // Storage goes away (a drive that dropped off): not healthy.
+    fs.rmSync(storage, { recursive: true, force: true });
+    r = await get('/health');
+    assert.equal(r.status, 503);
+    assert.equal(r.body.ok, false);
+    assert.equal(r.body.checks.storage.ok, false);
+    assert.equal(typeof r.body.version === 'string' || r.body.version === null, true);
+  } finally {
+    await stop();
+  }
+});
+
+test('/health is still ok, with a warning, when the log folder cannot be written', async () => {
+  const blocker = path.join(os.tmpdir(), `rf-log-blocker-${process.pid}`);
+  fs.writeFileSync(blocker, 'x');
+  const { get, stop } = await start({ env: { GUILD_CLOUD_LOG_DIR: path.join(blocker, 'logs') } });
+  try {
+    const r = await get('/health');
+    assert.equal(r.status, 200);
+    assert.equal(r.body.ok, true);
+    assert.ok(r.body.checks.log.warning);
+  } finally {
+    await stop();
+    fs.rmSync(blocker, { force: true });
   }
 });

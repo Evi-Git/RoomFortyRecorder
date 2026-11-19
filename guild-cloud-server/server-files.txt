@@ -30,3 +30,5 @@ safe-json.mjs
 video-access.mjs
 upload-reservations.mjs
 pull-upload-access.mjs
+server-log.mjs
+health.mjs
