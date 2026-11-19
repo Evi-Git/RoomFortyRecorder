@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.138] - Unreleased
+### Changed
+- **The Dashboard has the new look** (design A, "Brass & Walnut everywhere"). The page title is a serif heading with Pulls, Night summary, Progression, Reclears, Compare and Journal as tabs; the night picker, refresh and the officer buttons sit beside them.
+- **Pull cards:** boss, Kill or the boss health left, then the time, length, deaths, avoidable hits and missed cooldowns, with a small bar for how far the boss got. **Resets (pulls under 10 seconds) are hidden** unless "Show resets" is on (the same switch as on the Logs page), and the Dashboard opens on the newest real pull, not a reset.
+- **A pull at a glance:** the report starts with "Pull 34 · Kith'ix", Kill or wipe and length, with **Watch pull** and **Open in Logs** (opens the Logs page at that pull). Four tiles show raid DPS, deaths (and when the first one happened), avoidable hits (and which ability hit most) and consumables (who had flask and food).
+- **Boss health chart:** a larger chart with a percent and time axis. Each death is a red dot on it; click one to watch that moment. Several deaths within two seconds share one dot that says how many.
+- **Deaths are rows** with the time, the raider in their class colour, what killed them, which defensives were still ready, and Watch. Expand a row (the arrow at its start, also with the keyboard) for the last hits.
+- **Class colours instead of role colours** for raider names on the Dashboard, as on the Logs page.
+- A pull that's still being analyzed now says so instead of showing an error, and a failed list or report shows a clear message with Try again.
+
 ## [1.9.137] - Unreleased
 ### Changed
 - **The Logs page has the new look** (design A, "Brass & Walnut everywhere"). The page title is a serif heading with Pulls and Trends as tabs, and Compare side by side sits at the top right. The night picker, boss portraits and Heroic | Mythic share one row.
