@@ -5,7 +5,7 @@ import { FileInfo } from 'main/types';
 import path from 'path';
 import { getFileInfo, getSortedFiles } from '../main/util';
 import LogLine from './LogLine';
-import AsyncQueue from 'utils/AsyncQueue';
+import AsyncQueue from '../utils/AsyncQueue';
 
 /**
  * Setup a bunch of promisified fs calls for convienence.
@@ -13,6 +13,12 @@ import AsyncQueue from 'utils/AsyncQueue';
 const open = util.promisify(fs.open);
 const read = util.promisify(fs.read);
 const close = util.promisify(fs.close);
+
+/**
+ * [RoomFortyRecorder] Longest unterminated line we will hold onto between
+ * reads. Real log lines are far shorter (COMBATANT_INFO is a few KiB).
+ */
+const MAX_TAIL_BYTES = 1024 * 1024;
 
 /**
  * Watches a directory for combat logs, read the new data from them
@@ -38,6 +44,14 @@ export default class CombatLogWatcher extends EventEmitter {
    * should read.
    */
   private state: Record<string, FileInfo> = {};
+
+  /**
+   * [RoomFortyRecorder] The unterminated end of each file, kept as raw bytes
+   * (not a string, so a multi-byte character split across two reads is not
+   * corrupted). WoW writes in chunks, so a read often ends mid-line; the rest
+   * of that line arrives with the next read.
+   */
+  private tails: Record<string, Buffer> = {};
 
   /**
    * A promise queue we use to ensure that we only have one active attempt to
@@ -93,6 +107,7 @@ export default class CombatLogWatcher extends EventEmitter {
         console.info('[CombatLogWatcher] Create or delete event', file);
         const fullPath = path.join(this.logDir, file);
         delete this.state[fullPath];
+        delete this.tails[fullPath];
         return;
       }
 
@@ -144,12 +159,15 @@ export default class CombatLogWatcher extends EventEmitter {
     let bytesToRead;
     let startPosition;
 
-    if (lastInfo) {
+    if (lastInfo && currentInfo.size >= lastInfo.size) {
       // Existing file, read from the last known length.
       bytesToRead = currentInfo.size - lastInfo.size;
       startPosition = lastInfo.size;
     } else {
-      // New file, we want to read from the start.
+      // New file, or one that shrank (replaced under the same name), we want
+      // to read from the start. Anything held over from the old contents is
+      // no longer part of a line.
+      delete this.tails[fullPath];
       bytesToRead = currentInfo.size;
       startPosition = 0;
     }
@@ -160,18 +178,31 @@ export default class CombatLogWatcher extends EventEmitter {
       return;
     }
 
-    await this.parseFileChunk(fullPath, bytesToRead, startPosition);
-    this.state[fullPath] = currentInfo;
+    const bytesRead = await this.parseFileChunk(
+      fullPath,
+      bytesToRead,
+      startPosition,
+    );
+
+    // [RoomFortyRecorder] Only count what was really read, so a short read
+    // doesn't skip bytes.
+    this.state[fullPath] = { ...currentInfo, size: startPosition + bytesRead };
   }
 
   /**
    * Parse a chunk of the file of length bytes from a specified position.
+   * Returns the number of bytes actually read.
    */
   private async parseFileChunk(file: string, bytes: number, position: number) {
     const buffer = Buffer.alloc(bytes);
     const handle = await open(file, 'r');
-    const { bytesRead } = await read(handle, buffer, 0, bytes, position);
-    close(handle);
+    let bytesRead;
+
+    try {
+      ({ bytesRead } = await read(handle, buffer, 0, bytes, position));
+    } finally {
+      close(handle);
+    }
 
     if (bytesRead !== bytes) {
       console.error(
@@ -184,15 +215,44 @@ export default class CombatLogWatcher extends EventEmitter {
 
     this.emit('WARCRAFT_RECORDER_LOG_ACTIVITY');
 
-    const lines = buffer
-      .toString('utf-8')
-      .split('\n')
-      .map((s) => s.trim())
-      .filter((s) => s);
+    // [RoomFortyRecorder] Split on raw newline bytes and only handle complete
+    // lines; whatever follows the last newline waits for the next read.
+    const tail = this.tails[file];
+    const data = tail
+      ? Buffer.concat([tail, buffer.subarray(0, bytesRead)])
+      : buffer.subarray(0, bytesRead);
 
-    lines.forEach((line) => {
-      this.handleLogLine(line);
-    });
+    const lastNewline = data.lastIndexOf(0x0a);
+    const remainder = data.subarray(lastNewline + 1);
+
+    if (remainder.length > MAX_TAIL_BYTES) {
+      console.error(
+        '[CombatLogWatcher] Unterminated line over',
+        MAX_TAIL_BYTES,
+        'bytes in',
+        file,
+        ', discarding it',
+      );
+      delete this.tails[file];
+    } else if (remainder.length > 0) {
+      // Copy so we don't keep the whole read buffer alive.
+      this.tails[file] = Buffer.from(remainder);
+    } else {
+      delete this.tails[file];
+    }
+
+    if (lastNewline >= 0) {
+      data
+        .toString('utf-8', 0, lastNewline)
+        .split('\n')
+        .map((s) => s.trim())
+        .filter((s) => s)
+        .forEach((line) => {
+          this.handleLogLine(line);
+        });
+    }
+
+    return bytesRead;
   }
 
   /**
