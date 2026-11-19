@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.140] - Unreleased
+### Changed
+- **Settings has the new look** (design A, "Brass & Walnut everywhere"): a serif title with Application, Game and Cloud as brass-underlined tabs, and settings grouped into cards (Storage, Windows, Language, Combat logs, Raids, Mythic+, Manual recording, Upload …).
+- **A short plain-English line under each setting** says what it does, instead of the (i) tooltips. Labels are in sentence case, and difficulty reads "LFR" everywhere (it said "Lfr").
+- Each folder setting has a **Browse** button, and the space for recordings shows how much is used ("18 of 50 GB"), also while recording.
+- Error messages in Settings are easier to read.
+
 ## [1.9.139] - Unreleased
 ### Changed
 - **Quitting or updating mid-pull now asks first.** If a pull or Mythic+ run is being recorded, a recording is still being saved or uploaded, or you're live, Quit and "Install update" show what's running and let you **Quit when it's done** (the default), **Quit now** or **Cancel**. While it waits, the tray icon says so, and clicking Quit again lets you quit now, keep waiting or not quit after all. The few seconds after a kill, while the recording is finished, count too.
