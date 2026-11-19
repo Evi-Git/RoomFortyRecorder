@@ -533,7 +533,7 @@ const SideMenu = (props: IProps) => {
         <LiveButton compact={rail} />
 
         <ScrollArea
-          className="w-full flex-1 min-h-0"
+          className="w-full flex-1 min-h-0 mt-2 border-t border-card/60"
           withScrollIndicators={false}
         >
           <>

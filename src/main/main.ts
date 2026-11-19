@@ -9,6 +9,7 @@ import {
   Menu,
   clipboard,
   protocol,
+  screen,
 } from 'electron';
 import os from 'os';
 import fs from 'fs';
@@ -239,12 +240,15 @@ const createWindow = async () => {
     await installExtensions();
   }
 
+  // Never taller or wider than the screen's work area (small or high-DPI).
+  const work = screen.getPrimaryDisplay().workAreaSize;
+
   window = new BrowserWindow({
     show: false,
     height: 1020 * 0.9,
     width: 1980 * 0.8,
-    minWidth: 1024,
-    minHeight: 640,
+    minWidth: Math.min(1024, work.width),
+    minHeight: Math.min(640, work.height),
     icon: getAssetPath('./icon/small-icon.png'),
     frame: false,
     title: `Room Forty Toolkit v${appVersion}`,

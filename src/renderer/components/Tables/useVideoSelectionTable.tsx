@@ -420,20 +420,20 @@ const useVideoSelectionTable = (
   // minimum (see VideoSelectionTable for the table's own minimum).
   const columnSizes: Record<string, [size: number, minSize: number]> = {
     Details: [80, 80],
-    Encounter: [150, 130],
-    Map: [150, 130],
-    Result: [96, 92],
-    Pull: [76, 76],
-    Difficulty: [108, 108],
+    Encounter: [140, 130],
+    Map: [140, 130],
+    Result: [92, 88],
+    Pull: [72, 72],
+    Difficulty: [104, 100],
     Level: [88, 88],
     Affixes: [110, 100],
-    Duration: [100, 100],
-    Date: [130, 120],
+    Duration: [96, 92],
+    Date: [126, 120],
     Viewpoints: [150, 140],
     'Kill Video Creator': [50, 50],
     Source: [50, 50],
     Type: [100, 100],
-    Activity: [150, 130],
+    Activity: [140, 130],
   };
   columns = columns.map((c) => {
     const sizes = columnSizes[c.id ?? ''];

@@ -75,9 +75,22 @@ interface IProps {
   playerHeightRef: RefObject<number>;
 }
 
-// The tallest the player can be: 32 (top bar) + 90 (toolbar) + 200 (the
-// table's header and a few rows) stay under it, and never under 280.
-const maxPlayerHeight = () => Math.max(280, window.innerHeight - 322);
+const DEFAULT_PLAYER_HEIGHT = 500;
+
+/**
+ * How tall the player shows, and the most it can be dragged to. The height
+ * the user chose stays in `playerHeightRef`; a short window only limits what
+ * shows, so the player grows back when the window does. An untouched player
+ * (the default) also leaves room for the toolbar and a few table rows.
+ */
+const playerHeights = (chosen: number, windowHeight: number) => {
+  const max = Math.max(280, windowHeight - 96);
+  const shown =
+    chosen === DEFAULT_PLAYER_HEIGHT
+      ? Math.min(chosen, Math.max(280, windowHeight - 322))
+      : Math.min(chosen, max);
+  return { shown, max };
+};
 
 /**
  * A page representing a video category.
@@ -225,30 +238,33 @@ const CategoryPage = (props: IProps) => {
   const resizableRef = useRef<Resizable>(null);
   const videoPlayerRef = useRef<VideoPlayerRef>(null);
 
+  const [windowHeight, setWindowHeight] = useState(window.innerHeight);
+  const [chosenPlayerHeight, setChosenPlayerHeight] = useState(
+    // eslint-disable-next-line react-hooks/refs
+    () => playerHeightRef.current,
+  );
+  const { shown: shownPlayerHeight, max: maxPlayerHeight } = playerHeights(
+    chosenPlayerHeight,
+    windowHeight,
+  );
+
   useEffect(() => {
     const handleWindowResize = () => {
-      if (!resizableRef.current) {
-        // Could on only happen if we're resizing in the
-        // middle of the initial mount.
-        return;
-      }
-
-      // Keep the room the toolbar and the table need under the player: in a
-      // short window (the minimum is 640 px) the player gives way.
-      const maxHeight = maxPlayerHeight();
-      if (playerHeightRef.current > maxHeight) {
-        resizableRef.current.updateSize({ height: maxHeight });
-        playerHeightRef.current = maxHeight;
-      }
+      // A minimized window reports a tiny height; leave the player alone.
+      if (window.innerHeight < 300) return;
+      setWindowHeight(window.innerHeight);
     };
 
     window.addEventListener('resize', handleWindowResize);
-    handleWindowResize();
 
     return () => {
       window.removeEventListener('resize', handleWindowResize);
     };
-  }, [playerHeightRef]);
+  }, []);
+
+  useEffect(() => {
+    resizableRef.current?.updateSize({ height: shownPlayerHeight });
+  }, [shownPlayerHeight]);
 
   const renderChat = (video: RendererVideo | undefined) => {
     if (!video) {
@@ -291,6 +307,7 @@ const CategoryPage = (props: IProps) => {
   ) => {
     const height = element.clientHeight;
     playerHeightRef.current = height;
+    setChosenPlayerHeight(height);
   };
 
   const renderDrawerOpen = (
@@ -412,7 +429,7 @@ const CategoryPage = (props: IProps) => {
       <Resizable
         ref={resizableRef}
         defaultSize={{
-          height: `${Math.min(playerHeightRef.current, maxPlayerHeight())}px`,
+          height: `${shownPlayerHeight}px`,
           width: '100%',
         }}
         enable={{
@@ -427,7 +444,12 @@ const CategoryPage = (props: IProps) => {
         }}
         bounds="parent"
         onResize={onResize}
-        minHeight={chatOpen ? 500 : undefined}
+        maxHeight={maxPlayerHeight}
+        minHeight={
+          chatOpen
+            ? Math.min(500, shownPlayerHeight, maxPlayerHeight)
+            : undefined
+        }
         handleStyles={{
           bottom: {
             width: '50%',
