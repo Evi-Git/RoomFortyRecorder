@@ -74,7 +74,7 @@ try {
     .first()
     .click();
   await page
-    .getByRole('button', { name: 'Healing', exact: true })
+    .getByRole('tab', { name: 'Healing', exact: true })
     .first()
     .click();
   const ula = page.getByText("Blood of Ula'tek").first();

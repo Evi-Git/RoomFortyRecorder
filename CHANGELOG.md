@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.137] - Unreleased
+### Changed
+- **The Logs page has the new look** (design A, "Brass & Walnut everywhere"). The page title is a serif heading with Pulls and Trends as tabs, and Compare side by side sits at the top right. The night picker, boss portraits and Heroic | Mythic share one row.
+- **Pull list:** each wipe shows a small bar for how far the boss got, next to the boss health left; kills are green. **Resets are hidden:** pulls shorter than 10 seconds (a 0:00 reset, an accidental pull) no longer clutter the list. "Show resets" brings them back and says how many there are; the same switch works on the Dashboard. The pull you're looking at is never hidden, and when a boss only has resets they're all shown. The page opens on the newest real pull, not a reset.
+- **One compact filter bar:** Friendlies | Enemies, enemy, ability, "done by" and the filter box are always there; the rarely used ones (include pets, ignore events after deaths, what the filter box adds) are under **More filters**, which shows how many of them are changed so a hidden filter is never a surprise.
+- **Tabs and views:** the table tabs (Summary, Damage done …) are brass-underlined tabs, and Tables | Timelines | Events | Queries is one switch at the right.
+- **Charts are labelled:** each chart has a title (Damage per second, Healing per second …), the pull it shows, the y axis unit, times as 0:00, and the Bloodlust window is marked "Bloodlust". A raider's own chart (click a name) has the same header.
+- **Tables:** the header row stays in view while you scroll, and so does the Total row. A raider's ability table fits the page again (the DPS column was cut off). Raider names show their spec.
+- **Compare side by side** puts each side's pull list above its logs, so both sides get much more room.
+- The Logs page can now be opened at a given pull from another page (the Dashboard's "Open in Logs", next release).
+
 ## [1.9.136] - Unreleased
 ### Changed
 - **Tabs are brass everywhere.** The Settings and Scene tabs had a red underline left over from Warcraft Recorder; they now use the same brass underline as the Dashboard and Logs.

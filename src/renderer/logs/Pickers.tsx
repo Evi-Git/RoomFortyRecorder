@@ -10,7 +10,7 @@ import SpellIcon from './SpellIcon';
  */
 
 const button =
-  'inline-flex items-center gap-x-1.5 bg-card text-foreground-lighter rounded px-2 h-8 text-xs border border-background max-w-[240px]';
+  'inline-flex items-center gap-x-1.5 bg-panel text-foreground-lighter rounded-lg px-2.5 h-9 text-xs border border-panel-line max-w-[240px]';
 
 /** A dropdown panel that closes on an outside click or Escape. */
 const usePopover = () => {
@@ -77,8 +77,8 @@ export const EnemyPicker = ({
         <ChevronDown size={13} className="shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-[380px] max-h-[460px] overflow-y-auto rounded-md border border-card bg-background shadow-xl text-xs">
-          <div className="grid grid-cols-3 border-b border-card">
+        <div className="absolute left-0 top-full mt-1 z-40 w-[380px] max-h-[460px] overflow-y-auto rounded-lg border border-panel-line bg-panel shadow-xl text-xs">
+          <div className="grid grid-cols-3 border-b border-panel-line">
             {(
               [
                 [null, 'All enemies'],
@@ -90,16 +90,16 @@ export const EnemyPicker = ({
                 key={label}
                 type="button"
                 onClick={() => pick(f)}
-                className={`py-2 hover:bg-card/50 ${enemyLabel(value) === label ? 'text-brand font-semibold' : 'text-foreground-lighter'}`}
+                className={`py-2 hover:bg-panel-line/50 ${enemyLabel(value) === label ? 'text-brand font-semibold' : 'text-foreground-lighter'}`}
               >
                 {label}
               </button>
             ))}
           </div>
           {options.map((o) => (
-            <div key={o.npcId} className="border-b border-card/40">
+            <div key={o.npcId} className="border-b border-panel-line/40">
               <div
-                className={`flex items-center ${same(o) ? 'bg-brand/15' : 'hover:bg-card/40'}`}
+                className={`flex items-center ${same(o) ? 'bg-brand/15' : 'hover:bg-panel-line/40'}`}
               >
                 <button
                   type="button"
@@ -145,7 +145,7 @@ export const EnemyPicker = ({
                 )}
               </div>
               {expanded === o.npcId && (
-                <div className="px-2 pb-2 bg-card/20">
+                <div className="px-2 pb-2 bg-panel-line/30">
                   {o.groups > 1 && (
                     <>
                       <div className="text-[10px] text-foreground pt-1.5 pb-1">
@@ -165,7 +165,7 @@ export const EnemyPicker = ({
                                   group: g,
                                 })
                               }
-                              className={`py-1 rounded border border-card hover:bg-card/60 ${
+                              className={`py-1 rounded border border-panel-line hover:bg-panel-line/60 ${
                                 value?.kind === 'npc' &&
                                 value.npcId === o.npcId &&
                                 value.group === g
@@ -197,7 +197,7 @@ export const EnemyPicker = ({
                               instance: n,
                             })
                           }
-                          className={`py-1 rounded border border-card hover:bg-card/60 ${
+                          className={`py-1 rounded border border-panel-line hover:bg-panel-line/60 ${
                             value?.kind === 'npc' &&
                             value.npcId === o.npcId &&
                             value.instance === n
@@ -260,14 +260,14 @@ export const AbilityPicker = ({
         <ChevronDown size={13} className="shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-[340px] rounded-md border border-card bg-background shadow-xl text-xs">
-          <div className="flex items-center gap-x-2 p-2 border-b border-card">
+        <div className="absolute left-0 top-full mt-1 z-40 w-[340px] rounded-lg border border-panel-line bg-panel shadow-xl text-xs">
+          <div className="flex items-center gap-x-2 p-2 border-b border-panel-line">
             <input
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search abilities"
-              className="flex-1 bg-card rounded px-2 h-7 text-xs text-foreground-lighter border border-background"
+              className="flex-1 bg-panel-line rounded px-2 h-7 text-xs text-foreground-lighter border border-panel-line"
               aria-label="Search abilities"
             />
             {value.length > 0 && (
@@ -281,7 +281,7 @@ export const AbilityPicker = ({
             )}
           </div>
           {value.length > 0 && (
-            <div className="flex flex-wrap gap-1 p-2 border-b border-card">
+            <div className="flex flex-wrap gap-1 p-2 border-b border-panel-line">
               {value.map((id) => (
                 <span
                   key={id}
@@ -305,7 +305,7 @@ export const AbilityPicker = ({
               return (
                 <div
                   key={o.id}
-                  className={`flex items-center ${on ? 'bg-brand/10' : 'hover:bg-card/40'}`}
+                  className={`flex items-center ${on ? 'bg-brand/10' : 'hover:bg-panel-line/40'}`}
                 >
                   <button
                     type="button"
@@ -337,7 +337,7 @@ export const AbilityPicker = ({
               <p className="m-0 p-2 text-foreground">No abilities match.</p>
             )}
           </div>
-          <div className="px-2 py-1 text-[10px] text-foreground border-t border-card">
+          <div className="px-2 py-1 text-[10px] text-foreground border-t border-panel-line">
             Click a name to show only it; + adds it alongside the others.
           </div>
         </div>
@@ -388,14 +388,14 @@ export const ExcludeTargetsPicker = ({
         <ChevronDown size={13} className="shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-[280px] rounded-md border border-card bg-background shadow-xl text-xs">
-          <div className="flex items-center gap-x-2 p-2 border-b border-card">
+        <div className="absolute left-0 top-full mt-1 z-40 w-[280px] rounded-lg border border-panel-line bg-panel shadow-xl text-xs">
+          <div className="flex items-center gap-x-2 p-2 border-b border-panel-line">
             <input
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search raiders"
-              className="flex-1 bg-card rounded px-2 h-7 text-xs text-foreground-lighter border border-background"
+              className="flex-1 bg-panel-line rounded px-2 h-7 text-xs text-foreground-lighter border border-panel-line"
               aria-label="Search raiders"
             />
             {value.length > 0 && (
@@ -416,11 +416,11 @@ export const ExcludeTargetsPicker = ({
                   key={o.guid}
                   type="button"
                   onClick={() => toggle(o.guid)}
-                  className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${on ? 'bg-brand/10' : 'hover:bg-card/40'}`}
+                  className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${on ? 'bg-brand/10' : 'hover:bg-panel-line/40'}`}
                   aria-pressed={on}
                 >
                   <span
-                    className={`w-3.5 h-3.5 shrink-0 rounded-sm border flex items-center justify-center ${on ? 'border-brand bg-brand/30' : 'border-card'}`}
+                    className={`w-3.5 h-3.5 shrink-0 rounded-sm border flex items-center justify-center ${on ? 'border-brand bg-brand/30' : 'border-panel-line'}`}
                   >
                     {on && <X size={10} />}
                   </span>
@@ -434,7 +434,7 @@ export const ExcludeTargetsPicker = ({
               <p className="m-0 p-2 text-foreground">No raiders match.</p>
             )}
           </div>
-          <div className="px-2 py-1 text-[10px] text-foreground border-t border-card">
+          <div className="px-2 py-1 text-[10px] text-foreground border-t border-panel-line">
             Healing received by ticked raiders is left out of every table and
             chart.
           </div>
@@ -484,21 +484,21 @@ export const AuraPicker = ({
         <ChevronDown size={13} className="shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-[360px] rounded-md border border-card bg-background shadow-xl text-xs">
-          <div className="p-2 border-b border-card">
+        <div className="absolute left-0 top-full mt-1 z-40 w-[360px] rounded-lg border border-panel-line bg-panel shadow-xl text-xs">
+          <div className="p-2 border-b border-panel-line">
             <input
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or spell ID"
-              className="w-full bg-card rounded px-2 h-7 text-xs text-foreground-lighter border border-background"
+              className="w-full bg-panel-line rounded px-2 h-7 text-xs text-foreground-lighter border border-panel-line"
               aria-label="Search buffs and debuffs"
             />
           </div>
           <div className="max-h-[400px] overflow-y-auto" role="listbox">
             {shown.map((g) => (
               <div key={g.title}>
-                <div className="sticky top-0 px-2 py-1 bg-card text-[10px] uppercase tracking-wide text-foreground">
+                <div className="sticky top-0 px-2 py-1 bg-panel-line text-[11px] font-medium text-foreground">
                   {g.title}
                 </div>
                 {g.options.map((o) => (
@@ -512,7 +512,7 @@ export const AuraPicker = ({
                       setOpen(false);
                       setSearch('');
                     }}
-                    className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${o.id === value ? 'bg-brand/10' : 'hover:bg-card/40'}`}
+                    className={`w-full flex items-center gap-x-2 px-2 py-1 text-left ${o.id === value ? 'bg-brand/10' : 'hover:bg-panel-line/40'}`}
                   >
                     <SpellIcon spellId={o.id} name={o.name} />
                     <span className="flex-1 truncate text-foreground-lighter">
