@@ -1,4 +1,3 @@
-<ChartHead meter={meter} info={chartInfo} canWatch={Boolean(extras.onPick)} />;
 import React from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -991,21 +990,11 @@ const MeterView = ({
 
   const chart = (
     <div className="rounded-lg border border-panel-line bg-panel px-[18px] py-4">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[17px] font-bold text-foreground-lighter">
-          {TITLE[meter]}
-          {chartInfo && (
-            <span className="font-sans text-xs font-normal text-foreground">
-              {chartInfo}
-            </span>
-          )}
-        </h3>
-        <span className="text-xs text-foreground">
-          {extras.onPick
-            ? 'Drag to zoom · click a moment to watch it'
-            : 'Drag to zoom'}
-        </span>
-      </div>
+      <ChartHead
+        meter={meter}
+        info={chartInfo}
+        canWatch={Boolean(extras.onPick)}
+      />
       <TimeChart
         duration={ctx.total}
         zoomable
