@@ -124,7 +124,6 @@ enum Phrase {
   ClassicPtrLogPathLabel,
   RecordClassicEraLabel,
   ClassicEraLogPathLabel,
-  PVESettingsLabel,
   RecordRaidsLabel,
   MinimumEncounterDurationLabel,
   RaidOverrunLabel,

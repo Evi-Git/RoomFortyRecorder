@@ -14,6 +14,7 @@ import { Button } from './components/Button/Button';
 import UploadStatus from './UploadStatus';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsButtonClass,
   settingsFieldClass,
@@ -36,6 +37,7 @@ const FlavourSettings: React.FC<IProps> = ({
   appState,
   combatLoggingStatus,
 }) => {
+  const sid = useScopedIds();
   const initialRender = React.useRef(true);
   // Days are all we show, so the time is read once.
   const [now] = React.useState(() => Date.now());
@@ -142,10 +144,10 @@ const FlavourSettings: React.FC<IProps> = ({
       <SettingRow
         label={getLocalePhrase(appState.language, label)}
         help={getLocalePhrase(appState.language, description)}
-        htmlFor={enabledKey}
+        htmlFor={sid(enabledKey)}
       >
         <Switch
-          id={enabledKey}
+          id={sid(enabledKey)}
           checked={enabled}
           name={enabledKey}
           onCheckedChange={(value) => setBoolean(enabledKey, value)}
@@ -159,13 +161,13 @@ const FlavourSettings: React.FC<IProps> = ({
             appState.language,
             configSchema[pathKey].description,
           )}
-          htmlFor={pathKey}
+          labelId={sid(`${pathKey}-label`)}
           aside={getLastLogAgeDisplay(config[pathKey], statusKey)}
         >
           <div className="flex w-[360px] flex-col gap-y-1">
             <div className="flex gap-x-2">
               <Input
-                id={pathKey}
+                aria-labelledby={sid(`${pathKey}-label`)}
                 value={config[pathKey]}
                 onClick={() => choosePath(pathKey)}
                 readOnly
@@ -203,12 +205,12 @@ const FlavourSettings: React.FC<IProps> = ({
               </Tooltip>
             </div>
             {!config[pathKey] && (
-              <span className="text-error text-sm">
+              <span className="text-error-text text-sm">
                 {getLocalePhrase(appState.language, invalid)}
               </span>
             )}
             {!combatLoggingStatus[statusKey].advanced && (
-              <span className="text-error text-sm">
+              <span className="text-error-text text-sm">
                 {getLocalePhrase(
                   appState.language,
                   Phrase.AdvancedCombatLoggingDisabledWarning,
@@ -265,10 +267,10 @@ const FlavourSettings: React.FC<IProps> = ({
             </div>
           </>
         }
-        htmlFor="pullDeskUpload"
+        htmlFor={sid('pullDeskUpload')}
       >
         <Switch
-          id="pullDeskUpload"
+          id={sid('pullDeskUpload')}
           checked={config.pullDeskUpload !== false}
           name="pullDeskUpload"
           onCheckedChange={(value) => {

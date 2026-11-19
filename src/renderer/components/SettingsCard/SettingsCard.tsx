@@ -15,6 +15,15 @@ export const settingsFieldClass =
 export const settingsButtonClass =
   'h-9 rounded-lg border border-panel-line bg-panel-raised text-foreground-lighter hover:bg-panel-line';
 
+/**
+ * Ids for one pane. Hidden tabs stay mounted, so plain names would repeat;
+ * `sid('name')` is unique to this pane instance.
+ */
+export function useScopedIds() {
+  const base = React.useId();
+  return (name: string) => `${base}-${name}`;
+}
+
 type SectionProps = {
   title: React.ReactNode;
   children: React.ReactNode;
@@ -40,6 +49,9 @@ type RowProps = {
   help?: React.ReactNode;
   /** The id of the control, so the label is its accessible name. */
   htmlFor?: string;
+  /** For a control that must not take focus from a label click (paths,
+   * hotkeys): the id of the label text; give the control aria-labelledby. */
+  labelId?: string;
   /** Small status text next to the label. */
   aside?: React.ReactNode;
   /** Put the control under the text, full width (long lists, wide inputs). */
@@ -52,6 +64,7 @@ export function SettingRow({
   label,
   help,
   htmlFor,
+  labelId,
   aside,
   stacked = false,
   children,
@@ -73,7 +86,9 @@ export function SettingRow({
               {label}
             </label>
           ) : (
-            <span className={labelClass}>{label}</span>
+            <span id={labelId} className={labelClass}>
+              {label}
+            </span>
           )}
           {aside}
         </div>

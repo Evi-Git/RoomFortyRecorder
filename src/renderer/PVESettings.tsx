@@ -7,6 +7,7 @@ import Switch from './components/Switch/Switch';
 import { Input } from './components/Input/Input';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsFieldClass,
 } from './components/SettingsCard/SettingsCard';
@@ -31,6 +32,7 @@ interface IProps {
 }
 
 const PVESettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState } = props;
   const [config, setConfig] = useSettings();
   const initialRender = React.useRef(true);
@@ -99,10 +101,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.recordRaids.description,
         )}
-        htmlFor="recordRaids"
+        htmlFor={sid('recordRaids')}
       >
         <Switch
-          id="recordRaids"
+          id={sid('recordRaids')}
           checked={Boolean(config.recordRaids)}
           name="recordRaids"
           onCheckedChange={setRecordRaids}
@@ -135,10 +137,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.recordCurrentRaidEncountersOnly.description,
         )}
-        htmlFor="recordCurrentRaidEncountersOnly"
+        htmlFor={sid('recordCurrentRaidEncountersOnly')}
       >
         <Switch
-          id="recordCurrentRaidEncountersOnly"
+          id={sid('recordCurrentRaidEncountersOnly')}
           checked={Boolean(config.recordCurrentRaidEncountersOnly)}
           name="recordCurrentRaidEncountersOnly"
           onCheckedChange={setRecordCurrentRaidEncountersOnly}
@@ -185,10 +187,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.minEncounterDuration.description,
         )}
-        htmlFor="minEncounterDuration"
+        htmlFor={sid('minEncounterDuration')}
       >
         <Input
-          id="minEncounterDuration"
+          id={sid('minEncounterDuration')}
           value={
             config.minEncounterDuration >= 0 ? config.minEncounterDuration : ''
           }
@@ -226,7 +228,7 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.minRaidDifficulty.description,
         )}
-        htmlFor="minRaidDifficulty"
+        htmlFor={sid('minRaidDifficulty')}
       >
         <Select
           onValueChange={setMinRaidDifficulty}
@@ -234,7 +236,7 @@ const PVESettings = (props: IProps) => {
           value={config.minRaidDifficulty}
         >
           <SelectTrigger
-            id="minRaidDifficulty"
+            id={sid('minRaidDifficulty')}
             className={`${settingsFieldClass} w-44`}
           >
             <SelectValue
@@ -290,10 +292,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.raidOverrun.description,
         )}
-        htmlFor="raidOverrun"
+        htmlFor={sid('raidOverrun')}
       >
         <Input
-          id="raidOverrun"
+          id={sid('raidOverrun')}
           value={config.raidOverrun >= 0 ? config.raidOverrun : ''}
           name="raidOverrun"
           onChange={setRaidOverrun}
@@ -346,10 +348,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.dungeonOverrun.description,
         )}
-        htmlFor="dungeonOverrun"
+        htmlFor={sid('dungeonOverrun')}
       >
         <Input
-          id="dungeonOverrun"
+          id={sid('dungeonOverrun')}
           value={config.dungeonOverrun >= 0 ? config.dungeonOverrun : ''}
           name="dungeonOverrun"
           onChange={setDungeonOverrun}
@@ -378,10 +380,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.recordDungeons.description,
         )}
-        htmlFor="recordDungeons"
+        htmlFor={sid('recordDungeons')}
       >
         <Switch
-          id="recordDungeons"
+          id={sid('recordDungeons')}
           checked={Boolean(config.recordDungeons)}
           name="recordDungeons"
           onCheckedChange={setRecordDungeons}
@@ -426,10 +428,10 @@ const PVESettings = (props: IProps) => {
           appState.language,
           configSchema.minKeystoneLevel.description,
         )}
-        htmlFor="minKeystoneLevel"
+        htmlFor={sid('minKeystoneLevel')}
       >
         <Input
-          id="minKeystoneLevel"
+          id={sid('minKeystoneLevel')}
           value={config.minKeystoneLevel >= 0 ? config.minKeystoneLevel : ''}
           name="minKeystoneLevel"
           onChange={setMinKeystoneLevel}

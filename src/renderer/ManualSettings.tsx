@@ -14,6 +14,7 @@ import { Phrase } from 'localisation/phrases';
 import { Input } from './components/Input/Input';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsFieldClass,
 } from './components/SettingsCard/SettingsCard';
@@ -32,6 +33,7 @@ interface IProps {
 }
 
 const ManualSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState, config, setConfig } = props;
   const initialRender = useRef(true);
   const manualHotKeyInputRef = useRef<HTMLInputElement>(null);
@@ -108,10 +110,10 @@ const ManualSettings = (props: IProps) => {
           appState.language,
           configSchema[preference].description,
         )}
-        htmlFor={preference}
+        htmlFor={sid(preference)}
       >
         <Switch
-          id={preference}
+          id={sid(preference)}
           checked={Boolean(config[preference])}
           name={preference}
           onCheckedChange={changeFn}
@@ -164,10 +166,10 @@ const ManualSettings = (props: IProps) => {
           appState.language,
           Phrase.ManualRecordHotKeyDescription,
         )}
-        htmlFor="manualHotKeyInput"
+        labelId={sid('manualHotKeyInput-label')}
       >
         <Input
-          id="manualHotKeyInput"
+          aria-labelledby={sid('manualHotKeyInput-label')}
           ref={manualHotKeyInputRef}
           name="manualHotKeyInput"
           value={getHotkeyString()}

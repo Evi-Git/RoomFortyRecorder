@@ -15,6 +15,7 @@ import Switch from './components/Switch/Switch';
 import { Phrase } from 'localisation/phrases';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsFieldClass,
 } from './components/SettingsCard/SettingsCard';
@@ -27,6 +28,7 @@ interface IProps {
 }
 
 const LocaleSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { config, setConfig, appState, setAppState } = props;
   const initialRender = React.useRef(true);
 
@@ -84,10 +86,13 @@ const LocaleSettings = (props: IProps) => {
       <SettingRow
         label={getLocalePhrase(language, Phrase.LanguageLabel)}
         help="Pages from Warcraft Recorder are translated. Room Forty pages are English."
-        htmlFor="language"
+        htmlFor={sid('language')}
       >
         <Select value={String(config.language)} onValueChange={setLanguage}>
-          <SelectTrigger id="language" className={`${settingsFieldClass} w-48`}>
+          <SelectTrigger
+            id={sid('language')}
+            className={`${settingsFieldClass} w-48`}
+          >
             <SelectValue
               placeholder={getLocalePhrase(language, Phrase.SelectLanguage)}
             />
@@ -103,10 +108,10 @@ const LocaleSettings = (props: IProps) => {
           language,
           configSchema.hideEmptyCategories.description,
         )}
-        htmlFor="hideEmptyCategories"
+        htmlFor={sid('hideEmptyCategories')}
       >
         <Switch
-          id="hideEmptyCategories"
+          id={sid('hideEmptyCategories')}
           checked={Boolean(config.hideEmptyCategories)}
           name="hideEmptyCategories"
           onCheckedChange={setHideEmptyCategories}

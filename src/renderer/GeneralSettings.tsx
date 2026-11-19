@@ -13,6 +13,7 @@ import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsButtonClass,
   settingsFieldClass,
@@ -27,6 +28,7 @@ const ipc = window.electron.ipcRenderer;
 let debounceTimeout: NodeJS.Timeout | null;
 
 const GeneralSettings: React.FC<IProps> = (props: IProps) => {
+  const sid = useScopedIds();
   const { recorderStatus, appState } = props;
   const { language } = appState;
   const [config, setConfig] = useSettings();
@@ -118,12 +120,12 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
       <SettingRow
         label={getLocalePhrase(language, Phrase.DiskStorageFolderLabel)}
         help={getLocalePhrase(language, configSchema.storagePath.description)}
-        htmlFor="storagePath"
+        labelId={sid('storagePath-label')}
       >
         <div className="flex w-[340px] flex-col gap-y-1">
           <div className="flex gap-x-2">
             <Input
-              id="storagePath"
+              aria-labelledby={sid('storagePath-label')}
               name="storagePath"
               value={config.storagePath}
               onClick={setStoragePath}
@@ -141,7 +143,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
             </Button>
           </div>
           {config.storagePath === '' && (
-            <span className="text-error text-sm">
+            <span className="text-error-text text-sm">
               {getLocalePhrase(language, Phrase.MustNotBeEmpty)}
             </span>
           )}
@@ -181,10 +183,10 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
           language,
           configSchema.separateBufferPath.description,
         )}
-        htmlFor="separateBufferPath"
+        htmlFor={sid('separateBufferPath')}
       >
         <Switch
-          id="separateBufferPath"
+          id={sid('separateBufferPath')}
           checked={Boolean(config.separateBufferPath)}
           name="separateBufferPath"
           onCheckedChange={setSeparateBufferPath}
@@ -209,11 +211,11 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
           language,
           configSchema.bufferStoragePath.description,
         )}
-        htmlFor="bufferStoragePath"
+        labelId={sid('bufferStoragePath-label')}
       >
         <div className="flex w-[340px] gap-x-2">
           <Input
-            id="bufferStoragePath"
+            aria-labelledby={sid('bufferStoragePath-label')}
             name="bufferStoragePath"
             value={config.bufferStoragePath}
             onClick={setBufferPath}
@@ -256,11 +258,8 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     });
   };
 
+  // The usage bar stays visible while recording; only the limit is locked.
   const getMaxStorageField = () => {
-    if (isComponentDisabled()) {
-      return <></>;
-    }
-
     const usage = Math.round(appState.diskStatus.usage / 1024 ** 3);
     const max = Math.round(appState.diskStatus.limit / 1024 ** 3);
     let perc = max === 0 ? 100 : (100 * usage) / max;
@@ -271,7 +270,7 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
       <SettingRow
         label={getLocalePhrase(language, Phrase.MaxDiskStorageLabel)}
         help={getLocalePhrase(language, configSchema.maxStorage.description)}
-        htmlFor="maxDiskStorage"
+        htmlFor={sid('maxDiskStorage')}
       >
         <div className="flex items-center gap-x-4">
           <div
@@ -283,16 +282,18 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
               {text}
             </span>
           </div>
-          <Input
-            id="maxDiskStorage"
-            name="maxDiskStorage"
-            value={config.maxStorage >= 0 ? config.maxStorage : ''}
-            onChange={setMaxStorage}
-            required
-            type="numeric"
-            disabled={isComponentDisabled()}
-            className={`${settingsFieldClass} w-20`}
-          />
+          {!isComponentDisabled() && (
+            <Input
+              id={sid('maxDiskStorage')}
+              name="maxDiskStorage"
+              value={config.maxStorage >= 0 ? config.maxStorage : ''}
+              onChange={setMaxStorage}
+              required
+              type="numeric"
+              disabled={isComponentDisabled()}
+              className={`${settingsFieldClass} w-20`}
+            />
+          )}
         </div>
       </SettingRow>
     );

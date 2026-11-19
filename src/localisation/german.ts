@@ -120,7 +120,6 @@ const GERMAN: Translations = {
   [Phrase.ClassicLogPathLabel]: 'Classic Log Pfad',
   [Phrase.RecordClassicEraLabel]: 'Classic Era aufnehmen',
   [Phrase.ClassicEraLogPathLabel]: 'Classic Era Log Pfad',
-  [Phrase.PVESettingsLabel]: 'PvE Einstellungen',
   [Phrase.RecordRaidsLabel]: 'Schlachtzüge aufnehmen',
   [Phrase.MinimumEncounterDurationLabel]: 'Mindeste Bosskampf Dauer (sek)',
   [Phrase.RaidOverrunLabel]: 'Schlachtzug Überlauf (sek)',

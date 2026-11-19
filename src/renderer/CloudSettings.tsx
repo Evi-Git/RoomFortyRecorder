@@ -41,6 +41,7 @@ import {
 import { Button } from './components/Button/Button';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
   settingsButtonClass,
   settingsFieldClass,
@@ -72,6 +73,7 @@ interface IProps {
 }
 
 const CloudSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState, config, setConfig, videoState } = props;
   const { language } = appState;
   const initialRender1 = useRef(true);
@@ -129,7 +131,7 @@ const CloudSettings = (props: IProps) => {
     changeFn: (checked: boolean) => void,
   ) => (
     <Switch
-      id={preference}
+      id={sid(preference)}
       checked={Boolean(config[preference])}
       name={preference}
       onCheckedChange={changeFn}
@@ -154,7 +156,7 @@ const CloudSettings = (props: IProps) => {
       <SettingRow
         label={getLocalePhrase(language, label)}
         help={getLocalePhrase(language, configSchema[preference].description)}
-        htmlFor={preference}
+        htmlFor={sid(preference)}
       >
         {getSwitch(preference, changeFn)}
       </SettingRow>
@@ -184,7 +186,7 @@ const CloudSettings = (props: IProps) => {
           language,
           configSchema.cloudUploadRaidMinDifficulty.description,
         )}
-        htmlFor="cloudUploadRaidMinDifficulty"
+        htmlFor={sid('cloudUploadRaidMinDifficulty')}
       >
         <Select
           onValueChange={setMinRaidThreshold}
@@ -192,7 +194,7 @@ const CloudSettings = (props: IProps) => {
           value={config.cloudUploadRaidMinDifficulty}
         >
           <SelectTrigger
-            id="cloudUploadRaidMinDifficulty"
+            id={sid('cloudUploadRaidMinDifficulty')}
             className={`${settingsFieldClass} w-44`}
           >
             <SelectValue
@@ -247,10 +249,10 @@ const CloudSettings = (props: IProps) => {
           language,
           configSchema.cloudUploadDungeonMinLevel.description,
         )}
-        htmlFor="cloudUploadDungeonMinLevel"
+        htmlFor={sid('cloudUploadDungeonMinLevel')}
       >
         <Input
-          id="cloudUploadDungeonMinLevel"
+          id={sid('cloudUploadDungeonMinLevel')}
           value={
             config.cloudUploadDungeonMinLevel >= 0
               ? config.cloudUploadDungeonMinLevel
@@ -314,7 +316,7 @@ const CloudSettings = (props: IProps) => {
     <SettingRow
       label={getLocalePhrase(language, label)}
       help={getLocalePhrase(language, configSchema[preference].description)}
-      htmlFor={preference}
+      htmlFor={sid(preference)}
     >
       {getSwitch(preference, changeFn)}
     </SettingRow>
@@ -425,7 +427,7 @@ const CloudSettings = (props: IProps) => {
         }
         aside={
           discordAuthError ? (
-            <span className="text-error text-xs font-semibold">
+            <span className="text-error-text text-xs font-semibold">
               {discordAuthError}
             </span>
           ) : undefined
@@ -603,11 +605,11 @@ const CloudSettings = (props: IProps) => {
           language,
           configSchema.cloudUploadRateLimitMbps.description,
         )}
-        htmlFor="cloudUploadRateLimitMbps"
+        htmlFor={sid('cloudUploadRateLimitMbps')}
       >
         <div className="flex flex-col gap-y-1">
           <Input
-            id="cloudUploadRateLimitMbps"
+            id={sid('cloudUploadRateLimitMbps')}
             name="cloudUploadRateLimitMbps"
             value={config.cloudUploadRateLimitMbps}
             onChange={setUploadRateLimit}
@@ -616,7 +618,7 @@ const CloudSettings = (props: IProps) => {
             className={`${settingsFieldClass} w-24`}
           />
           {config.cloudUploadRateLimitMbps < 1 && (
-            <span className="text-error text-xs font-semibold">
+            <span className="text-error-text text-xs font-semibold">
               {getLocalePhrase(language, Phrase.OneOrGreater)}
             </span>
           )}

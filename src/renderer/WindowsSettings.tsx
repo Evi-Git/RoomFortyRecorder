@@ -8,6 +8,7 @@ import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
 import { Phrase } from 'localisation/phrases';
 import {
   SettingRow,
+  useScopedIds,
   SettingsSection,
 } from './components/SettingsCard/SettingsCard';
 
@@ -20,6 +21,7 @@ interface IProps {
 }
 
 const WindowsSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState, config, setConfig } = props;
 
   const effect1 = useRef(false);
@@ -70,10 +72,10 @@ const WindowsSettings = (props: IProps) => {
     <SettingRow
       label={getLocalePhrase(appState.language, label)}
       help={getLocalePhrase(appState.language, help)}
-      htmlFor={preference}
+      htmlFor={sid(preference)}
     >
       <Switch
-        id={preference}
+        id={sid(preference)}
         checked={Boolean(config[preference])}
         name={preference}
         onCheckedChange={changeFn}
