@@ -45,6 +45,13 @@ export default abstract class LogHandler {
 
   public static overrunning = false;
 
+  /**
+   * [RoomFortyRecorder] Activities between "activity cleared" and "video
+   * queued for cutting" (overrun wait, recorder stop). The quit/update check
+   * reads this so it can't see a gap right after a pull ends.
+   */
+  public static finishing = 0;
+
   public combatLogWatcher: CombatLogWatcher;
 
   protected player: Combatant | undefined;
@@ -301,6 +308,23 @@ export default abstract class LogHandler {
    * ending comes through this function.
    */
   protected static async endActivity() {
+    if (!LogHandler.activity) {
+      console.error("[LogHandler] No active activity so can't stop");
+      return;
+    }
+
+    // Counted from the moment the activity is cleared until the video is
+    // queued (or discarded), on every path.
+    LogHandler.finishing += 1;
+
+    try {
+      await LogHandler.endActivityInner();
+    } finally {
+      LogHandler.finishing = Math.max(0, LogHandler.finishing - 1);
+    }
+  }
+
+  private static async endActivityInner() {
     if (!LogHandler.activity) {
       console.error("[LogHandler] No active activity so can't stop");
       return;

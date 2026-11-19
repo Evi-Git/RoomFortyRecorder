@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, Tray } from 'electron';
 import LogHandler from 'parsing/LogHandler';
+import Poller from 'utils/Poller';
 import LiveStreamer from './LiveStreamer';
 import PullDesk from './PullDesk';
 import VideoProcessQueue from './VideoProcessQueue';
@@ -29,7 +30,13 @@ export const currentBusyReason = (): string | null => {
       activity: LogHandler.activity
         ? { category: String(LogHandler.activity.category) }
         : null,
-      capturingPull: PullDesk.getInstance().isCapturing,
+      // Capture only counts while WoW runs: if WoW crashes mid-pull the
+      // capture stays open until the next pull, which would block quitting
+      // for days. (Resetting it instead would risk dropping a real pull.)
+      capturingPull:
+        PullDesk.getInstance().isCapturing &&
+        Poller.getInstance().isWowRunning(),
+      finishing: LogHandler.finishing > 0 || LogHandler.overrunning,
       live: LiveStreamer.getInstance().isActive(),
       saving: queue.saving,
       uploading: queue.uploading,
@@ -46,6 +53,7 @@ const POLL_MS = 2000;
 const deferred = new DeferredAction();
 let timer: NodeJS.Timeout | null = null;
 let allowClose = false;
+let dialogOpen = false;
 let trayRef: (() => Tray | null) | null = null;
 let installRunner: (() => void) | null = null;
 
@@ -117,6 +125,12 @@ export const confirmWhenBusy = async (
     return true;
   }
 
+  // One dialog at a time: a second request just brings the window forward.
+  if (dialogOpen) {
+    if (parent && !parent.isDestroyed()) parent.focus();
+    return false;
+  }
+
   const waiting = deferred.current !== null;
   const { labels, choices } = busyDialogButtons(kind, waiting);
   const options = {
@@ -127,14 +141,23 @@ export const confirmWhenBusy = async (
       kind === 'quit' ? 'Quitting now loses it.' : 'Installing now loses it.',
     buttons: labels,
     defaultId: 0,
-    cancelId: labels.length - 1,
+    cancelId: waiting ? 1 : labels.length - 1,
     noLink: true,
   };
 
+  // A minimized owner can swallow the box: bring it back first.
+  if (parent && !parent.isDestroyed() && parent.isMinimized()) parent.restore();
   const usable = parent && !parent.isDestroyed() && parent.isVisible();
-  const { response } = usable
-    ? await dialog.showMessageBox(parent, options)
-    : await dialog.showMessageBox(options);
+
+  dialogOpen = true;
+  let response: number;
+  try {
+    ({ response } = usable
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options));
+  } finally {
+    dialogOpen = false;
+  }
   const choice = choices[response] ?? 'cancel';
 
   if (choice === 'now') {
@@ -143,6 +166,7 @@ export const confirmWhenBusy = async (
     return true;
   }
 
+  if (choice === 'stop') stopPolling();
   if (choice === 'wait') startPolling(kind);
   return false;
 };

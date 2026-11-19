@@ -35,7 +35,13 @@ import {
 import ConfigService from '../config/ConfigService';
 import Manager from './Manager';
 import AppUpdater from './AppUpdater';
-import { allowQuitNow, isQuitAllowed, requestQuit, setBusyTray } from './busy';
+import {
+  allowQuitNow,
+  currentBusyReason,
+  isQuitAllowed,
+  requestQuit,
+  setBusyTray,
+} from './busy';
 import MenuBuilder from './menu';
 import { Phrase } from 'localisation/phrases';
 import CloudClient from 'storage/CloudClient';
@@ -320,8 +326,9 @@ const createWindow = async () => {
   // OS shutdown) set the allow flag in before-quit/session-end and pass.
   window.on('close', (event) => {
     if (isQuitAllowed() || !window) return;
+    // Idle: don't touch the event, so the close runs exactly as it did.
+    if (currentBusyReason() === null) return;
     event.preventDefault();
-    // Idle: this calls app.quit() straight away, as the close used to.
     requestQuit(window).catch(console.error);
   });
 

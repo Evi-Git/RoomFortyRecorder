@@ -113,15 +113,17 @@ export default class AppUpdater {
    * A check found an update. Download now if idle (or the user asked for the
    * check), otherwise wait and re-check every minute.
    */
-  private onUpdateFound(manual = this.manualCheck) {
-    this.manualCheck = false;
+  private onUpdateFound(fromTimer = false) {
+    // The timer path must leave a manual check's flag alone.
+    const manual = fromTimer ? false : this.manualCheck;
+    if (!fromTimer) this.manualCheck = false;
     if (this.downloadTimer) clearTimeout(this.downloadTimer);
     this.downloadTimer = undefined;
 
     if (!mayDownloadUpdate(currentBusyReason(), manual)) {
       console.info('[AutoUpdater] Busy, will download the update when idle');
       this.setStatus({ state: 'idle' });
-      this.downloadTimer = setTimeout(() => this.onUpdateFound(false), 60_000);
+      this.downloadTimer = setTimeout(() => this.onUpdateFound(true), 60_000);
       return;
     }
 

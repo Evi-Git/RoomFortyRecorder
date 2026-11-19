@@ -12,6 +12,8 @@ export type BusyInputs = {
   live: boolean;
   /** Recordings being cut or re-encoded. */
   saving: number;
+  /** A pull just ended: overrun wait or recorder stop, video not queued yet. */
+  finishing?: boolean;
   /** Cloud video uploads queued or running. */
   uploading: number;
 };
@@ -34,7 +36,8 @@ export const busyReasonFrom = (inputs: BusyInputs): string | null => {
 
   if (inputs.capturingPull) return 'A pull is being recorded.';
   if (inputs.live) return "You're live.";
-  if (inputs.saving > 0) return 'A recording is still being saved.';
+  if (inputs.finishing || inputs.saving > 0)
+    return 'A recording is still being saved.';
   if (inputs.uploading > 0) return 'A recording is uploading.';
   return null;
 };
@@ -70,7 +73,7 @@ export class DeferredAction {
 }
 
 /** What the user chose in the busy dialog. */
-export type BusyChoice = 'wait' | 'now' | 'cancel';
+export type BusyChoice = 'wait' | 'now' | 'cancel' | 'stop';
 
 /**
  * Buttons for the dialog: the first is the default. While already waiting, a
@@ -84,8 +87,8 @@ export const busyDialogButtons = (
 
   if (alreadyWaiting) {
     return {
-      labels: [`${verb} now`, 'Keep waiting'],
-      choices: ['now', 'cancel'],
+      labels: [`${verb} now`, 'Keep waiting', `Don't ${verb.toLowerCase()}`],
+      choices: ['now', 'cancel', 'stop'],
     };
   }
 

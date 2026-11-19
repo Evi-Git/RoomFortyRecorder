@@ -43,6 +43,12 @@ describe('busyReasonFrom', () => {
     );
   });
 
+  it('counts the end-of-pull window as saving', () => {
+    expect(busyReasonFrom({ ...idle, finishing: true })).toBe(
+      'A recording is still being saved.',
+    );
+  });
+
   it('prefers the most costly reason', () => {
     expect(
       busyReasonFrom({
@@ -95,8 +101,8 @@ describe('busyDialogButtons', () => {
 
   it('offers now or keep waiting while waiting', () => {
     expect(busyDialogButtons('quit', true)).toEqual({
-      labels: ['Quit now', 'Keep waiting'],
-      choices: ['now', 'cancel'],
+      labels: ['Quit now', 'Keep waiting', "Don't quit"],
+      choices: ['now', 'cancel', 'stop'],
     });
   });
 });
