@@ -102,6 +102,8 @@ type PageHeaderProps<K extends string> = {
   tabs?: TabItem<K>[];
   tab?: K;
   onTab?: (key: K) => void;
+  /** Screen-reader name of the tabs when `title` isn't a string. */
+  tabsLabel?: string;
   /** Right-hand side: buttons, pickers. */
   actions?: React.ReactNode;
   className?: string;
@@ -112,6 +114,7 @@ export function PageHeader<K extends string>({
   tabs,
   tab,
   onTab,
+  tabsLabel,
   actions,
   className,
 }: PageHeaderProps<K>) {
@@ -132,7 +135,10 @@ export function PageHeader<K extends string>({
             value={tab}
             onChange={onTab}
             size="md"
-            label={typeof title === 'string' ? `${title} views` : 'Views'}
+            label={
+              tabsLabel ??
+              (typeof title === 'string' ? `${title} views` : 'Views')
+            }
           />
         )}
       </div>

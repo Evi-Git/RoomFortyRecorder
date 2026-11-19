@@ -8,6 +8,21 @@ import { isReset } from '../resets';
 
 type ListPull = { id: string; duration?: number | null };
 
+/** True when every pull is a reset, so none can be hidden. */
+export const allResets = (pulls: ListPull[]) =>
+  pulls.length > 0 && pulls.every((p) => isReset(p));
+
+/**
+ * The pull opened automatically (night or boss change, first open): the
+ * first of `pulls` (newest first) that isn't a reset, unless resets are
+ * shown or every pull is one.
+ */
+export const autoPull = <P extends ListPull>(
+  pulls: P[],
+  showResets: boolean,
+): P | undefined =>
+  showResets ? pulls[0] : (pulls.find((p) => !isReset(p)) ?? pulls[0]);
+
 /**
  * The pulls to list. Resets are left out unless `showResets` is on, except
  * a pull that is picked or being looked at (it is never hidden). When every
@@ -18,14 +33,10 @@ export const visiblePulls = <P extends ListPull>(
   showResets: boolean,
   keepIds: string[],
 ): P[] => {
-  if (showResets) return pulls;
+  if (showResets || allResets(pulls)) return pulls;
   const kept = pulls.filter((p) => !isReset(p) || keepIds.includes(p.id));
   return kept.length ? kept : pulls;
 };
-
-/** True when every pull is a reset, so none can be hidden. */
-export const allResets = (pulls: ListPull[]) =>
-  pulls.length > 0 && pulls.every((p) => isReset(p));
 
 /** Resets left out of the list (for "Show resets (3)"). */
 export const hiddenResets = (all: ListPull[], shown: ListPull[]) =>

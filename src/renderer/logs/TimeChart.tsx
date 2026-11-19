@@ -351,7 +351,8 @@ const TimeChart = ({
           fontSize="10"
           fill="hsl(var(--foreground))"
         >
-          {rateLabel}
+          {rateLabel.length > 8 ? `${rateLabel.slice(0, 7)}…` : rateLabel}
+          <title>{rateLabel}</title>
         </text>
         {boundaries
           .filter((b) => b.t >= v0 && b.t <= v1)

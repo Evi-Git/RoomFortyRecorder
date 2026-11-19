@@ -18,6 +18,7 @@ import { LogsTarget, takeLogsTarget } from './logs/openTarget';
 import {
   allResets,
   findTargetPull,
+  autoPull,
   hiddenResets,
   visiblePulls,
 } from './logs/pullList';
@@ -1269,8 +1270,11 @@ const LogsPane = ({
   suffix,
   extra,
   compact = false,
+  target = null,
 }: {
   suffix: string;
+  /** "Open in Logs": a night and pull to show instead of the last pick. */
+  target?: LogsTarget | null;
   /** Side by side: the pull list goes above the logs, not beside them. */
   compact?: boolean;
   /** Shown at the end of the pane's top row (Compare / Close). */
@@ -1310,12 +1314,10 @@ const LogsPane = ({
   );
   const anchorRef = React.useRef<string | null>(null);
   const [showResets, setShowResets] = useShowResets();
-  // "Open in Logs" (from the Dashboard): the first pane takes the target
-  // once, on mount, and shows that night and pull instead of the last pick.
-  const [initialTarget] = React.useState<LogsTarget | null>(() =>
-    suffix === '' ? takeLogsTarget() : null,
-  );
-  const targetRef = React.useRef<LogsTarget | null>(initialTarget);
+  // "Open in Logs" (from the Dashboard): the page took the target once; the
+  // first pane shows that night and pull instead of the last pick. Picking
+  // another night or boss drops it, so it can't apply later.
+  const targetRef = React.useRef<LogsTarget | null>(target);
   // The pull list folds to a thin strip so the logs get the width.
   const [listFolded, setListFolded] = React.useState(() => {
     try {
@@ -1466,7 +1468,8 @@ const LogsPane = ({
   const onlyResets = !showResets && allResets(pulls);
 
   // [RoomFortyRecorder] The tab is named after the pull (or pulls) shown.
-  const titlePull = pulls.find((p) => p.id === pullId) ?? listed[0];
+  const titlePull =
+    pulls.find((p) => p.id === pullId) ?? autoPull(listed, showResets);
   let tabTitle: string | undefined;
   if (boss && comparing.length > 1) {
     tabTitle = `${boss.encounterName} ×${comparing.length}`;
@@ -1475,7 +1478,8 @@ const LogsPane = ({
   }
   useTabTitle(tabTitle);
 
-  const pull = pulls.find((p) => p.id === pullId) ?? listed[0];
+  const pull =
+    pulls.find((p) => p.id === pullId) ?? autoPull(listed, showResets);
   const shownBoss = boss ? keyOf(boss) : '';
   const shownPull = pull?.id ?? '';
   React.useEffect(() => {
@@ -1580,6 +1584,7 @@ const LogsPane = ({
           night={night}
           showLabel={false}
           onPick={(n, key) => {
+            targetRef.current = null;
             if (n !== night || key) {
               setNight(n);
               if (key) setBossKey(key);
@@ -1592,6 +1597,7 @@ const LogsPane = ({
             bosses={shownBosses}
             boss={boss}
             onPick={(key) => {
+              targetRef.current = null;
               if (key !== keyOf(boss)) {
                 setBossKey(key);
                 reset();
@@ -1856,9 +1862,11 @@ const compareButton =
 export const LogsView = ({
   split,
   setSplit,
+  target = null,
 }: {
   split: boolean;
   setSplit: (split: boolean) => void;
+  target?: LogsTarget | null;
 }) => {
   const tab = React.useContext(TabContext);
   // Only the first pane names the tab.
@@ -1876,7 +1884,7 @@ export const LogsView = ({
           split ? 'xl:border-r xl:border-panel-line xl:pr-6' : ''
         }`}
       >
-        <LogsPane suffix="" compact={split} />
+        <LogsPane suffix="" compact={split} target={target} />
       </div>
       {split && (
         <div className="min-w-0">
@@ -1917,7 +1925,11 @@ export const LogsPage = ({
     setAppState,
     persistentProgressRef,
   );
+  // "Open in Logs" is taken once here (the pane may not be mounted if the
+  // page last showed Trends) and always lands on Pulls.
+  const [target] = React.useState<LogsTarget | null>(() => takeLogsTarget());
   const [mode, setMode] = React.useState<'pulls' | 'trends'>(() => {
+    if (target) return 'pulls';
     try {
       return localStorage.getItem('rf-logs-mode') === 'trends'
         ? 'trends'
@@ -1945,6 +1957,7 @@ export const LogsPage = ({
                 Logs
               </span>
             }
+            tabsLabel="Logs views"
             tabs={[
               { key: 'pulls', label: 'Pulls' },
               { key: 'trends', label: 'Trends' },
@@ -1970,7 +1983,7 @@ export const LogsPage = ({
         </div>
         <div className="flex-1 overflow-y-auto px-7 py-4">
           {mode === 'pulls' ? (
-            <LogsView split={split} setSplit={setSplit} />
+            <LogsView split={split} setSplit={setSplit} target={target} />
           ) : (
             <LogsTrends />
           )}

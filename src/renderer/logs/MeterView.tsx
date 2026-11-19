@@ -1,3 +1,4 @@
+<ChartHead meter={meter} info={chartInfo} canWatch={Boolean(extras.onPick)} />;
 import React from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -72,6 +73,8 @@ const td = 'px-2 py-1 tabular-nums whitespace-nowrap';
 /** The scroll container of a table: its header row stays in view. */
 const TABLE_BOX =
   'overflow-auto max-h-[70vh] rounded-lg border border-panel-line bg-panel';
+/** The Total row stays in view at the bottom of a scrolled table. */
+const tdFoot = `${td} sticky bottom-0 z-10 border-t border-panel-line bg-panel`;
 const TITLE: Record<MeterKind, string> = {
   damage: 'Damage per second',
   healing: 'Healing per second',
@@ -250,6 +253,31 @@ const SplitCard = ({
   );
 };
 
+/** A chart card's title, what it shows, and how to use it. */
+const ChartHead = ({
+  meter,
+  info,
+  canWatch,
+}: {
+  meter: MeterKind;
+  info?: string;
+  canWatch: boolean;
+}) => (
+  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <h3 className="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[17px] font-bold text-foreground-lighter">
+      {TITLE[meter]}
+      {info && (
+        <span className="font-sans text-xs font-normal text-foreground">
+          {info}
+        </span>
+      )}
+    </h3>
+    <span className="text-xs text-foreground">
+      {canWatch ? 'Drag to zoom · click a moment to watch it' : 'Drag to zoom'}
+    </span>
+  </div>
+);
+
 /** A raider's (or enemy's) abilities. */
 const Drill = ({
   ctx,
@@ -258,6 +286,7 @@ const Drill = ({
   rows,
   extras,
   onBack,
+  chartInfo,
 }: {
   ctx: Ctx;
   meter: MeterKind;
@@ -265,6 +294,7 @@ const Drill = ({
   rows: MeterRow[];
   extras: ChartExtras;
   onBack: () => void;
+  chartInfo?: string;
 }) => {
   const seconds = viewSeconds(ctx);
   const [hover, setHover] = React.useState<{
@@ -411,6 +441,11 @@ const Drill = ({
         </span>
       </div>
       <div className="rounded-lg border border-panel-line bg-panel px-[18px] py-4">
+        <ChartHead
+          meter={meter}
+          info={chartInfo ? `${row.name} · ${chartInfo}` : row.name}
+          canWatch={Boolean(extras.onPick)}
+        />
         <TimeChart
           duration={ctx.total}
           zoomable
@@ -632,13 +667,13 @@ const Drill = ({
           </tbody>
           <tfoot>
             <tr className="text-foreground-lighter font-semibold">
-              <td className={td}>Total</td>
-              <td className={td}>
+              <td className={tdFoot}>Total</td>
+              <td className={tdFoot}>
                 <span className="flex justify-end text-xs pr-0">
                   {compact(row.total)}
                 </span>
               </td>
-              <td colSpan={20} className={`${td} text-right`}>
+              <td colSpan={20} className={`${tdFoot} text-right`}>
                 {thousands(row.total / seconds)}
               </td>
             </tr>
@@ -668,7 +703,7 @@ const Drill = ({
             ? 'Effective healing. Shields count for whoever cast them; mitigations (when switched on) for whoever cast the cooldown or has the passive, estimated from the log.'
             : meter === 'prevented'
               ? 'An estimate of damage kept off by damage-reduction cooldowns, credited to the caster (personal ones to the wearer). Shields are in Healing.'
-              : 'Damage includes what enemy shields soaked. Pets and guardians count for their owner unless Pets is on.'}
+              : 'Damage includes what enemy shields soaked. Pets and guardians count for their owner unless "Include pets" is on (under More filters).'}
       </p>
     </div>
   );
@@ -948,6 +983,7 @@ const MeterView = ({
         row={selected}
         rows={rows}
         extras={extras}
+        chartInfo={chartInfo}
         onBack={() => setWho(null)}
       />
     );
@@ -1305,9 +1341,11 @@ const MeterView = ({
           </tbody>
           <tfoot>
             <tr className="text-foreground-lighter font-semibold">
-              <td className={td}>Total</td>
-              <td className={`${td} text-right text-xs`}>{compact(total)}</td>
-              <td colSpan={3} className={`${td} text-right`}>
+              <td className={tdFoot}>Total</td>
+              <td className={`${tdFoot} text-right text-xs`}>
+                {compact(total)}
+              </td>
+              <td colSpan={3} className={`${tdFoot} text-right`}>
                 {thousands(total / seconds)}
               </td>
             </tr>

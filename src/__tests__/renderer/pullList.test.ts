@@ -1,5 +1,6 @@
 import {
   allResets,
+  autoPull,
   findTargetPull,
   hiddenResets,
   visiblePulls,
@@ -29,6 +30,19 @@ describe('visiblePulls', () => {
     expect(allResets(resets)).toBe(true);
     expect(allResets(pulls)).toBe(false);
     expect(allResets([])).toBe(false);
+  });
+
+  it('keeps showing every reset when one is picked and all are resets', () => {
+    const resets = [p('x', 3), p('y', 5)];
+    expect(visiblePulls(resets, false, ['x'])).toBe(resets);
+  });
+
+  it('auto-picks the newest pull that is not a reset', () => {
+    expect(autoPull(pulls, false)?.id).toBe('a');
+    expect(autoPull([p('b', 4), p('c', 90)], false)?.id).toBe('c');
+    expect(autoPull([p('b', 4), p('c', 90)], true)?.id).toBe('b');
+    expect(autoPull([p('b', 4), p('d', 2)], false)?.id).toBe('b');
+    expect(autoPull([], false)).toBeUndefined();
   });
 
   it('counts the hidden resets', () => {
