@@ -14,7 +14,7 @@ const StatTiles = ({ tiles }: { tiles: Tile[] }) => (
       .map((tile) => (
         <div
           key={tile.key}
-          className="min-w-[150px] flex-1 rounded-lg border border-panel-line bg-panel px-4 py-3.5"
+          className="min-w-[200px] flex-1 rounded-lg border border-panel-line bg-panel px-4 py-3.5"
         >
           <div className="text-[13px] text-foreground">{tile.label}</div>
           <div className="text-[22px] font-semibold leading-snug tabular-nums text-foreground-lighter">

@@ -929,7 +929,7 @@ const PullDeskPage = (props: IProps) => {
                         {result}
                       </span>
                     </div>
-                    <div className="mt-1 flex items-center gap-x-2 text-xs text-foreground">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground [&>span]:whitespace-nowrap">
                       <span className="tabular-nums">
                         {mmss(pull.duration)}
                       </span>
@@ -946,7 +946,7 @@ const PullDeskPage = (props: IProps) => {
                       <BossBar
                         bossPercent={pull.bossPercent}
                         kill={kill}
-                        className="ml-1 min-w-[24px] flex-1"
+                        className="ml-1 min-w-[40px] flex-1"
                       />
                     </div>
                   </button>
