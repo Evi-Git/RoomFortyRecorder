@@ -721,27 +721,33 @@ export const scenes = [
     ['Top logs', 'toplogs'],
     ['General', 'settings'],
     ['Watch live', 'watch-live'],
-  ].map(([label, key]) => ({
-    name: `small-${key}`,
-    shows: `${label} at 1100x700`,
-    viewport: small,
-    steps: async (t) => {
-      await t.nav(label);
-      await t.settle(1200);
+  ].flatMap(([label, key]) => [
+    {
+      name: `small-${key}`,
+      shows: `${label} at 1100x700`,
+      viewport: small,
+      steps: async (t) => {
+        await t.nav(label);
+        await t.settle(1200);
+      },
     },
-  })),
-  // The other two Settings tabs at 1100x700 (continue from small-settings).
-  ...[
-    ['Game', 'game'],
-    ['Cloud', 'cloud'],
-  ].map(([label, key]) => ({
-    name: `small-settings-${key}`,
-    shows: `Settings > ${label} tab at 1100x700`,
-    viewport: small,
-    continue: true,
-    steps: async (t) => {
-      await t.page.getByRole('tab', { name: label, exact: true }).click();
-      await t.settle(800);
-    },
-  })),
+    // The other two Settings tabs, straight after the first one.
+    ...(key === 'settings'
+      ? [
+          ['Game', 'game'],
+          ['Cloud', 'cloud'],
+        ].map(([tabLabel, tabKey]) => ({
+          name: `small-settings-${tabKey}`,
+          shows: `Settings > ${tabLabel} tab at 1100x700`,
+          viewport: small,
+          continue: true,
+          steps: async (t) => {
+            await t.page
+              .getByRole('tab', { name: tabLabel, exact: true })
+              .click();
+            await t.settle(800);
+          },
+        }))
+      : []),
+  ]),
 ];
