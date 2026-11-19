@@ -243,6 +243,8 @@ const createWindow = async () => {
     show: false,
     height: 1020 * 0.9,
     width: 1980 * 0.8,
+    minWidth: 1024,
+    minHeight: 640,
     icon: getAssetPath('./icon/small-icon.png'),
     frame: false,
     title: `Room Forty Toolkit v${appVersion}`,

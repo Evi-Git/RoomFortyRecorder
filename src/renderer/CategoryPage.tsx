@@ -75,6 +75,10 @@ interface IProps {
   playerHeightRef: RefObject<number>;
 }
 
+// The tallest the player can be: 32 (top bar) + 90 (toolbar) + 200 (the
+// table's header and a few rows) stay under it, and never under 280.
+const maxPlayerHeight = () => Math.max(280, window.innerHeight - 322);
+
 /**
  * A page representing a video category.
  */
@@ -229,18 +233,17 @@ const CategoryPage = (props: IProps) => {
         return;
       }
 
-      // 96px = 32 (top bar) + 40 (video controls) + 24 (grip)
-      if (playerHeightRef.current + 96 > window.innerHeight) {
-        // The video is bigger than the window. Reset it
-        // to the original size. Could probably check that
-        // 500 is smaller than the window but who resizes
-        // their window to be smaller than 500px?
-        resizableRef.current.updateSize({ height: 500 });
-        playerHeightRef.current = 500;
+      // Keep the room the toolbar and the table need under the player: in a
+      // short window (the minimum is 640 px) the player gives way.
+      const maxHeight = maxPlayerHeight();
+      if (playerHeightRef.current > maxHeight) {
+        resizableRef.current.updateSize({ height: maxHeight });
+        playerHeightRef.current = maxHeight;
       }
     };
 
     window.addEventListener('resize', handleWindowResize);
+    handleWindowResize();
 
     return () => {
       window.removeEventListener('resize', handleWindowResize);
@@ -409,7 +412,7 @@ const CategoryPage = (props: IProps) => {
       <Resizable
         ref={resizableRef}
         defaultSize={{
-          height: `${playerHeightRef.current}px`,
+          height: `${Math.min(playerHeightRef.current, maxPlayerHeight())}px`,
           width: '100%',
         }}
         enable={{
@@ -676,7 +679,7 @@ const CategoryPage = (props: IProps) => {
 
     return (
       <>
-        <div className="w-full flex justify-evenly items-center gap-x-2 px-4 py-2">
+        <div className="w-full flex flex-wrap justify-evenly items-center gap-x-2 gap-y-2 px-4 py-2">
           <MultiPovPlaybackToggles
             appState={appState}
             setAppState={setAppState}
@@ -692,8 +695,8 @@ const CategoryPage = (props: IProps) => {
             />
           )}
 
-          <div className="flex flex-grow gap-x-2">
-            <div className="flex-grow">
+          <div className="flex flex-grow gap-x-2 min-w-[300px]">
+            <div className="flex-grow min-w-[120px]">
               <SearchBar
                 key={category}
                 appState={appState}

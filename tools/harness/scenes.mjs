@@ -33,6 +33,7 @@ const tab = async (t, name) => {
 };
 
 const small = { width: 1100, height: 700 };
+const smallest = { width: 1024, height: 640 };
 
 // A made-up night for the Dashboard: a kill, two wipes and a reset, with
 // deaths, a boss health curve, prep and meters (the test logs have none).
@@ -750,4 +751,20 @@ export const scenes = [
         }))
       : []),
   ]),
+
+  // ---- Smallest window (1024x640, the app's minimum) ----------------------
+  ...[
+    ['Raids', 'raids'],
+    ['Dashboard', 'dashboard'],
+    ['Logs', 'logs'],
+    ['General', 'settings'],
+  ].map(([label, key]) => ({
+    name: `smallest-${key}`,
+    shows: `${label} at 1024x640`,
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav(label);
+      await t.settle(1200);
+    },
+  })),
 ];

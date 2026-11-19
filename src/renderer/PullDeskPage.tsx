@@ -2016,6 +2016,7 @@ const PullDeskPage = (props: IProps) => {
       {view === 'pulls' && (
         <>
           <NightPicker
+            showLabel={false}
             nights={nightList}
             night={shownNights[0] ?? ''}
             picked={shownNights}
@@ -2048,9 +2049,10 @@ const PullDeskPage = (props: IProps) => {
           type="button"
           className={SECONDARY_BUTTON}
           onClick={() => setChannelsOpen(true)}
-          title="Which raider owns which Discord channel, for sending clips"
+          aria-label="Personal channels"
+          title="Personal channels: which raider owns which Discord channel, for sending clips"
         >
-          Personal channels
+          Channels
         </button>
       )}
       <PersonalChannelsDialog

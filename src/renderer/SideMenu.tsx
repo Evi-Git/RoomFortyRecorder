@@ -85,6 +85,27 @@ interface IProps {
   setInstantReplayState: Dispatch<SetStateAction<InstantReplayState>>;
 }
 
+const NARROW_PX = 1200;
+const RAIL_KEY = 'rf-sidebar-rail';
+const RAIL_NARROW_KEY = 'rf-sidebar-rail-narrow';
+
+const readRailPref = (key: string): boolean | undefined => {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? undefined : v === '1';
+  } catch {
+    return undefined;
+  }
+};
+
+const writeRailPref = (key: string, folded: boolean) => {
+  try {
+    localStorage.setItem(key, folded ? '1' : '0');
+  } catch {
+    // Not remembered.
+  }
+};
+
 const SideMenu = (props: IProps) => {
   const {
     recorderStatus,
@@ -110,22 +131,30 @@ const SideMenu = (props: IProps) => {
   const [appVersion, setAppVersion] = useState<string>();
   // [RoomFortyRecorder] The sidebar folds down to an icon strip; the page
   // next to it takes the room.
-  const [rail, setRail] = useState(() => {
-    try {
-      return localStorage.getItem('rf-sidebar-rail') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleRail = () =>
-    setRail((was) => {
-      try {
-        localStorage.setItem('rf-sidebar-rail', was ? '0' : '1');
-      } catch {
-        // Not remembered.
-      }
-      return !was;
-    });
+  // Below NARROW_PX wide it starts folded; a choice made at that width is
+  // remembered on its own, so unfolding there sticks and doesn't change what
+  // the user picked in a wide window.
+  const [narrow, setNarrow] = useState(() => window.innerWidth < NARROW_PX);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < NARROW_PX);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const [widePref, setWidePref] = useState(() => readRailPref(RAIL_KEY));
+  const [narrowPref, setNarrowPref] = useState(() =>
+    readRailPref(RAIL_NARROW_KEY),
+  );
+  const rail = narrow ? (narrowPref ?? true) : (widePref ?? false);
+  const toggleRail = () => {
+    const next = !rail;
+    writeRailPref(narrow ? RAIL_NARROW_KEY : RAIL_KEY, next);
+    if (narrow) setNarrowPref(next);
+    else setWidePref(next);
+  };
+  // The title bar hides its wordmark over the icon strip.
+  useEffect(() => {
+    document.documentElement.dataset.rail = rail ? '1' : '0';
+  }, [rail]);
   const { category, language } = appState;
   const lastManualStartStopClickRef = useRef(0);
 

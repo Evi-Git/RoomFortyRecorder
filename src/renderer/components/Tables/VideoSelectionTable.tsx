@@ -55,6 +55,12 @@ const VideoSelectionTable = (props: IProps) => {
   const { active: tabActive } = React.useContext(TabContext);
 
   const { pageIndex, pageSize } = table.state.pagination;
+
+  // The columns' own minimums add up to the table's: narrower than that and
+  // the table scrolls sideways rather than squeezing the columns.
+  const tableMinWidth = table
+    .getHeaderGroups()[0]
+    .headers.reduce((sum, h) => sum + (h.column.columnDef.minSize ?? 0), 0);
   const selectedRowRef = React.useRef<HTMLTableRowElement>(null);
   const hasScrolledToSelection = React.useRef(false);
 
@@ -272,16 +278,21 @@ const VideoSelectionTable = (props: IProps) => {
         : header.column.getSize();
 
     return (
-      <th key={header.id} colSpan={header.colSpan} style={{ width }}>
+      <th
+        key={header.id}
+        colSpan={header.colSpan}
+        className="overflow-hidden"
+        style={{ width }}
+      >
         <div
-          className="flex flex-row p-2 items-center cursor-pointer select-none"
+          className="flex flex-row p-2 items-center cursor-pointer select-none min-w-0"
           onClick={header.column.getToggleSortingHandler()}
           title={tooltip}
         >
           {flexRender(header.column.columnDef.header, header.getContext())}
           {{
-            asc: <ArrowUp />,
-            desc: <ArrowDown />,
+            asc: <ArrowUp className="shrink-0" />,
+            desc: <ArrowDown className="shrink-0" />,
           }[header.column.getIsSorted() as string] ?? null}
         </div>
       </th>
@@ -314,7 +325,7 @@ const VideoSelectionTable = (props: IProps) => {
         : cell.column.getSize();
 
     return (
-      <td className="px-2" key={cell.id} style={{ width }}>
+      <td className="px-2 overflow-hidden" key={cell.id} style={{ width }}>
         {flexRender(cell.column.columnDef.cell, cell.getContext())}
       </td>
     );
@@ -448,7 +459,10 @@ const VideoSelectionTable = (props: IProps) => {
     <div className="w-full h-full overflow-hidden px-2">
       <ScrollArea withScrollIndicators={false} className="h-full w-full">
         <div className="pb-2 px-4">
-          <table className="table-fixed w-full">
+          <table
+            className="table-fixed w-full"
+            style={{ minWidth: tableMinWidth }}
+          >
             {renderTableHeader()}
             {renderTableBody()}
           </table>
