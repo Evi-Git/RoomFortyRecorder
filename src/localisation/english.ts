@@ -469,7 +469,7 @@ const ENGLISH: Translations = {
   [Phrase.StatusTitleConnecting]: 'Connecting to the guild server…',
   [Phrase.StatusDescrConnecting]: 'Checking your sign-in.',
   [Phrase.StatusTitleOffline]: "Can't reach the guild server",
-  [Phrase.StatusDescrOffline]: "Can't reach the guild server. Trying again in {seconds} s.",
+  [Phrase.StatusDescrOffline]: "Can't reach the guild server. Trying again in {seconds} s.",
   [Phrase.StatusTitleExpired]: 'Your sign-in expired',
   [Phrase.StatusDescrExpired]: 'Your sign-in expired.',
   [Phrase.StatusTitleRefused]: 'Sign-in refused',

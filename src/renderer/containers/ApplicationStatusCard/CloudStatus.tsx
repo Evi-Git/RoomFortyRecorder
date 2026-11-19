@@ -249,16 +249,6 @@ const CloudStatus = ({
               : status}
           </span>
           <div className="ml-auto flex items-center gap-x-2 shrink-0">
-            {action && (
-              <button
-                type="button"
-                className="text-brand hover:underline disabled:opacity-50"
-                disabled={signingIn}
-                onClick={action.run}
-              >
-                {actionLabel}
-              </button>
-            )}
             {renderDownloadIcon()}
             {renderUploadIcon()}
           </div>
