@@ -1,5 +1,5 @@
 import React from 'react';
-import { getSpecClass, getWoWClassColor } from './rendererutils';
+import { classColor } from './logs/format';
 
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
@@ -68,9 +68,6 @@ const shortNight = (night: string) =>
     month: 'short',
     day: 'numeric',
   });
-
-const classColor = (specId: number) =>
-  getWoWClassColor(getSpecClass(specId)) || 'hsl(var(--foreground-lighter))';
 
 const BRAND = 'hsl(var(--brand))';
 

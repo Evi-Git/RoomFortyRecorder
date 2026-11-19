@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.136] - Unreleased
+### Changed
+- **Tabs are brass everywhere.** The Settings and Scene tabs had a red underline left over from Warcraft Recorder; they now use the same brass underline as the Dashboard and Logs.
+- **Class colours are easier to read.** A few of Blizzard's class colours are too dark for the app's background (Death Knight, Demon Hunter, Shaman, Warlock, Evoker), so names and bars in those colours were hard to make out, especially on a selected row. They're now a lighter shade of the same colour, and every class reads clearly. This applies everywhere class colours are used: Logs, Top logs, Time trial, recordings and the viewpoint picker.
+- Behind the scenes: a shared page header, tab strip, boss health bar and a "Show resets" switch, which the next releases use to give the Logs page and the Dashboard their new look.
+
 ## [1.9.135] - Unreleased
 ### Fixed
 - **A pull could fail to record because a combat log line was cut in half.** WoW writes the combat log in pieces, and the app read whatever had arrived, so a line still being written was read as two broken halves. When that line was the boss pull starting or ending, the app missed the pull and the recording. The app now waits for the rest of a line before reading it, also when it starts while WoW is halfway through a line, and handles names with accents that fall across two reads. One unreadable line no longer stops the lines after it.

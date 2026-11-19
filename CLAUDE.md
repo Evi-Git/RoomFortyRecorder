@@ -112,6 +112,18 @@ run with worker agents.
   Copy details; errors go through `renderer/friendlyError.ts`). They set
   `data-state="loading|empty|failed"` so harness tests can wait on them.
 - Times of day: `renderer/clock.ts` (12-hour, the PC's time zone).
+- Design A ("Brass & Walnut everywhere", design canvas "Room Forty Toolkit:
+  one visual language"): page titles and view tabs through
+  `components/PageHeader/PageHeader.tsx` (`PageHeader`, and `UnderlineTabs`
+  for tabs inside a page); serif (`font-display`) headings; brass underline
+  for the active tab.
+- Class colours: `getWoWClassColor` / `logs/format` `classColor` return the
+  readable tints in `renderer/classColors.ts`, not Blizzard's exact values.
+- Pull lists: `renderer/resets.ts` (`isReset`, pulls under 10 s;
+  `useShowResets`, one switch for every page) and
+  `components/BossBar/BossBar.tsx` (fills as the boss loses health).
+- Open the Logs page at a pull: `logs/openTarget.ts` (`setLogsTarget`, then
+  open a Logs tab; the Logs page calls `takeLogsTarget` on mount).
 
 ## Spell icons (how they flow)
 

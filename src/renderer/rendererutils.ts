@@ -14,7 +14,6 @@ import {
   instanceEncountersById,
   specializationById,
   WoWCharacterClassType,
-  WoWClassColor,
 } from 'main/constants';
 import {
   TimelineSegmentType,
@@ -47,6 +46,7 @@ import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Dispatch, SetStateAction } from 'react';
 import { dateTime, shortDate, timeOfDay } from './clock';
+import { READABLE_CLASS_COLOR } from './classColors';
 
 const getVideoResult = (video: RendererVideo): boolean => {
   return video.result;
@@ -238,8 +238,9 @@ const getEncounterMarkers = (
   return videoMarkers;
 };
 
+/** Readable class colours (see classColors.ts), not Blizzard's exact ones. */
 const getWoWClassColor = (unitClass: WoWCharacterClassType) => {
-  return WoWClassColor[unitClass];
+  return READABLE_CLASS_COLOR[unitClass];
 };
 
 const getInstanceDifficultyText = (video: RendererVideo, lang: Language) => {
