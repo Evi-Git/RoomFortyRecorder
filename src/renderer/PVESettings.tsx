@@ -1,13 +1,15 @@
-import { configSchema, ConfigurationSchema } from 'config/configSchema';
+import { configSchema } from 'config/configSchema';
 import React from 'react';
-import { Info } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { AppState } from 'main/types';
 import { setConfigValues, useSettings } from './useSettings';
 import Switch from './components/Switch/Switch';
-import Label from './components/Label/Label';
-import { Tooltip } from './components/Tooltip/Tooltip';
 import { Input } from './components/Input/Input';
+import {
+  SettingRow,
+  SettingsSection,
+  settingsFieldClass,
+} from './components/SettingsCard/SettingsCard';
 import {
   Select,
   SelectTrigger,
@@ -80,17 +82,6 @@ const PVESettings = (props: IProps) => {
     config.recordCurrentRaidEncountersOnly,
   ]);
 
-  const getSwitch = (
-    preference: keyof ConfigurationSchema,
-    changeFn: (checked: boolean) => void,
-  ) => (
-    <Switch
-      checked={Boolean(config[preference])}
-      name={preference}
-      onCheckedChange={changeFn}
-    />
-  );
-
   const setRecordRaids = (checked: boolean) => {
     setConfig((prevState) => {
       return {
@@ -102,23 +93,21 @@ const PVESettings = (props: IProps) => {
 
   const getRecordRaidSwitch = () => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label htmlFor="recordRaids" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.RecordRaidsLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.recordRaids.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          {getSwitch('recordRaids', setRecordRaids)}
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.RecordRaidsLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.recordRaids.description,
+        )}
+        htmlFor="recordRaids"
+      >
+        <Switch
+          id="recordRaids"
+          checked={Boolean(config.recordRaids)}
+          name="recordRaids"
+          onCheckedChange={setRecordRaids}
+        />
+      </SettingRow>
     );
   };
 
@@ -137,32 +126,24 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label
-          htmlFor="recordCurrentRaidEncountersOnly"
-          className="flex items-center"
-        >
-          {getLocalePhrase(
-            appState.language,
-            Phrase.RecordCurrentRaidsOnlyLabel,
-          )}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.recordCurrentRaidEncountersOnly.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          {getSwitch(
-            'recordCurrentRaidEncountersOnly',
-            setRecordCurrentRaidEncountersOnly,
-          )}
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.RecordCurrentRaidsOnlyLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.recordCurrentRaidEncountersOnly.description,
+        )}
+        htmlFor="recordCurrentRaidEncountersOnly"
+      >
+        <Switch
+          id="recordCurrentRaidEncountersOnly"
+          checked={Boolean(config.recordCurrentRaidEncountersOnly)}
+          name="recordCurrentRaidEncountersOnly"
+          onCheckedChange={setRecordCurrentRaidEncountersOnly}
+        />
+      </SettingRow>
     );
   };
 
@@ -195,32 +176,29 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label htmlFor="minEncounterDuration" className="flex items-center">
-          {getLocalePhrase(
-            appState.language,
-            Phrase.MinimumEncounterDurationLabel,
-          )}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.minEncounterDuration.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.MinimumEncounterDurationLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.minEncounterDuration.description,
+        )}
+        htmlFor="minEncounterDuration"
+      >
         <Input
+          id="minEncounterDuration"
           value={
             config.minEncounterDuration >= 0 ? config.minEncounterDuration : ''
           }
           name="minEncounterDuration"
-          disabled={!config.recordRaids}
           onChange={setMinEncounterDuration}
           type="numeric"
+          disabled={!config.recordRaids}
+          className={`${settingsFieldClass} w-24`}
         />
-      </div>
+      </SettingRow>
     );
   };
 
@@ -239,28 +217,26 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label htmlFor="minRaidDifficulty" className="flex items-center">
-          {getLocalePhrase(
-            appState.language,
-            Phrase.MinimumRaidDifficultyLabel,
-          )}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.minRaidDifficulty.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.MinimumRaidDifficultyLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.minRaidDifficulty.description,
+        )}
+        htmlFor="minRaidDifficulty"
+      >
         <Select
           onValueChange={setMinRaidDifficulty}
           disabled={!config.recordRaids}
           value={config.minRaidDifficulty}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger
+            id="minRaidDifficulty"
+            className={`${settingsFieldClass} w-44`}
+          >
             <SelectValue
               placeholder={getLocalePhrase(
                 appState.language,
@@ -276,7 +252,7 @@ const PVESettings = (props: IProps) => {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </SettingRow>
     );
   };
 
@@ -308,27 +284,24 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label htmlFor="raidOverrun" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.RaidOverrunLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.raidOverrun.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.RaidOverrunLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.raidOverrun.description,
+        )}
+        htmlFor="raidOverrun"
+      >
         <Input
+          id="raidOverrun"
           value={config.raidOverrun >= 0 ? config.raidOverrun : ''}
           name="raidOverrun"
-          disabled={!config.recordRaids}
           onChange={setRaidOverrun}
           type="numeric"
+          disabled={!config.recordRaids}
+          className={`${settingsFieldClass} w-24`}
         />
-      </div>
+      </SettingRow>
     );
   };
 
@@ -364,27 +337,27 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label htmlFor="dungeonOverrun" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.MythicPlusOverrunLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.dungeonOverrun.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.MythicPlusOverrunLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.dungeonOverrun.description,
+        )}
+        htmlFor="dungeonOverrun"
+      >
         <Input
+          id="dungeonOverrun"
           value={config.dungeonOverrun >= 0 ? config.dungeonOverrun : ''}
           name="dungeonOverrun"
-          disabled={!config.recordDungeons}
           onChange={setDungeonOverrun}
           type="numeric"
+          disabled={!config.recordDungeons}
+          className={`${settingsFieldClass} w-24`}
         />
-      </div>
+      </SettingRow>
     );
   };
 
@@ -399,23 +372,21 @@ const PVESettings = (props: IProps) => {
 
   const getRecordDungeonSwitch = () => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label htmlFor="recordDungeons" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.RecordMythicPlusLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.recordDungeons.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          {getSwitch('recordDungeons', setRecordDungeons)}
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.RecordMythicPlusLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.recordDungeons.description,
+        )}
+        htmlFor="recordDungeons"
+      >
+        <Switch
+          id="recordDungeons"
+          checked={Boolean(config.recordDungeons)}
+          name="recordDungeons"
+          onCheckedChange={setRecordDungeons}
+        />
+      </SettingRow>
     );
   };
 
@@ -446,49 +417,57 @@ const PVESettings = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label htmlFor="minKeystoneLevel" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.MinimumKeystoneLevelLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.minKeystoneLevel.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.MinimumKeystoneLevelLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.minKeystoneLevel.description,
+        )}
+        htmlFor="minKeystoneLevel"
+      >
         <Input
+          id="minKeystoneLevel"
           value={config.minKeystoneLevel >= 0 ? config.minKeystoneLevel : ''}
           name="minKeystoneLevel"
-          disabled={!config.recordDungeons}
           onChange={setMinKeystoneLevel}
           type="numeric"
+          disabled={!config.recordDungeons}
           min={2}
+          className={`${settingsFieldClass} w-24`}
         />
-      </div>
+      </SettingRow>
     );
   };
 
   return (
-    <div className="flex flex-col gap-y-4">
-      <div className="flex flex-row gap-x-6">
+    <>
+      <SettingsSection
+        title={getLocalePhrase(
+          appState.language,
+          Phrase.VideoCategoryRaidsLabel,
+        )}
+      >
         {getRecordRaidSwitch()}
         {getRecordCurrentEncountersOnlySwitch()}
+        {getMinRaidDifficultySelect()}
         {getMinEncounterDurationField()}
         {getRaidOverrunField()}
-        {getMinRaidDifficultySelect()}
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-y-2">
-        <div className="flex flex-row gap-x-6">
-          {getRecordDungeonSwitch()}
-          {getMinKeystoneLevelField()}
-          {getDungeonOverrunField()}
-        </div>
-      </div>
-    </div>
+      <SettingsSection
+        title={getLocalePhrase(
+          appState.language,
+          Phrase.VideoCategoryMythicPlusLabel,
+        )}
+      >
+        {getRecordDungeonSwitch()}
+        {getMinKeystoneLevelField()}
+        {getDungeonOverrunField()}
+      </SettingsSection>
+    </>
   );
 };
 

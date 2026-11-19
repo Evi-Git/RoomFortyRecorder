@@ -2,17 +2,21 @@ import * as React from 'react';
 import { configSchema } from 'config/configSchema';
 import { AppState, RecStatus } from 'main/types';
 import { useEffect, useRef } from 'react';
-import { HardDrive, Info } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues, useSettings } from './useSettings';
 import { pathSelect } from './rendererutils';
 import { Input } from './components/Input/Input';
-import Label from './components/Label/Label';
 import Switch from './components/Switch/Switch';
-import { Tooltip } from './components/Tooltip/Tooltip';
 import Progress from './components/Progress/Progress';
 import TextBanner from './components/TextBanner/TextBanner';
 import { Phrase } from 'localisation/phrases';
+import { Button } from './components/Button/Button';
+import {
+  SettingRow,
+  SettingsSection,
+  settingsButtonClass,
+  settingsFieldClass,
+} from './components/SettingsCard/SettingsCard';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -111,33 +115,38 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-[500px]">
-        <Label htmlFor="storagePath" className="flex items-center">
-          {getLocalePhrase(language, Phrase.DiskStorageFolderLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.storagePath.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <Input
-          name="storagePath"
-          value={config.storagePath}
-          onClick={setStoragePath}
-          required
-          disabled={isComponentDisabled()}
-          readOnly
-        />
-        {config.storagePath === '' && (
-          <span className="text-error text-sm">
-            {getLocalePhrase(language, Phrase.MustNotBeEmpty)}
-          </span>
-        )}
-      </div>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.DiskStorageFolderLabel)}
+        help={getLocalePhrase(language, configSchema.storagePath.description)}
+        htmlFor="storagePath"
+      >
+        <div className="flex w-[340px] flex-col gap-y-1">
+          <div className="flex gap-x-2">
+            <Input
+              id="storagePath"
+              name="storagePath"
+              value={config.storagePath}
+              onClick={setStoragePath}
+              required
+              disabled={isComponentDisabled()}
+              readOnly
+              className={settingsFieldClass}
+            />
+            <Button
+              variant="outline"
+              className={settingsButtonClass}
+              onClick={setStoragePath}
+            >
+              Browse
+            </Button>
+          </div>
+          {config.storagePath === '' && (
+            <span className="text-error text-sm">
+              {getLocalePhrase(language, Phrase.MustNotBeEmpty)}
+            </span>
+          )}
+        </div>
+      </SettingRow>
     );
   };
 
@@ -166,27 +175,21 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col">
-        <Label htmlFor="separateBufferPath" className="flex items-center">
-          {getLocalePhrase(language, Phrase.SeparateBufferFolderLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.separateBufferPath.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={Boolean(config.separateBufferPath)}
-            name="separateBufferPath"
-            onCheckedChange={setSeparateBufferPath}
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.SeparateBufferFolderLabel)}
+        help={getLocalePhrase(
+          language,
+          configSchema.separateBufferPath.description,
+        )}
+        htmlFor="separateBufferPath"
+      >
+        <Switch
+          id="separateBufferPath"
+          checked={Boolean(config.separateBufferPath)}
+          name="separateBufferPath"
+          onCheckedChange={setSeparateBufferPath}
+        />
+      </SettingRow>
     );
   };
 
@@ -200,28 +203,34 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/3 min-w-60 max-w-80">
-        <Label htmlFor="bufferStoragePath" className="flex items-center">
-          {getLocalePhrase(language, Phrase.BufferFolderLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.bufferStoragePath.description,
-            )}
-            side="top"
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.BufferFolderLabel)}
+        help={getLocalePhrase(
+          language,
+          configSchema.bufferStoragePath.description,
+        )}
+        htmlFor="bufferStoragePath"
+      >
+        <div className="flex w-[340px] gap-x-2">
+          <Input
+            id="bufferStoragePath"
+            name="bufferStoragePath"
+            value={config.bufferStoragePath}
+            onClick={setBufferPath}
+            required
+            disabled={isComponentDisabled()}
+            readOnly
+            className={settingsFieldClass}
+          />
+          <Button
+            variant="outline"
+            className={settingsButtonClass}
+            onClick={setBufferPath}
           >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <Input
-          name="bufferStoragePath"
-          value={config.bufferStoragePath}
-          onClick={setBufferPath}
-          required
-          disabled={isComponentDisabled()}
-          readOnly
-        />
-      </div>
+            Browse
+          </Button>
+        </div>
+      </SettingRow>
     );
   };
 
@@ -252,75 +261,55 @@ const GeneralSettings: React.FC<IProps> = (props: IProps) => {
       return <></>;
     }
 
-    return (
-      <div className="flex flex-col w-40">
-        <Label htmlFor="maxDiskStorage" className="flex items-center">
-          {getLocalePhrase(language, Phrase.MaxDiskStorageLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.maxStorage.description,
-            )}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <Input
-          name="maxDiskStorage"
-          value={config.maxStorage >= 0 ? config.maxStorage : ''}
-          onChange={setMaxStorage}
-          required
-          type="numeric"
-          disabled={isComponentDisabled()}
-        />
-      </div>
-    );
-  };
-
-  const getDiskUsageBar = () => {
     const usage = Math.round(appState.diskStatus.usage / 1024 ** 3);
     const max = Math.round(appState.diskStatus.limit / 1024 ** 3);
     let perc = max === 0 ? 100 : (100 * usage) / max;
     if (perc > 100) perc = 100;
-    const text = max === 0 ? `${usage}GB / ∞` : `${usage}GB / ${max}GB`;
+    const text = max === 0 ? `${usage} GB used` : `${usage} of ${max} GB`;
 
     return (
-      <div className="flex-col">
-        <Label className="flex items-center">
-          {getLocalePhrase(language, Phrase.DiskUsageDescription)}
-        </Label>
-
-        <div className="flex flex-row items-center justify-start w-80 gap-x-2 py-2">
-          <Tooltip
-            content={getLocalePhrase(language, Phrase.DiskUsageDescription)}
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.MaxDiskStorageLabel)}
+        help={getLocalePhrase(language, configSchema.maxStorage.description)}
+        htmlFor="maxDiskStorage"
+      >
+        <div className="flex items-center gap-x-4">
+          <div
+            className="flex w-44 items-center gap-x-2"
+            title={getLocalePhrase(language, Phrase.DiskUsageDescription)}
           >
-            <HardDrive size={24} className="text-foreground-lighter" />
-          </Tooltip>
-          <Progress value={perc} className="h-3" />
-          <span className="text-[11px] text-foreground font-semibold whitespace-nowrap">
-            {text}
-          </span>
+            <Progress value={perc} className="h-2" />
+            <span className="whitespace-nowrap text-xs font-medium text-foreground">
+              {text}
+            </span>
+          </div>
+          <Input
+            id="maxDiskStorage"
+            name="maxDiskStorage"
+            value={config.maxStorage >= 0 ? config.maxStorage : ''}
+            onChange={setMaxStorage}
+            required
+            type="numeric"
+            disabled={isComponentDisabled()}
+            className={`${settingsFieldClass} w-20`}
+          />
         </div>
-      </div>
+      </SettingRow>
     );
   };
 
   return (
-    <div className="flex flex-col gap-y-6">
-      {getDisabledText()}
+    <SettingsSection
+      title={getLocalePhrase(language, Phrase.GeneralSettingsLabel)}
+    >
+      {isComponentDisabled() && (
+        <div className="px-[18px] py-3.5">{getDisabledText()}</div>
+      )}
       {getStoragePathField()}
-
-      <div className="flex flex-row items-center gap-x-10">
-        {getMaxStorageField()}
-        {getDiskUsageBar()}
-      </div>
-
-      <div className="flex flex-row items-center gap-x-10">
-        {getBufferSwitch()}
-        {getBufferPathField()}
-      </div>
-    </div>
+      {getMaxStorageField()}
+      {getBufferSwitch()}
+      {getBufferPathField()}
+    </SettingsSection>
   );
 };
 
