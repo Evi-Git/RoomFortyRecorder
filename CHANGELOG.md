@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.135] - Unreleased
+### Fixed
+- **A pull could fail to record because a combat log line was cut in half.** WoW writes the combat log in pieces, and the app read whatever had arrived, so a line still being written was read as two broken halves. When that line was the boss pull starting or ending, the app missed the pull and the recording. The app now waits for the rest of a line before reading it, also when it starts while WoW is halfway through a line, and handles names with accents that fall across two reads. One unreadable line no longer stops the lines after it.
+
 ## [1.9.134] - Unreleased
 ### Fixed (guild server: run `update-server.cmd` after this release)
 - **The server now keeps a log file.** It runs under Task Scheduler, where everything it prints was lost, so when something went wrong on raid night there was nothing to look at. It now writes one file a day, `server-YYYY-MM-DD.log`, into a `logs` folder inside the storage folder (`GUILD_CLOUD_LOG_DIR` picks another place), with the time and a level on every line, including crashes. Files older than 14 days are deleted (`GUILD_CLOUD_LOG_DAYS` changes that). Passwords, tokens and the signature part of upload links are never written. If the folder can't be written the server carries on without the file.
