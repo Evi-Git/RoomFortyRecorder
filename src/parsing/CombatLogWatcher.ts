@@ -294,6 +294,8 @@ export default class CombatLogWatcher extends EventEmitter {
         ', discarding it',
       );
       delete this.tails[file];
+      // The rest of that line is still to come: drop it too.
+      this.skipping.add(file);
     } else if (remainder.length > 0) {
       // Copy so we don't keep the whole read buffer alive.
       this.tails[file] = Buffer.from(remainder);
