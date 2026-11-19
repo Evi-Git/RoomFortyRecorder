@@ -11,6 +11,10 @@ import path from 'node:path';
 import util from 'node:util';
 
 export const DEFAULT_KEEP_DAYS = 14;
+/** Most bytes written to one day's file; a loop of errors can't fill the disk. */
+export const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
+// Values shorter than this are too likely to match ordinary words.
+const MIN_SECRET = 4;
 const DAY_MS = 86400000;
 // After a failed write, try to open the file again at most this often.
 const RETRY_MS = 60000;
@@ -26,16 +30,16 @@ export const logFileName = (date) => `server-${localDate(date)}.log`;
 
 /**
  * Take secrets out of a line before it is written: given secret values
- * (anything shorter than 8 characters is skipped), "Bearer <token>" and the
+ * (anything shorter than 4 characters is skipped), "Bearer|Basic|Bot <token>" and the
  * query string of any URL (signed links carry their signature there).
  */
 export const redact = (text, secrets = []) => {
   let out = String(text);
   for (const secret of secrets) {
-    if (typeof secret === 'string' && secret.length >= 8) out = out.split(secret).join('[hidden]');
+    if (typeof secret === 'string' && secret.length >= MIN_SECRET) out = out.split(secret).join('[hidden]');
   }
   return out
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [hidden]')
+    .replace(/\b(Bearer|Basic|Bot)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [hidden]')
     .replace(/(https?:\/\/[^\s?'"<>]+)\?[^\s'"<>]*/gi, '$1?[query hidden]');
 };
 
@@ -67,6 +71,7 @@ export const installServerLog = ({
   now = () => new Date(),
   target = console,
   secrets = [],
+  maxBytes = DEFAULT_MAX_BYTES,
 } = {}) => {
   const real = {};
   for (const method of Object.keys(LEVELS)) real[method] = target[method].bind(target);
@@ -78,6 +83,8 @@ export const installServerLog = ({
   let warned = false;
   let retryAt = 0;
   let lastPrune = null;
+  let written = 0;
+  let capped = false;
 
   const fail = (error) => {
     lastError = error?.message || String(error);
@@ -133,7 +140,9 @@ export const installServerLog = ({
       currentFile = file;
       currentDay = day;
       lastError = null;
-      warned = false;
+      // A restart on the same day continues the same file's byte count.
+      written = fs.fstatSync(fd).size;
+      capped = written >= maxBytes;
       prune(at);
       return true;
     } catch (error) {
@@ -147,7 +156,15 @@ export const installServerLog = ({
     try {
       const at = now();
       if (!open(at)) return;
-      fs.writeSync(fd, formatLine(level, args, at, secrets));
+      if (capped) return;
+      const line = formatLine(level, args, at, secrets);
+      if (written + Buffer.byteLength(line) > maxBytes) {
+        capped = true;
+        fs.writeSync(fd, `${at.toISOString()} WARN log capped for today (over ${Math.round(maxBytes / 1048576)} MB); the console keeps printing\n`);
+        return;
+      }
+      written += fs.writeSync(fd, line);
+      warned = false;
     } catch (error) {
       fail(error);
     }

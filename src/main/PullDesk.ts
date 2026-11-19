@@ -731,7 +731,11 @@ export default class PullDesk {
    */
   private async serverHealth() {
     const base = cloudService.apiUrl.replace(/\/api$/, '');
-    const res = await axios.get(`${base}/health`, { timeout: 8000 });
+    // A 503 (storage or state broken) still carries the version.
+    const res = await axios.get(`${base}/health`, {
+      timeout: 8000,
+      validateStatus: (status) => status === 200 || status === 503,
+    });
     const version = (res.data as { version?: unknown })?.version;
     return {
       server: typeof version === 'string' ? version : null,

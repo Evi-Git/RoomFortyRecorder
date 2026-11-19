@@ -141,3 +141,57 @@ test('secrets, bearer tokens and URL query strings never reach the file', () => 
   assert.equal(redact('no secrets here'), 'no secrets here');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('a day stops being written at the byte cap, says so once, and starts again the next day', () => {
+  const dir = tmp();
+  const target = fakeConsole();
+  let at = new Date(2026, 10, 19, 12, 0, 0);
+  const log = installServerLog({ dir, target, maxBytes: 600, now: () => at });
+  for (let i = 0; i < 50; i += 1) target.error(`failure number ${i} of many`);
+  const text = read(dir, 'server-2026-11-19.log');
+  assert.ok(Buffer.byteLength(text) < 900);
+  assert.equal(text.split('log capped for today').length - 1, 1);
+  assert.equal(target.printed.length, 50); // the console kept printing
+  at = new Date(2026, 10, 20, 0, 5, 0);
+  target.log('new day');
+  log.close();
+  assert.match(read(dir, 'server-2026-11-20.log'), /new day/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Basic and Bot credentials, a webhook URL and a short password are redacted', () => {
+  const dir = tmp();
+  const target = fakeConsole();
+  const hook = 'https://discord.com/api/webhooks/123456/tok-abc_DEF';
+  const log = installServerLog({ dir, target, secrets: [hook, 'pw12'], now: () => new Date(2026, 10, 19) });
+  target.log(`post to ${hook} failed`);
+  target.log('Authorization: Basic dXNlcjpwYXNz and Bot MTIz.abc.def');
+  target.log('password was pw12');
+  log.close();
+  const text = read(dir, 'server-2026-11-19.log');
+  assert.doesNotMatch(text, /tok-abc|123456|dXNlcjpwYXNz|MTIz|pw12/);
+  assert.match(text, /Basic \[hidden\]/);
+  assert.match(text, /Bot \[hidden\]/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a failed write after a successful open warns once, not every retry', () => {
+  const dir = tmp();
+  const target = fakeConsole();
+  let at = new Date(2026, 10, 19, 12, 0, 0);
+  const log = installServerLog({ dir, target, now: () => at });
+  // Writes fail from now on (as on a full disk) though the file opens.
+  const realWrite = fs.writeSync;
+  fs.writeSync = () => { throw new Error('ENOSPC'); };
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      at = new Date(at.getTime() + 61000);
+      target.log('x');
+    }
+  } finally {
+    fs.writeSync = realWrite;
+  }
+  assert.equal(target.printed.filter((p) => p[0] === 'warn').length, 1);
+  log.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});

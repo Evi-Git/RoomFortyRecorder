@@ -657,3 +657,16 @@ test('/health is still ok, with a warning, when the log folder cannot be written
     fs.rmSync(blocker, { force: true });
   }
 });
+
+test('a bad %-escape in the path is a quiet 400, not a logged error', async () => {
+  const { stop, get, storage } = await start();
+  try {
+    const r = await get('/%ZZ');
+    assert.equal(r.status, 400);
+    const logs = fs.readdirSync(path.join(storage, 'logs'));
+    const text = fs.readFileSync(path.join(storage, 'logs', logs[0]), 'utf8');
+    assert.doesNotMatch(text, /Request failed|URIError/);
+  } finally {
+    await stop();
+  }
+});

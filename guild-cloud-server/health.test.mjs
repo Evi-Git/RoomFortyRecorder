@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createHealth } from './health.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rf-health-'));
-const good = { loaded: true, restoredAt: null, saveError: false };
+const good = { loaded: true, restoredAt: null, saveFailedAt: null };
 const make = (opts) => {
   const warnings = [];
   const health = createHealth({
@@ -55,19 +55,50 @@ test('a storage folder that cannot be written is a 503', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('state not loaded, or the last save failed, is a 503', async () => {
+test('state not loaded is a 503', async () => {
   const storage = tmp();
-  let state = { loaded: false, restoredAt: null, saveError: false };
-  const { health } = make({ storage, getState: () => state });
-  let r = await health.check();
+  const { health } = make({ storage, getState: () => ({ loaded: false, restoredAt: null, saveFailedAt: null }) });
+  const r = await health.check();
   assert.equal(r.status, 503);
   assert.equal(r.body.checks.state.ok, false);
-  state = { loaded: true, restoredAt: null, saveError: true };
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('a failed save is a warning for 10 minutes, then a 503 until a save works', async () => {
+  const storage = tmp();
+  let at = 10000000;
+  let state = { loaded: true, restoredAt: null, saveFailedAt: at };
+  const { health } = make({ storage, now: () => at, cacheMs: 0, getState: () => state });
+  let r = await health.check();
+  assert.equal(r.status, 200);
+  assert.ok(r.body.checks.state.warning);
+  at += 9 * 60000;
+  assert.equal((await health.check()).status, 200);
+  at += 2 * 60000;
   r = await health.check();
   assert.equal(r.status, 503);
-  state = good;
-  r = await health.check();
-  assert.equal(r.status, 200);
+  assert.equal(r.body.checks.state.ok, false);
+  state = { loaded: true, restoredAt: null, saveFailedAt: null };
+  assert.equal((await health.check()).status, 200);
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('requests that arrive together share one storage probe', async () => {
+  const storage = tmp();
+  const { health } = make({ storage });
+  const original = fs.promises.writeFile;
+  let probes = 0;
+  fs.promises.writeFile = (...args) => {
+    probes += 1;
+    return original(...args);
+  };
+  try {
+    const results = await Promise.all([health.check(), health.check(), health.check()]);
+    assert.ok(results.every((r) => r.status === 200));
+    assert.equal(probes, 1);
+  } finally {
+    fs.promises.writeFile = original;
+  }
   fs.rmSync(storage, { recursive: true, force: true });
 });
 
@@ -76,7 +107,7 @@ test('warnings (log file, restored state) do not fail health', async () => {
   const { health } = make({
     storage,
     logStatus: () => ({ writable: false, lastError: 'EACCES' }),
-    getState: () => ({ loaded: true, restoredAt: 1, saveError: false }),
+    getState: () => ({ loaded: true, restoredAt: 1, saveFailedAt: null }),
   });
   const { status, body } = await health.check();
   assert.equal(status, 200);

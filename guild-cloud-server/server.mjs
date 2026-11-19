@@ -105,15 +105,12 @@ const serverLog = installServerLog({
     ? path.resolve(process.env.GUILD_CLOUD_LOG_DIR)
     : path.join(STORAGE, 'logs'),
   keepDays: Number.parseInt(process.env.GUILD_CLOUD_LOG_DAYS || '', 10) || undefined,
-  secrets: [
-    process.env.GUILD_CLOUD_SECRET,
-    process.env.GUILD_CLOUD_DISCORD_CLIENT_SECRET,
-    process.env.GUILD_CLOUD_DISCORD_BOT_TOKEN,
-    process.env.GUILD_CLOUD_R2_ACCESS_KEY_ID,
-    process.env.GUILD_CLOUD_R2_SECRET_ACCESS_KEY,
-    process.env.GUILD_CLOUD_LIVE_RAIDER_PASSWORD,
-    process.env.GUILD_CLOUD_LIVE_VIEWER_PASSWORD,
-  ],
+  maxBytes: (Number.parseFloat(process.env.GUILD_CLOUD_LOG_MAX_MB || '') || 50) * 1024 * 1024,
+  // Every setting that looks like a secret (the bug-report webhook has its
+  // token in the URL path), whatever its name.
+  secrets: Object.entries(process.env)
+    .filter(([name]) => /SECRET|TOKEN|PASSWORD|KEY|WEBHOOK/i.test(name))
+    .map(([, value]) => value),
 });
 logUncaughtExceptions();
 // Spell timelines (one small JSON file per video). Kept here rather than in
@@ -249,7 +246,8 @@ let saveQueue = Promise.resolve();
 let stateRestoredAt = null;
 // For /health: state.json was read at start, and the last save worked.
 let stateLoaded = false;
-let stateSaveError = false;
+// When the first of the failed saves in a row happened (null: the last save worked).
+let stateSaveFailedAt = null;
 
 const json = (res, status, body, headers = {}) => {
   const data = JSON.stringify(body);
@@ -1025,10 +1023,10 @@ const persist = () => {
   saveQueue = saveQueue
     .then(() => writeJsonSafe(STATE_FILE, snapshot, { backup: true }))
     .then(() => {
-      stateSaveError = false;
+      stateSaveFailedAt = null;
     })
     .catch((error) => {
-      stateSaveError = true;
+      stateSaveFailedAt ??= Date.now();
       console.error('[guild-cloud] Failed to save state', error);
     });
   return saveQueue;
@@ -1080,7 +1078,7 @@ const loadState = async () => {
 
 const health = createHealth({
   storage: STORAGE,
-  getState: () => ({ loaded: stateLoaded, restoredAt: stateRestoredAt, saveError: stateSaveError }),
+  getState: () => ({ loaded: stateLoaded, restoredAt: stateRestoredAt, saveFailedAt: stateSaveFailedAt }),
   logStatus: () => serverLog.status(),
   version: SERVER_VERSION,
   // Only tests change this.
@@ -2005,7 +2003,14 @@ const handleLike = async (res, id) => {
 
 const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const parts = parseParts(url.pathname);
+  let parts;
+  try {
+    parts = parseParts(url.pathname);
+  } catch (error) {
+    // A bad %-escape in the path (anyone can send one): not worth a log line.
+    if (error instanceof URIError) return fail(res, 400, 'Bad request');
+    throw error;
+  }
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {

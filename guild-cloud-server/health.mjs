@@ -8,10 +8,12 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 export const STORAGE_CACHE_MS = 10000;
+/** One failed save is a warning; one that lasts this long fails health. */
+export const SAVE_FAILURE_MS = 10 * 60000;
 
 /**
  * createHealth({ storage, getState, logStatus, version, warn, now, cacheMs })
- *   getState() -> { loaded, restoredAt, saveError }
+ *   getState() -> { loaded, restoredAt, saveFailedAt }
  *   logStatus() -> { writable, lastError } from server-log.mjs
  * Returns { check() -> { status, body } }.
  */
@@ -45,8 +47,9 @@ export const createHealth = ({
 
   const storageCheck = async () => {
     const at = now();
+    // The promise is cached, so requests that arrive together share one probe.
     if (!cached || at - cached.at >= cacheMs) {
-      cached = { at, result: await probeStorage() };
+      cached = { at, result: probeStorage() };
     }
     return cached.result;
   };
@@ -60,7 +63,9 @@ export const createHealth = ({
       storage: disk.ok ? { ok: true } : { ok: false, detail: disk.detail },
     };
     if (!state.loaded) checks.state = { ok: false, detail: 'not loaded' };
-    else if (state.saveError) checks.state = { ok: false, detail: 'the last save failed' };
+    else if (state.saveFailedAt && now() - state.saveFailedAt > SAVE_FAILURE_MS) {
+      checks.state = { ok: false, detail: 'saving has been failing for over 10 minutes' };
+    } else if (state.saveFailedAt) checks.state = { ok: true, warning: 'the last save failed' };
     else if (state.restoredAt) checks.state = { ok: true, warning: 'restored from a backup' };
     else checks.state = { ok: true };
     checks.log = logInfo.writable
