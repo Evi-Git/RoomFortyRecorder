@@ -122,6 +122,8 @@ run with worker agents.
 - Pull lists: `renderer/resets.ts` (`isReset`, pulls under 10 s;
   `useShowResets`, one switch for every page) and
   `components/BossBar/BossBar.tsx` (fills as the boss loses health).
+- Open the Logs page at a pull: `logs/openTarget.ts` (`setLogsTarget`, then
+  open a Logs tab; the Logs page calls `takeLogsTarget` on mount).
 
 ## Spell icons (how they flow)
 
