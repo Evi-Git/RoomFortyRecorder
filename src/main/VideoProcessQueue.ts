@@ -114,6 +114,12 @@ export default class VideoProcessQueue {
   private inProgressKillVideos: string[] = [];
 
   /**
+   * Videos queued for cutting or being cut. (The cut queue has no list of
+   * its own, so count them here.)
+   */
+  private cutsPending = 0;
+
+  /**
    * Constructor.
    */
   private constructor() {
@@ -124,7 +130,12 @@ export default class VideoProcessQueue {
   }
 
   private createVideoQueue() {
-    const worker = this.processVideoQueueItem.bind(this);
+    const cut = this.processVideoQueueItem.bind(this);
+    const worker = (data: VideoQueueItem, done: () => void) =>
+      cut(data, () => {
+        this.cutsPending = Math.max(0, this.cutsPending - 1);
+        done();
+      });
     const settings = { concurrency: 1 };
     const queue = atomicQueue(worker, settings);
 
@@ -201,8 +212,20 @@ export default class VideoProcessQueue {
    */
   public queueVideo = async (item: VideoQueueItem) => {
     console.info('[VideoProcessQueue] Queuing video for processing', item);
+    this.cutsPending += 1;
     this.videoQueue.write(item);
   };
+
+  /**
+   * [RoomFortyRecorder] Work a quit would lose: recordings being cut or
+   * re-encoded, and cloud uploads queued or running.
+   */
+  public busyCounts() {
+    return {
+      saving: this.cutsPending + this.inProgressKillVideos.length,
+      uploading: this.inProgressUploads.length,
+    };
+  }
 
   /**
    * Queue a video for upload.

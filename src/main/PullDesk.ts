@@ -221,6 +221,11 @@ export default class PullDesk {
     () => this.cfg.get<boolean>('pullDeskUpload'),
   );
 
+  /** An encounter has started in the combat log and not ended yet. */
+  public get isCapturing() {
+    return this.capture.capturing;
+  }
+
   // Pulls from saved combat log files: automatic, and the manual
   // "Upload from combat log".
   private backfill = new PullBackfill(

@@ -35,6 +35,13 @@ import {
 import ConfigService from '../config/ConfigService';
 import Manager from './Manager';
 import AppUpdater from './AppUpdater';
+import {
+  allowQuitNow,
+  currentBusyReason,
+  isQuitAllowed,
+  requestQuit,
+  setBusyTray,
+} from './busy';
 import MenuBuilder from './menu';
 import { Phrase } from 'localisation/phrases';
 import CloudClient from 'storage/CloudClient';
@@ -314,12 +321,26 @@ const createWindow = async () => {
     send('window-focus-status', false);
   });
 
+  // [RoomFortyRecorder] A user close (X button, tray Quit, Alt+F4) while a
+  // pull, stream or upload is running asks first. Quits from code (updater,
+  // OS shutdown) set the allow flag in before-quit/session-end and pass.
+  window.on('close', (event) => {
+    if (isQuitAllowed() || !window) return;
+    // Idle: don't touch the event, so the close runs exactly as it did.
+    if (currentBusyReason() === null) return;
+    event.preventDefault();
+    requestQuit(window).catch(console.error);
+  });
+
+  window.on('session-end', () => allowQuitNow());
+
   window.on('closed', () => {
     window = null;
   });
 
   await window.loadURL(resolveHtmlPath('index.html'));
   setupTray();
+  setBusyTray(() => tray);
 
   // Open urls in the user's browser
   window.webContents.setWindowOpenHandler((edata) => {
@@ -676,6 +697,7 @@ app.on('window-all-closed', async () => {
  */
 app.on('before-quit', () => {
   console.info('[Main] Running before-quit actions');
+  allowQuitNow();
 
   if (tray) {
     console.info('[Main] Destroy tray icon');

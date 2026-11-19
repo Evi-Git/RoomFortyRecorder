@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { currentBusyReason, requestInstall } from './busy';
+import { mayDownloadUpdate } from './busyLogic';
 
 const customConsoleLogger = {
   log: (...args: string[]) => console.log('[AutoUpdater]', ...args),
@@ -37,6 +39,10 @@ export default class AppUpdater {
     // isn't friendly.
     autoUpdater.autoInstallOnAppQuit = false;
 
+    // Don't download in the background during a pull or stream: we download
+    // ourselves once idle (see onUpdateFound).
+    autoUpdater.autoDownload = false;
+
     autoUpdater.on('checking-for-update', () =>
       this.setStatus({ state: 'checking' }),
     );
@@ -47,11 +53,7 @@ export default class AppUpdater {
 
     autoUpdater.on('update-available', (info) => {
       this.pendingVersion = info?.version;
-      this.setStatus({
-        state: 'downloading',
-        version: this.pendingVersion,
-        percent: 0,
-      });
+      this.onUpdateFound();
     });
 
     autoUpdater.on('download-progress', (progress) => {
@@ -76,12 +78,11 @@ export default class AppUpdater {
 
     ipcMain.on('doAppUpdate', () => {
       console.info('[AutoUpdater] User triggered auto-update');
-      // Show our own "Updating" screen, then hand over to the installer's
-      // progress window, which stays up until it reopens the app. (A silent
-      // install left nothing on screen while it ran, which looked like a
-      // crash.)
-      window.webContents.send('appUpdating', this.pendingVersion ?? null);
-      setTimeout(() => autoUpdater.quitAndInstall(false, true), 1500);
+      // Asks first if a pull, stream or upload is running. The "Updating"
+      // screen only shows once the install really starts.
+      requestInstall(window.isDestroyed() ? null : window, () =>
+        this.install(),
+      ).catch(console.error);
     });
 
     ipcMain.handle('getUpdateStatus', () => this.status);
@@ -94,6 +95,53 @@ export default class AppUpdater {
 
     this.periodicallyCheckUpdate();
   }
+
+  private install() {
+    // Show our own "Updating" screen, then hand over to the installer's
+    // progress window, which stays up until it reopens the app. (A silent
+    // install left nothing on screen while it ran, which looked like a
+    // crash.)
+    if (!this.window.isDestroyed()) {
+      this.window.webContents.send('appUpdating', this.pendingVersion ?? null);
+    }
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 1500);
+  }
+
+  private downloadTimer?: NodeJS.Timeout;
+
+  /**
+   * A check found an update. Download now if idle (or the user asked for the
+   * check), otherwise wait and re-check every minute.
+   */
+  private onUpdateFound(fromTimer = false) {
+    // The timer path must leave a manual check's flag alone.
+    const manual = fromTimer ? false : this.manualCheck;
+    if (!fromTimer) this.manualCheck = false;
+    if (this.downloadTimer) clearTimeout(this.downloadTimer);
+    this.downloadTimer = undefined;
+
+    if (!mayDownloadUpdate(currentBusyReason(), manual)) {
+      console.info('[AutoUpdater] Busy, will download the update when idle');
+      this.setStatus({ state: 'idle' });
+      this.downloadTimer = setTimeout(() => this.onUpdateFound(true), 60_000);
+      return;
+    }
+
+    this.setStatus({
+      state: 'downloading',
+      version: this.pendingVersion,
+      percent: 0,
+    });
+
+    autoUpdater.downloadUpdate().catch((err) =>
+      this.setStatus({
+        state: 'error',
+        message: AppUpdater.describeError(err),
+      }),
+    );
+  }
+
+  private manualCheck = false;
 
   private setStatus(status: UpdateStatus) {
     this.status = status;
@@ -135,6 +183,8 @@ export default class AppUpdater {
       });
       return;
     }
+
+    this.manualCheck = manual;
 
     try {
       await autoUpdater.checkForUpdates();
