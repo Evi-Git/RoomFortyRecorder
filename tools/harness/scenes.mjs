@@ -660,6 +660,50 @@ export const scenes = [
     steps: async (t) => {
       await t.nav('Dashboard');
       await t.settle(1000);
+      await t.page.getByText('Cloud:').hover();
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-offline',
+    shows: 'Sidebar card: guild server unreachable, retrying with a countdown',
+    init: {
+      signIn: { state: 'offline', attempt: 2, nextRetryIn: 25000 },
+    },
+    steps: async (t) => {
+      await t.settle(500);
+      await t.page.getByText('Cloud:').hover();
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-expired',
+    shows: 'Sidebar card: sign-in expired, with the server reason',
+    init: {
+      signIn: { state: 'expired', reason: 'Invalid or expired Discord session' },
+    },
+    steps: async (t) => {
+      await t.page.getByText('Cloud:').hover();
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-refused',
+    shows: 'Sidebar card: signed in but not allowed (role check)',
+    init: {
+      signIn: { state: 'refused', reason: 'You no longer have a Room Forty raider role.' },
+    },
+    steps: async (t) => {
+      await t.page.getByText('Cloud:').hover();
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-connecting',
+    shows: 'Sidebar card: checking the sign-in',
+    init: { signIn: { state: 'connecting' } },
+    steps: async (t) => {
+      await t.settle(500);
     },
   },
   {

@@ -314,6 +314,12 @@ export default class PullDesk {
     const client = CloudClient.getInstance();
 
     if (!client.pullDeskReady()) {
+      // A re-check after a 401 or a retry may be running: wait for it (up to
+      // 30 s) rather than treat a brief gap as being signed out.
+      await client.waitForSignIn(30_000);
+    }
+
+    if (!client.pullDeskReady()) {
       console.info('[PullDesk] Not signed in to the guild server, skipping');
       this.setUpload(pull, 'notSignedIn');
       return;

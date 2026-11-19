@@ -18,6 +18,9 @@ export default class CloudClient {
     return Boolean(state().token);
   }
 
+  // The real one waits out a sign-in check; the harness is always settled.
+  public async waitForSignIn(_timeoutMs: number) {}
+
   public async pullDeskRequest<T>(
     method: 'get' | 'post' | 'put' | 'patch' | 'delete',
     path: string,

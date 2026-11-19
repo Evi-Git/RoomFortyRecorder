@@ -504,7 +504,21 @@ type SliderMark = {
   label: ReactNode;
 };
 
+/**
+ * Where the guild sign-in stands. One state at a time, kept by CloudClient in
+ * the main process and sent to the renderer inside CloudStatus.
+ */
+type SignInState =
+  | { state: 'off' }
+  | { state: 'signedOut' }
+  | { state: 'connecting' }
+  | { state: 'connected' }
+  | { state: 'offline'; attempt: number; nextRetryAt: number }
+  | { state: 'expired'; reason: string }
+  | { state: 'refused'; reason: string };
+
 type CloudStatus = {
+  signIn: SignInState;
   enabled: boolean;
   authenticated: boolean;
   authorized: boolean;
@@ -754,6 +768,7 @@ export {
   ErrorReport,
   SliderMark,
   CloudStatus,
+  SignInState,
   DiskStatus,
   CloudObject,
   IBrowserWindow,

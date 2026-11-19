@@ -8,6 +8,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from 'renderer/components/HoverCard/HoverCard';
+import { Button } from 'renderer/components/Button/Button';
 import Separator from 'renderer/components/Separator/Separator';
 import { StatusLightVariant } from 'renderer/components/StatusLight/StatusLight';
 import { cn } from 'renderer/components/utils';
@@ -72,83 +73,131 @@ const CloudStatus = ({
     };
   }, []);
 
+  // [RoomFortyRecorder] Sign-in countdown: the main process sends when it will
+  // retry (nextRetryAt); we tick once a second to show the seconds left.
+  const { signIn } = cloudStatus;
+  const retryAt = signIn.state === 'offline' ? signIn.nextRetryAt : 0;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!retryAt) return undefined;
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [retryAt]);
+
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInError, setSignInError] = useState('');
+
+  const startSignIn = async () => {
+    setSignInError('');
+    setSigningIn(true);
+    try {
+      await ipc.signInWithDiscord();
+    } catch (error) {
+      console.error('[CloudStatus] Discord sign-in failed', error);
+      setSignInError(getLocalePhrase(language, Phrase.StatusSignInFailed));
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const phrase = (p: Phrase) => getLocalePhrase(language, p);
+
   let status: string;
   let variant: StatusLightVariant;
-  let description = <></>;
+  let text = '';
+  // Muted second line: the server's reason for a 401.
+  let reason = '';
+  let action: { label: string; run: () => void } | null = null;
 
-  if (!cloudStatus.enabled) {
-    status = getLocalePhrase(language, Phrase.StatusTitleDisconnected);
+  if (signIn.state === 'off') {
+    status = phrase(Phrase.StatusTitleDisconnected);
     variant = 'disconnected';
-
-    description = (
-      <div className="flex flex-col gap-y-2">
-        <h2 className="text-sm font-semibold">{status}</h2>
-        <Separator className="my-1" />
-        <p className="text-xs text-popover-foreground/60">
-          {getLocalePhrase(language, Phrase.StatusDescrDisconnected)}
-        </p>
-      </div>
-    );
-  } else if (!cloudStatus.authenticated) {
+    text = phrase(Phrase.StatusDescrDisconnected);
+  } else if (signIn.state === 'signedOut') {
+    status = phrase(Phrase.StatusTitleSignedOut);
+    variant = 'disconnected';
+    text = phrase(Phrase.StatusDescrSignedOut);
+    action = { label: phrase(Phrase.StatusButtonSignIn), run: startSignIn };
+  } else if (signIn.state === 'connecting') {
+    status = phrase(Phrase.StatusTitleConnecting);
+    variant = 'disconnected';
+    text = phrase(Phrase.StatusDescrConnecting);
+  } else if (signIn.state === 'offline') {
+    const seconds = Math.max(0, Math.ceil((signIn.nextRetryAt - now) / 1000));
+    status = phrase(Phrase.StatusTitleOffline);
     variant = 'error';
-    status = getLocalePhrase(language, Phrase.StatusTitleNotAuthenticated);
-
-    description = (
-      <div className="flex flex-col gap-y-2">
-        <h2 className="text-sm font-semibold">{status}</h2>
-        <Separator className="my-1" />
-        <p className="text-xs text-popover-foreground/60">
-          {getLocalePhrase(language, Phrase.StatusDescrNotAuthenticated)}
-        </p>
-      </div>
+    text = phrase(Phrase.StatusDescrOffline).replace(
+      '{seconds}',
+      String(seconds),
     );
-  } else if (!cloudStatus.authorized) {
+    action = {
+      label: phrase(Phrase.StatusButtonTryNow),
+      run: () => ipc.reconfigureCloud(),
+    };
+  } else if (signIn.state === 'expired') {
+    status = phrase(Phrase.StatusTitleExpired);
     variant = 'error';
-    status = cloudStatus.guild
-      ? getLocalePhrase(language, Phrase.StatusTitleNotAuthorized)
-      : getLocalePhrase(language, Phrase.StatusTitleNoGuild);
-
-    description = (
-      <div className="flex flex-col gap-y-2">
-        <h2 className="text-sm font-semibold">{status}</h2>
-        <Separator className="my-1" />
-        <p className="text-xs text-popover-foreground/60">
-          {status === getLocalePhrase(language, Phrase.StatusTitleNotAuthorized)
-            ? getLocalePhrase(language, Phrase.StatusDescrNotAuthorized)
-            : getLocalePhrase(language, Phrase.StatusDescrNoGuild)}
-        </p>
-      </div>
-    );
+    text = phrase(Phrase.StatusDescrExpired);
+    reason = signIn.reason;
+    action = {
+      label: phrase(Phrase.StatusButtonSignInAgain),
+      run: startSignIn,
+    };
+  } else if (signIn.state === 'refused') {
+    status = phrase(Phrase.StatusTitleRefused);
+    variant = 'error';
+    text = signIn.reason;
+    action = {
+      label: phrase(Phrase.StatusButtonSignInAgain),
+      run: startSignIn,
+    };
   } else if (cloudStatus.migrated) {
     variant = 'error';
-    status = getLocalePhrase(language, Phrase.StatusTitleMigrated);
-
-    description = (
-      <div className="flex flex-col gap-y-2">
-        <h2 className="text-sm font-semibold">{status}</h2>
-        <Separator className="my-1" />
-        <p className="text-xs text-popover-foreground/60">
-          {getLocalePhrase(language, Phrase.StatusDescrMigrated)}
-        </p>
-      </div>
-    );
+    status = phrase(Phrase.StatusTitleMigrated);
+    text = phrase(Phrase.StatusDescrMigrated);
   } else {
     variant =
       cloudState.queuedDownloads > 0 || cloudState.queuedUploads > 0
         ? 'active'
         : 'connected';
-    status = getLocalePhrase(language, Phrase.StatusTitleConnected);
-
-    description = (
-      <div className="flex flex-col gap-y-2">
-        <h2 className="text-sm font-semibold">{status}</h2>
-        <Separator className="my-1" />
-        <p className="text-xs text-popover-foreground/60">
-          {getLocalePhrase(language, Phrase.StatusDescrConnected)}
-        </p>
-      </div>
-    );
+    status = phrase(Phrase.StatusTitleConnected);
+    text = phrase(Phrase.StatusDescrConnected);
   }
+
+  const actionLabel =
+    action && signingIn
+      ? phrase(Phrase.StatusButtonWaitingForDiscord)
+      : action?.label;
+
+  const description = (
+    <div className="flex flex-col gap-y-2">
+      <h2 className="text-sm font-semibold">{status}</h2>
+      <Separator className="my-1" />
+      <p className="text-xs text-popover-foreground/60">{text}</p>
+      {reason && (
+        <p className="text-xs text-popover-foreground/60 italic">{reason}</p>
+      )}
+      {signInError && (
+        <p className="text-xs text-error-foreground">{signInError}</p>
+      )}
+      {action && (
+        <Button
+          size="sm"
+          className="w-fit h-7 px-3"
+          disabled={signingIn}
+          onClick={action.run}
+        >
+          {actionLabel}
+        </Button>
+      )}
+    </div>
+  );
 
   const renderUploadIcon = () => {
     if (cloudState.queuedUploads < 1) return <></>;
@@ -200,6 +249,16 @@ const CloudStatus = ({
               : status}
           </span>
           <div className="ml-auto flex items-center gap-x-2 shrink-0">
+            {action && (
+              <button
+                type="button"
+                className="text-brand hover:underline disabled:opacity-50"
+                disabled={signingIn}
+                onClick={action.run}
+              >
+                {actionLabel}
+              </button>
+            )}
             {renderDownloadIcon()}
             {renderUploadIcon()}
           </div>

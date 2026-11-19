@@ -4,6 +4,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 import {
   CloudMetadata,
   CloudStatus,
+  SignInState,
   CompleteMultiPartUploadRequestBody,
   CreateMultiPartUploadResponseBody,
   RendererVideo,
@@ -29,11 +30,19 @@ import {
 import StorageClient from './StorageClient';
 import { getCloudConfig } from 'utils/configUtils';
 import ConfigService from 'config/ConfigService';
-import { clipboard, ipcMain } from 'electron';
+import { app, clipboard, ipcMain, powerMonitor } from 'electron';
 import VideoProcessQueue from 'main/VideoProcessQueue';
 import { send } from 'main/main';
 import { VideoCategory } from 'types/VideoCategory';
 import { cloudService } from 'main/cloudService';
+import {
+  backoffDelayMs,
+  CANNOT_UPLOAD_REASON,
+  classifyFailure,
+  NOT_AFFILIATED_REASON,
+  SignInFailure,
+  SingleFlight,
+} from 'main/signInState';
 
 const enum VideoMessages {
   CREATE = 'vc',
@@ -176,6 +185,28 @@ export default class CloudClient implements StorageClient {
   private pollingTimer: NodeJS.Timeout | null = null;
 
   /**
+   * [RoomFortyRecorder] Where the guild sign-in stands (see SignInState). Set
+   * only through setSignIn. Starts as connecting because the constructor runs
+   * the first sign-in check.
+   */
+  private signIn: SignInState = { state: 'connecting' };
+
+  /** The last state we wrote a log line for, so retries don't spam the log. */
+  private lastLoggedSignIn = '';
+
+  /** How many offline retries in a row; back to 0 once connected. */
+  private offlineAttempt = 0;
+
+  /** The one timer that retries an offline check. Always cleared before set. */
+  private retryTimer: NodeJS.Timeout | null = null;
+
+  /** Callers waiting for a sign-in check to finish (see waitForSignIn). */
+  private signInWaiters = new Set<() => void>();
+
+  /** configure() runs one at a time; extra calls queue a single re-run. */
+  private configureFlight = new SingleFlight(() => this.runConfigure());
+
+  /**
    * It's common to receive a bunch of video modifications at once due to
    * the housekeeper, or bulk changes. Batch these up and send them to the
    * frontend every second to avoid spurious re-renders.
@@ -290,11 +321,18 @@ export default class CloudClient implements StorageClient {
    * the configure function to avoid looping forever.
    */
   public async fetchAffiliations(logoutOn401: boolean) {
-    let success = false;
+    return (await this.loadAffiliations(logoutOn401)) === null;
+  }
 
+  /**
+   * Fetch the affiliations. Returns null on success, or why it failed.
+   */
+  private async loadAffiliations(
+    logoutOn401: boolean,
+  ): Promise<SignInFailure | null> {
     try {
       this.affiliations = await this.getUserAffiliations(logoutOn401);
-      success = true;
+      return null;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const msg = '[CloudClient] Failed to get user affiliations';
@@ -302,9 +340,9 @@ export default class CloudClient implements StorageClient {
       } else {
         console.error('[CloudClient] Unexpected error', error);
       }
-    }
 
-    return success;
+      return classifyFailure(error);
+    }
   }
 
   /**
@@ -312,6 +350,7 @@ export default class CloudClient implements StorageClient {
    */
   public async refreshStatus() {
     const status: CloudStatus = {
+      signIn: this.signIn,
       enabled: this.enabled,
       authenticated: this.authenticated,
       authorized: this.authorized,
@@ -506,10 +545,102 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
-   * Login to the cloud store.
+   * Login to the cloud store. Safe to call from anywhere, any number of
+   * times: if a check is already running this queues one more run for when it
+   * finishes instead of starting a second one alongside it.
    */
-  private async configure() {
+  private configure(): Promise<void> {
+    return this.configureFlight.run();
+  }
+
+  /**
+   * Change the sign-in state, log it once, tell the renderer (via
+   * refreshStatus, which callers run next) and wake anyone waiting on a check.
+   */
+  private setSignIn(next: SignInState) {
+    const prev = this.signIn;
+    this.signIn = next;
+
+    // Log settled states only: a retry goes offline -> connecting -> offline
+    // every few seconds and that would flood the log.
+    if (next.state !== 'connecting' && next.state !== this.lastLoggedSignIn) {
+      const from = this.lastLoggedSignIn || prev.state;
+      const why = 'reason' in next ? ` (${next.reason})` : '';
+      console.info(`[CloudClient] Sign-in: ${from} → ${next.state}${why}`);
+      this.lastLoggedSignIn = next.state;
+    }
+
+    if (next.state !== 'connecting') {
+      const waiters = [...this.signInWaiters];
+      this.signInWaiters.clear();
+      waiters.forEach((wake) => wake());
+    }
+  }
+
+  /**
+   * Resolves once no sign-in check is running, or after timeoutMs. Used by
+   * uploads that arrive during a re-check so they aren't dropped.
+   */
+  public waitForSignIn(timeoutMs: number): Promise<void> {
+    if (this.signIn.state !== 'connecting') return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.signInWaiters.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      this.signInWaiters.add(done);
+    });
+  }
+
+  private clearRetryTimer() {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  /**
+   * Check again in delayMs. Replaces any retry already waiting. The state
+   * carries nextRetryAt so the card can show a countdown.
+   */
+  private scheduleRetry(delayMs: number) {
+    this.clearRetryTimer();
+    this.setSignIn({
+      state: 'offline',
+      attempt: this.offlineAttempt,
+      nextRetryAt: Date.now() + delayMs,
+    });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.configure();
+    }, delayMs);
+  }
+
+  /**
+   * Turn a failed check into a state. Offline retries by itself with
+   * backoff; expired and refused wait for the user, so they can't loop.
+   */
+  private failSignIn(failure: SignInFailure) {
+    if (failure.kind === 'offline') {
+      this.offlineAttempt += 1;
+      this.scheduleRetry(backoffDelayMs(this.offlineAttempt));
+    } else {
+      this.setSignIn({ state: failure.kind, reason: failure.reason });
+    }
+
+    this.refreshStatus();
+  }
+
+  /**
+   * The check itself. Only configureFlight calls this, so it never overlaps
+   * with itself.
+   */
+  private async runConfigure() {
     console.info('[CloudClient] Configuring cloud client');
+    this.clearRetryTimer();
     this.reset();
 
     const config = getCloudConfig();
@@ -527,24 +658,29 @@ export default class CloudClient implements StorageClient {
 
     if (!this.enabled) {
       console.info('[CloudClient] Cloud storage is not enabled');
+      this.offlineAttempt = 0;
+      this.setSignIn({ state: 'off' });
       this.refreshStatus();
       return;
     }
 
     if (!cloudSessionToken) {
       console.warn('[CloudClient] No Discord session');
+      this.offlineAttempt = 0;
+      this.setSignIn({ state: 'signedOut' });
       this.refreshStatus();
       return;
     }
 
     this.user = cloudDiscordName;
     this.authHeader = `Bearer ${cloudSessionToken}`;
+    this.setSignIn({ state: 'connecting' });
+    this.refreshStatus();
 
-    const success = await this.fetchAffiliations(false);
+    const failure = await this.loadAffiliations(false);
 
-    if (!success) {
-      // Probably bad credentials.
-      this.refreshStatus();
+    if (failure) {
+      this.failSignIn(failure);
       return;
     }
 
@@ -555,6 +691,8 @@ export default class CloudClient implements StorageClient {
 
     if (!affiliation) {
       console.warn('[CloudClient] User is not affiliated with Room Forty');
+      this.offlineAttempt = 0;
+      this.setSignIn({ state: 'refused', reason: NOT_AFFILIATED_REASON });
       this.refreshStatus();
       return;
     }
@@ -568,6 +706,8 @@ export default class CloudClient implements StorageClient {
 
     if (cloudUpload && !affiliation.write) {
       console.warn('[CloudClient] User is not authorized to upload');
+      this.offlineAttempt = 0;
+      this.setSignIn({ state: 'refused', reason: CANNOT_UPLOAD_REASON });
       this.refreshStatus();
       return;
     }
@@ -575,29 +715,34 @@ export default class CloudClient implements StorageClient {
     // If we got this far the user is authorized for their configuration.
     this.authorized = true;
 
-    // Check the guild hasn't been migrated. If it is the user should
-    // login with WCL.
-    const info = await this.getGuildInfo();
-
-    if (info.migrated) {
-      console.warn('[CloudClient] Guild has been migrated');
-      this.migrated = true;
-      this.refreshStatus();
-      return;
-    }
-
     try {
+      // Check the guild hasn't been migrated. If it is the user should
+      // login with WCL.
+      const info = await this.getGuildInfo();
+
+      if (info.migrated) {
+        console.warn('[CloudClient] Guild has been migrated');
+        this.migrated = true;
+        this.offlineAttempt = 0;
+        this.setSignIn({ state: 'connected' });
+        this.refreshStatus();
+        return;
+      }
+
       const usagePromise = this.getUsage();
       const limitPromise = this.getStorageLimit();
       this.usage = await usagePromise;
       this.limit = await limitPromise;
     } catch (error) {
-      // Unlikely to fail here as we've already contacted the server.
       console.error('[CloudClient] Failed to get guild storage info', error);
-      this.refreshStatus();
+      this.authenticated = false;
+      this.authorized = false;
+      this.failSignIn(classifyFailure(error));
       return;
     }
 
+    this.offlineAttempt = 0;
+    this.setSignIn({ state: 'connected' });
     this.startPolling();
     this.refreshStatus();
   }
@@ -809,18 +954,26 @@ export default class CloudClient implements StorageClient {
       headers['X-View-As-Role'] = CloudClient.viewAsRole;
     if (options.contentType) headers['Content-Type'] = options.contentType;
 
-    const res = await axios.request({
-      method,
-      url,
-      data,
-      headers,
-      timeout: options.timeout ?? 30000,
-      // Full pull logs (Logs page) run to tens of MB gzipped.
-      maxBodyLength: 160 * 1024 * 1024,
-      maxContentLength: 160 * 1024 * 1024,
-      responseType: options.responseType ?? 'json',
-    });
-
+    const res = await axios
+      .request({
+        method,
+        url,
+        data,
+        headers,
+        timeout: options.timeout ?? 30000,
+        // Full pull logs (Logs page) run to tens of MB gzipped.
+        maxBodyLength: 160 * 1024 * 1024,
+        maxContentLength: 160 * 1024 * 1024,
+        responseType: options.responseType ?? 'json',
+      })
+      .catch((error) => {
+        // A 401 here means the session or the role is gone; look again so the
+        // card shows why. Does nothing unless we thought we were connected.
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          this.recheckAfter401();
+        }
+        throw error;
+      });
     return res.data as T;
   }
 
@@ -986,6 +1139,8 @@ export default class CloudClient implements StorageClient {
 
     if (!CloudClient.poll) {
       console.info('[CloudClient] Start HTTP polling');
+      // Never leave an earlier poller running beside the new one.
+      this.clearPollingTimer();
       this.pollingTimer = setInterval(() => this.pullCloudData(), 30000);
       this.pullCloudData();
       return;
@@ -995,17 +1150,20 @@ export default class CloudClient implements StorageClient {
     this.connectPollingWebsocket();
   }
 
+  private clearPollingTimer() {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+      this.pollingTimer = null;
+    }
+  }
+
   /**
    * Stop listening for updates using WebSocket or HTTP polling.
    */
   public stopPolling() {
     console.info('[CloudClient] Stop cloud polling');
     this.polling = false;
-
-    if (this.pollingTimer) {
-      clearInterval(this.pollingTimer);
-      this.pollingTimer = null;
-    }
+    this.clearPollingTimer();
 
     if (this.ws) {
       this.ws.close();
@@ -1434,16 +1592,39 @@ export default class CloudClient implements StorageClient {
    */
   private validateResponseStatus(status: number) {
     if (status === 401) {
-      this.configure();
+      this.recheckAfter401();
     }
 
     return status >= 200 && status < 300;
+  }
+
+  /**
+   * A request got a 401, so the session or the role may have gone. Check
+   * again, which also fetches the server's reason. Only when we thought we
+   * were connected: if we already know we're signed out, expired or refused,
+   * more 401s say nothing new and must not restart the check.
+   */
+  private recheckAfter401() {
+    if (this.signIn.state !== 'connected') return;
+    console.warn('[CloudClient] Got a 401, checking the sign-in again');
+    this.configure();
   }
 
   private setupListeners() {
     ipcMain.on('reconfigureCloud', async () => {
       console.info('[CloudClient] Reconfiguring cloud client');
       this.configure();
+    });
+
+    // After sleep the network often isn't back yet, so look again in a few
+    // seconds instead of waiting out a long backoff.
+    app.whenReady().then(() => {
+      powerMonitor.on('resume', () => {
+        if (this.signIn.state !== 'offline') return;
+        this.offlineAttempt = 0;
+        this.scheduleRetry(3000);
+        this.refreshStatus();
+      });
     });
 
     ipcMain.handle('getShareableLink', async (_event, args) => {
