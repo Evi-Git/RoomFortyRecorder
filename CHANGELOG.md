@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.134] - Unreleased
+### Fixed (guild server: run `update-server.cmd` after this release)
+- **The server now keeps a log file.** It runs under Task Scheduler, where everything it prints was lost, so when something went wrong on raid night there was nothing to look at. It now writes one file a day, `server-YYYY-MM-DD.log`, into a `logs` folder inside the storage folder (`GUILD_CLOUD_LOG_DIR` picks another place), with the time and a level on every line, including crashes. Files older than 14 days are deleted (`GUILD_CLOUD_LOG_DAYS` changes that). Passwords, tokens and the signature part of upload links are never written. If the folder can't be written the server carries on without the file.
+- **The log can't fill the disk:** one day's file stops growing at 50 MB (`GUILD_CLOUD_LOG_MAX_MB`), and a malformed web address is answered with a plain 400 instead of an error in the log. Anything that looks like a secret in `.env` (including the bug-report webhook) is kept out of the file.
+- **`/health` now checks that the server is really working.** It used to say "ok" whatever state the server was in. It now checks that the storage folder can be written to and that the guild's data loaded and is being saved, and answers with an error (503) if not (a single failed save is only a warning; saving failing for over 10 minutes is an error). A log file that can't be written is only a warning. It still tells you the version and doesn't need a sign-in, and it makes no calls to Discord or R2, so it answers instantly.
+- **The server updater only accepts the new version when it is really up.** `update-server.cmd` now waits until `/health` says ok *and* reports the version it just installed. A server that started half-broken, or the old one still running, makes it put the previous files back, as it does when the server doesn't answer at all. What it saw is written to `update-server.log`.
+
 ## [1.9.133] - Unreleased
 ### Fixed
 - **The minimize, maximize and close buttons are back** in the top right corner of the window. The tab strip and the pages are drawn from the very top of the window and had been covering them. They also use the same icon set as the rest of the app now.

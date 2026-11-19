@@ -26,6 +26,8 @@ import {
   sendFile,
 } from './startup.mjs';
 import { readJsonSafe, writeJsonSafe } from './safe-json.mjs';
+import { installServerLog, logUncaughtExceptions } from './server-log.mjs';
+import { createHealth } from './health.mjs';
 import {
   backfillChatOwners,
   canDeleteMessage,
@@ -94,6 +96,23 @@ const STORAGE = path.resolve(
   process.env.GUILD_CLOUD_STORAGE_PATH || path.join(SERVER_DIR, 'data'),
 );
 const STATE_FILE = path.join(STORAGE, 'state.json');
+// [RoomFortyRecorder] Under Task Scheduler the console is lost, so everything
+// the server prints is also written to <storage>/logs/server-YYYY-MM-DD.log.
+// Installed this early so even a start-up failure leaves a line. Secret
+// values are kept out of the file.
+const serverLog = installServerLog({
+  dir: process.env.GUILD_CLOUD_LOG_DIR
+    ? path.resolve(process.env.GUILD_CLOUD_LOG_DIR)
+    : path.join(STORAGE, 'logs'),
+  keepDays: Number.parseInt(process.env.GUILD_CLOUD_LOG_DAYS || '', 10) || undefined,
+  maxBytes: (Number.parseFloat(process.env.GUILD_CLOUD_LOG_MAX_MB || '') || 50) * 1024 * 1024,
+  // Every setting that looks like a secret (the bug-report webhook has its
+  // token in the URL path), whatever its name.
+  secrets: Object.entries(process.env)
+    .filter(([name]) => /SECRET|TOKEN|PASSWORD|KEY|WEBHOOK/i.test(name))
+    .map(([, value]) => value),
+});
+logUncaughtExceptions();
 // Spell timelines (one small JSON file per video). Kept here rather than in
 // state.json because every client polls the full video list every 30s.
 const TIMELINE_DIR = path.join(STORAGE, 'timelines');
@@ -225,6 +244,10 @@ let saveQueue = Promise.resolve();
 // Set when this run started from a backup of state.json: videos uploaded
 // after that copy are in R2 but not in the list.
 let stateRestoredAt = null;
+// For /health: state.json was read at start, and the last save worked.
+let stateLoaded = false;
+// When the first of the failed saves in a row happened (null: the last save worked).
+let stateSaveFailedAt = null;
 
 const json = (res, status, body, headers = {}) => {
   const data = JSON.stringify(body);
@@ -999,7 +1022,11 @@ const persist = () => {
   const snapshot = JSON.stringify(state, null, 2);
   saveQueue = saveQueue
     .then(() => writeJsonSafe(STATE_FILE, snapshot, { backup: true }))
+    .then(() => {
+      stateSaveFailedAt = null;
+    })
     .catch((error) => {
+      stateSaveFailedAt ??= Date.now();
       console.error('[guild-cloud] Failed to save state', error);
     });
   return saveQueue;
@@ -1046,7 +1073,17 @@ const loadState = async () => {
     await persist();
   }
   if (backfillChatOwners(state)) await persist();
+  stateLoaded = true;
 };
+
+const health = createHealth({
+  storage: STORAGE,
+  getState: () => ({ loaded: stateLoaded, restoredAt: stateRestoredAt, saveFailedAt: stateSaveFailedAt }),
+  logStatus: () => serverLog.status(),
+  version: SERVER_VERSION,
+  // Only tests change this.
+  cacheMs: process.env.GUILD_CLOUD_HEALTH_CACHE_MS ? Number(process.env.GUILD_CLOUD_HEALTH_CACHE_MS) : undefined,
+});
 
 const limitBytes = () =>
   LIMIT_GB > 0 ? LIMIT_GB * 1024 ** 3 : Number.MAX_SAFE_INTEGER;
@@ -1966,7 +2003,14 @@ const handleLike = async (res, id) => {
 
 const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const parts = parseParts(url.pathname);
+  let parts;
+  try {
+    parts = parseParts(url.pathname);
+  } catch (error) {
+    // A bad %-escape in the path (anyone can send one): not worth a log line.
+    if (error instanceof URIError) return fail(res, 400, 'Bad request');
+    throw error;
+  }
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {
@@ -1978,7 +2022,12 @@ const requestHandler = async (req, res) => {
     return handleDiscordAuth(req, res, url, parts);
   }
 
-  if (parts[0] === 'health') return json(res, 200, { ok: true, version: SERVER_VERSION });
+  if (parts[0] === 'health') {
+    // Local checks only; 503 when storage or state is broken. Older
+    // updaters read just the status code, the app reads `version`.
+    const result = await health.check();
+    return json(res, result.status, result.body);
+  }
   if (parts[0] === 'internal' && parts[1] === 'mediamtx-auth' && req.method === 'POST') {
     return handleMediamtxAuth(req, res);
   }

@@ -183,9 +183,10 @@ http://127.0.0.1:8787/health
 It should display:
 
 ```text
-{"ok":true}
+{"ok":true,"version":null,"checks":{"storage":{"ok":true},"state":{"ok":true},"log":{"ok":true}},"uptimeSec":5}
 ```
 
+(`version` is empty when the server was started by hand; the updater fills it.)
 If that works, start Caddy from its folder in another terminal:
 
 ```text
@@ -325,8 +326,9 @@ Windows asks for administrator rights. It:
 3. backs up the current files to `backup\<date>-<version>\` (keeps 5),
 4. stops the `RoomFortyRecorder Guild Cloud` task, copies the files in and
    starts it again,
-5. waits for `/health`. If the server doesn't come back, it puts the old
-   files back and restarts that version.
+5. waits for `/health` to say `ok` and to report the version it just
+   installed. If it doesn't (no answer, a 503, or the old version still
+   running), it puts the old files back and restarts that version.
 
 `.env` is never touched. If a release adds settings, the updater lists the new
 names from `.env.example` at the end. If the server is already on the latest
@@ -346,6 +348,28 @@ another time). Remove it with
 
 `http://127.0.0.1:8787/health` shows the running version, for example
 `{"ok":true,"version":"v1.8.7"}`.
+
+## Log file and `/health`
+
+The server writes everything it prints to a daily file,
+`server-YYYY-MM-DD.log`, in the `logs` folder inside `GUILD_CLOUD_STORAGE_PATH`
+(set `GUILD_CLOUD_LOG_DIR` to put it elsewhere). Every line has a time and
+`INFO`, `WARN` or `ERROR`; crashes and background failures are in it too.
+Files older than 14 days are deleted (`GUILD_CLOUD_LOG_DAYS`). Secrets and the
+query part of signed links are never written. When something went wrong, open
+today's file first.
+
+`/health` needs no sign-in and makes no calls to R2 or Discord. It answers
+`ok: true` with status 200 only when:
+
+- `storage`: the storage folder exists and a small file can be written to it
+  (checked at most every 10 seconds),
+- `state`: the guild's data loaded at start and the last save worked.
+
+If either fails it answers `ok: false` with status 503, and the updater rolls
+back. `log` and a `state` restored from a backup show as warnings and don't
+fail it. `uptimeSec` is seconds since the server started. Paths and the reason
+for a failure are in the log, not in the answer.
 
 ## Troubleshooting
 
