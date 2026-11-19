@@ -7,8 +7,8 @@ live only in the server's `.env` (see `guild-cloud-server/.env.example`).
 
 ## How Claude works here (advise and orchestrate)
 
-The main conversation model (Fable) is the **advisor and orchestrator**, not
-the bulk worker:
+The main conversation model (Fable when available, otherwise Opus) is the
+**advisor and orchestrator**, not the bulk worker:
 
 - **Advise first.** Read the code, say what you'd do and why, name the
   trade-offs and risks, and recommend an order. The maintainer decides.
