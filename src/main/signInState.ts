@@ -78,7 +78,13 @@ export const classifyFailure = (error: unknown): SignInFailure => {
     };
   }
 
-  if (OFFLINE_STATUSES.has(status) || status >= 500) {
+  // 408 (request timeout) and 429 (slow down) pass with time.
+  if (
+    OFFLINE_STATUSES.has(status) ||
+    status >= 500 ||
+    status === 408 ||
+    status === 429
+  ) {
     return { kind: 'offline', reason: `Server error (${status})` };
   }
 

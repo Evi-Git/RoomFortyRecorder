@@ -44,6 +44,9 @@ import {
   SingleFlight,
 } from 'main/signInState';
 
+/** The sign-in check's requests give up after this so it can't hang. */
+const CONFIGURE_TIMEOUT_MS = 15000;
+
 const enum VideoMessages {
   CREATE = 'vc',
   DELETE = 'vd',
@@ -635,6 +638,21 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
+   * If the error is a 401, the session or role is gone: fail the sign-in and
+   * return true. Anything else returns false and the caller carries on.
+   */
+  private failOn401(error: unknown): boolean {
+    if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+      return false;
+    }
+    console.error('[CloudClient] Guild call refused', error.message);
+    this.authenticated = false;
+    this.authorized = false;
+    this.failSignIn(classifyFailure(error));
+    return true;
+  }
+
+  /**
    * The check itself. Only configureFlight calls this, so it never overlaps
    * with itself.
    */
@@ -715,6 +733,10 @@ export default class CloudClient implements StorageClient {
     // If we got this far the user is authorized for their configuration.
     this.authorized = true;
 
+    // The affiliations call worked, so the session is good. These next calls
+    // list the storage bucket, which can fail on its own (a storage outage
+    // answers 500) while the pull desk keeps working. Only a 401 is a sign-in
+    // problem; anything else is logged and we carry on connected.
     try {
       // Check the guild hasn't been migrated. If it is the user should
       // login with WCL.
@@ -728,17 +750,21 @@ export default class CloudClient implements StorageClient {
         this.refreshStatus();
         return;
       }
+    } catch (error) {
+      if (this.failOn401(error)) return;
+      console.warn('[CloudClient] Could not get guild info', String(error));
+    }
 
+    try {
       const usagePromise = this.getUsage();
       const limitPromise = this.getStorageLimit();
-      this.usage = await usagePromise;
-      this.limit = await limitPromise;
+      const [usage, limit] = await Promise.all([usagePromise, limitPromise]);
+      this.usage = usage;
+      this.limit = limit;
     } catch (error) {
-      console.error('[CloudClient] Failed to get guild storage info', error);
-      this.authenticated = false;
-      this.authorized = false;
-      this.failSignIn(classifyFailure(error));
-      return;
+      if (this.failOn401(error)) return;
+      // Usage stays 0 (unknown); nothing else depends on it.
+      console.warn('[CloudClient] Could not get storage info', String(error));
     }
 
     this.offlineAttempt = 0;
@@ -1233,6 +1259,7 @@ export default class CloudClient implements StorageClient {
 
     const response = await axios.get(url, {
       headers,
+      timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
@@ -1253,6 +1280,7 @@ export default class CloudClient implements StorageClient {
 
     const response = await axios.get(url, {
       headers,
+      timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
@@ -1274,7 +1302,7 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const url = `${CloudClient.api}/user/affiliations`;
 
-    const cfg: AxiosRequestConfig = { headers };
+    const cfg: AxiosRequestConfig = { headers, timeout: CONFIGURE_TIMEOUT_MS };
 
     if (logoutOn401) {
       cfg.validateStatus = (s) => this.validateResponseStatus(s);
@@ -1613,6 +1641,8 @@ export default class CloudClient implements StorageClient {
   private setupListeners() {
     ipcMain.on('reconfigureCloud', async () => {
       console.info('[CloudClient] Reconfiguring cloud client');
+      // A person asked (Try now, settings): start the backoff over.
+      this.offlineAttempt = 0;
       this.configure();
     });
 
@@ -1939,6 +1969,7 @@ export default class CloudClient implements StorageClient {
 
     const rsp = await axios.get(url, {
       headers,
+      timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 

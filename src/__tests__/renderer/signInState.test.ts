@@ -24,7 +24,7 @@ describe('classifyFailure', () => {
     expect(classifyFailure(undefined).kind).toBe('offline');
   });
 
-  it.each([500, 502, 503, 504])('%i is offline', (status) => {
+  it.each([408, 429, 500, 502, 503, 504])('%i is offline', (status) => {
     expect(classifyFailure(http(status)).kind).toBe('offline');
   });
 

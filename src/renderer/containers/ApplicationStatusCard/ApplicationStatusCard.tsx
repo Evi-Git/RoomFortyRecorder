@@ -21,6 +21,7 @@ type ApplicationStatusCardProps = {
   errorReports: ErrorReport[];
   savingStatus: SaveStatus;
   config: ConfigurationSchema;
+  setConfig?: Dispatch<SetStateAction<ConfigurationSchema>>;
   appState: AppState;
   activityStatus: ActivityStatus | null;
   combatLoggingStatus: CombatLoggingStatus;
@@ -36,6 +37,7 @@ const ApplicationStatusCard = ({
   errorReports,
   savingStatus,
   config,
+  setConfig,
   appState,
   activityStatus,
   combatLoggingStatus,
@@ -86,6 +88,7 @@ const ApplicationStatusCard = ({
         appState={appState}
         setPreviewEnabled={setPreviewEnabled}
         userName={config.cloudDiscordName}
+        setConfig={setConfig}
       />
     </div>
   );

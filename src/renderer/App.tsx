@@ -565,6 +565,7 @@ const WarcraftRecorder = () => {
                   errorReports={errorReports}
                   savingStatus={savingStatus}
                   config={config}
+                  setConfig={setConfig}
                   updateAvailable={updateAvailable}
                   recorderCategory={activityStatus?.category}
                   activityStatus={activityStatus}

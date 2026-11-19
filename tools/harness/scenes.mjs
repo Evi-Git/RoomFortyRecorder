@@ -709,7 +709,10 @@ export const scenes = [
   {
     name: 'fail-server-unreachable',
     shows: 'Guild server unreachable: every pullDesk call answers ECONNREFUSED',
-    init: { answers: { pullDesk: { ok: false, error: 'connect ECONNREFUSED' } } },
+    init: {
+      signIn: { state: 'offline', attempt: 1, nextRetryIn: 25000 },
+      answers: { pullDesk: { ok: false, error: 'connect ECONNREFUSED' } },
+    },
     steps: async (t) => {
       await t.nav('Dashboard');
       await t.settle(1000);
