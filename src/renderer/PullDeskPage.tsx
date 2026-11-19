@@ -28,7 +28,7 @@ import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
 import PullMeters, { useRecordingWatch, WatchContext } from './Meters';
 import NightPicker from './logs/NightPicker';
-import { classColor } from './logs/format';
+import { classColor, compact } from './logs/format';
 import { setLogsTarget } from './logs/openTarget';
 import { TabsContext } from './tabs/tabs';
 import { isReset, useShowResets } from './resets';
@@ -217,10 +217,14 @@ interface IProps {
 const ipc = window.electron.ipcRenderer;
 const REFRESH_MS = 30000;
 
-const todayKey = () => {
-  const d = new Date();
+// The raid night a moment belongs to: the server counts pulls before 6 AM
+// as the night before (guild-cloud-server/pulldesk.mjs nightOf).
+const NIGHT_CUTOFF_MS = 6 * 60 * 60 * 1000;
+const nightOf = (ms: number) => {
+  const d = new Date(ms - NIGHT_CUTOFF_MS);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+const todayKey = () => nightOf(Date.now());
 
 // Seconds of video to show before a death or an assignment.
 const WATCH_LEAD_SECONDS = 10;
@@ -238,12 +242,6 @@ const mmss = (seconds: number) => {
 };
 
 const lines = (count: number) => `${count} ${count === 1 ? 'line' : 'lines'}`;
-
-const compact = (value: number) => {
-  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `${Math.round(value / 1e3)}k`;
-  return String(value);
-};
 
 // "+3.2s" / "-6s": how far a cast was from its assigned time.
 const signed = (seconds: number) => {
@@ -396,6 +394,15 @@ const PullDeskPage = (props: IProps) => {
   );
 
   const [showResets, setShowResets] = useShowResets();
+  // The list effect reads the switch without re-running when it changes.
+  const showResetsRef = React.useRef(showResets);
+  React.useEffect(() => {
+    showResetsRef.current = showResets;
+  }, [showResets]);
+  // Where the list opens: the newest pull, skipping resets while they're hidden.
+  const firstPull = (list: PullSummary[]) =>
+    (showResetsRef.current ? undefined : list.find((p) => !isReset(p))) ??
+    list[0];
   // Opens the Logs page in a new tab (with tabs on), for "Open in Logs".
   const tabsApi = React.useContext(TabsContext);
   const [pulls, setPulls] = React.useState<PullSummary[]>([]);
@@ -422,6 +429,7 @@ const PullDeskPage = (props: IProps) => {
   });
   const [report, setReport] = React.useState<Report | null>(null);
   const [reportError, setReportError] = React.useState('');
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
   // The pull's meters, only for the Raid DPS tile (Meters loads its own).
   const [dpsMeters, setDpsMeters] = React.useState<{
     id: string;
@@ -521,7 +529,7 @@ const PullDeskPage = (props: IProps) => {
             (current === openedRef.current ||
               list.some((p) => p.id === current))
               ? current
-              : (list[0]?.id ?? null),
+              : (firstPull(list)?.id ?? null),
           );
         },
       );
@@ -565,12 +573,15 @@ const PullDeskPage = (props: IProps) => {
       if (cancelled) return;
       if (!response.ok) {
         setReportError(response.error);
+        setPendingId(null);
         setReport(null);
       } else if (response.data.pending) {
-        setReportError('This pull is still being analyzed.');
+        setReportError('');
+        setPendingId(selectedId);
         setReport(null);
       } else {
         setReportError('');
+        setPendingId(null);
         setReport(response.data);
       }
     });
@@ -712,7 +723,7 @@ const PullDeskPage = (props: IProps) => {
         disabled={!video}
         title={
           video
-            ? `Open ${video.player?._name ?? 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
+            ? `Open ${video.player?._name ? `${video.player._name}'s` : 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
             : 'No recording of this pull'
         }
         onClick={() => video && watch(video, seconds)}
@@ -782,7 +793,7 @@ const PullDeskPage = (props: IProps) => {
           ? pulls
           : pulls.filter((pull) => difficultyOf(pull.difficultyId) === next);
       if (visible.length && !visible.some((pull) => pull.id === selectedId)) {
-        setSelectedId(visible[0].id);
+        setSelectedId(firstPull(visible)?.id ?? visible[0].id);
         setExpandedDeath(null);
         setOpenGroups([]);
         setReportError('');
@@ -794,12 +805,16 @@ const PullDeskPage = (props: IProps) => {
       if (!nights.includes(pull.night)) nights.push(pull.night);
     });
 
+    // Before the nights call answers (or if it fails) there's no night to
+    // name, so the header is just the count.
     const title =
       shownNights.length === 1
         ? shownNights[0] === todayKey()
           ? 'Tonight'
           : nightLabel(shownNights[0])
-        : `${shownNights.length} nights`;
+        : shownNights.length > 1
+          ? `${shownNights.length} nights`
+          : '';
 
     const filter = mixed && (
       <div
@@ -837,7 +852,8 @@ const PullDeskPage = (props: IProps) => {
       <>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <h2 className="text-[13px] font-medium text-foreground">
-            {title} · {shown.length} {shown.length === 1 ? 'pull' : 'pulls'}
+            {title ? `${title} · ` : ''}
+            {shown.length} {shown.length === 1 ? 'pull' : 'pulls'}
           </h2>
           <label className="flex cursor-pointer items-center gap-x-1.5 text-[13px] text-foreground">
             <input
@@ -882,12 +898,7 @@ const PullDeskPage = (props: IProps) => {
                     type="button"
                     key={pull.id}
                     aria-current={selected ? 'true' : undefined}
-                    title={[
-                      pull.startedAt ? timeOfDay(pull.startedAt) : '',
-                      `Pull ${pull.totalPullNumber} overall`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                    title={`Pull ${pull.totalPullNumber} overall`}
                     onClick={() => {
                       setSelectedId(pull.id);
                       setExpandedDeath(null);
@@ -930,6 +941,11 @@ const PullDeskPage = (props: IProps) => {
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground [&>span]:whitespace-nowrap">
+                      {pull.startedAt ? (
+                        <span className="tabular-nums">
+                          {timeOfDay(pull.startedAt)} ·
+                        </span>
+                      ) : null}
                       <span className="tabular-nums">
                         {mmss(pull.duration)}
                       </span>
@@ -1164,21 +1180,26 @@ const PullDeskPage = (props: IProps) => {
     );
   };
 
-  // A row that opens and closes on click or Enter/Space. Not a <button>: the
-  // row holds the ability's own hover card and a Watch button.
-  const toggleProps = (open: boolean, toggle: () => void) => ({
-    role: 'button' as const,
-    tabIndex: 0,
-    'aria-expanded': open,
-    onClick: toggle,
-    onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.target !== event.currentTarget) return;
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
+  // The row opens on a click anywhere; the chevron is the keyboard path
+  // (the row holds the ability's own hover card and a Watch button, so the
+  // row itself is not a button).
+  const renderChevron = (open: boolean, toggle: () => void, label: string) => (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
         toggle();
-      }
-    },
-  });
+      }}
+      className="shrink-0 rounded-sm p-0.5 text-foreground hover:text-foreground-lighter focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+    >
+      <ChevronRight
+        size={14}
+        className={`transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+    </button>
+  );
 
   const renderDeathRow = (death: Report['deaths'][number], index: number) => {
     const kb = death.killingBlow;
@@ -1192,9 +1213,14 @@ const PullDeskPage = (props: IProps) => {
       >
         <div className="flex items-center gap-x-3 px-3 hover:bg-panel-raised">
           <div
-            {...toggleProps(open, () => setExpandedDeath(open ? null : index))}
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-x-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            onClick={() => setExpandedDeath(open ? null : index)}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-x-3 py-2 text-sm"
           >
+            {renderChevron(
+              open,
+              () => setExpandedDeath(open ? null : index),
+              `Details of ${death.name}'s death at ${mmss(death.t)}`,
+            )}
             <span className="w-11 shrink-0 tabular-nums text-foreground">
               {mmss(death.t)}
             </span>
@@ -1241,7 +1267,7 @@ const PullDeskPage = (props: IProps) => {
           <div className="shrink-0">{renderWatch(death.name, death.t)}</div>
         </div>
         {open && (
-          <div className="bg-panel-deep px-3 py-2 pl-[68px] text-xs text-foreground">
+          <div className="bg-panel-deep px-3 py-2 pl-[90px] text-xs text-foreground">
             <div className="grid grid-cols-2 gap-x-6">
               <div>
                 <div className="mb-1 font-semibold text-foreground-lighter">
@@ -1315,6 +1341,10 @@ const PullDeskPage = (props: IProps) => {
       const first = r.deaths[segment[0]];
       const key = segment[0];
       const open = openGroups.includes(key);
+      const toggleGroup = () =>
+        setOpenGroups((groups) =>
+          open ? groups.filter((g) => g !== key) : [...groups, key],
+        );
       const withReady = segment.filter((i) =>
         (r.deaths[i].available || []).some(
           (a) => a.status === 'ready' && a.kind !== 'potion',
@@ -1323,13 +1353,14 @@ const PullDeskPage = (props: IProps) => {
       rows.push(
         <div
           key={`group-${key}`}
-          {...toggleProps(open, () =>
-            setOpenGroups((groups) =>
-              open ? groups.filter((g) => g !== key) : [...groups, key],
-            ),
-          )}
-          className="flex cursor-pointer items-center gap-x-3 border-b border-panel-line px-3 py-2 text-sm hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          onClick={toggleGroup}
+          className="flex cursor-pointer items-center gap-x-3 border-b border-panel-line px-3 py-2 text-sm hover:bg-panel-raised"
         >
+          {renderChevron(
+            open,
+            toggleGroup,
+            `${segment.length} deaths at ${mmss(first.t)}`,
+          )}
           <span className="w-11 shrink-0 tabular-nums text-foreground">
             {mmss(first.t)}
           </span>
@@ -1730,12 +1761,9 @@ const PullDeskPage = (props: IProps) => {
 
   // "Open in Logs": the Logs page opens (in a new tab) on this pull.
   const openInLogs = (r: Report) => {
-    const started = r.startedAt ? new Date(r.startedAt) : null;
     const night =
       selectedSummary?.night ??
-      (started
-        ? `${started.getFullYear()}-${String(started.getMonth() + 1).padStart(2, '0')}-${String(started.getDate()).padStart(2, '0')}`
-        : todayKey());
+      (r.startedAt ? nightOf(r.startedAt) : todayKey());
     setLogsTarget({ night, pullId: r.id });
     if (tabsApi) {
       tabsApi.openTab({ page: Pages.Logs });
@@ -1768,12 +1796,11 @@ const PullDeskPage = (props: IProps) => {
       );
     }
     // While a newly picked pull loads, don't show the previous one.
+    if (pendingId === selectedId && (!report || report.id !== selectedId)) {
+      return <LoadingState label="Still analyzing this pull…" />;
+    }
     if (!report || report.id !== selectedId) {
-      return pulls.length ? (
-        <p className="text-sm text-foreground" data-state="loading">
-          Pick a pull.
-        </p>
-      ) : null;
+      return pulls.length ? <LoadingState label="Loading the report…" /> : null;
     }
 
     const r = report;
@@ -1814,7 +1841,7 @@ const PullDeskPage = (props: IProps) => {
                 disabled={!wholeRaidVideo}
                 title={
                   wholeRaidVideo
-                    ? `Open ${wholeRaidVideo.player?._name ?? 'a'} recording at the start of the pull`
+                    ? `Open ${wholeRaidVideo.player?._name ? `${wholeRaidVideo.player._name}'s` : 'a'} recording at the pull start`
                     : 'No recording of this pull'
                 }
                 onClick={() => wholeRaidVideo && watch(wholeRaidVideo, 0, 0)}
@@ -1848,7 +1875,14 @@ const PullDeskPage = (props: IProps) => {
 
         <StatTiles
           tiles={[
-            { key: 'dps', label: 'Raid DPS', stat: raidDpsStat(meters) },
+            {
+              key: 'dps',
+              label: 'Raid DPS',
+              stat:
+                dpsMeters && dpsMeters.id === r.id
+                  ? raidDpsStat(meters, compact)
+                  : 'loading',
+            },
             { key: 'deaths', label: 'Deaths', stat: deathsStat(r.deaths) },
             {
               key: 'avoidable',

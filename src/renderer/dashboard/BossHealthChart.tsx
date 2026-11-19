@@ -38,6 +38,15 @@ const BossHealthChart = ({
   );
   const hasCurve = curve.length >= 2;
   const ticks = [0, 1, 2, 3, 4].map((i) => (total * i) / 4);
+  // Deaths within 2 s of each other share one dot, so none sits under another.
+  const clusters: ChartDeath[][] = [];
+  [...deaths]
+    .sort((a, b) => a.t - b.t)
+    .forEach((death) => {
+      const last = clusters[clusters.length - 1];
+      if (last && death.t - last[0].t <= 2) last.push(death);
+      else clusters.push([death]);
+    });
 
   return (
     <section
@@ -48,9 +57,11 @@ const BossHealthChart = ({
         <h3 className="font-display text-[17px] font-bold text-foreground-lighter">
           Boss health
         </h3>
-        <span className="text-xs text-foreground">
-          Red dots are deaths · click one to watch it
-        </span>
+        {hasCurve && deaths.length > 0 && (
+          <span className="text-xs text-foreground">
+            Red dots are deaths · click one to watch it
+          </span>
+        )}
       </div>
 
       {!hasCurve && (
@@ -113,9 +124,13 @@ const BossHealthChart = ({
                   style={{ left: `${pctX(f.t)}%` }}
                 />
               ))}
-              {deaths.map((death) => {
+              {clusters.map((group) => {
+                const death = group[0];
                 const can = canWatchDeath(death);
-                const label = `Death at ${mmss(death.t)}: ${death.name}`;
+                const label =
+                  group.length === 1
+                    ? `Death at ${mmss(death.t)}: ${death.name}`
+                    : `${group.length} deaths at ${mmss(death.t)}: ${group.map((d) => d.name).join(', ')}`;
                 return (
                   <button
                     key={`${death.name}-${death.t}`}
@@ -123,10 +138,16 @@ const BossHealthChart = ({
                     aria-label={label}
                     title={can ? `${label}. Click to watch.` : label}
                     onClick={() => onWatchDeath(death)}
-                    className="absolute bottom-0 h-3 w-3 -translate-x-1/2 translate-y-1/2 rounded-full bg-red-400 ring-2 ring-panel enabled:hover:scale-125 enabled:hover:ring-foreground-lighter focus-visible:outline-none focus-visible:ring-brand disabled:cursor-default"
+                    className={`absolute bottom-0 flex -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full bg-red-400 ring-2 ring-panel enabled:hover:scale-125 enabled:hover:ring-foreground-lighter focus-visible:outline-none focus-visible:ring-brand disabled:cursor-default ${
+                      group.length > 1
+                        ? 'h-4 w-4 text-[9px] font-bold text-walnut'
+                        : 'h-3 w-3'
+                    }`}
                     style={{ left: `${pctX(death.t)}%` }}
                     disabled={!can}
-                  />
+                  >
+                    {group.length > 1 ? group.length : null}
+                  </button>
                 );
               })}
             </div>

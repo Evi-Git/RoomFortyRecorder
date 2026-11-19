@@ -1,33 +1,33 @@
 import {
   avoidableStat,
-  compactRate,
   consumablesStat,
   deathsStat,
   raidDpsStat,
 } from '../../renderer/dashboard/stats';
 
-describe('compactRate', () => {
-  it('shortens big numbers', () => {
-    expect(compactRate(1820000)).toBe('1.82M');
-    expect(compactRate(94300)).toBe('94.3k');
-    expect(compactRate(812.4)).toBe('812');
-  });
-});
+const compact = (n: number) => `${(n / 1e6).toFixed(2)}m`;
 
 describe('raidDpsStat', () => {
   it('adds everyone up over the duration', () => {
-    const stat = raidDpsStat({
-      duration: 100,
-      damage: [{ total: 60e6 }, { total: 40e6 }],
-    });
-    expect(stat?.value).toBe('1.00M');
-    expect(stat?.note).toBe('100.00M damage in 1:40');
+    const stat = raidDpsStat(
+      {
+        duration: 100,
+        damage: [{ total: 60e6 }, { total: 40e6 }],
+      },
+      compact,
+    );
+    expect(stat?.value).toBe('1.00m');
+    expect(stat?.note).toBe('100.00m damage in 1:40');
   });
   it('is hidden without data', () => {
-    expect(raidDpsStat(null)).toBeNull();
-    expect(raidDpsStat({ duration: 0, damage: [{ total: 5 }] })).toBeNull();
-    expect(raidDpsStat({ duration: 60, damage: [] })).toBeNull();
-    expect(raidDpsStat({ duration: 60, damage: [{ total: 0 }] })).toBeNull();
+    expect(raidDpsStat(null, compact)).toBeNull();
+    expect(
+      raidDpsStat({ duration: 0, damage: [{ total: 5 }] }, compact),
+    ).toBeNull();
+    expect(raidDpsStat({ duration: 60, damage: [] }, compact)).toBeNull();
+    expect(
+      raidDpsStat({ duration: 60, damage: [{ total: 0 }] }, compact),
+    ).toBeNull();
   });
 });
 

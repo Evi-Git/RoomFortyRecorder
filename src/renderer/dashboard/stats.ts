@@ -17,27 +17,22 @@ const mmss = (seconds: number) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
-/** 1820000 -> "1.82M", 94300 -> "94.3k", 812 -> "812". */
-export const compactRate = (n: number) => {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-  return String(Math.round(n));
-};
-
 /**
  * Raid damage per second: everyone's damage added up over the pull's
  * length. Null when there is no damage or no length to divide by.
  */
 export const raidDpsStat = (
   data: { duration: number; damage: { total: number }[] } | null | undefined,
+  // The page's number format (logs/format `compact`); passed in so this
+  // file stays free of app imports.
+  compact: (n: number) => string,
 ): Stat | null => {
   if (!data || !(data.duration > 0) || !data.damage?.length) return null;
   const total = data.damage.reduce((n, row) => n + row.total, 0);
   if (!(total > 0)) return null;
   return {
-    value: compactRate(total / data.duration),
-    note: `${compactRate(total)} damage in ${mmss(data.duration)}`,
+    value: compact(total / data.duration),
+    note: `${compact(total)} damage in ${mmss(data.duration)}`,
   };
 };
 
