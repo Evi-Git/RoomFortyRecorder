@@ -192,10 +192,13 @@ const ExpressionInput = ({
   label,
   applyOnBlur = true,
   searchIcon = false,
+  wrapperClassName = 'min-w-[260px]',
 }: {
   applyOnBlur?: boolean;
   /** A search icon inside the box's left edge (give the input `pl-8`). */
   searchIcon?: boolean;
+  /** Width of the box and its help button (default `min-w-[260px]`). */
+  wrapperClassName?: string;
   value: string;
   onChange: (v: string) => void;
   onApply: (v: string) => void;
@@ -229,7 +232,9 @@ const ExpressionInput = ({
   };
 
   return (
-    <div className="relative flex-1 min-w-[260px] flex items-center gap-x-1">
+    <div
+      className={`relative flex flex-1 items-center gap-x-1 ${wrapperClassName}`}
+    >
       {searchIcon && (
         <Search
           size={14}

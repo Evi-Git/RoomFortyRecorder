@@ -10,7 +10,7 @@ import SpellIcon from './SpellIcon';
  */
 
 const button =
-  'inline-flex items-center gap-x-1.5 bg-panel text-foreground-lighter rounded-lg px-3 h-9 text-xs border border-panel-line max-w-[240px]';
+  'inline-flex items-center gap-x-1.5 bg-panel text-foreground-lighter rounded-lg px-2.5 h-9 text-xs border border-panel-line max-w-[240px]';
 
 /** A dropdown panel that closes on an outside click or Escape. */
 const usePopover = () => {

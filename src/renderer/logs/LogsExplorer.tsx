@@ -544,6 +544,9 @@ const LogsExplorer = ({
   const showFilters =
     (mode === 'tables' && tab !== 'analyze') || mode === 'events';
   const multi = stores.length > 1;
+  // A meter chart says "click a moment to watch it" itself.
+  const showWatchHint =
+    Boolean(watch) && !(mode === 'tables' && meter && watch?.can);
   const fightSeconds = viewSeconds(ctx);
   // Rarely used filters live in "More filters"; the button counts those not
   // at their default so a hidden filter is never a surprise.
@@ -579,7 +582,7 @@ const LogsExplorer = ({
             <UnderlineTabs<Tab>
               label="Log tables"
               size="sm"
-              className="min-w-0"
+              className="min-w-[300px] flex-1"
               value={tab}
               onChange={setTab}
               items={TABS.filter(
@@ -716,6 +719,7 @@ const LogsExplorer = ({
                 searchIcon
                 label="Filter expression"
                 placeholder='Filter, e.g. ability.name ~ "breath"'
+                wrapperClassName="min-w-[180px]"
                 className={`${field} w-full flex-1 pl-8 font-mono`}
               />
               <Popover>
@@ -867,7 +871,7 @@ const LogsExplorer = ({
 
         {(!(mode === 'tables' && meter) ||
           filters.range ||
-          watch ||
+          showWatchHint ||
           notice) && (
           <div className="flex items-center gap-x-3 flex-wrap text-xs text-foreground">
             {!(mode === 'tables' && meter) && (
@@ -899,7 +903,7 @@ const LogsExplorer = ({
                 {zoomed ? 'Zoom out (see the slice in the fight)' : 'Zoom in'}
               </button>
             )}
-            {watch && <WatchHint can={watch.can} />}
+            {showWatchHint && watch && <WatchHint can={watch.can} />}
             {notice && <span className="text-yellow-400">{notice}</span>}
           </div>
         )}

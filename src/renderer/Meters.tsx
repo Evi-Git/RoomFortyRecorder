@@ -1268,8 +1268,11 @@ const useSessionState = <T,>(key: string, initial: T) => {
 const LogsPane = ({
   suffix,
   extra,
+  compact = false,
 }: {
   suffix: string;
+  /** Side by side: the pull list goes above the logs, not beside them. */
+  compact?: boolean;
   /** Shown at the end of the pane's top row (Compare / Close). */
   extra?: React.ReactNode;
 }) => {
@@ -1652,9 +1655,11 @@ const LogsPane = ({
       {boss && (
         <div
           className={`grid grid-cols-1 gap-4 items-start ${
-            listFolded
-              ? 'lg:grid-cols-[36px_minmax(0,1fr)]'
-              : 'lg:grid-cols-[260px_minmax(0,1fr)]'
+            compact
+              ? ''
+              : listFolded
+                ? 'lg:grid-cols-[36px_minmax(0,1fr)]'
+                : 'lg:grid-cols-[260px_minmax(0,1fr)]'
           }`}
         >
           {listFolded ? (
@@ -1662,10 +1667,14 @@ const LogsPane = ({
               type="button"
               title="Show the pull list"
               onClick={() => foldList(false)}
-              className="flex lg:flex-col items-center gap-2 rounded-lg border border-panel-line bg-panel hover:bg-panel-line px-2 lg:px-0 py-2 text-foreground hover:text-foreground-lighter"
+              className={`flex ${compact ? '' : 'lg:flex-col'} items-center gap-2 rounded-lg border border-panel-line bg-panel hover:bg-panel-line px-2 ${compact ? '' : 'lg:px-0'} py-2 text-foreground hover:text-foreground-lighter`}
             >
               <ChevronsRight size={16} className="shrink-0" />
-              <span className="text-xs whitespace-nowrap lg:[writing-mode:vertical-rl]">
+              <span
+                className={`text-xs whitespace-nowrap ${
+                  compact ? '' : 'lg:[writing-mode:vertical-rl]'
+                }`}
+              >
                 {comparing.length >= 2
                   ? `${comparing.length} pulls`
                   : pull
@@ -1707,7 +1716,11 @@ const LogsPane = ({
                   they are all shown.
                 </p>
               )}
-              <div className="rounded-lg border border-panel-line bg-panel flex flex-col max-h-[70vh] overflow-y-auto">
+              <div
+                className={`rounded-lg border border-panel-line bg-panel flex flex-col overflow-y-auto ${
+                  compact ? 'max-h-[220px]' : 'max-h-[70vh]'
+                }`}
+              >
                 {listed.map((p) => {
                   const active =
                     picked.length >= 2
@@ -1719,6 +1732,13 @@ const LogsPane = ({
                       key={p.id}
                       type="button"
                       aria-pressed={active}
+                      aria-label={`Pull ${p.pullNumber}, ${
+                        kill
+                          ? 'kill'
+                          : p.bossPercent !== null
+                            ? `${p.bossPercent}% left`
+                            : 'wipe'
+                      }${p.startedAt ? `, ${timeOfDay(p.startedAt)}` : ''}, ${mmss(p.duration)}`}
                       onMouseDown={(e) => {
                         // Shift-click would otherwise select the page's text.
                         if (e.shiftKey) e.preventDefault();
@@ -1856,13 +1876,14 @@ export const LogsView = ({
           split ? 'xl:border-r xl:border-panel-line xl:pr-6' : ''
         }`}
       >
-        <LogsPane suffix="" />
+        <LogsPane suffix="" compact={split} />
       </div>
       {split && (
         <div className="min-w-0">
           <TabContext.Provider value={quiet}>
             <LogsPane
               suffix="-b"
+              compact
               extra={
                 <button
                   type="button"

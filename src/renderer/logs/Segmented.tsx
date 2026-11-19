@@ -40,7 +40,7 @@ export function Segmented<K extends string>({
             title={item.title}
             disabled={item.disabled}
             onClick={() => onChange(item.key)}
-            className={`inline-flex items-center gap-x-1.5 px-3 text-[13px] font-medium transition-colors disabled:opacity-50 ${
+            className={`inline-flex items-center gap-x-1.5 px-2.5 text-[13px] font-medium transition-colors disabled:opacity-50 ${
               on
                 ? 'bg-brand text-walnut'
                 : 'bg-panel text-foreground hover:text-foreground-lighter'

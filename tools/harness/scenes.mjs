@@ -240,9 +240,9 @@ export const scenes = [
   },
   {
     name: 'logs-ulatek-damage-done',
-    shows: 'Damage Done',
+    shows: 'Damage done',
     continue: true,
-    steps: async (t) => tab(t, 'Damage Done'),
+    steps: async (t) => tab(t, 'Damage done'),
   },
   {
     name: 'logs-ulatek-player',
@@ -255,9 +255,9 @@ export const scenes = [
   },
   {
     name: 'logs-ulatek-damage-taken',
-    shows: 'Damage Taken',
+    shows: 'Damage taken',
     continue: true,
-    steps: async (t) => tab(t, 'Damage Taken'),
+    steps: async (t) => tab(t, 'Damage taken'),
   },
   {
     name: 'logs-ulatek-healing',
@@ -369,8 +369,8 @@ export const scenes = [
       await openLogsOct21(t);
       await t.page.getByRole('option', { name: "Kith'ix" }).click();
       await t.logsLoaded();
-      await t.page.getByText('Pull 5', { exact: false }).first().click();
-      await t.page.getByText('Pull 3', { exact: false }).first().click({ modifiers: ['Control'] });
+      await t.page.getByRole('button', { name: /^Pull 5,/ }).click();
+      await t.page.getByRole('button', { name: /^Pull 3,/ }).click({ modifiers: ['Control'] });
       await t.logsLoaded();
     },
   },
