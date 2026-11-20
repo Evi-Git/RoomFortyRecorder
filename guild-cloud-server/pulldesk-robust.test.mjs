@@ -24,7 +24,8 @@ const backfillBody = {
   encounterId,
   encounterName: "Belo'ren, Child of Al'ar",
   difficultyId: 16,
-  startedAt: Date.parse('2026-10-21T20:05:00'),
+  // Recent: a pull older than the log retention would have its log pruned.
+  startedAt: Date.now() - 60 * 60 * 1000,
   duration: 172,
   result: false,
   bossPercent: 61,
@@ -51,7 +52,7 @@ const discordStub = async (answer = () => ({ status: 200, body: {} })) => {
   return { posts, url: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
 };
 
-const setup = async (env = {}, botToken = '', existing = null) => {
+const setup = async (env = {}, botToken = '', existing = null, journalOverride = {}) => {
   const storage = existing || (await fsp.mkdtemp(path.join(os.tmpdir(), 'pd-robust-')));
   const desk = createPullDesk({
     storage,
@@ -59,7 +60,7 @@ const setup = async (env = {}, botToken = '', existing = null) => {
     json: (res, status, body) => Object.assign(res, { status, body }),
     fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
     memberRoleNames: async () => ['officer'],
-    journal: { configured: false, talents: async () => null, spells: async () => ({ spells: {} }) },
+    journal: { configured: false, talents: async () => null, spells: async () => ({ spells: {} }), ...journalOverride },
     botToken,
     env,
     wcl: { configured: false },
@@ -168,13 +169,36 @@ test('a pull saved as analyzing with no log is not stuck: it becomes claimed and
 });
 
 test('a re-analysis that is already running answers analyzing instead of starting another', async () => {
-  const { call } = await setup({});
-  const id = await newPull(call);
-  assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
-  const [a, b] = await Promise.all([call('POST', ['pulls', id, 'reanalyze'], {}, '1'), call('POST', ['pulls', id, 'reanalyze'], {}, '1')]);
-  const bodies = [a.body, b.body];
-  assert.equal(bodies.filter((r) => r.status === 'analyzing').length, 1);
-  assert.equal(bodies.filter((r) => r.id === id).length, 1);
+  const first = await setup({});
+  const id = await newPull(first.call);
+  assert.equal((await first.call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+  // The same server again, with a journal that holds the analysis open.
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  let armed = false;
+  const { call } = await setup({}, '', first.storage, {
+    configured: true,
+    spells: async () => {
+      if (!armed) return { spells: {} };
+      started();
+      await gate;
+      return { spells: {} };
+    },
+  });
+  armed = true;
+  const slow = call('POST', ['pulls', id, 'reanalyze'], {}, '1');
+  await Promise.race([running, new Promise((resolve) => setTimeout(resolve, 2000))]);
+  const second = await call('POST', ['pulls', id, 'reanalyze'], {}, '1');
+  release();
+  const done = await slow;
+  assert.deepEqual(second.body, { status: 'analyzing' });
+  assert.equal(done.body.id, id);
 });
 
 test('a Discord post answered with 429 waits and tries once more', async () => {
