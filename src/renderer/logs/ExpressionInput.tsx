@@ -43,6 +43,16 @@ export const FIELD_HELP: [string, string, string][] = [
   ['target.name', 'Who it happened to', '"Zømbicidal"'],
   ['source.type', 'What the source is', 'player, pet, npc'],
   ['target.type', 'What the target is', 'player, pet, npc'],
+  [
+    'source.raider',
+    "Whether the source is one of our raid's players (no pets or enemies)",
+    'true, false',
+  ],
+  [
+    'target.raider',
+    "Whether the target is one of our raid's players (no pets or enemies)",
+    'true, false',
+  ],
   ['ability.name', 'The spell', '"Venom Rupture"'],
   ['ability.id', 'The spell ID', '1302914'],
   [
@@ -86,6 +96,7 @@ export const EXAMPLES: [string, string][] = [
   ['Crits only', 'hitType = crit'],
   ['The first two minutes', 'time < 120'],
   ['Interrupts and deaths', 'type in (interrupt, death)'],
+  ['Raider deaths only', 'type = death and target.raider = true'],
 ];
 
 type Suggestion = { label: string; insert: string; hint?: string };
@@ -93,6 +104,8 @@ type Suggestion = { label: string; insert: string; hint?: string };
 const VALUES_FOR: Record<string, string[]> = {
   'source.type': ['player', 'pet', 'npc'],
   'target.type': ['player', 'pet', 'npc'],
+  'source.raider': ['true', 'false'],
+  'target.raider': ['true', 'false'],
   hitType: ['crit', 'normal', 'tick', 'miss', 'dodge', 'parry', 'immune'],
   type: Object.keys(TYPE_NAMES),
 };

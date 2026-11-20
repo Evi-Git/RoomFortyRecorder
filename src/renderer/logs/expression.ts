@@ -10,7 +10,8 @@ import { F, K, MISS_TYPES, PullStore } from './store';
  *   ability.name ~ "breath"            (~ means "contains")
  *
  * Fields: type, source.name, source.type, target.name, target.type,
- * ability.name, ability.id, amount, absorbed, overkill, overheal,
+ * source.raider and target.raider (true when it's one of our raid's players,
+ * not a pet, an enemy or another group's player), ability.name, ability.id, amount, absorbed, overkill, overheal,
  * mitigated, hitType ("crit", "normal", "tick", "miss"), time (seconds into
  * the pull), target.hp (% after the hit), extra.name (the interrupted or
  * dispelled spell).
@@ -24,6 +25,8 @@ export const EXPRESSION_FIELDS = [
   'source.type',
   'target.name',
   'target.type',
+  'source.raider',
+  'target.raider',
   'ability.name',
   'ability.id',
   'amount',
@@ -70,6 +73,9 @@ const unitType = (p: PullStore, unit: number) => {
 
 type Value = string | number;
 
+const raiderValue = (p: PullStore, unit: number) =>
+  unit >= 0 && p.units[unit].raider && p.units[unit].player ? 'true' : 'false';
+
 const fieldValue = (field: string): ((p: PullStore, i: number) => Value) => {
   switch (field) {
     case 'source.name':
@@ -80,6 +86,10 @@ const fieldValue = (field: string): ((p: PullStore, i: number) => Value) => {
       return (p, i) => unitType(p, p.s[i]);
     case 'target.type':
       return (p, i) => unitType(p, p.d[i]);
+    case 'source.raider':
+      return (p, i) => raiderValue(p, p.s[i]);
+    case 'target.raider':
+      return (p, i) => raiderValue(p, p.d[i]);
     case 'ability.name':
       return (p, i) => p.spells[p.sp[i]]?.name ?? '';
     case 'ability.id':
