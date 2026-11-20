@@ -1,5 +1,6 @@
 import React from 'react';
 import { classColor } from './logs/format';
+import { nightHeading, nightKind } from './trendsLabel';
 
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
@@ -427,11 +428,7 @@ export const LogsTrends = () => {
                 <tbody>
                   {(
                     [
-                      [
-                        'Kill',
-                        (n: NightTotals) =>
-                          n.phase === 'first' ? 'First kill' : 'Reclear',
-                      ],
+                      ['Kill', (n: NightTotals) => nightKind(n)],
                       ['Kills', (n: NightTotals) => String(n.kills)],
                       [
                         'Fight time',
@@ -497,11 +494,7 @@ export const LogsTrends = () => {
                       className="px-2 py-1 text-right font-normal whitespace-nowrap"
                     >
                       <div>{shortNight(n.night)}</div>
-                      <div className="text-[10px]">
-                        {n.phase === 'first'
-                          ? 'first kill'
-                          : `${n.kills} kill${n.kills > 1 ? 's' : ''}`}
-                      </div>
+                      <div className="text-[10px]">{nightHeading(n)}</div>
                     </th>
                   ))}
                   <th className="px-2 py-1 text-right font-normal">Average</th>
