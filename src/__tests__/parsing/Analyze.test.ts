@@ -4,6 +4,7 @@ import { StoreBuilder } from '../../renderer/logs/store';
 import {
   idleTime,
   KIND_INFO,
+  MOST_WASTED,
   runWidget,
   starterLayout,
 } from '../../renderer/logs/analyze';
@@ -25,7 +26,7 @@ const src = `${ME},"Azraelus-Zul'jin-US",0x514,0x80000000`;
 const adv = `${ME},0000000000000000,821644,1061676,780,3657,2970,783,0,44147,0,220235,260000,0,1842.76,-22.54,2669,1.2127,334`;
 const none = '0000000000000000,nil,0x80000000,0x80000000';
 
-const pull = (specId = 1473, extra: string[] = []) => {
+const pull = (specId = 1468, extra: string[] = []) => {
   const lines: string[] = [];
   const combat = fs
     .readFileSync(
@@ -234,11 +235,42 @@ describe('Analyze widgets', () => {
       expect(run(99999, extra).power).toBe(0);
     });
 
-    test('shows 0 for the main resource when it never wasted, not another', () => {
+    test('shows 0 for the main resource when it gained but never wasted', () => {
       const r = run(258, [energize(10, 0, 500, 900), energize(11, 13, 20, 0)]);
-      expect([r.power, r.wasted]).toEqual([13, 0]);
+      expect([r.power, r.wasted, r.gained]).toEqual([13, 0, 20]);
+    });
+
+    test('a main resource with no logged gains falls back to the most wasted', () => {
       const none = run(258, [energize(10, 0, 500, 900)]);
-      expect([none.power, none.wasted, none.gained]).toEqual([13, 0, 0]);
+      expect([none.power, none.wasted]).toEqual([0, 900]);
+    });
+
+    test('Arcane and Windwalker show what is logged (no Mana or Energy regen)', () => {
+      const arcane = run(62, [energize(10, 16, 4, 1)]);
+      expect([arcane.power, arcane.wasted, arcane.gained]).toEqual([16, 1, 5]);
+      const ww = run(269, [energize(10, 12, 2, 1), energize(11, 3, 10, 40)]);
+      expect([ww.power, ww.wasted]).toEqual([12, 1]);
+    });
+
+    test('Preservation and Augmentation show Essence', () => {
+      const extra = [energize(10, 0, 500, 900), energize(11, 19, 2, 1)];
+      expect(run(1468, extra).power).toBe(19);
+      expect(run(1473, extra).power).toBe(19);
+    });
+
+    test('the one wasted most can be asked for', () => {
+      const r = runWidget(
+        pull(258, [energize(10, 0, 500, 900), energize(11, 13, 20, 3)]),
+        ME,
+        { id: 'w', kind: 'resourceWaste', power: MOST_WASTED },
+      );
+      if (r.kind !== 'resourceWaste') throw new Error(r.kind);
+      expect(r.power).toBe(0);
+    });
+
+    test('spending logged as a negative gain is not counted as gained', () => {
+      const r = run(1480, [energize(10, 17, 10, 0), energize(11, 17, -2, 0)]);
+      expect([r.power, r.gained]).toEqual([17, 10]);
     });
 
     test('a widget that names a resource keeps it', () => {

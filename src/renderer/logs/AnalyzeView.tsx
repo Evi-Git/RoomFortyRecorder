@@ -12,6 +12,7 @@ import { POWER_NAMES, PullStore } from './store';
 import {
   KIND_INFO,
   newWidgetId,
+  MOST_WASTED,
   Result,
   runWidget,
   SpellRef,
@@ -90,7 +91,7 @@ const titleOf = (w: WidgetSpec) => {
     case 'cooldownWindow':
       return `${w.spell?.name ?? 'Cooldown'}: what was cast`;
     case 'resourceWaste':
-      return w.power !== undefined
+      return w.power !== undefined && w.power !== MOST_WASTED
         ? `${POWER_NAMES[w.power] ?? 'Resource'} lost at the cap`
         : 'Resource lost at the cap';
     case 'count':
@@ -880,7 +881,8 @@ const Builder = ({
               })
             }
           >
-            <option value="">The one wasted most</option>
+            <option value="">The spec&apos;s main resource</option>
+            <option value={MOST_WASTED}>The one wasted most</option>
             {powers.map((p) => (
               <option key={p} value={p}>
                 {POWER_NAMES[p] ?? `Power ${p}`}

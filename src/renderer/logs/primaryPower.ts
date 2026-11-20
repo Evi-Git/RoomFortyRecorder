@@ -4,8 +4,11 @@
  * cap" uses it when the widget doesn't name a resource, so a Shadow Priest
  * sees Insanity and not the Mana they happen to waste more of.
  *
- * Hand-written (specPresets.ts is generated). Healers are Mana; Evokers
- * (other than Preservation) use Essence; Demon Hunters use Fury.
+ * Hand-written (specPresets.ts is generated). It names what the log records
+ * as gains: passive Mana and Energy regen is never logged, so Arcane is
+ * Arcane Charges, Windwalker is Chi and Preservation is Essence; healers
+ * otherwise Mana. Enhancement's Maelstrom Weapon is a buff in retail, so
+ * its entry usually finds no gains and Analyze falls back to the most wasted.
  */
 export const PRIMARY_POWER: Record<number, number> = {
   // Death Knight: Blood, Frost, Unholy (Runic Power)
@@ -21,24 +24,24 @@ export const PRIMARY_POWER: Record<number, number> = {
   103: 3,
   104: 1,
   105: 0,
-  // Evoker: Devastation (Essence), Preservation (Mana), Augmentation (Essence)
+  // Evoker: Devastation (Essence), Preservation (Essence), Augmentation (Essence)
   1467: 19,
-  1468: 0,
+  1468: 19,
   1473: 19,
   // Hunter: Beast Mastery, Marksmanship, Survival (Focus)
   253: 2,
   254: 2,
   255: 2,
-  // Mage: Arcane, Fire, Frost (Mana)
-  62: 0,
+  // Mage: Arcane (Arcane Charges), Fire, Frost (Mana)
+  62: 16,
   63: 0,
   64: 0,
-  // Monk: Brewmaster (Energy), Windwalker (Energy), Mistweaver (Mana)
+  // Monk: Brewmaster (Energy), Windwalker (Chi), Mistweaver (Mana)
   268: 3,
-  269: 3,
+  269: 12,
   270: 0,
-  // Paladin: Holy (Mana), Protection (Holy Power), Retribution (Holy Power)
-  65: 0,
+  // Paladin: Holy, Protection, Retribution (Holy Power)
+  65: 9,
   66: 9,
   70: 9,
   // Priest: Discipline, Holy (Mana), Shadow (Insanity)
