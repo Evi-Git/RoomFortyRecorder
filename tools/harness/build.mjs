@@ -109,7 +109,9 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
     setup(b) {
       // Package CSS that esbuild can't resolve (export conditions): not needed.
       b.onResolve({ filter: /\.css$/ }, (a) =>
-        /^[./]/.test(a.path) ? undefined : { path: a.path, namespace: 'empty-css' },
+        /^[./]/.test(a.path)
+          ? undefined
+          : { path: a.path, namespace: 'empty-css' },
       );
       b.onLoad({ filter: /.*/, namespace: 'empty-css' }, () => ({
         contents: '',
@@ -194,7 +196,9 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
   const cssFile = path.join(out, 'app.css');
   fs.writeFileSync(
     cssFile,
-    fs.readFileSync(cssFile, 'utf8').replaceAll('../../assets/fonts/', './fonts/'),
+    fs
+      .readFileSync(cssFile, 'utf8')
+      .replaceAll('../../assets/fonts/', './fonts/'),
   );
   return out;
 };
