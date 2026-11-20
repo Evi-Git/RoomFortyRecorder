@@ -79,3 +79,43 @@ test('long reports are cut to fit Discord', () => {
   const m = bugs.message({ userName: 'x', text: 'y'.repeat(5000) });
   assert.ok(m.length <= 2000);
 });
+
+test('a Discord that never answers gives a 502 after the timeout, and does not use up the cooldown', async () => {
+  const fetchImpl = (url, init) =>
+    new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+    });
+  const bugs = createBugReport({
+    env: { GUILD_CLOUD_BUG_WEBHOOK: 'https://discord.example/hook' },
+    fetchImpl,
+    timeoutMs: 50,
+  });
+  const keepAlive = setTimeout(() => {}, 5000); // AbortSignal.timeout timers don't hold the loop open
+  const r = await bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  clearTimeout(keepAlive);
+  assert.equal(r.status, 502);
+  const keepAlive2 = setTimeout(() => {}, 5000);
+  const again = await bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  clearTimeout(keepAlive2);
+  assert.equal(again.status, 502); // not 429: the failed send didn't count
+});
+
+test('two reports sent at the same moment: only one goes', async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(url);
+    await gate;
+    return { ok: true, status: 204 };
+  };
+  const bugs = createBugReport({ env: { GUILD_CLOUD_BUG_WEBHOOK: 'https://h' }, fetchImpl });
+  const a = bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  const b = bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  release();
+  const statuses = (await Promise.all([a, b])).map((r) => r.status).sort();
+  assert.deepEqual(statuses, [200, 429]);
+  assert.equal(calls.length, 1);
+});

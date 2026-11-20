@@ -747,7 +747,7 @@ const handleDiscordAuth = async (req, res, url, parts) => {
       };
       const memberResponse = await fetch(
         `${DISCORD_API}/guilds/${encodeURIComponent(DISCORD_GUILD_ID)}/members/${encodeURIComponent(user.id)}`,
-        { headers: botHeaders },
+        { headers: botHeaders, signal: AbortSignal.timeout(10000) },
       );
       if (memberResponse.status === 404) {
         if (pending.web) return webError('You need to be in the Room Forty Discord.');

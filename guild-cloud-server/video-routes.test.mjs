@@ -206,6 +206,23 @@ test('members whose Discord role is gone are turned away; a Discord outage is no
   }
 });
 
+test('a Discord that never answers does not hang requests: the role lookup times out like an outage', async () => {
+  const { call, stop, setFixture } = await start();
+  try {
+    setFixture({ hang: true });
+    const started = Date.now();
+    // Nothing cached for this member: carry on after the lookup's timeout.
+    assert.equal((await call([NEWBIE, 'Newbie'], 'GET', '/usage')).status, 200);
+    assert.ok(Date.now() - started < 9000, `took ${Date.now() - started} ms`);
+    // Discord answering again is picked up once the retry pause is over (the
+    // member's cached failure just expires); the server is still responsive.
+    setFixture({ hang: false });
+    assert.equal((await call(bob, 'GET', '/usage')).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
 test('officers manage anyone\'s recordings, raiders only their own', async () => {
   const { call, stop, library } = await start();
   try {

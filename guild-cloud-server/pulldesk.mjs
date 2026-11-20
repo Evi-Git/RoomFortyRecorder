@@ -309,6 +309,14 @@ export const createPullDesk = (options) => {
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}) },
       };
       renumberAll();
+      for (const pull of index.pulls) {
+        // Cut off between the status and the log being saved: nothing to resume.
+        if (pull.status === 'analyzing' && !pull.hasLog) pull.status = 'claimed';
+        // Pulls from before postedAt: a re-sent log must not post them again.
+        if (pull.postedAt == null && (pull.hasLog || pull.status === 'ready')) {
+          pull.postedAt = pull.createdAt || Date.now();
+        }
+      }
       index.settings.combatPotions = [
         ...new Set([...COMBAT_POTIONS, ...(Array.isArray(index.settings.combatPotions) ? index.settings.combatPotions : [])]),
       ];
@@ -937,9 +945,13 @@ export const createPullDesk = (options) => {
   // Pulls analyzed before consumables existed, with their logs still kept.
   // Pulls left 'analyzing' by a restart (update-server.cmd mid-raid): their
   // log is on disk, so finish the analysis instead of waiting for a re-send.
+  // Pull ids being analysed right now (an upload, a re-analysis or a resume).
+  const analysing = new Set();
+
   const resumeAnalyzing = () => {
     const pulls = index.pulls.filter((pull) => pull.status === 'analyzing' && pull.hasLog);
     if (!pulls.length) return 0;
+    pulls.forEach((pull) => analysing.add(pull.id));
     backgroundQueue = backgroundQueue.then(async () => {
       for (const pull of pulls) {
         try {
@@ -951,6 +963,8 @@ export const createPullDesk = (options) => {
           pull.error = error.message;
           pull.failures = (pull.failures || 0) + 1;
           pull.failedPrep = PREP_VERSION;
+        } finally {
+          analysing.delete(pull.id);
         }
       }
       await persist();
@@ -1061,6 +1075,10 @@ export const createPullDesk = (options) => {
     if (isReset(pull)) return; // resets aren't pulls: no post
     const channelId = channelFor(pull.encounterId);
     if (!channelId || !botToken) return;
+    // One post per pull, even if the log is analysed again or uploaded twice.
+    if (pull.postedAt) return;
+    pull.postedAt = Date.now();
+    await persist();
 
     const kill = report.result === 'kill';
     const title = `Pull ${pull.pullNumber} · ${report.encounterName} (${report.difficulty}) · ${
@@ -1121,23 +1139,39 @@ export const createPullDesk = (options) => {
       allowed_mentions: { parse: [] },
     };
 
+    const send = () =>
+      fetch(`${discordApi}/channels/${encodeURIComponent(channelId)}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      });
+    // A post that clearly did not go out gives the next upload another go; a
+    // timeout may have gone out, so that one counts as posted.
+    const notPosted = () => {
+      delete pull.postedAt;
+      persist();
+    };
     try {
-      const response = await fetch(
-        `${discordApi}/channels/${encodeURIComponent(channelId)}/messages`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10000),
-        },
-      );
+      let response = await send();
+      if (response.status === 429) {
+        const data = await response.json().catch(() => ({}));
+        const waitMs = Math.min(5000, Math.max(0, Number(data?.retry_after) * 1000) || 1000);
+        await new Promise((resolve) => {
+          setTimeout(resolve, waitMs);
+        });
+        response = await send();
+      }
       if (!response.ok) {
         console.warn(
           `[pulldesk] Discord post to ${channelId} failed: ${response.status} ${await response.text().catch(() => '')}`,
         );
+        notPosted();
       }
     } catch (error) {
       console.warn('[pulldesk] Discord post failed', error.message);
+      // Never reached Discord: safe to try again later. Timeouts keep postedAt.
+      if (['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(error?.cause?.code)) notPosted();
     }
   };
 
@@ -1258,7 +1292,60 @@ export const createPullDesk = (options) => {
     return reply({ upload: false, standby: true });
   };
 
+  // The report as sent to the app: stored JSON with the pull's current numbers
+  // (resets get none), so a report stored before that still shows them.
+  // Patched bodies are kept per pull, keyed by the stored file's mtime and size
+  // and by the numbers, so a repeat request is a stat and a send, not a parse
+  // and a re-serialise of a multi-MB report.
+  const patchedReports = new Map();
+  const PATCHED_MAX_ENTRIES = 24;
+  const PATCHED_MAX_BYTES = 64 * 1024 * 1024;
+  let patchedBytes = 0;
+  const patchedReport = async (pull) => {
+    const file = reportFile(pull.id);
+    const stat = await fsp.stat(file);
+    const reset = isReset(pull);
+    const key = `${stat.mtimeMs}:${stat.size}:${pull.pullNumber}:${pull.totalPullNumber}:${reset}`;
+    const hit = patchedReports.get(pull.id);
+    if (hit && hit.key === key) {
+      // Most recently used goes last.
+      patchedReports.delete(pull.id);
+      patchedReports.set(pull.id, hit);
+      return hit.body;
+    }
+    let body = await fsp.readFile(file);
+    try {
+      body = Buffer.from(
+        JSON.stringify({
+          ...JSON.parse(body.toString('utf8')),
+          pullNumber: pull.pullNumber,
+          totalPullNumber: pull.totalPullNumber,
+          reset,
+        }),
+      );
+    } catch {
+      // Unreadable JSON: send it as stored.
+    }
+    // Another request may have filled this pull's entry while we were reading.
+    const current = patchedReports.get(pull.id);
+    if (current) patchedBytes -= current.body.length;
+    patchedReports.delete(pull.id);
+    if (body.length <= PATCHED_MAX_BYTES / 2) {
+      patchedReports.set(pull.id, { key, body });
+      patchedBytes += body.length;
+      while (patchedReports.size > PATCHED_MAX_ENTRIES || patchedBytes > PATCHED_MAX_BYTES) {
+        const [oldest, entry] = patchedReports.entries().next().value;
+        patchedReports.delete(oldest);
+        patchedBytes -= entry.body.length;
+      }
+    }
+    return body;
+  };
+
   const uploadLog = async (req, res, pull) => {
+    // A retry (client timeout) or a second raider while the first log is being
+    // analysed: don't write the log again or run a second analysis.
+    if (analysing.has(pull.id)) return json(res, 200, { status: 'analyzing' });
     if (pull.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION) {
       return json(res, 200, { status: pull.status });
     }
@@ -1280,28 +1367,38 @@ export const createPullDesk = (options) => {
     // A pull that already has a log only takes a new one that brings meters.
     if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`)) return json(res, 200, { status: pull.status });
 
-    await fsp.writeFile(logFile(pull.id), gz);
-    pull.hasLog = true;
-    // A Warcraft Logs import gets the full report from the real log.
-    if (pull.source === 'wcl') delete pull.source;
-    pull.uploadedBy = req.cloudUserName;
-    pull.uploadedById = String(req.cloudUserId || req.cloudUserName);
-    pull.status = 'analyzing';
-    await persist();
-
+    // Two uploads can both be past the check at the top while reading their
+    // bodies: the later one stops here, and the first takes the pull now (no
+    // await between this check and the add). Gated by memory, not the saved
+    // status, so a crash can't leave a pull that refuses every upload.
+    if (analysing.has(pull.id)) return json(res, 200, { status: 'analyzing' });
+    analysing.add(pull.id);
     let report;
     try {
-      report = await runAnalysis(pull);
-    } catch (error) {
-      console.error('[pulldesk] Analysis failed', pull.id, error);
-      pull.status = 'failed';
-      pull.error = error.message;
-      pull.failures = (pull.failures || 0) + 1;
-      pull.failedPrep = PREP_VERSION;
+      await fsp.writeFile(logFile(pull.id), gz);
+      pull.hasLog = true;
+      pull.status = 'analyzing';
+      // A Warcraft Logs import gets the full report from the real log.
+      if (pull.source === 'wcl') delete pull.source;
+      pull.uploadedBy = req.cloudUserName;
+      pull.uploadedById = String(req.cloudUserId || req.cloudUserName);
       await persist();
-      return json(res, 200, { status: 'failed' });
+
+      try {
+        report = await runAnalysis(pull);
+      } catch (error) {
+        console.error('[pulldesk] Analysis failed', pull.id, error);
+        pull.status = 'failed';
+        pull.error = error.message;
+        pull.failures = (pull.failures || 0) + 1;
+        pull.failedPrep = PREP_VERSION;
+        await persist();
+        return json(res, 200, { status: 'failed' });
+      }
+      await persist();
+    } finally {
+      analysing.delete(pull.id);
     }
-    await persist();
     json(res, 200, { status: 'ready' });
 
     // After responding: Discord and housekeeping don't hold up the app.
@@ -1838,7 +1935,14 @@ export const createPullDesk = (options) => {
       if (third === 'reanalyze' && req.method === 'POST') {
         if (!(await canEdit(req))) return fail(res, 403, 'Your Discord role cannot edit the pull desk');
         if (!pull.hasLog) return fail(res, 409, 'This pull has no stored log');
-        await runAnalysis(pull);
+        // Already being analysed: that run's result is the answer.
+        if (analysing.has(pull.id)) return json(res, 200, { status: 'analyzing' });
+        analysing.add(pull.id);
+        try {
+          await runAnalysis(pull);
+        } finally {
+          analysing.delete(pull.id);
+        }
         await persist();
         return json(res, 200, summaryOf(pull));
       }
@@ -1884,21 +1988,7 @@ export const createPullDesk = (options) => {
       if (!third && req.method === 'GET') {
         if (pull.status !== 'ready') return json(res, 200, { pending: true, ...summaryOf(pull) });
         try {
-          let body = await fsp.readFile(reportFile(pull.id));
-          // Numbers are worked out from the index (resets get none), so a
-          // report stored before that still shows the current ones.
-          try {
-            body = Buffer.from(
-              JSON.stringify({
-                ...JSON.parse(body.toString('utf8')),
-                pullNumber: pull.pullNumber,
-                totalPullNumber: pull.totalPullNumber,
-                reset: isReset(pull),
-              }),
-            );
-          } catch {
-            // Unreadable JSON: send it as stored.
-          }
+          const body = await patchedReport(pull);
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Length': body.length,

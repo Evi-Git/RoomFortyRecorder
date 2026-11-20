@@ -7,7 +7,9 @@
 //   { "fail": false,
 //     "roles": [{ "id": "1", "name": "Raider" }],
 //     "members": { "<discordId>": ["1"] } }
-// An id not in `members` is not in the guild (404); `fail` answers 500.
+// An id not in `members` is not in the guild (404); `fail` answers 500;
+// `hang` never answers (the request ends when its AbortSignal fires, like a
+// real fetch that times out).
 import fs from 'node:fs';
 
 export const installDiscordStub = (fixturePath) => {
@@ -18,6 +20,15 @@ export const installDiscordStub = (fixturePath) => {
     const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
     const reply = (status, body) =>
       new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    if (fixture.hang) {
+      return new Promise((resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return; // no timeout set: hangs for good, as Discord would
+        const abort = () => reject(signal.reason ?? new DOMException('aborted', 'AbortError'));
+        if (signal.aborted) abort();
+        else signal.addEventListener('abort', abort, { once: true });
+      });
+    }
     if (fixture.fail) return reply(500, { message: 'stub failure' });
     if (/\/guilds\/[^/]+\/roles$/.test(url.pathname)) return reply(200, fixture.roles ?? []);
     const member = /\/guilds\/[^/]+\/members\/([^/]+)$/.exec(url.pathname);

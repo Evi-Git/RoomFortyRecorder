@@ -19,6 +19,15 @@ import {
   QueueEntry,
   takeNext,
 } from './pullUploadRetry';
+import {
+  createSingleFlight,
+  gunzipsCleanly,
+  isStaleTemp,
+  retryOperation,
+  judgeCachedBytes,
+  looksLikeGzip,
+  tempPathFor,
+} from './fullLogCache';
 import { makeCoachClip } from './CoachClip';
 import { PullUploadState, RendererVideo } from './types';
 import { send } from './main';
@@ -915,16 +924,24 @@ export default class PullDesk {
    */
   private async fullLog(client: CloudClient, pullId: string) {
     if (!/^[\w-]{1,80}$/.test(pullId)) throw new Error('Bad pull id');
+    // Two opens of the same pull share one read or download.
+    return this.fullLogFlight.run(pullId, () =>
+      this.loadFullLog(client, pullId),
+    );
+  }
+
+  private readonly fullLogFlight = createSingleFlight();
+
+  /** Cached files that were decompressed in full once this session. */
+  private readonly verifiedLogs = new Set<string>();
+
+  private async loadFullLog(client: CloudClient, pullId: string) {
     const dir = path.join(app.getPath('userData'), 'pull-logs');
     const file = path.join(dir, `${pullId}.log.gz`);
-    try {
-      const cached = await fs.promises.readFile(file);
-      // Touch it so the cache keeps what's in use.
-      fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
-      return { bytes: new Uint8Array(cached) };
-    } catch {
-      // Not cached yet.
-    }
+
+    const cached = await this.readCachedFullLog(file);
+    if (cached) return { bytes: new Uint8Array(cached) };
+
     let data: ArrayBuffer;
     try {
       data = await client.pullDeskRequest<ArrayBuffer>(
@@ -946,10 +963,63 @@ export default class PullDesk {
       throw error;
     }
     const bytes = Buffer.from(data);
-    await fs.promises.mkdir(dir, { recursive: true });
-    await fs.promises.writeFile(file, bytes);
-    await this.pruneLogCache(dir);
+    // A cut-short download is not cached (it would be served forever).
+    if (!looksLikeGzip(bytes) || !(await gunzipsCleanly(bytes))) {
+      throw new Error(
+        'The full log came back damaged. Try opening the pull again.',
+      );
+    }
+    // The cache is best effort: whatever fails below, the open still works.
+    try {
+      await fs.promises.mkdir(dir, { recursive: true });
+      // Written beside the file and renamed, so a crash leaves no half file
+      // under the real name.
+      const temp = tempPathFor(file);
+      await fs.promises.writeFile(temp, bytes);
+      const renamed = await retryOperation(() =>
+        fs.promises.rename(temp, file),
+      );
+      if (renamed) {
+        this.verifiedLogs.add(file);
+      } else {
+        console.warn('[PullDesk] Could not cache the full log for', pullId);
+        await fs.promises.unlink(temp).catch(() => {});
+      }
+      await this.pruneLogCache(dir);
+    } catch (error) {
+      console.warn('[PullDesk] Full log cache failed', error);
+      await fs.promises.unlink(tempPathFor(file)).catch(() => {});
+    }
     return { bytes: new Uint8Array(bytes) };
+  }
+
+  /**
+   * The cached full log, or null (and the file deleted) when it is missing or
+   * damaged (not gzip, or cut short by a crash before files were renamed in).
+   */
+  private async readCachedFullLog(file: string): Promise<Buffer | null> {
+    let cached: Buffer;
+    try {
+      cached = await fs.promises.readFile(file);
+    } catch {
+      return null; // Not cached yet.
+    }
+    const verdict = judgeCachedBytes(cached, this.verifiedLogs.has(file));
+    if (verdict === 'check') {
+      if (await gunzipsCleanly(cached)) this.verifiedLogs.add(file);
+      else return this.dropCachedFullLog(file);
+    } else if (verdict === 'bad') {
+      return this.dropCachedFullLog(file);
+    }
+    // Touch it so the cache keeps what's in use.
+    fs.promises.utimes(file, new Date(), new Date()).catch(() => {});
+    return cached;
+  }
+
+  private async dropCachedFullLog(file: string): Promise<null> {
+    this.verifiedLogs.delete(file);
+    await fs.promises.unlink(file).catch(() => {});
+    return null;
   }
 
   /** Keeps the newest cached full logs under 1.5 GB. */
@@ -972,6 +1042,13 @@ export default class PullDesk {
       .sort((a, b) => b.at - a.at);
     let total = 0;
     for (const f of files) {
+      // A temp file of a download that died; a fresh one is being written.
+      if (f.name.endsWith('.tmp')) {
+        if (isStaleTemp(f.name, f.at, Date.now())) {
+          await fs.promises.unlink(path.join(dir, f.name)).catch(() => {});
+        }
+        continue;
+      }
       total += f.size;
       if (total > LIMIT) {
         await fs.promises.unlink(path.join(dir, f.name)).catch(() => {});
