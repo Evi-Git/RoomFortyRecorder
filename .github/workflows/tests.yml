@@ -1,0 +1,37 @@
+# Runs the unit tests on every push to main and every pull request.
+# The Windows build is in node.js.yml; this job runs on Linux, so it skips the
+# suites that need native Windows modules (uiohook-napi, noobs):
+# activitys, parser, localisation and live.
+
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup Node JS
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: 'npm'
+
+    - name: Install deps (no native builds)
+      run: npm ci --ignore-scripts
+
+    - name: App tests (parsing, renderer, main, cloud)
+      run: npx jest src/__tests__/parsing src/__tests__/renderer src/__tests__/main src/__tests__/cloud
+
+    - name: Guild server tests
+      working-directory: guild-cloud-server
+      run: node --test
