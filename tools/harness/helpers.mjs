@@ -3,7 +3,7 @@
 const T = 20000;
 
 export const makeHelpers = (page) => {
-  const sidebar = () => page.locator('div.shrink-0[class*="border-card/60"]').first();
+  const sidebar = () => page.locator('[data-sidebar]').first();
   const h = {
     page,
     /** Click the first visible element with exactly this text. */

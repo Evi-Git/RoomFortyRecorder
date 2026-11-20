@@ -600,6 +600,21 @@ const CHINESE_SIMPLIFIED: Translations = {
   [Phrase.LatestCombatLogFileDayOld]: '1天前',
   [Phrase.LatestCombatLogFileDaysOld]: '天前',
   [Phrase.LatestCombatLogFileLessThanADayOld]: '不到一天前',
+  [Phrase.SidebarReady]: '已就绪',
+  [Phrase.SidebarWaiting]: '等待中',
+  [Phrase.SidebarRecording]: '正在录制',
+  [Phrase.SidebarNotReady]: '无效',
+  [Phrase.SidebarFinishing]: '额外录制中',
+  [Phrase.SidebarGettingReady]: '重新配置中',
+  [Phrase.SidebarGuildServer]: '云端',
+  [Phrase.SidebarLastPull]: 'Last pull',
+  [Phrase.SidebarNeedsUpdate]: 'needs an update',
+  [Phrase.SidebarSignedInAs]: 'signed in as',
+  [Phrase.SidebarSent]: 'sent',
+  [Phrase.SidebarQueued]: 'queued',
+  [Phrase.SidebarNotSent]: 'not sent',
+  [Phrase.SidebarSending]: 'Sending the last pull…',
+  [Phrase.SidebarConnected]: 'connected',
 };
 
 export default CHINESE_SIMPLIFIED;

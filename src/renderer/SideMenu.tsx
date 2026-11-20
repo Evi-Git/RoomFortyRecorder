@@ -47,18 +47,17 @@ import { setConfigValue } from './useSettings';
 import { getCategoryIndex } from './rendererutils';
 import Menu from './components/Menu';
 import { SidebarRailContext } from './components/Menu/Menu';
-import Separator from './components/Separator/Separator';
 import TestButton from './TestButton';
 import BugButton from './BugButton';
 import LiveButton from './LiveButton';
 import ApplicationStatusCard from './containers/ApplicationStatusCard/ApplicationStatusCard';
-import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import UpdateNotifier from './containers/UpdateNotifier/UpdateNotifier';
 import UpdateCheck from './containers/UpdateNotifier/UpdateCheck';
 import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import DiagnosticsDialog from './DiagnosticsDialog';
+import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import { allows, usePermissions } from './usePermissions';
 import { useNewPulls } from './newPulls';
 import { SINGLETON_PAGES, TabsContext } from './tabs/tabs';
@@ -273,7 +272,7 @@ const SideMenu = (props: IProps) => {
     <Menu.Item value={Pages.Logs} label="Logs">
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
-          <ScrollText size={18} />
+          <ScrollText size={16} />
         </Menu.Item.Icon>
         <span>Logs</span>
       </span>
@@ -285,7 +284,7 @@ const SideMenu = (props: IProps) => {
     <Menu.Item value={Pages.TopLogs} label="Top logs">
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
-          <Trophy size={18} />
+          <Trophy size={16} />
         </Menu.Item.Icon>
         <span>Top logs</span>
       </span>
@@ -295,7 +294,7 @@ const SideMenu = (props: IProps) => {
   const renderAdminTab = () => (
     <Menu.Item value={Pages.Admin} label="Admin">
       <Menu.Item.Icon>
-        <ShieldCheck size={18} />
+        <ShieldCheck size={16} />
       </Menu.Item.Icon>
       Admin
     </Menu.Item>
@@ -308,7 +307,7 @@ const SideMenu = (props: IProps) => {
         label={getLocalePhrase(language, Phrase.GeneralButtonText)}
       >
         <Menu.Item.Icon>
-          <Cog size={18} />
+          <Cog size={16} />
         </Menu.Item.Icon>
         {getLocalePhrase(language, Phrase.GeneralButtonText)}
       </Menu.Item>
@@ -322,7 +321,7 @@ const SideMenu = (props: IProps) => {
         label={getLocalePhrase(language, Phrase.SceneButtonText)}
       >
         <Menu.Item.Icon>
-          <MonitorCog size={18} />
+          <MonitorCog size={16} />
         </Menu.Item.Icon>
         {getLocalePhrase(language, Phrase.SceneButtonText)}
       </Menu.Item>
@@ -358,7 +357,7 @@ const SideMenu = (props: IProps) => {
         <Tooltip content={tooltip}>
           <span className={spanClassName}>
             <Menu.Item.Icon>
-              <Radio size={18} className={radioClassName} />
+              <Radio size={16} className={radioClassName} />
             </Menu.Item.Icon>
 
             <span className={textClassName}>
@@ -408,14 +407,15 @@ const SideMenu = (props: IProps) => {
       <Menu.Item
         value={Pages.Live}
         label={someoneLive ? `Watch live (${liveCount} live)` : 'Watch live'}
+        railDot={someoneLive ? 'live' : undefined}
       >
         <span className="inline-flex items-center w-full">
           <Menu.Item.Icon>
-            <Tv size={18} className={someoneLive ? 'text-green-400' : ''} />
+            <Tv size={16} className={someoneLive ? 'text-green-400' : ''} />
           </Menu.Item.Icon>
           <span>Watch live</span>
           {someoneLive && (
-            <span className="ml-auto flex items-center gap-x-1.5 text-[11px] font-semibold text-green-400">
+            <span className="ml-auto flex items-center gap-x-1.5 text-xs text-green-400">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_0_3px_rgba(74,222,128,0.2)]" />
               {`${liveCount} live`}
             </span>
@@ -430,14 +430,15 @@ const SideMenu = (props: IProps) => {
     <Menu.Item
       value={Pages.PullDesk}
       label={newPulls ? `Dashboard (${newPulls} new)` : 'Dashboard'}
+      railDot={newPulls > 0 ? 'brand' : undefined}
     >
       <span className="inline-flex items-center w-full">
         <Menu.Item.Icon>
-          <ClipboardList size={18} />
+          <ClipboardList size={16} />
         </Menu.Item.Icon>
         <span>Dashboard</span>
         {newPulls > 0 && (
-          <span className="ml-auto rounded-full bg-brand px-2 text-[11px] leading-[18px] font-bold text-walnut">
+          <span className="ml-auto rounded-full bg-brand px-2 text-xs leading-[18px] font-semibold text-walnut">
             {`${newPulls} new`}
           </span>
         )}
@@ -507,17 +508,18 @@ const SideMenu = (props: IProps) => {
     });
   };
 
-  // [RoomFortyRecorder] One line-icon style across the sidebar.
-  const ICON = 18;
+  // [RoomFortyRecorder] One line-icon style across the sidebar (16 px, muted).
+  const ICON = 16;
   const mythicPlusIcon = <Castle size={ICON} />;
   const raidsIcon = <Swords size={ICON} />;
 
   return (
     <SidebarRailContext.Provider value={rail}>
       <div
-        className={`flex flex-col h-full bg-background shrink-0 items-center pt-[44px] pb-2 border-r border-card/60 transition-[width] duration-150 ${
+        className={`flex flex-col h-full bg-panel shrink-0 items-center pt-[44px] border-r border-panel-line transition-[width] duration-150 ${
           rail ? 'w-14 px-1.5' : 'w-60 px-3'
         }`}
+        data-sidebar={rail ? 'rail' : 'full'}
       >
         <ApplicationStatusCard
           compact={rail}
@@ -535,13 +537,14 @@ const SideMenu = (props: IProps) => {
         />
         <LiveButton compact={rail} />
 
+        {/* The status card and Go live stay put; only this list scrolls. */}
         <ScrollArea
-          className="w-full flex-1 min-h-0 mt-2 border-t border-card/60"
+          className="w-full flex-1 min-h-0 mt-4"
           withScrollIndicators={false}
         >
           <>
             <Menu
-              className="mt-3"
+              className="mt-1"
               initialValue={
                 appState.page === Pages.InstantReplay ||
                 appState.page === Pages.Live
@@ -607,10 +610,9 @@ const SideMenu = (props: IProps) => {
             {permissions?.owner && renderAdminTab()}
           </Menu>
         </ScrollArea>
-        <div className="mt-auto w-full">
-          <Separator className="mb-4" />
+        <div className="mt-auto w-full shrink-0 border-t border-panel-line pt-2 pb-2">
           <div
-            className={`flex items-center justify-center ${
+            className={`flex items-center justify-center text-foreground [&_svg]:h-4 [&_svg]:w-4 [&_button]:h-8 [&_button]:w-8 [&_button]:text-foreground [&_button:hover]:text-foreground-lighter ${
               rail ? 'flex-col gap-y-1' : 'gap-x-3'
             }`}
           >
@@ -622,8 +624,8 @@ const SideMenu = (props: IProps) => {
               appState={appState}
               setPreviewEnabled={setPreviewEnabled}
             >
-              <Button variant="ghost" size="icon">
-                <FileText size={20} />
+              <Button variant="ghost" size="icon" title="Diagnostics">
+                <FileText size={16} />
               </Button>
             </DiagnosticsDialog>
             <TestButton recorderStatus={recorderStatus} appState={appState} />
@@ -634,9 +636,9 @@ const SideMenu = (props: IProps) => {
             >
               <Button variant="ghost" size="icon" onClick={toggleRail}>
                 {rail ? (
-                  <PanelLeftOpen size={20} />
+                  <PanelLeftOpen size={16} />
                 ) : (
-                  <PanelLeftClose size={20} />
+                  <PanelLeftClose size={16} />
                 )}
               </Button>
             </Tooltip>

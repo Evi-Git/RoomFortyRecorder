@@ -750,7 +750,7 @@ export const scenes = [
     steps: async (t) => {
       await t.nav('Dashboard');
       await t.settle(1000);
-      await t.page.getByText('Cloud:').hover();
+      await t.page.locator('[data-status="server"]').hover();
       await t.settle(800);
     },
   },
@@ -762,7 +762,7 @@ export const scenes = [
     },
     steps: async (t) => {
       await t.settle(500);
-      await t.page.getByText('Cloud:').hover();
+      await t.page.locator('[data-status="server"]').hover();
       await t.settle(800);
     },
   },
@@ -773,7 +773,7 @@ export const scenes = [
       signIn: { state: 'expired', reason: 'Invalid or expired Discord session' },
     },
     steps: async (t) => {
-      await t.page.getByText('Cloud:').hover();
+      await t.page.locator('[data-status="server"]').hover();
       await t.settle(800);
     },
   },
@@ -784,7 +784,7 @@ export const scenes = [
       signIn: { state: 'refused', reason: 'You no longer have a Room Forty raider role.' },
     },
     steps: async (t) => {
-      await t.page.getByText('Cloud:').hover();
+      await t.page.locator('[data-status="server"]').hover();
       await t.settle(800);
     },
   },
@@ -818,7 +818,7 @@ export const scenes = [
         message: 'The upload stalled. Check your connection and try again.',
       });
       await t.settle(400);
-      await t.page.getByText('Cloud:').hover();
+      await t.page.locator('[data-status="server"]').hover();
       await t.settle(800);
     },
   },
@@ -922,6 +922,107 @@ export const scenes = [
         }))
       : []),
   ]),
+
+  // ---- Sidebar status card (design A): every state, wide and folded --------
+  {
+    name: 'status-ready',
+    shows: 'Sidebar card: ready to record, guild server 1.9.146, signed in',
+    init: { answers: { 'pullDesk:serverHealth': { ok: true, data: { server: '1.9.146', app: '1.9.146' } } } },
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 3, '');
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'status-recording',
+    shows: 'Sidebar card: recording with the timer, mic listening',
+    init: { answers: { 'pullDesk:serverHealth': { ok: true, data: { server: '1.9.146', app: '1.9.146' } } } },
+    steps: async (t) => {
+      await t.emit('updateMicStatus', 2);
+      await t.emit('updateRecStatus', 1, '');
+      await t.emit('updateActivityStatus', { category: 'Raids', start: Date.now() - 125000 });
+      await t.settle(1200);
+    },
+  },
+  {
+    name: 'status-not-ready',
+    shows: 'Sidebar card: not ready, with the recorder reason, and the hover card',
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 2, 'Retail log path is not a folder: D:\\World of Warcraft\\_retail_\\Logs');
+      await t.settle(400);
+      await t.page.locator('[data-status="recorder"]').hover();
+      await t.settle(900);
+    },
+  },
+  {
+    name: 'status-needs-update',
+    shows: 'Sidebar card: guild server older than SERVER_CHANGED_IN (warning line, hover card)',
+    init: { answers: { 'pullDesk:serverHealth': { ok: true, data: { server: '1.9.120', app: '1.9.146' } } } },
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 3, '');
+      await t.settle(800);
+      await t.page.locator('[data-status="server"]').hover();
+      await t.settle(900);
+    },
+  },
+  {
+    name: 'status-last-pull',
+    shows: 'Sidebar card: third line, last pull queued (guild server was unreachable)',
+    init: {
+      answers: {
+        'pullDesk:serverHealth': { ok: true, data: { server: '1.9.146', app: '1.9.146' } },
+        'pullDesk:uploadState': { ok: true, data: { last: { state: 'queued', encounterName: "Kith'ix", difficultyId: 16, result: 'wipe', at: Date.parse('2026-10-21T22:41:00') }, backfill: null } },
+      },
+    },
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 3, '');
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-rail-ready',
+    shows: 'Folded sidebar (1024x640): green dot, hover card with the lines',
+    viewport: smallest,
+    init: { answers: { 'pullDesk:serverHealth': { ok: true, data: { server: '1.9.146', app: '1.9.146' } } } },
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 3, '');
+      await t.settle(600);
+      await t.page.locator('[data-status="recorder"]').hover();
+      await t.settle(900);
+    },
+  },
+  {
+    name: 'status-rail-attention',
+    shows: 'Folded sidebar: recorder not ready + server needs an update (second dot)',
+    viewport: smallest,
+    init: { answers: { 'pullDesk:serverHealth': { ok: true, data: { server: '1.9.120', app: '1.9.146' } } } },
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 2, 'Retail log path is not a folder');
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-rail-recording',
+    shows: 'Folded sidebar: recording (brass pulse), hover card with Force end',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.emit('updateRecStatus', 1, '');
+      await t.settle(500);
+      await t.page.locator('[data-status="recorder"]').hover();
+      await t.settle(900);
+    },
+  },
+  {
+    name: 'status-1100-unfolded',
+    shows: 'Sidebar unfolded at 1100x700: nav list scrolls, status card and bottom bar stay',
+    viewport: small,
+    steps: async (t) => {
+      await t.page.locator('svg.lucide-panel-left-open').locator('xpath=..').click();
+      await t.settle(800);
+      await t.emit('updateRecStatus', 3, '');
+      await t.settle(400);
+    },
+  },
 
   // ---- Smallest window (1024x640, the app's minimum) ----------------------
   ...[

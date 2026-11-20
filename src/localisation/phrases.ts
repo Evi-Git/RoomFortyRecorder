@@ -597,6 +597,21 @@ enum Phrase {
   LatestCombatLogFileDayOld,
   LatestCombatLogFileDaysOld,
   LatestCombatLogFileLessThanADayOld,
+  SidebarReady,
+  SidebarWaiting,
+  SidebarRecording,
+  SidebarNotReady,
+  SidebarFinishing,
+  SidebarGettingReady,
+  SidebarGuildServer,
+  SidebarLastPull,
+  SidebarNeedsUpdate,
+  SidebarSignedInAs,
+  SidebarSent,
+  SidebarQueued,
+  SidebarNotSent,
+  SidebarSending,
+  SidebarConnected,
 }
 
 enum Language {

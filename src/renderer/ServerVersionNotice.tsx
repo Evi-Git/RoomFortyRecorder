@@ -1,7 +1,7 @@
 import React from 'react';
 import { ServerCog, X } from 'lucide-react';
 import { usePermissions } from './usePermissions';
-import { checkServer, ServerCheck } from './serverVersion';
+import { useServerCheck } from './useSidebarStatus';
 
 /**
  * [RoomFortyRecorder] A small card at the bottom right when the guild
@@ -10,12 +10,7 @@ import { checkServer, ServerCheck } from './serverVersion';
  * yet. Dismissed per server version (it comes back for the next change).
  */
 
-type Response<T> = { ok: true; data: T } | { ok: false; error: string };
-type Health = { server: string | null; app: string };
-
-const ipc = window.electron.ipcRenderer;
 const DISMISS_KEY = 'rf-server-notice-dismissed';
-const CHECK_EVERY_MS = 10 * 60 * 1000;
 
 const dismissedFor = () => {
   try {
@@ -26,31 +21,9 @@ const dismissedFor = () => {
 };
 
 const ServerVersionNotice = () => {
-  const [check, setCheck] = React.useState<ServerCheck>({ state: 'unknown' });
+  const check = useServerCheck();
   const [dismissed, setDismissed] = React.useState(dismissedFor);
   const perms = usePermissions();
-
-  React.useEffect(() => {
-    let live = true;
-    const ask = () =>
-      (
-        ipc.invoke('pullDesk', [{ action: 'serverHealth' }]) as Promise<
-          Response<Health>
-        >
-      )
-        .then((r) => {
-          if (live)
-            setCheck(r.ok ? checkServer(r.data.server) : { state: 'unknown' });
-        })
-        .catch(() => {});
-    ask();
-    // After update-server.cmd runs, the card goes away on its own.
-    const timer = setInterval(ask, CHECK_EVERY_MS);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, []);
 
   if (check.state !== 'behind') return null;
   const key = `${check.server}:${check.needed}`;

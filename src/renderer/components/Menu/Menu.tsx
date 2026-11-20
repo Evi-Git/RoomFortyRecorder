@@ -101,13 +101,13 @@ export const Menu = ({
     >
       {label !== undefined &&
         (rail ? (
-          <div className="w-6 border-t border-card my-1" />
+          <div className="w-6 border-t border-panel-line my-1" />
         ) : (
           <button
             type="button"
             onClick={toggleFold}
             aria-expanded={!hidden}
-            className="group/label self-stretch flex items-center pl-3 pr-1 mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] leading-none text-brand/75 hover:text-brand font-sans"
+            className="group/label self-stretch flex items-center pl-3 pr-1 mb-1 h-6 text-[13px] font-medium leading-none text-foreground hover:text-foreground-lighter font-sans focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded"
           >
             <span>{label}</span>
             <ChevronDown

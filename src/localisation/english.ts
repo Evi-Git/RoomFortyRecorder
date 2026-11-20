@@ -599,6 +599,21 @@ const ENGLISH: Translations = {
   [Phrase.LatestCombatLogFileDayOld]: '1 day old',
   [Phrase.LatestCombatLogFileDaysOld]: 'days old',
   [Phrase.LatestCombatLogFileLessThanADayOld]: 'less than a day old',
+  [Phrase.SidebarReady]: 'Ready to record',
+  [Phrase.SidebarWaiting]: 'Waiting for WoW',
+  [Phrase.SidebarRecording]: 'Recording',
+  [Phrase.SidebarNotReady]: 'Not ready',
+  [Phrase.SidebarFinishing]: 'Finishing the recording',
+  [Phrase.SidebarGettingReady]: 'Getting ready…',
+  [Phrase.SidebarGuildServer]: 'Guild server',
+  [Phrase.SidebarLastPull]: 'Last pull',
+  [Phrase.SidebarNeedsUpdate]: 'needs an update',
+  [Phrase.SidebarSignedInAs]: 'signed in as',
+  [Phrase.SidebarSent]: 'sent',
+  [Phrase.SidebarQueued]: 'queued',
+  [Phrase.SidebarNotSent]: 'not sent',
+  [Phrase.SidebarSending]: 'Sending the last pull…',
+  [Phrase.SidebarConnected]: 'connected',
 };
 
 export default ENGLISH;

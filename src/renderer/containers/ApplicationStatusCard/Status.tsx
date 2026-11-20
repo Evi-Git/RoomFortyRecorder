@@ -18,17 +18,11 @@ import {
 } from 'renderer/components/HoverCard/HoverCard';
 import Separator from 'renderer/components/Separator/Separator';
 import { Tooltip } from 'renderer/components/Tooltip/Tooltip';
-import StatusLight, {
-  StatusLightProps,
-} from 'renderer/components/StatusLight/StatusLight';
+import { recorderLine } from 'renderer/sidebarStatus';
+import { sidebarLabels } from 'renderer/sidebarLabels';
+import Dot from './Dot';
 import { cn } from 'renderer/components/utils';
 import { secToMmSs } from 'renderer/rendererutils';
-
-type StatusInfo = {
-  statusTitle: string;
-  statusIndicatorVariant: StatusLightProps['variant'];
-  statusDescription: React.ReactNode | undefined;
-};
 
 type StatusProps = {
   status: RecStatus;
@@ -39,6 +33,10 @@ type StatusProps = {
   activityStatus: ActivityStatus | null;
   combatLoggingStatus: CombatLoggingStatus;
   setPreviewEnabled: Dispatch<SetStateAction<boolean>>;
+  /** Folded sidebar: just the dot. */
+  compact?: boolean;
+  /** The card's other lines, shown first in the hover card when folded. */
+  summary?: React.ReactNode;
 };
 
 const Status = ({
@@ -50,6 +48,8 @@ const Status = ({
   activityStatus,
   combatLoggingStatus,
   setPreviewEnabled,
+  compact = false,
+  summary,
 }: StatusProps) => {
   const { language } = appState;
   const [recTimerSec, setRecTimerSec] = useState(0);
@@ -93,49 +93,6 @@ const Status = ({
     }
 
     return getLocalePhrase(language, Phrase.StatusDescriptionNothing);
-  };
-
-  // The short recording status descriptor used on the status card
-  const RecStatusTitle: Record<RecStatus, string> = {
-    [RecStatus.Recording]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleRecording,
-    ),
-    [RecStatus.WaitingForWoW]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleWaiting,
-    ),
-    [RecStatus.InvalidConfig]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleInvalid,
-    ),
-    [RecStatus.ReadyToRecord]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleReady,
-    ),
-    [RecStatus.FatalError]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleFatalError,
-    ),
-    [RecStatus.Overrunning]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleOverrunning,
-    ),
-    [RecStatus.Reconfiguring]: getLocalePhrase(
-      language,
-      Phrase.StatusTitleReconfiguring,
-    ),
-  };
-
-  // The variant applied to the StatusLight on the card, for each status
-  const RecStatusVariants: Record<RecStatus, StatusLightProps['variant']> = {
-    [RecStatus.Recording]: 'recording',
-    [RecStatus.WaitingForWoW]: 'waiting',
-    [RecStatus.InvalidConfig]: 'invalid',
-    [RecStatus.ReadyToRecord]: 'ready',
-    [RecStatus.FatalError]: 'error',
-    [RecStatus.Overrunning]: 'overrunning',
-    [RecStatus.Reconfiguring]: 'waiting',
   };
 
   // The description for each status, which shows in the popover when the status title is hovered
@@ -280,16 +237,13 @@ const Status = ({
     [RecStatus.Reconfiguring]: undefined,
   };
 
-  const statusLightsClasses = 'w-2 h-2 rounded-full';
+  const statusDescription = RecStatusDescription[status];
 
-  const { statusTitle, statusIndicatorVariant, statusDescription }: StatusInfo =
-    {
-      statusTitle: RecStatusTitle[status],
-      statusIndicatorVariant: RecStatusVariants[status],
-      statusDescription: RecStatusDescription[status],
-    };
-
+  const line = recorderLine(status, error, sidebarLabels(language));
+  // "Ready to record" while WoW isn't running yet: the card says what it's waiting for.
+  const waiting = status === RecStatus.WaitingForWoW;
   const isSaving = savingStatus === SaveStatus.Saving;
+  const hasCard = !!statusDescription || (compact && !!summary);
 
   return (
     <HoverCard
@@ -298,42 +252,67 @@ const Status = ({
         if (statusDescription) setPreviewEnabled(!open);
       }}
     >
-      <HoverCardTrigger>
-        {/* [RoomFortyRecorder] Compact row: dot + status, details on hover. */}
-        <div className="w-full flex items-center gap-x-2 hover:cursor-pointer py-1">
-          <StatusLight
-            wrapperClasses={`${statusLightsClasses} shrink-0`}
-            foregroundClasses={`border-none ${statusLightsClasses}`}
-            variant={statusIndicatorVariant}
-          />
-          <div className="rf-status-text min-w-0 font-sans flex flex-col">
+      <HoverCardTrigger asChild>
+        {/* [RoomFortyRecorder] Design A: 8 px dot + one line, details on hover. */}
+        {compact ? (
+          <button
+            type="button"
+            data-status="recorder"
+            data-state={line.tone}
+            aria-label={line.text}
+            className="relative flex h-6 w-6 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+          >
+            <Dot tone={line.tone} pulse={line.pulse} />
+          </button>
+        ) : (
+          <div
+            data-status="recorder"
+            data-state={line.tone}
+            className="w-full flex items-center gap-x-2 hover:cursor-pointer min-h-5"
+          >
+            <Dot tone={line.tone} pulse={line.pulse} />
             <div
-              className={cn(
-                'flex items-center text-foreground-lighter font-semibold text-xs whitespace-nowrap',
-                { '': !!statusDescription },
-              )}
+              className="rf-status-text min-w-0 flex items-center gap-x-1.5 text-[13px] leading-5 font-medium text-foreground-lighter whitespace-nowrap"
+              title={
+                waiting
+                  ? getLocalePhrase(language, Phrase.StatusDescriptionWaiting)
+                  : undefined
+              }
             >
-              <span className="text-foreground font-normal mr-1">
-                {getLocalePhrase(language, Phrase.StatusTitleRec)}:
+              <span
+                className={cn('truncate', {
+                  'text-error-text': line.tone === 'bad',
+                  'text-yellow-400': line.tone === 'warn',
+                })}
+              >
+                {line.text}
               </span>
-              {statusTitle}
               {recTimerSec > 0 && (
-                <div className="mx-2 text-foreground">
+                <span className="font-normal tabular-nums text-foreground">
                   {secToMmSs(recTimerSec)}
-                </div>
+                </span>
               )}
               {isSaving && (
-                <HardDriveDownload size={14} className="mx-1 animate-pulse" />
+                <HardDriveDownload
+                  size={14}
+                  className="animate-pulse text-foreground"
+                />
               )}
             </div>
           </div>
-        </div>
-        {!!statusDescription && (
-          <HoverCardContent className="w-[500px]  mx-4">
-            {statusDescription}
-          </HoverCardContent>
         )}
       </HoverCardTrigger>
+      {hasCard && (
+        <HoverCardContent
+          className={compact ? 'w-[340px] mx-4' : 'w-[500px] mx-4'}
+          side={compact ? 'right' : undefined}
+        >
+          {compact && summary && (
+            <div className="flex flex-col gap-y-1 mb-3">{summary}</div>
+          )}
+          {statusDescription}
+        </HoverCardContent>
+      )}
     </HoverCard>
   );
 };
