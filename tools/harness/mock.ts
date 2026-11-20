@@ -322,6 +322,7 @@ const table: Record<string, Answer> = {
     { id: 2, timestamp: Date.now() - 500000, userName: 'Fixture-Bram', message: 'Healers were great.', correlator: 'fixture-correlator' },
   ],
   bugReport: () => ({ ok: true }),
+  uploadFailureAction: () => [],
   signInWithDiscord: () => ({ userName: 'Harness Raider', guildName: 'Room Forty' }),
   signOutDiscord: () => undefined,
   selectPath: () => 'D:\\Recordings',

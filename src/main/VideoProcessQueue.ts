@@ -32,6 +32,18 @@ import axios from 'axios';
 import DiskClient from 'storage/DiskClient';
 import Recorder from './Recorder';
 import { promises as fspromise } from 'fs';
+import { ipcMain } from 'electron';
+import {
+  addFailure,
+  describeUploadError,
+  failureId,
+  isStall,
+  removeFailure,
+  removeFailureForPath,
+  UploadFailure,
+  uploadName,
+} from './uploadFailures';
+import { friendlyError } from '../renderer/friendlyError';
 
 const atomicQueue = require('atomic-queue');
 const devMode = process.env.NODE_ENV === 'development';
@@ -101,6 +113,13 @@ export default class VideoProcessQueue {
   private inProgressUploads: string[] = [];
 
   /**
+   * Uploads that failed for good (after the retries), newest first, shown to
+   * the raider with Try again and Dismiss. Kept until dismissed, retried, or
+   * the file uploads.
+   */
+  private uploadFailures: UploadFailure[] = [];
+
+  /**
    * List of video names currently in the download queue, or in
    * progress. Used to block subsequent attempts to queeue the same
    * operation.
@@ -127,6 +146,70 @@ export default class VideoProcessQueue {
     this.uploadQueue = this.createUploadQueue();
     this.downloadQueue = this.createDownloadQueue();
     this.killVideoQueue = this.createKillVideoQueue();
+    this.setupUploadFailureListeners();
+  }
+
+  /**
+   * [RoomFortyRecorder] The renderer lists failed uploads and can retry or
+   * dismiss them. Every answer is the current list.
+   */
+  private setupUploadFailureListeners() {
+    ipcMain.handle('uploadFailureAction', async (_event, args) => {
+      const request = (args as { action?: string; id?: string }[])?.[0] ?? {};
+      const found = this.uploadFailures.find((f) => f.id === request.id);
+
+      if (request.action === 'dismiss' && request.id) {
+        this.uploadFailures = removeFailure(this.uploadFailures, request.id);
+        this.sendUploadFailures();
+      } else if (request.action === 'dismissAll') {
+        this.uploadFailures = [];
+        this.sendUploadFailures();
+      } else if (request.action === 'retry' && found) {
+        this.uploadFailures = removeFailure(this.uploadFailures, found.id);
+        this.sendUploadFailures();
+        const exists = await fspromise
+          .access(found.path)
+          .then(() => true)
+          .catch(() => false);
+
+        if (exists) {
+          this.queueUpload({ path: found.path });
+        } else {
+          send(
+            'cloudActionFailed',
+            'That recording is no longer on this PC, so it cannot be uploaded.',
+          );
+        }
+      }
+
+      return this.uploadFailures;
+    });
+  }
+
+  private sendUploadFailures() {
+    send('uploadFailures', this.uploadFailures);
+  }
+
+  /**
+   * An upload gave up. Remember it, tell the renderer (list plus one toast).
+   */
+  private async recordUploadFailure(item: UploadQueueItem, error: unknown) {
+    const { kind, message } = describeUploadError(error);
+    const meta = await getMetadataForVideo(item.path).catch(() => null);
+    const at = Date.now();
+
+    const failure: UploadFailure = {
+      id: failureId(item.path, at),
+      path: item.path,
+      name: uploadName(meta, item.path),
+      kind,
+      message,
+      at,
+    };
+
+    this.uploadFailures = addFailure(this.uploadFailures, failure);
+    this.sendUploadFailures();
+    send('uploadFailed', failure);
   }
 
   private createVideoQueue() {
@@ -403,26 +486,28 @@ export default class VideoProcessQueue {
             ),
           );
       }
+
+      // It is up: a failure remembered from an earlier try is out of date.
+      if (this.uploadFailures.some((f) => f.path === item.path)) {
+        this.uploadFailures = removeFailureForPath(
+          this.uploadFailures,
+          item.path,
+        );
+        this.sendUploadFailures();
+      }
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const msg = '[CloudClient] Axios error processing video';
-        logAxiosError(msg, error);
-
-        if (error.response?.status === 403) {
-          // The guild server refuses uploads over someone else's recording.
-          const reason = error.response.data?.error;
-          send(
-            'cloudActionFailed',
-            typeof reason === 'string'
-              ? reason
-              : 'The guild server refused this upload.',
-          );
-        }
+        logAxiosError('[CloudClient] Axios error processing video', error);
       } else {
         console.error('[CloudClient] Error processing video', error);
       }
 
-      progressCallback(100);
+      // Never show a failed upload as finished: no 100% here, the raider
+      // is told what went wrong instead.
+      send('updateUploadProgress', 0);
+      await this.recordUploadFailure(item, error).catch((e) =>
+        console.error('[VideoProcessQueue] Could not record failure', e),
+      );
     }
 
     done();
@@ -471,6 +556,15 @@ export default class VideoProcessQueue {
       console.error(
         '[VideoProcessQueue] Error downloading video:',
         String(error),
+      );
+      // Say so: a silent failure looks like the download never started.
+      send(
+        'cloudActionFailed',
+        `Couldn't download that recording. ${
+          isStall(error)
+            ? 'The download stalled. Check your connection and try again.'
+            : friendlyError(error instanceof Error ? error.message : '')
+        }`,
       );
     }
 

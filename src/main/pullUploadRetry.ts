@@ -105,6 +105,8 @@ export type RetryOptions = {
   /** Stop retrying if the next wait would pass this many ms since the start. */
   maxElapsedMs?: number;
   now?: () => number;
+  /** Give up (throw the error) once this many attempts have failed. */
+  maxAttempts?: number;
 };
 
 /** Sleep in short slices so `shouldStop` is noticed within a few seconds. */
@@ -140,6 +142,9 @@ export const withRetry = async <T>(
     } catch (error) {
       const kind = (options.classify ?? classify)(error);
       if (kind === 'fatal') throw error;
+      if (options.maxAttempts !== undefined && attempt >= options.maxAttempts) {
+        throw error;
+      }
       const delayMs = kind === 'auth' ? 0 : nextDelay(attempt);
       if (delayMs === null || (kind === 'auth' && attempt > 2)) throw error;
       if (

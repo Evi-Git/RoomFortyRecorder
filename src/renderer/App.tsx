@@ -252,6 +252,17 @@ const WarcraftRecorder = () => {
     });
   };
 
+  // [RoomFortyRecorder] A video upload gave up (after its retries): say so
+  // once. The sidebar's Cloud card keeps the list with Try again / Dismiss.
+  const uploadFailed = (failure: unknown) => {
+    const f = failure as { name?: string; message?: string };
+    toast({
+      title: 'A recording did not upload',
+      description: `${f.name ?? 'A recording'}: ${f.message ?? 'The upload failed.'}`,
+      variant: 'destructive',
+    });
+  };
+
   const updateDiskStatus = (status: unknown) => {
     setAppState((prevState) => {
       return {
@@ -500,6 +511,7 @@ const WarcraftRecorder = () => {
     ipc.on('updateDiskStatus', updateDiskStatus);
     ipc.on('updateCloudStatus', updateCloudStatus);
     ipc.on('cloudActionFailed', cloudActionFailed);
+    ipc.on('uploadFailed', uploadFailed);
     ipc.on('updateAvailable', onUpdateAvailable);
     ipc.on('playAudio', playAudio);
     ipc.on('setCloudVideos', setCloudVideos);
@@ -521,6 +533,7 @@ const WarcraftRecorder = () => {
       ipc.removeAllListeners('updateDiskStatus');
       ipc.removeAllListeners('updateCloudStatus');
       ipc.removeAllListeners('cloudActionFailed');
+      ipc.removeAllListeners('uploadFailed');
       ipc.removeAllListeners('updateAvailable');
       ipc.removeAllListeners('playAudio');
       ipc.removeAllListeners('setCloudVideos');
