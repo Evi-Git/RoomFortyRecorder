@@ -1109,6 +1109,10 @@ export default class CloudClient implements StorageClient {
     console.info('[CloudClient] Bytes to download', bytes, 'for key', key);
 
     const file = path.join(dir, key);
+    // Written here and renamed when whole. The name has no ".mp4" so the
+    // video scan never picks it up, and a failure can't touch a video that
+    // is already on disk under the real name.
+    const partial = path.join(dir, `${path.basename(key, '.mp4')}.part`);
 
     try {
       await withStallGuard(async (signal, record) => {
@@ -1126,11 +1130,12 @@ export default class CloudClient implements StorageClient {
 
         // pipeline fails if the download breaks half way (a plain pipe
         // would hang) and closes the file.
-        await pipeline(response.data, fs.createWriteStream(file));
+        await pipeline(response.data, fs.createWriteStream(partial));
       });
+      await fs.promises.rename(partial, file);
     } catch (error) {
-      // Never leave half a video that looks like a whole one.
-      await fs.promises.rm(file, { force: true }).catch(() => {});
+      // Never leave half a video behind; only the partial is removed.
+      await fs.promises.rm(partial, { force: true }).catch(() => {});
       throw error;
     }
   }
@@ -1516,15 +1521,16 @@ export default class CloudClient implements StorageClient {
       maxRate: rate > 0 ? rate * 1024 ** 2 : undefined,
     };
 
-    const signedUrl = await this.retryUpload(key, 'Signing', () =>
-      this.signPutUrl(key, stats.size),
-    );
     const start = new Date();
 
     // Try the upload a few times to allow for network errors, R2 errors or
     // anything else intermittent going wrong. A failure that survives that
     // is thrown, so the caller can show the reason.
     await this.retryUpload(key, 'Upload', async () => {
+      // A fresh URL every attempt: they last an hour, and a big rate-limited
+      // upload that stalls late would retry with an expired one. (Signing
+      // again for your own reservation is allowed.)
+      const signedUrl = await this.signPutUrl(key, stats.size);
       const stream = fs.createReadStream(file);
 
       try {

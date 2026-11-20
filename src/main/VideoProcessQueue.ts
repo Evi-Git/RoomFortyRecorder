@@ -436,6 +436,7 @@ export default class VideoProcessQueue {
     };
 
     const client = CloudClient.getInstance();
+    let failure: unknown;
 
     try {
       // Upload the video first, this can take a bit of time, and don't want
@@ -503,14 +504,23 @@ export default class VideoProcessQueue {
       }
 
       // Never show a failed upload as finished: no 100% here, the raider
-      // is told what went wrong instead.
+      // is told what went wrong instead (below, once the queue is done with
+      // this item).
       send('updateUploadProgress', 0);
-      await this.recordUploadFailure(item, error).catch((e) =>
-        console.error('[VideoProcessQueue] Could not record failure', e),
-      );
+      failure = error;
     }
 
     done();
+
+    // After done(): the pool's finish handler has then dropped the path from
+    // inProgressUploads, so a quick Try again isn't refused as "already
+    // queued".
+    if (failure !== undefined) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await this.recordUploadFailure(item, failure).catch((e) =>
+        console.error('[VideoProcessQueue] Could not record failure', e),
+      );
+    }
   }
 
   /**

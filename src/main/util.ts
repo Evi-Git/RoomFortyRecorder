@@ -1006,6 +1006,7 @@ const takeOwnershipStorageDir = async (dir: string) => {
     .filter((file) => !file.endsWith('.mp4'))
     .filter((file) => !file.endsWith('.json'))
     .filter((file) => !file.endsWith('.png'))
+    .filter((file) => !file.endsWith('.part')) // a cloud download in progress
     .filter((file) => file !== '.temp')
     .filter((file) => file !== 'managed.txt')
     .filter((file) => file !== 'desktop.ini');

@@ -39,9 +39,21 @@ export const isStall = (error: unknown) =>
   error instanceof StallError ||
   (error as { code?: unknown } | null)?.code === 'ESTALLED';
 
+/** R2 answers a PUT that was too slow to arrive with 400 RequestTimeout. */
+const isR2RequestTimeout = (error: unknown) => {
+  const e = (error ?? {}) as ErrorLike;
+  return (
+    e.response?.status === 400 &&
+    typeof e.response.data === 'string' &&
+    e.response.data.includes('RequestTimeout')
+  );
+};
+
 /** Retry stalls and network trouble; a 4xx from the server is final. */
-export const classifyUpload = (error: unknown): FailureClass =>
-  isStall(error) ? 'retry' : classify(error);
+export const classifyUpload = (error: unknown): FailureClass => {
+  if (isStall(error) || isR2RequestTimeout(error)) return 'retry';
+  return classify(error);
+};
 
 export const STALLED_TEXT =
   'The upload stalled. Check your connection and try again.';
@@ -49,6 +61,9 @@ export const SIGN_IN_TEXT =
   "Your sign-in can't upload. Sign in again or ask an officer.";
 export const FULL_TEXT =
   "The guild's cloud storage is full (or this file is over the size limit). Ask an officer.";
+export const LINK_EXPIRED_TEXT = 'The upload link expired. Try again.';
+export const UNREACHABLE_TEXT =
+  "Can't reach the guild server. It's retried when you press Try again.";
 export const TAKEN_TEXT =
   'The guild server already has a recording here from someone else.';
 
@@ -56,6 +71,7 @@ type ErrorLike = {
   code?: unknown;
   message?: unknown;
   isAxiosError?: unknown;
+  config?: { url?: unknown };
   response?: { status?: unknown; data?: unknown };
 };
 
@@ -86,7 +102,11 @@ export const describeUploadError = (
   if (status !== undefined) {
     if (status === 401) return { kind: 'auth', message: SIGN_IN_TEXT };
     if (status === 403) {
-      return { kind: 'auth', message: server || SIGN_IN_TEXT };
+      // The guild server always explains a refusal in JSON. A bare 403 came
+      // from R2: the signed link has expired.
+      return server
+        ? { kind: 'auth', message: server }
+        : { kind: 'other', message: LINK_EXPIRED_TEXT };
     }
     if (status === 409) return { kind: 'taken', message: server || TAKEN_TEXT };
     if (status === 413) {
@@ -115,9 +135,14 @@ export const describeUploadError = (
     };
   }
 
-  // No answer at all: a dropped or timed-out connection.
+  // No answer at all: a dropped or timed-out connection. A transfer to R2
+  // (a signed link) reads as stalled; the guild server's own calls as
+  // unreachable.
   if (e.isAxiosError === true || /timeout|timed out/i.test(String(e.message))) {
-    return { kind: 'stalled', message: STALLED_TEXT };
+    const url = typeof e.config?.url === 'string' ? e.config.url : '';
+    return url.includes('X-Amz-')
+      ? { kind: 'stalled', message: STALLED_TEXT }
+      : { kind: 'server', message: UNREACHABLE_TEXT };
   }
 
   return { kind: 'other', message: friendlyError(String(e.message ?? error)) };

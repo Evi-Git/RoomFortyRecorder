@@ -3,6 +3,8 @@ import {
   classifyUpload,
   describeUploadError,
   FULL_TEXT,
+  LINK_EXPIRED_TEXT,
+  UNREACHABLE_TEXT,
   MAX_FAILURES,
   removeFailure,
   removeFailureForPath,
@@ -35,6 +37,18 @@ describe('classifyUpload', () => {
     expect(classifyUpload(http(403))).toBe('fatal');
     expect(classifyUpload(http(503))).toBe('retry');
   });
+
+  it('retries R2 RequestTimeout but not other 400s', () => {
+    const r2 = {
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: '<Error><Code>RequestTimeout</Code></Error>',
+      },
+    };
+    expect(classifyUpload(r2)).toBe('retry');
+    expect(classifyUpload(http(400))).toBe('fatal');
+  });
 });
 
 describe('describeUploadError', () => {
@@ -62,7 +76,7 @@ describe('describeUploadError', () => {
       kind: 'auth',
       message: SIGN_IN_TEXT,
     });
-    expect(describeUploadError(http(403)).message).toBe(SIGN_IN_TEXT);
+    expect(describeUploadError(http(403)).message).toBe(LINK_EXPIRED_TEXT);
     expect(
       describeUploadError(
         http(403, 'You can only replace your own recordings.'),
@@ -76,11 +90,27 @@ describe('describeUploadError', () => {
       message: STALLED_TEXT,
     });
     expect(
-      describeUploadError({ isAxiosError: true, code: 'ECONNABORTED' }).kind,
+      describeUploadError({
+        isAxiosError: true,
+        code: 'ECONNRESET',
+        config: { url: 'https://r2.example/v.mp4?X-Amz-Signature=1' },
+      }).kind,
     ).toBe('stalled');
+  });
+
+  it('no answer from the guild server itself reads as unreachable', () => {
+    for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'ECONNABORTED']) {
+      expect(
+        describeUploadError({
+          isAxiosError: true,
+          code,
+          config: { url: 'https://api.example/guild/x/upload' },
+        }),
+      ).toEqual({ kind: 'server', message: UNREACHABLE_TEXT });
+    }
     expect(
-      describeUploadError(new Error('timeout of 30000ms exceeded')).kind,
-    ).toBe('stalled');
+      describeUploadError(new Error('timeout of 30000ms exceeded')).message,
+    ).toBe(UNREACHABLE_TEXT);
   });
 
   it('5xx is a server problem; a missing file is a file problem', () => {
