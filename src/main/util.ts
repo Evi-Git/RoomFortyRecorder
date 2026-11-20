@@ -7,7 +7,7 @@ import fs, {
   Stats,
 } from 'fs';
 import { app, Display, screen, shell } from 'electron';
-import { validateExplorerPath } from './explorerPath';
+import { nearestExistingDirectory, validateExplorerPath } from './explorerPath';
 import {
   EventType,
   uIOhook,
@@ -327,7 +327,13 @@ const writeMetadataFile = async (videoPath: string, metadata: Metadata) => {
  */
 const openSystemExplorer = (filePath: unknown) => {
   // The path can come from the renderer: no shell, validated first.
-  const target = validateExplorerPath(filePath);
+  const cfg = ConfigService.getInstance();
+  const target = validateExplorerPath(filePath, [
+    cfg.get<string>('storagePath'),
+    cfg.get<string>('bufferStoragePath'),
+    cfg.get<string>('retailLogPath'),
+    cfg.get<string>('retailPtrLogPath'),
+  ]);
 
   if (!target) {
     console.warn('[Util] Refused to open an invalid path in the file manager');
@@ -340,12 +346,16 @@ const openSystemExplorer = (filePath: unknown) => {
   }
 
   // Nothing there (moved or deleted): open the nearest folder that exists.
-  let dir = path.dirname(target);
-  while (dir !== path.dirname(dir) && !fs.existsSync(dir)) {
-    dir = path.dirname(dir);
-  }
+  // Only ever a directory: openPath on a file would run it.
+  const dir = nearestExistingDirectory(target, (p) => {
+    try {
+      return fs.statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  });
 
-  if (fs.existsSync(dir)) {
+  if (dir) {
     shell.openPath(dir).then((error) => {
       if (error) console.warn('[Util] Could not open folder', dir, error);
     });

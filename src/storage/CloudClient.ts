@@ -664,6 +664,9 @@ export default class CloudClient implements StorageClient {
    */
   private async runConfigure() {
     console.info('[CloudClient] Configuring cloud client');
+    // Read first: awaiting after reset() would leave the old sign-in state
+    // showing while the client is already unready.
+    const cloudSessionToken = await getSessionToken();
     this.clearRetryTimer();
     this.reset();
 
@@ -686,8 +689,6 @@ export default class CloudClient implements StorageClient {
       this.refreshStatus();
       return;
     }
-
-    const cloudSessionToken = await getSessionToken();
 
     if (!cloudSessionToken) {
       console.warn('[CloudClient] No Discord session');

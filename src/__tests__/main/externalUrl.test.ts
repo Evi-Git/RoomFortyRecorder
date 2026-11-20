@@ -1,5 +1,8 @@
 import { isSafeExternalUrl } from '../../main/externalUrl';
-import { validateExplorerPath } from '../../main/explorerPath';
+import {
+  nearestExistingDirectory,
+  validateExplorerPath,
+} from '../../main/explorerPath';
 
 describe('isSafeExternalUrl', () => {
   it.each([
@@ -41,4 +44,43 @@ describe('validateExplorerPath', () => {
     5,
     null,
   ])('rejects %p', (p) => expect(validateExplorerPath(p)).toBeNull());
+});
+
+describe('validateExplorerPath UNC roots', () => {
+  const roots = ['\\\\NAS\\share\\Recordings\\', 'C:\\local'];
+
+  it('allows UNC paths inside a configured root, case-insensitively', () => {
+    expect(
+      validateExplorerPath('\\\\nas\\SHARE\\recordings\\a\\b.mp4', roots),
+    ).toBe('\\\\nas\\SHARE\\recordings\\a\\b.mp4');
+    expect(
+      validateExplorerPath('\\\\NAS\\share\\Recordings', roots),
+    ).not.toBeNull();
+  });
+
+  it('rejects other UNC paths', () => {
+    expect(validateExplorerPath('\\\\NAS\\share2\\x', roots)).toBeNull();
+    expect(
+      validateExplorerPath('\\\\NAS\\share\\Recordings2\\x', roots),
+    ).toBeNull();
+    expect(
+      validateExplorerPath('\\\\NAS\\share\\Recordings\\..\\x', roots),
+    ).toBeNull();
+    expect(validateExplorerPath('\\\\evil\\x', roots)).toBeNull();
+    expect(validateExplorerPath('\\\\evil\\x')).toBeNull();
+  });
+});
+
+describe('nearestExistingDirectory', () => {
+  it('skips files and missing folders', () => {
+    const dirs = new Set(['/rec']);
+    const isDir = (p: string) => dirs.has(p);
+    expect(nearestExistingDirectory('/rec/a/b.mp4', isDir)).toBe('/rec');
+    // /rec/evil.exe exists as a file (not a directory), so it is skipped.
+    expect(nearestExistingDirectory('/rec/evil.exe/x', isDir)).toBe('/rec');
+  });
+
+  it('returns null when nothing is a directory', () => {
+    expect(nearestExistingDirectory('/a/b', () => false)).toBeNull();
+  });
 });
