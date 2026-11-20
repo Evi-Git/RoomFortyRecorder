@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.152] - Unreleased
+### Changed
+- **The Admin page in the Brass & Walnut look:** header, cards, and permission and member tables in the Logs style. If the guild server or Discord roles can't be loaded you get a clear message, and Try again retries what failed without losing unsaved changes. Locked boxes and disabled Sign-out buttons say why when you hover them.
+- **Dropdowns** on Coaching, Time trial, the NSRT copy panel, the top-guild watcher, the Journal and Timelines look and behave like the ones in Settings.
+- **"Update available"** looks like the "guild server needs an update" card, with Install now and Remind me later. Installing still asks before it quits if a pull, stream or upload is running.
+- **Report a bug** is now a window like Diagnostics, and both use the same style. Closing it puts the Scene preview back the way it was.
+
 ## [1.9.151] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed
