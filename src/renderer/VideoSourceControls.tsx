@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, OurDisplayType } from 'main/types';
 import { configSchema } from 'config/configSchema';
-import { Info } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { useSettings, setConfigValues } from './useSettings';
-import Label from './components/Label/Label';
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from './components/ToggleGroup/ToggleGroup';
 import Switch from './components/Switch/Switch';
-import { Tooltip } from './components/Tooltip/Tooltip';
+import { Segmented } from './logs/Segmented';
+import {
+  SettingRow,
+  useScopedIds,
+} from './components/SettingsCard/SettingsCard';
 import { Phrase } from 'localisation/phrases';
 
 const ipc = window.electron.ipcRenderer;
@@ -92,39 +90,39 @@ const VideoSourceControls = (props: IProps) => {
     });
   };
 
+  const { language } = appState;
+  const sid = useScopedIds();
+
   const getCaptureModeToggle = () => {
     return (
-      <div>
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.CaptureModeLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.obsCaptureMode.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <ToggleGroup
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.CaptureModeLabel)}
+        help={getLocalePhrase(
+          language,
+          configSchema.obsCaptureMode.description,
+        )}
+      >
+        <Segmented
+          label={getLocalePhrase(language, Phrase.CaptureModeLabel)}
+          tall
           value={config.obsCaptureMode}
-          onValueChange={setOBSCaptureMode}
-          size="sm"
-          type="single"
-          variant="outline"
-        >
-          <ToggleGroupItem value="window_capture">
-            {getLocalePhrase(appState.language, Phrase.WindowCaptureValue)}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="game_capture">
-            {getLocalePhrase(appState.language, Phrase.GameCaptureValue)}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="monitor_capture">
-            {getLocalePhrase(appState.language, Phrase.MonitorCaptureValue)}
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+          onChange={setOBSCaptureMode}
+          items={[
+            {
+              key: 'window_capture',
+              label: getLocalePhrase(language, Phrase.WindowCaptureValue),
+            },
+            {
+              key: 'game_capture',
+              label: getLocalePhrase(language, Phrase.GameCaptureValue),
+            },
+            {
+              key: 'monitor_capture',
+              label: getLocalePhrase(language, Phrase.MonitorCaptureValue),
+            },
+          ]}
+        />
+      </SettingRow>
     );
   };
 
@@ -134,61 +132,37 @@ const VideoSourceControls = (props: IProps) => {
     }
 
     return (
-      <div>
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.MonitorLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.monitorIndex.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <ToggleGroup
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.MonitorLabel)}
+        help={getLocalePhrase(language, configSchema.monitorIndex.description)}
+      >
+        <Segmented
+          label={getLocalePhrase(language, Phrase.MonitorLabel)}
+          tall
           value={config.monitorIndex.toString()}
-          onValueChange={setMonitor}
-          type="single"
-          variant="outline"
-          size="sm"
-        >
-          {displays.map((display: OurDisplayType) => (
-            <ToggleGroupItem
-              value={display.index.toString()}
-              key={display.index}
-            >
-              {display.index + 1}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+          onChange={setMonitor}
+          items={displays.map((display: OurDisplayType) => ({
+            key: display.index.toString(),
+            label: display.index + 1,
+          }))}
+        />
+      </SettingRow>
     );
   };
 
   const getCursorToggle = () => {
     return (
-      <div className="flex flex-col w-[120px]">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.CaptureCursorLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.captureCursor.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.captureCursor}
-            onCheckedChange={setCaptureCursor}
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.CaptureCursorLabel)}
+        help={getLocalePhrase(language, configSchema.captureCursor.description)}
+        htmlFor={sid('cursor')}
+      >
+        <Switch
+          id={sid('cursor')}
+          checked={config.captureCursor}
+          onCheckedChange={setCaptureCursor}
+        />
+      </SettingRow>
     );
   };
 
@@ -203,28 +177,22 @@ const VideoSourceControls = (props: IProps) => {
 
   const getForceSdrToggle = () => {
     return (
-      <div className="flex flex-col w-[120px]">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.ForceSdrLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.forceSdr.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch checked={config.forceSdr} onCheckedChange={setForceSdr} />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.ForceSdrLabel)}
+        help={getLocalePhrase(language, configSchema.forceSdr.description)}
+        htmlFor={sid('sdr')}
+      >
+        <Switch
+          id={sid('sdr')}
+          checked={config.forceSdr}
+          onCheckedChange={setForceSdr}
+        />
+      </SettingRow>
     );
   };
 
   return (
-    <div className="flex items-center w-full gap-x-8">
+    <div className="divide-y divide-panel-line">
       {getCaptureModeToggle()}
       {getMonitorToggle()}
       {getCursorToggle()}

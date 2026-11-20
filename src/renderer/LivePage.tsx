@@ -3,13 +3,15 @@ import {
   Flag as FlagIcon,
   Lock,
   Maximize,
-  Radio,
   Square,
   Users,
   Volume2,
   VolumeX,
 } from 'lucide-react';
 import { Button } from './components/Button/Button';
+import { PageHeader } from './components/PageHeader/PageHeader';
+import { EmptyState } from './components/States/States';
+import { settingsButtonClass } from './components/SettingsCard/SettingsCard';
 import { coachCall, Flag, FlagBar } from './Coaching';
 
 /**
@@ -436,12 +438,12 @@ const LivePage: React.FC = () => {
 
   const renderGate = () => {
     if (!list) {
-      return <p className="text-foreground/60">Checking who&apos;s live…</p>;
+      return <p className="m-0 text-foreground">Checking who&apos;s live…</p>;
     }
 
     if (!list.signedIn) {
       return (
-        <p className="text-foreground/80">
+        <p className="m-0 text-foreground">
           {list.error ||
             'Sign in with Discord (Cloud settings) to watch live streams.'}
         </p>
@@ -450,12 +452,12 @@ const LivePage: React.FC = () => {
 
     if (!list.allowed) {
       return (
-        <div className="flex flex-col items-center gap-y-2 text-foreground/80">
+        <div className="flex flex-col items-center gap-y-2 text-foreground-lighter">
           <Lock size={28} />
-          <p>
+          <p className="m-0">
             Live viewing is for the {list.roles || 'Raider+ or Officer'} role.
           </p>
-          <p className="text-xs text-foreground/50">
+          <p className="m-0 text-xs text-foreground">
             You can still go live yourself from the sidebar.
           </p>
         </div>
@@ -467,184 +469,222 @@ const LivePage: React.FC = () => {
 
   const gate = renderGate();
   const streams = list?.streams ?? [];
+  const showingPicture = status !== 'idle' && !gate;
+
+  let subtitle = 'Checking who is live…';
+  if (list) {
+    if (gate) subtitle = 'Not available';
+    else if (streams.length === 0) subtitle = 'Nobody is live';
+    else
+      subtitle = `${streams.length} ${
+        streams.length === 1 ? 'raider' : 'raiders'
+      } live`;
+  }
+
+  const iconButton =
+    'text-foreground hover:text-foreground-lighter hover:bg-panel-raised';
 
   return (
-    <div className="flex flex-col w-full h-full bg-background-higher text-foreground-lighter pt-[32px]">
-      <div className="flex items-center gap-x-2 px-4 py-2 border-b border-card min-h-[52px] flex-wrap">
-        <span className="flex items-center gap-x-2 font-bold mr-2">
-          <Radio size={18} className="text-brand" />
-          <span className="font-display text-lg">Live</span>
-        </span>
-
-        {!gate &&
-          streams.map((stream, index) => {
-            const active = watching === stream.name && status !== 'error';
-            return (
+    <div className="flex h-full w-full flex-col bg-background-higher pt-[32px] text-foreground-lighter">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1280px] flex-col gap-y-3 px-7 pb-4 pt-6">
+        <PageHeader
+          title="Watch live"
+          subtitle={subtitle}
+          actions={
+            <>
               <Button
-                key={stream.name}
+                variant="ghost"
                 size="sm"
-                variant={active ? 'destructive' : 'outline'}
-                onClick={() => watch(stream.name)}
-                title={`Press ${index + 1} to watch`}
-                className="gap-x-2"
+                onClick={toggleLipSync}
+                title={
+                  lipSync
+                    ? 'Picture waits for the game audio to stay in sync. Click for the lowest delay.'
+                    : 'Lowest delay: the picture shows as soon as it arrives; game audio may trail slightly. Click to sync them.'
+                }
+                className={`text-[13px] ${iconButton}`}
               >
-                <span className="text-xs opacity-60">{index + 1}</span>
-                <span className="font-semibold">{stream.name}</span>
-                <span className="text-xs opacity-60">
-                  {liveFor(stream.since)}
-                </span>
-                <span className="flex items-center gap-x-[2px] text-xs opacity-60">
-                  <Users size={12} />
-                  {stream.viewers}
-                </span>
+                {lipSync ? 'Audio sync: on' : 'Lowest delay'}
               </Button>
-            );
-          })}
-
-        {!gate && !streams.length && !list?.error && (
-          <span className="text-sm text-foreground/60">
-            Nobody is live right now. Ask a raider to click Go live.
-          </span>
-        )}
-        {!gate && list?.error && (
-          <span className="text-sm text-red-400">{list.error}</span>
-        )}
-
-        <div className="ml-auto flex items-center gap-x-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleLipSync}
-            title={
-              lipSync
-                ? 'Picture waits for the game audio to stay in sync. Click for the lowest delay.'
-                : 'Lowest delay: the picture shows as soon as it arrives; game audio may trail slightly. Click to sync them.'
-            }
-            className="text-xs"
-          >
-            {lipSync ? 'Audio sync: on' : 'Lowest delay'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            title={muted ? 'Unmute (M)' : 'Mute (M)'}
-            onClick={() => setMuted((m) => !m)}
-          >
-            {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </Button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume}
-            onChange={(e) => {
-              setVolume(Number(e.target.value));
-              setMuted(false);
-            }}
-            className="w-24 accent-brand"
-            aria-label="Volume"
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            title="Fullscreen (F)"
-            disabled={!watching}
-            onClick={toggleFullscreen}
-          >
-            <Maximize size={18} />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={flagMoment}
-            title="Flag this moment (B)"
-            className="gap-x-1"
-          >
-            <FlagIcon size={14} /> Flag
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!watching}
-            onClick={stopWatching}
-            className="gap-x-1"
-          >
-            <Square size={14} /> Stop
-          </Button>
-        </div>
-      </div>
-
-      {!gate && (
-        <div className="flex items-center gap-x-3 px-4 py-1.5 border-b border-card min-h-[40px]">
-          <span className="text-xs text-foreground shrink-0">Flags today</span>
-          {flagError ? (
-            <span className="text-xs text-red-400">{flagError}</span>
-          ) : (
-            <FlagBar flags={flags} onChange={setFlags} />
-          )}
-        </div>
-      )}
-
-      <div
-        ref={boxRef}
-        className="relative flex-1 min-h-0 bg-black flex items-center justify-center"
-        onDoubleClick={() => watching && toggleFullscreen()}
-      >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className="w-full h-full object-contain"
-          style={{ display: status === 'playing' ? 'block' : 'none' }}
+              <Button
+                variant="ghost"
+                size="icon"
+                title={muted ? 'Unmute (M)' : 'Mute (M)'}
+                aria-label={muted ? 'Unmute' : 'Mute'}
+                className={iconButton}
+                onClick={() => setMuted((m) => !m)}
+              >
+                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </Button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(e) => {
+                  setVolume(Number(e.target.value));
+                  setMuted(false);
+                }}
+                className="w-24 accent-brand"
+                aria-label="Volume"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Fullscreen (F)"
+                aria-label="Fullscreen"
+                className={iconButton}
+                disabled={!watching}
+                onClick={toggleFullscreen}
+              >
+                <Maximize size={18} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={flagMoment}
+                title="Flag this moment (B)"
+                className={`gap-x-1 ${settingsButtonClass}`}
+              >
+                <FlagIcon size={14} /> Flag
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!watching}
+                onClick={stopWatching}
+                className={`gap-x-1 ${settingsButtonClass}`}
+              >
+                <Square size={14} /> Stop
+              </Button>
+            </>
+          }
         />
 
-        {status !== 'playing' && (
-          <div className="absolute inset-0 flex items-center justify-center text-center px-6">
-            {gate || (
-              <div className="flex flex-col items-center gap-y-2">
-                {status === 'connecting' && (
-                  <p className="animate-pulse">
-                    {message || `Connecting to ${watching}…`}
-                  </p>
-                )}
-                {status === 'error' && (
-                  <>
-                    <p className="text-red-400">{message}</p>
-                    {watching && streams.some((s) => s.name === watching) && (
-                      <Button size="sm" onClick={() => watch(watching)}>
-                        Try again
-                      </Button>
-                    )}
-                  </>
-                )}
-                {status === 'idle' && streams.length > 0 && (
-                  <p className="text-foreground/60">
-                    Pick a raider above, or press 1–
-                    {Math.min(9, streams.length)}.
-                  </p>
-                )}
-              </div>
+        {!gate && streams.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {streams.map((stream, index) => {
+              const active = watching === stream.name && status !== 'error';
+              return (
+                <button
+                  key={stream.name}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => watch(stream.name)}
+                  title={`Press ${index + 1} to watch`}
+                  className={`inline-flex h-9 items-center gap-x-2 rounded-lg border px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                    active
+                      ? 'border-brand bg-panel-raised text-foreground-lighter'
+                      : 'border-panel-line bg-panel text-foreground hover:text-foreground-lighter'
+                  }`}
+                >
+                  <span className="text-xs tabular-nums text-foreground">
+                    {index + 1}
+                  </span>
+                  <span className="font-semibold text-foreground-lighter">
+                    {stream.name}
+                  </span>
+                  <span className="text-xs text-foreground">
+                    {liveFor(stream.since)}
+                  </span>
+                  <span className="flex items-center gap-x-[2px] text-xs text-foreground">
+                    <Users size={12} />
+                    {stream.viewers}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {!gate && list?.error && (
+          <p role="alert" className="m-0 text-sm text-error-text">
+            {list.error}
+          </p>
+        )}
+
+        {!gate && (
+          <div className="flex min-h-[40px] items-center gap-x-3 rounded-lg border border-panel-line bg-panel px-3 py-1.5">
+            <span className="shrink-0 text-xs text-foreground">
+              Flags today
+            </span>
+            {flagError ? (
+              <span className="text-xs text-error-text">{flagError}</span>
+            ) : (
+              <FlagBar flags={flags} onChange={setFlags} />
             )}
           </div>
         )}
 
-        {status === 'playing' && stats && stats.stalledSeconds >= 3 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-center px-6">
-            <p className="animate-pulse">
-              No picture from {watching} for {stats.stalledSeconds}s. Their game
-              or connection may have dropped…
-            </p>
-          </div>
-        )}
+        <div
+          ref={boxRef}
+          className={`relative flex min-h-[200px] flex-1 items-center justify-center overflow-hidden rounded-lg border border-panel-line ${
+            showingPicture ? 'bg-black' : 'bg-panel'
+          }`}
+          onDoubleClick={() => watching && toggleFullscreen()}
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            className="h-full w-full object-contain"
+            style={{ display: status === 'playing' ? 'block' : 'none' }}
+          />
 
-        {status === 'playing' && stats && (
-          <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-[2px] text-[11px] text-white/80">
-            {watching} · {stats.width}×{stats.height} · {stats.fps.toFixed(0)}{' '}
-            fps · {stats.mbps.toFixed(1)} Mbps · buffer{' '}
-            {stats.bufferMs.toFixed(0)} ms
-          </div>
-        )}
+          {status !== 'playing' && (
+            <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
+              {gate || (
+                <div className="flex flex-col items-center gap-y-2">
+                  {status === 'connecting' && (
+                    <p className="m-0 animate-pulse">
+                      {message || `Connecting to ${watching}…`}
+                    </p>
+                  )}
+                  {status === 'error' && (
+                    <>
+                      <p className="m-0 text-error-text">{message}</p>
+                      {watching && streams.some((s) => s.name === watching) && (
+                        <Button size="sm" onClick={() => watch(watching)}>
+                          Try again
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  {status === 'idle' &&
+                    streams.length === 0 &&
+                    !list?.error && (
+                      <EmptyState>
+                        Nobody is live right now. Raiders appear here when they
+                        press Go live.
+                      </EmptyState>
+                    )}
+                  {status === 'idle' && streams.length > 0 && (
+                    <EmptyState>
+                      Pick a raider above, or press 1–
+                      {Math.min(9, streams.length)}.
+                    </EmptyState>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {status === 'playing' && stats && stats.stalledSeconds >= 3 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 px-6 text-center">
+              <p className="animate-pulse">
+                No picture from {watching} for {stats.stalledSeconds}s. Their
+                game or connection may have dropped…
+              </p>
+            </div>
+          )}
+
+          {status === 'playing' && stats && (
+            <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-[2px] text-[11px] text-white/80">
+              {watching} · {stats.width}×{stats.height} · {stats.fps.toFixed(0)}{' '}
+              fps · {stats.mbps.toFixed(1)} Mbps · buffer{' '}
+              {stats.bufferMs.toFixed(0)} ms
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

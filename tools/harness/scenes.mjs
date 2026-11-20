@@ -258,7 +258,7 @@ export const scenes = [
         category: 'Raids',
         deaths: [],
       });
-      await t.nav('Instant Replay');
+      await t.nav('Instant replay');
       await t.settle(800);
     },
   },
@@ -279,6 +279,57 @@ export const scenes = [
     steps: async (t) => {
       await t.click('Fixture-Aldra', { exact: false });
       await t.text('not running', { timeout: 30000 });
+    },
+  },
+
+  {
+    name: 'watch-live-empty',
+    shows: 'Watch live with nobody live: the empty state',
+    init: {
+      answers: {
+        liveListStreams: { allowed: true, signedIn: true, streams: [] },
+      },
+    },
+    steps: async (t) => {
+      await t.nav('Watch live');
+      await t.text('Nobody is live right now');
+    },
+  },
+  {
+    name: 'smallest-watch-live-empty',
+    shows: 'Watch live, nobody live, at 1024x640',
+    viewport: smallest,
+    init: {
+      answers: {
+        liveListStreams: { allowed: true, signedIn: true, streams: [] },
+      },
+    },
+    steps: async (t) => {
+      await t.nav('Watch live');
+      await t.text('Nobody is live right now');
+    },
+  },
+  {
+    name: 'smallest-watch-live-list',
+    shows: 'Watch live with streams at 1024x640',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Watch live');
+      await t.text('Fixture-Aldra');
+    },
+  },
+  {
+    name: 'smallest-instant-replay',
+    shows: 'Instant replay at 1024x640',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.emit('updateInstantReplayState', {
+        path: 'D:\\Recordings\\buffer\\replay.mp4',
+        category: 'Raids',
+        deaths: [],
+      });
+      await t.nav('Instant replay');
+      await t.settle(800);
     },
   },
 
@@ -676,6 +727,42 @@ export const scenes = [
   {
     name: 'scene-editor',
     shows: 'Scene editor page (recorder preview is native: blank here)',
+    steps: async (t) => {
+      await t.nav('Scene');
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'scene-editor-audio',
+    shows: 'Scene editor > Audio tab',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('tab', { name: 'Audio' }).click();
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'scene-editor-video',
+    shows: 'Scene editor > Video tab',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('tab', { name: 'Video' }).click();
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'scene-editor-overlay',
+    shows: 'Scene editor > Overlay tab',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('tab', { name: 'Overlay' }).click();
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'smallest-scene-editor',
+    shows: 'Scene editor at 1024x640',
+    viewport: smallest,
     steps: async (t) => {
       await t.nav('Scene');
       await t.settle(800);
