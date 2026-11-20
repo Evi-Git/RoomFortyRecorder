@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.145] - Unreleased
+### Changed
+- **Recordings in the Brass & Walnut look.** Raids, Mythic+, Clips and Manual now match Logs, the Dashboard and Settings.
+- A serif page title with "N recordings · X of Y GB on this PC" (the same count as the sidebar), and the upload, download, protect, delete and player-mode buttons in the header.
+- The player sits in its own card, with one filter row under it: search ("Search boss or player"), a date button that reads "Any date" or "Nov 17 – Nov 19" (no more DD/MM/YY; pick dates in the calendar, clear them with the X), deaths (All deaths | Mine | None) and storage (All | This PC | Cloud).
+- A cleaner table: plain headers, a green pill for a kill, a small bar plus the percentage for a wipe (readable on selected rows), Mythic+ results as pills, player names in readable class colours, and a brass lock on protected recordings. The tag and clip-source buttons moved to the end of each row.
+- The table header stays in view while you scroll, and the selected row has a brass edge.
+- A tall player no longer pushes the filters and table off a small window.
+- An empty category now says what will fill it, with no link to the old website.
+
 ## [1.9.144] - Unreleased
 ### Changed
 - **Pull uploads keep trying.** If a pull's report or full log fails to send, the app retries for several minutes (after 5, 15 and 45 seconds, then 2 and 5 minutes) instead of waiting for the next automatic check.
