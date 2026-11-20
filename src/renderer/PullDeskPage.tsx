@@ -34,7 +34,11 @@ import { TabsContext } from './tabs/tabs';
 import { isReset, pullLabel, useShowResets } from './resets';
 import { PageHeader, UnderlineTabs } from './components/PageHeader/PageHeader';
 import BossBar from './components/BossBar/BossBar';
-import { ErrorState, LoadingState } from './components/States/States';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from './components/States/States';
 import BossHealthChart from './dashboard/BossHealthChart';
 import StatTiles from './dashboard/StatTiles';
 import {
@@ -982,6 +986,25 @@ const PullDeskPage = (props: IProps) => {
 
   // ---- Report -----------------------------------------------------------------
 
+  // Report sections share one card with a header row of muted labels.
+  const SECTION_CARD =
+    'overflow-hidden rounded-lg border border-panel-line bg-panel text-sm';
+  const columnHeader = (
+    cols: { label: string; className: string }[],
+  ): React.ReactNode => (
+    <div
+      aria-hidden="true"
+      className="flex items-center gap-x-2 border-b border-panel-line px-3 py-1.5 text-[13px] font-medium text-foreground"
+    >
+      <span className="w-[14px] shrink-0" />
+      {cols.map((col) => (
+        <span key={col.label} className={col.className}>
+          {col.label}
+        </span>
+      ))}
+    </div>
+  );
+
   // What the raider still had when they died (base cooldowns, so talents
   // that shorten a cooldown can make something ready earlier than shown).
   const renderAvailable = (death: Report['deaths'][number]) => {
@@ -1032,9 +1055,9 @@ const PullDeskPage = (props: IProps) => {
     const d = r.defensives;
     if (!d) {
       return (
-        <p className="text-sm text-foreground">
+        <EmptyState>
           Re-run this report to see defensives, potions and healthstones.
-        </p>
+        </EmptyState>
       );
     }
 
@@ -1052,129 +1075,139 @@ const PullDeskPage = (props: IProps) => {
       n ? `${n} ${n === 1 ? one : many}` : '';
 
     return (
-      <div className="text-sm">
-        <div className="border-b border-panel-line mb-2">
-          <button
-            type="button"
-            className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
-            onClick={() => toggleRow(raidKey)}
-          >
-            <ChevronRight
-              size={14}
-              className={`shrink-0 text-foreground transition-transform ${raidOpen ? 'rotate-90' : ''}`}
-            />
-            <span className="font-semibold">Raid cooldowns</span>
-            <span className="text-foreground">({d.raid.length})</span>
-          </button>
-          {raidOpen && (
-            <div className="mb-2 pl-[22px] flex flex-wrap gap-1.5">
-              {d.raid.length === 0 && (
-                <span className="text-foreground">None used.</span>
-              )}
-              {d.raid.map((use) => (
-                <span
-                  key={`${use.t}-${use.name}-${use.ability}`}
-                  className="rounded bg-panel-raised px-2 py-0.5 text-xs"
-                >
-                  <span className="font-mono text-foreground">
-                    {timeLabel(use.t)}
-                  </span>{' '}
-                  <span className="text-brand-soft">{use.ability}</span>
-                  <span className="text-foreground"> · {use.name}</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+      <div>
+        <div className={SECTION_CARD}>
+          <div className="border-b border-panel-line">
+            <button
+              type="button"
+              className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60"
+              onClick={() => toggleRow(raidKey)}
+            >
+              <ChevronRight
+                size={14}
+                className={`shrink-0 text-foreground transition-transform ${raidOpen ? 'rotate-90' : ''}`}
+              />
+              <span className="font-semibold">Raid cooldowns</span>
+              <span className="text-foreground">({d.raid.length})</span>
+            </button>
+            {raidOpen && (
+              <div className="mb-3 flex flex-wrap gap-1.5 pl-[46px] pr-3">
+                {d.raid.length === 0 && (
+                  <span className="text-foreground">None used.</span>
+                )}
+                {d.raid.map((use) => (
+                  <span
+                    key={`${use.t}-${use.name}-${use.ability}`}
+                    className="rounded border border-panel-line bg-panel-raised px-2 py-0.5 text-[13px]"
+                  >
+                    <span className="font-mono text-foreground">
+                      {timeLabel(use.t)}
+                    </span>{' '}
+                    <span className="text-brand-soft">{use.ability}</span>
+                    <span className="text-foreground"> · {use.name}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
-        {players.map((player) => {
-          const key = `${r.id}:def:${player.name}`;
-          const open = openRows.includes(key);
-          const own = player.personal;
-          const parts = [
-            count(own, 'defensive', 'defensives'),
-            count(player.external, 'external', 'externals'),
-            count(player.raid, 'raid cooldown', 'raid cooldowns'),
-            count(player.potions, 'potion', 'potions'),
-            count(player.healthstones, 'healthstone', 'healthstones'),
-          ].filter(Boolean);
-          return (
-            <div key={player.name} className="border-b border-panel-line">
-              <button
-                type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
-                onClick={() => toggleRow(key)}
+          {columnHeader([
+            { label: 'Raider', className: 'w-40' },
+            { label: 'Status', className: 'w-24' },
+            { label: 'Used', className: 'flex-1' },
+          ])}
+          {players.map((player) => {
+            const key = `${r.id}:def:${player.name}`;
+            const open = openRows.includes(key);
+            const own = player.personal;
+            const parts = [
+              count(own, 'defensive', 'defensives'),
+              count(player.external, 'external', 'externals'),
+              count(player.raid, 'raid cooldown', 'raid cooldowns'),
+              count(player.potions, 'potion', 'potions'),
+              count(player.healthstones, 'healthstone', 'healthstones'),
+            ].filter(Boolean);
+            return (
+              <div
+                key={player.name}
+                className="border-b border-panel-line last:border-b-0"
               >
-                <ChevronRight
-                  size={14}
-                  className={`shrink-0 text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
-                />
-                <span
-                  className="font-semibold w-40 truncate"
-                  style={{ color: classColor(player.specId) }}
-                  title={player.role || undefined}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60"
+                  onClick={() => toggleRow(key)}
                 >
-                  {player.name}
-                </span>
-                <span className="w-24 text-xs">
-                  {player.diedAt !== null ? (
-                    <span className="text-red-400">
-                      died {mmss(player.diedAt)}
-                    </span>
-                  ) : (
-                    <span className="text-foreground">alive</span>
-                  )}
-                </span>
-                <span className="flex-1 truncate">
-                  {parts.length ? (
-                    parts.join(' · ')
-                  ) : (
-                    <span className="text-foreground">
-                      no defensives or consumables
-                    </span>
-                  )}
-                </span>
-              </button>
-              {open && (
-                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
-                  {player.uses.length === 0 && (
-                    <div className="py-1 pl-[22px] text-foreground">
-                      Nothing tracked this pull.
-                    </div>
-                  )}
-                  {player.uses.map((use) => (
-                    <div
-                      key={`${use.t}-${use.ability}`}
-                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
-                    >
-                      <span className="w-40 font-mono text-foreground">
-                        {timeLabel(use.t)}
+                  <ChevronRight
+                    size={14}
+                    className={`shrink-0 text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+                  />
+                  <span
+                    className="font-semibold w-40 truncate"
+                    style={{ color: classColor(player.specId) }}
+                    title={player.role || undefined}
+                  >
+                    {player.name}
+                  </span>
+                  <span className="w-24 text-xs">
+                    {player.diedAt !== null ? (
+                      <span className="text-red-400">
+                        died {mmss(player.diedAt)}
                       </span>
-                      <span className="w-56 truncate">
-                        {use.ability}
-                        {use.target && (
-                          <span className="text-foreground">
-                            {' '}
-                            on {use.target}
-                          </span>
-                        )}
+                    ) : (
+                      <span className="text-foreground">alive</span>
+                    )}
+                  </span>
+                  <span className="flex-1 truncate">
+                    {parts.length ? (
+                      parts.join(' · ')
+                    ) : (
+                      <span className="text-foreground">
+                        no defensives or consumables
                       </span>
-                      <span
-                        className={`flex-1 text-xs ${KIND_STYLE[use.kind]}`}
+                    )}
+                  </span>
+                </button>
+                {open && (
+                  <div className="bg-panel-deep py-1 pr-3">
+                    {player.uses.length === 0 && (
+                      <div className="py-1 pl-[22px] text-foreground">
+                        Nothing tracked this pull.
+                      </div>
+                    )}
+                    {player.uses.map((use) => (
+                      <div
+                        key={`${use.t}-${use.ability}`}
+                        className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
                       >
-                        {KIND_LABEL[use.kind]}
-                      </span>
-                      <span className="w-20 text-right">
-                        {use.t >= 0 && renderWatch(player.name, use.t)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <p className="mt-2 text-xs text-foreground">
+                        <span className="w-40 font-mono text-foreground">
+                          {timeLabel(use.t)}
+                        </span>
+                        <span className="w-56 truncate">
+                          {use.ability}
+                          {use.target && (
+                            <span className="text-foreground">
+                              {' '}
+                              on {use.target}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`flex-1 text-xs ${KIND_STYLE[use.kind]}`}
+                        >
+                          {KIND_LABEL[use.kind]}
+                        </span>
+                        <span className="w-20 text-right">
+                          {use.t >= 0 && renderWatch(player.name, use.t)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[13px] text-foreground">
           Tracked by ability name: personal and external defensives, raid
           cooldowns, health potions and healthstones
           {d.warlockInRaid
@@ -1415,10 +1448,10 @@ const PullDeskPage = (props: IProps) => {
     const { plan } = r;
     if (!plan.parsed) {
       return (
-        <p className="text-sm text-foreground">
+        <EmptyState>
           No cooldown note for this boss yet. Paste wowutils&apos; Copy all
           output into Boss settings to check every assignment.
-        </p>
+        </EmptyState>
       );
     }
 
@@ -1492,16 +1525,24 @@ const PullDeskPage = (props: IProps) => {
       );
 
     return (
-      <div className="text-sm">
+      <div className={SECTION_CARD}>
+        {columnHeader([
+          { label: 'Raider', className: 'w-40' },
+          { label: 'Result', className: 'flex-1' },
+          { label: 'Assignments', className: 'text-right' },
+        ])}
         {players.map((player) => {
           const key = `${r.id}:plan:${player.name}`;
           const open = openRows.includes(key);
           const clean = player.missed === 0 && player.off === 0;
           return (
-            <div key={player.name} className="border-b border-panel-line">
+            <div
+              key={player.name}
+              className="border-b border-panel-line last:border-b-0"
+            >
               <button
                 type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
+                className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60"
                 onClick={() => toggleRow(key)}
               >
                 <ChevronRight
@@ -1543,11 +1584,11 @@ const PullDeskPage = (props: IProps) => {
                 </span>
               </button>
               {open && (
-                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
+                <div className="bg-panel-deep py-1 pr-3">
                   {player.items.map((item) => (
                     <div
                       key={`${item.t}-${item.spellId}`}
-                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
+                      className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
                     >
                       <span className="w-40 font-mono text-foreground">
                         {mmss(item.t)}
@@ -1664,10 +1705,10 @@ const PullDeskPage = (props: IProps) => {
   const renderAvoidable = (r: Report) => {
     if (!r.avoidable.length) {
       return (
-        <p className="text-sm text-foreground">
+        <EmptyState>
           No hits from this boss&apos;s avoidable spells. Add spell IDs in Boss
           settings.
-        </p>
+        </EmptyState>
       );
     }
 
@@ -1687,16 +1728,25 @@ const PullDeskPage = (props: IProps) => {
         .sort((a, b) => b.hits - a.hits);
 
     return (
-      <div className="text-sm">
+      <div className={SECTION_CARD}>
+        {columnHeader([
+          { label: 'Raider', className: 'w-40' },
+          { label: 'Hits', className: 'w-24' },
+          { label: 'Damage', className: 'w-32' },
+          { label: 'Spells', className: 'flex-1' },
+        ])}
         {r.avoidable.map((row) => {
           const key = `${r.id}:avoid:${row.name}`;
           const open = openRows.includes(key);
           const spells = spellsOf(row);
           return (
-            <div key={row.name} className="border-b border-panel-line">
+            <div
+              key={row.name}
+              className="border-b border-panel-line last:border-b-0"
+            >
               <button
                 type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
+                className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-panel-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60"
                 onClick={() => toggleRow(key)}
               >
                 <ChevronRight
@@ -1721,11 +1771,11 @@ const PullDeskPage = (props: IProps) => {
                 </span>
               </button>
               {open && (
-                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
+                <div className="bg-panel-deep py-1 pr-3">
                   {spells.map((spell) => (
                     <div
                       key={spell.spellId}
-                      className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
+                      className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
                     >
                       <span className="w-40 truncate text-foreground-lighter">
                         {spell.spellName || `Spell ${spell.spellId}`}
