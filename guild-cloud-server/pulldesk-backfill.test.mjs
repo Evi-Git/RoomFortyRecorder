@@ -10,6 +10,7 @@ import zlib from 'node:zlib';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { createPullDesk } from './pulldesk.mjs';
+import { at as testAt, night as testNight } from './test-dates.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const lines = fs.readFileSync(path.join(here, '../tests/logs/retail/beloren_boss_hp.txt'), 'utf8').split('\n');
@@ -29,7 +30,9 @@ const setup = async () => {
     fail: (res, status, error) => Object.assign(res, { status, body: { error } }),
     memberRoleNames: async () => ['officer'],
     botToken: '',
-    env: {},
+    // The pulls below have fixed dates (Oct 2026); keep their logs however
+    // old they get, or the 30-day default prunes them and the tests fail.
+    env: { GUILD_CLOUD_PULLDESK_LOG_DAYS: '36500' },
     wcl: { configured: false },
   });
   await desk.ready();
@@ -50,7 +53,7 @@ const FULL = zlib.gzipSync(slice);
 
 test('backfill a pull from a saved log, then skip it the second time', async () => {
   const { call } = await setup();
-  const startedAt = Date.parse('2026-10-21T20:05:00');
+  const startedAt = testAt('2026-10-21T20:05:00');
   const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt, duration: 172, result: false, bossPercent: 61 };
 
   const first = await call('POST', ['backfill'], pull);
@@ -71,11 +74,11 @@ test('backfill a pull from a saved log, then skip it the second time', async () 
   // It's a full report on the right night, with the recording's boss %.
   const list = await call('GET', ['pulls'], undefined, '?days=120');
   assert.equal(list.body.pulls.length, 1);
-  assert.equal(list.body.pulls[0].night, '2026-10-21');
+  assert.equal(list.body.pulls[0].night, testNight('2026-10-21'));
   assert.equal(list.body.pulls[0].bossPercent, 61);
   assert.ok(list.body.pulls[0].deaths > 0);
 
-  const night = await call('GET', ['summary', 'night', '2026-10-21']);
+  const night = await call('GET', ['summary', 'night', testNight('2026-10-21')]);
   assert.equal(night.body.bosses[0].pulls, 1);
 });
 
@@ -87,7 +90,7 @@ test('backfill skips untracked difficulties and rejects bad input', async () => 
 
 test('automatic backfill: check finds only missing pulls; one raider at a time', async () => {
   const { call } = await setup();
-  const at = Date.parse('2026-10-21T20:05:00');
+  const at = testAt('2026-10-21T20:05:00');
   const pulls = [
     { encounterId, difficultyId, startedAt: at },
     { encounterId, difficultyId, startedAt: at + 600000 },
@@ -111,7 +114,7 @@ test('automatic backfill: check finds only missing pulls; one raider at a time',
 
 test('flex Mythic (difficulty 233, e.g. Kith\'ix) is tracked as Mythic', async () => {
   const { call } = await setup();
-  const at = Date.parse('2026-10-21T21:22:00');
+  const at = testAt('2026-10-21T21:22:00');
   const kithix = { encounterId: 3500, difficultyId: 233, startedAt: at };
   assert.deepEqual((await call('POST', ['backfill', 'check'], { pulls: [kithix] })).body.missing, [0]);
   const taken = await call('POST', ['backfill'], { ...kithix, encounterName: "Kith'ix", duration: 61 });
@@ -121,7 +124,7 @@ test('flex Mythic (difficulty 233, e.g. Kith\'ix) is tracked as Mythic', async (
 
 test('pulls sent by older apps (no meters) are asked for again and replaced', async () => {
   const { call } = await setup();
-  const at = Date.parse('2026-10-21T20:05:00');
+  const at = testAt('2026-10-21T20:05:00');
   const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
   const first = await call('POST', ['backfill'], pull);
   await call('PUT', ['pulls', first.body.pullId, 'log'], zlib.gzipSync(slice));
@@ -142,7 +145,7 @@ test('pulls sent by older apps (no meters) are asked for again and replaced', as
 
 test('meters from before 1.9.88 (v3) are asked for again and replaced; the full log is served', async () => {
   const { call } = await setup();
-  const at = Date.parse('2026-10-21T20:05:00');
+  const at = testAt('2026-10-21T20:05:00');
   const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
   const first = await call('POST', ['backfill'], pull);
   const id = first.body.pullId;
@@ -173,7 +176,7 @@ test('meters from before 1.9.88 (v3) are asked for again and replaced; the full 
 
 test('meters reply carries the pull and its deaths; trends add up night by night', async () => {
   const { call } = await setup();
-  const at = Date.parse('2026-10-21T20:05:00');
+  const at = testAt('2026-10-21T20:05:00');
   const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt: at, duration: 172, result: false };
   const meters = {
     ...METERS,
@@ -202,7 +205,7 @@ test('trends count kills only: the first kill, then reclears', async () => {
   assert.notEqual(killSlice, slice);
   const meters = { ...METERS, damage: [{ name: 'Evi', specId: 65, total: 1720, abilities: [] }] };
   const send = async (when, text) => {
-    const startedAt = Date.parse(when);
+    const startedAt = testAt(when);
     const pull = { encounterId: Number(encounterId), encounterName, difficultyId: Number(difficultyId), startedAt, duration: 172, result: false };
     const claim = await call('POST', ['backfill'], pull);
     await call('PUT', ['pulls', claim.body.pullId, 'log'], zlib.gzipSync(`${text}ROOMFORTY_METERS ${JSON.stringify(meters)}\n`));
@@ -215,8 +218,8 @@ test('trends count kills only: the first kill, then reclears', async () => {
   assert.deepEqual(
     trends.body.nights.map((n) => [n.night, n.pulls, n.kills, n.phase]),
     [
-      ['2026-10-14', 1, 1, 'first'],
-      ['2026-10-21', 1, 1, 'kills'],
+      [testNight('2026-10-14'), 1, 1, 'first'],
+      [testNight('2026-10-21'), 1, 1, 'kills'],
     ],
   );
 });
