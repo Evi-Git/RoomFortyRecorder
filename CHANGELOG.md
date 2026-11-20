@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.143] - Unreleased
+### Changed
+- **Safer sign-in and links.** Your Discord sign-in now stays inside the app's background process and is stored encrypted on your PC (Windows' own protection). You stay signed in after updating.
+- **"Show in folder" and links only open what they should:** folders and files in normal places, and normal web addresses. Show in folder also works for recordings on a network share (for example a NAS), as long as it's one of the folders set in Settings.
+- If you go back to an older Toolkit version after this update, it signs you out once; sign in again.
+
 ## [1.9.142] - Unreleased
 ### Changed
 - **The sidebar says why the guild server isn't connected,** instead of "Cloud: Login Failed" for everything:
