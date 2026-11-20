@@ -8,6 +8,17 @@ import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
 import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
+import { NOT_SIGNED_IN_CODE, sendWithRetry, sleep } from './pullUploadClient';
+import {
+  classifyReportPut,
+  enqueue,
+  isRetryable,
+  mayShowStatus,
+  NOT_READY_CODE,
+  prune,
+  QueueEntry,
+  takeNext,
+} from './pullUploadRetry';
 import { makeCoachClip } from './CoachClip';
 import { PullUploadState, RendererVideo } from './types';
 import { send } from './main';
@@ -46,14 +57,22 @@ type ClaimResponse = {
 // the pull to the next best log.
 const STANDBY_CHECK_MS = 70 * 1000;
 
+// The server matches a /claim to its pull within 120 s of the pull's first
+// claim (by when the claim arrives, not by when the pull started). Past this,
+// a claim could start a second copy of the pull, so we use /backfill, which
+// matches on the pull's real start time.
+const CLAIM_SAFE_MS = 100 * 1000;
+// Retries of one claim request stay inside that window.
+const CLAIM_RETRY_MS = 60 * 1000;
+// Thrown when a claim would have to go through /backfill but must not.
+const TOO_LATE_CODE = 'TOO_LATE';
+
 // Automatic backfill from saved combat logs.
+// While pulls wait for the guild server, try again this often.
+const WAITING_RETRY_MS = 2 * 60 * 1000;
+
 const AUTO_BACKFILL_FIRST_MS = 2 * 60 * 1000;
 const AUTO_BACKFILL_EVERY_MS = 30 * 60 * 1000;
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 /** A short reason for a failed request, for raiders to read. */
 const describe = (error: unknown) => {
@@ -240,20 +259,69 @@ export default class PullDesk {
   // What happened to this PC's last pull upload (shown under Send my Logs).
   private lastUpload: PullUploadState | null = null;
 
+  /**
+   * Show a pull's upload status. Pulls can overlap and a retry of an older
+   * one can finish after a newer one has started, so an update for an older
+   * pull than the one shown is ignored: the line always describes the newest
+   * pull.
+   */
   private setUpload(
     pull: CapturedPull,
     state: PullUploadState['state'],
-    error?: string,
+    extra: {
+      error?: string;
+      attempt?: number;
+      full?: PullUploadState['full'];
+    } = {},
   ) {
+    const shown =
+      this.lastUpload?.startedAt !== undefined
+        ? { startedAt: this.lastUpload.startedAt }
+        : null;
+    if (!mayShowStatus(shown, { startedAt: pull.startedAt })) return;
     this.lastUpload = {
       state,
       encounterName: pull.encounterName,
       difficultyId: pull.difficultyId,
       result: pull.result ? 'kill' : 'wipe',
       at: Date.now(),
-      error,
+      startedAt: pull.startedAt,
+      ...extra,
     };
     send('pullDeskUploadState', this.uploadState());
+  }
+
+  // Pulls that finished while the guild server was unreachable, oldest first.
+  private waiting: QueueEntry<CapturedPull>[] = [];
+
+  private flushing = false;
+
+  private watchingSignIn = false;
+
+  // A pull's boss % is taken once, so a pull sent again later keeps it.
+  private pullBoss = new WeakMap<CapturedPull, number | undefined>();
+
+  // Waiting pulls hold only the filtered log: their full log is left to the
+  // automatic backfill, so up to 20 of them don't pin ~10 MB each.
+  private slimmed = new WeakSet<CapturedPull>();
+
+  private flushTimer: NodeJS.Timeout | null = null;
+
+  /** This pull's boss %, taken from the recorder's report the first time. */
+  private bossFor(pull: CapturedPull) {
+    if (!this.pullBoss.has(pull)) {
+      this.pullBoss.set(pull, this.bossPercents.get(pull.encounterId));
+      this.bossPercents.delete(pull.encounterId);
+    }
+    return this.pullBoss.get(pull);
+  }
+
+  // Pull requests running right now (not counting waits between retries).
+  private sending = 0;
+
+  /** A pull's log is being sent: quitting now would lose it. */
+  public get pullUploadsInFlight() {
+    return this.sending;
   }
 
   /** The last pull upload and the last automatic backfill. */
@@ -302,15 +370,194 @@ export default class PullDesk {
   }
 
   private onPullFinished(pull: CapturedPull) {
+    const finishedAt = Date.now();
     setTimeout(() => {
-      this.upload(pull).catch((error) => {
+      this.send(pull, finishedAt).catch((error) => {
         console.warn('[PullDesk] Pull upload failed', String(error));
-        this.setUpload(pull, 'failed', describe(error));
+        this.setUpload(pull, 'failed', { error: describe(error) });
       });
     }, CLAIM_DELAY_MS);
   }
 
-  private async upload(pull: CapturedPull) {
+  /** Runs one request, counting it as in flight while it runs. */
+  private async inFlight<T>(request: () => Promise<T>): Promise<T> {
+    this.sending += 1;
+    try {
+      return await request();
+    } finally {
+      this.sending -= 1;
+    }
+  }
+
+  /**
+   * upload(), plus what to do when the guild server can't be reached: wait
+   * for it (a short while later) rather than drop the pull.
+   */
+  private async send(
+    pull: CapturedPull,
+    finishedAt: number,
+    fromQueue = false,
+  ) {
+    // Before any wait, so a pull that waits keeps its own boss %, not the
+    // next wipe's.
+    this.bossFor(pull);
+    try {
+      await this.upload(pull, fromQueue);
+    } catch (error) {
+      const code = (error as { code?: unknown })?.code;
+      if (code === NOT_READY_CODE) {
+        this.queuePull(pull, finishedAt, true);
+      } else if (code === NOT_SIGNED_IN_CODE) {
+        console.info('[PullDesk] Not signed in to the guild server, skipping');
+        this.setUpload(pull, 'notSignedIn');
+      } else if (
+        isRetryable(error) &&
+        !(error as { noRequeue?: boolean }).noRequeue
+      ) {
+        // The retries ran out on network trouble or a 5xx while the sign-in
+        // still says connected: hold the pull and try again in a while.
+        this.queuePull(pull, finishedAt, false);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Hold a pull until the guild server is back (2 h, 20 pulls at most). It
+   * keeps its original time, so putting it back never extends its 2 hours.
+   * `soon`: the connection was down a moment ago, so if it is up again, send
+   * now rather than wait for the timer.
+   */
+  private queuePull(pull: CapturedPull, finishedAt: number, soon: boolean) {
+    let item = pull;
+    if (!this.slimmed.has(pull)) {
+      item = { ...pull, full: Promise.resolve(null) };
+      this.slimmed.add(item);
+      this.pullBoss.set(item, this.pullBoss.get(pull));
+    }
+    const { queue, dropped } = enqueue(
+      this.waiting,
+      { at: finishedAt, item },
+      Date.now(),
+    );
+    this.waiting = queue;
+    dropped.forEach((entry) => {
+      console.info('[PullDesk] Dropped a waiting pull (too old or too many)');
+      this.setUpload(entry.item, 'failed', {
+        error: 'the guild server was out of reach for too long',
+      });
+    });
+    if (!queue.some((entry) => entry.item === item)) return;
+    console.info(
+      `[PullDesk] Guild server not reachable: ${queue.length} pull(s) waiting`,
+    );
+    this.setUpload(item, 'queued');
+    this.watchSignIn();
+    this.startFlushTimer();
+    if (soon && CloudClient.getInstance().pullDeskReady()) {
+      // 'connected' may have fired before anyone was listening.
+      this.flushWaiting().catch((error) =>
+        console.warn('[PullDesk] Sending waiting pulls failed', String(error)),
+      );
+    }
+  }
+
+  /** While pulls wait, look again every 2 min (the sign-in may not notice). */
+  private startFlushTimer() {
+    if (this.flushTimer) return;
+    this.flushTimer = setInterval(() => {
+      const { queue, dropped } = prune(this.waiting, Date.now());
+      this.waiting = queue;
+      dropped.forEach((entry) =>
+        this.setUpload(entry.item, 'failed', {
+          error: 'the guild server was out of reach for too long',
+        }),
+      );
+      if (!this.waiting.length) {
+        if (this.flushTimer) clearInterval(this.flushTimer);
+        this.flushTimer = null;
+        return;
+      }
+      if (!CloudClient.getInstance().pullDeskReady()) return;
+      this.flushWaiting().catch((error) =>
+        console.warn('[PullDesk] Sending waiting pulls failed', String(error)),
+      );
+    }, WAITING_RETRY_MS);
+    this.flushTimer.unref();
+  }
+
+  private watchSignIn() {
+    if (this.watchingSignIn) return;
+    this.watchingSignIn = true;
+    CloudClient.getInstance().onSignInChange((next) => {
+      if (next.state === 'connected') {
+        this.flushWaiting().catch((error) =>
+          console.warn(
+            '[PullDesk] Sending waiting pulls failed',
+            String(error),
+          ),
+        );
+      } else if (
+        next.state === 'expired' ||
+        next.state === 'refused' ||
+        next.state === 'signedOut'
+      ) {
+        // Needs the user now; they stay queued in case it's fixed in time.
+        const startedAt = this.lastUpload?.startedAt;
+        const entry = this.waiting.find((e) => e.item.startedAt === startedAt);
+        if (entry && this.lastUpload?.state === 'queued') {
+          this.setUpload(entry.item, 'notSignedIn');
+        }
+      }
+    });
+  }
+
+  /** The guild server is back: send waiting pulls, oldest first, one by one. */
+  private async flushWaiting() {
+    if (this.flushing) return;
+    this.flushing = true;
+    try {
+      const client = CloudClient.getInstance();
+      // Each waiting pull is tried once per pass: one that fails again is
+      // put back (with its original time) and waits for the next pass.
+      const tried = new Set<CapturedPull>();
+      while (client.pullDeskReady()) {
+        const taken = takeNext(this.waiting, Date.now(), tried);
+        this.waiting = taken.queue;
+        taken.dropped.forEach((entry) => {
+          console.info('[PullDesk] Dropped a waiting pull (too old)');
+          this.setUpload(entry.item, 'failed', {
+            error: 'the guild server was out of reach for too long',
+          });
+        });
+        if (!taken.next) break;
+        const { item, at } = taken.next;
+        tried.add(item);
+        console.info(
+          `[PullDesk] Guild server is back: sending ${item.encounterName} (${this.waiting.length} more waiting)`,
+        );
+        try {
+          await this.send(item, at, true);
+        } catch (error) {
+          console.warn('[PullDesk] Pull upload failed', String(error));
+          this.setUpload(item, 'failed', { error: describe(error) });
+        }
+      }
+    } finally {
+      this.flushing = false;
+    }
+  }
+
+  /**
+   * Send one pull. Throws an error coded NOT_READY (guild server unreachable)
+   * or NOT_SIGNED_IN (the user has to sign in) for `send` to handle.
+   *
+   * `lateSend` is for a pull that waited for the connection: it asks the
+   * server through /backfill, which finds the pull by its start time, instead
+   * of /claim, which would start a second copy of it this long after.
+   */
+  private async upload(pull: CapturedPull, lateSend = false) {
     const client = CloudClient.getInstance();
 
     if (!client.pullDeskReady()) {
@@ -320,17 +567,29 @@ export default class PullDesk {
     }
 
     if (!client.pullDeskReady()) {
-      console.info('[PullDesk] Not signed in to the guild server, skipping');
-      this.setUpload(pull, 'notSignedIn');
-      return;
+      const { state } = client.signInSnapshot();
+      // Offline or still connecting: we expect to be back, so wait for it.
+      // Expired, refused or signed out needs the user.
+      throw Object.assign(new Error('The guild server is not ready'), {
+        code:
+          state === 'offline' || state === 'connecting'
+            ? NOT_READY_CODE
+            : NOT_SIGNED_IN_CODE,
+      });
     }
     this.setUpload(pull, 'waiting');
 
-    const bossPercent = this.bossPercents.get(pull.encounterId);
-    this.bossPercents.delete(pull.encounterId);
+    const bossPercent = this.bossFor(pull);
 
-    const ask = () =>
-      client.pullDeskRequest<ClaimResponse>('post', '/claim', {
+    // /claim only matches a pull within 120 s of its first claim reaching the
+    // server, so the route is chosen for each attempt, counting from when we
+    // first sent one (an attempt can reach the server and still time out).
+    const started = Date.now();
+    const retrying = (info: { attempt: number; kind: string }) =>
+      this.setUpload(pull, 'retrying', { attempt: info.attempt });
+
+    const ask = async (options: { claimOnly?: boolean } = {}) => {
+      const body = {
         encounterId: pull.encounterId,
         encounterName: pull.encounterName,
         difficultyId: pull.difficultyId,
@@ -338,22 +597,69 @@ export default class PullDesk {
         result: pull.result,
         startedAt: pull.startedAt,
         bossPercent: pull.result ? 0 : bossPercent,
-        lines: pull.lineCount,
-      });
+      };
+      let failed = false;
+      const claim = await sendWithRetry(
+        client,
+        'Claim',
+        () => {
+          const late = lateSend || Date.now() - started > CLAIM_SAFE_MS;
+          if (late && options.claimOnly) {
+            throw Object.assign(new Error('Too late to claim'), {
+              code: TOO_LATE_CODE,
+            });
+          }
+          return client.pullDeskRequest<ClaimResponse>(
+            'post',
+            late ? '/backfill' : '/claim',
+            late ? body : { ...body, lines: pull.lineCount },
+          );
+        },
+        {
+          maxElapsedMs: CLAIM_RETRY_MS,
+          onRetry: (info) => {
+            failed = true;
+            retrying(info);
+          },
+        },
+      );
+      if (failed) this.setUpload(pull, 'waiting');
+      return claim;
+    };
 
     let claim = await ask();
 
-    // The server collects every raider's claim for a few seconds, then picks
-    // the most complete log.
-    for (let tries = 0; claim.waitMs && tries < 5; tries++) {
-      await sleep(Math.min(claim.waitMs, 10000));
-      claim = await ask();
-    }
+    if (!lateSend) {
+      // The server collects every raider's claim for a few seconds, then
+      // picks the most complete log.
+      for (let tries = 0; claim.waitMs && tries < 5; tries++) {
+        await sleep(Math.min(claim.waitMs, 10000));
+        claim = await ask();
+      }
 
-    // Another raider was picked; check once more in case they never upload.
-    if (!claim.upload && claim.standby) {
-      await sleep(STANDBY_CHECK_MS);
-      claim = await ask();
+      // Another raider was picked; check once more in case they never upload.
+      // Never through /backfill: if it would be late, leave it. The server
+      // lists a chosen raider's stale claim for backfill after 10 min, so
+      // another raider's automatic check covers a raider who never uploads.
+      if (!claim.upload && claim.standby) {
+        const lateBy = Date.now() + STANDBY_CHECK_MS - started;
+        if (lateBy <= CLAIM_SAFE_MS) {
+          await sleep(STANDBY_CHECK_MS);
+          try {
+            claim = await ask({ claimOnly: true });
+          } catch (error) {
+            // Too late, or the re-check itself failed: keep the answer we
+            // had (another raider's log), rather than queue this pull and
+            // send it again through /backfill.
+            if ((error as { code?: unknown })?.code !== TOO_LATE_CODE) {
+              console.info(
+                '[PullDesk] Standby re-check failed; keeping the earlier answer',
+                String(error),
+              );
+            }
+          }
+        }
+      }
     }
 
     if (claim.skip) {
@@ -375,38 +681,69 @@ export default class PullDesk {
       this.setUpload(pull, 'otherRaider');
       return;
     }
+    const { pullId } = claim;
     this.setUpload(pull, 'uploading');
 
     const body = await gzip(Buffer.from(pull.log, 'utf8'));
     console.info(
-      `[PullDesk] Uploading pull ${claim.pullId}:`,
+      `[PullDesk] Uploading pull ${pullId}:`,
       `${(pull.log.length / 1e6).toFixed(1)} MB filtered,`,
       `${(body.length / 1e6).toFixed(2)} MB gzipped`,
     );
 
-    const put = () =>
-      client.pullDeskRequest<{ status: string }>(
-        'put',
-        `/pulls/${encodeURIComponent(claim.pullId as string)}/log`,
-        body,
-        { contentType: 'application/gzip', timeout: 120000 },
-      );
-
+    // Only repeated when nothing reached the server (connection refused or
+    // dropped, 429, 502/503/504). After a timeout or a plain 500 the server
+    // may have stored the log and still be analysing it, and a second PUT
+    // would run a second analysis and a second Discord post: that is not
+    // retried, and the pull is not queued; the automatic backfill sends it if
+    // the server didn't keep it.
     let result;
     try {
-      result = await put();
+      result = await sendWithRetry(
+        client,
+        `Pull report ${pullId}`,
+        () =>
+          this.inFlight(() =>
+            client.pullDeskRequest<{ status: string }>(
+              'put',
+              `/pulls/${encodeURIComponent(pullId)}/log`,
+              body,
+              { contentType: 'application/gzip', timeout: 120000 },
+            ),
+          ),
+        { onRetry: retrying, classify: classifyReportPut },
+      );
     } catch (error) {
-      // One retry for a dropped connection; a 4xx won't get better.
-      const status = axios.isAxiosError(error) ? error.response?.status : 0;
-      if (status && status < 500) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      result = await put();
+      if (classifyReportPut(error) !== 'retry') {
+        Object.assign(error as object, { noRequeue: true });
+      }
+      throw error;
     }
 
     console.info('[PullDesk] Pull report', result.status);
-    this.setUpload(pull, 'sent');
+    // "sent" means the report is in (that is what makes the pull show up);
+    // the full log for the Logs page follows and has its own status.
+    this.setUpload(pull, 'sent', { full: 'sending' });
     send('pullDeskUpdated');
-    await uploadFullLog(client, claim.pullId as string, pull);
+    if (this.slimmed.has(pull)) {
+      // It waited for the connection, and its full log was let go to save
+      // memory: the automatic check sends it from the saved combat log.
+      this.setUpload(pull, 'sent', { full: 'later' });
+      send('pullDeskUpdated');
+      return;
+    }
+    const full = await uploadFullLog(client, pullId, pull, (request) =>
+      this.inFlight(request),
+    );
+    this.setUpload(pull, 'sent', {
+      full: full === 'refused' ? 'refused' : full,
+    });
+    if (full === 'failed' || full === 'refused') {
+      console.warn(
+        `[PullDesk] Full log for pull ${pullId} not sent; ${full === 'failed' ? 'the automatic backfill sends it later' : 'the server refused it'}`,
+      );
+    }
+    send('pullDeskUpdated');
   }
 
   private iconFlight = new Map<

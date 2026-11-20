@@ -16,6 +16,8 @@ export type BusyInputs = {
   finishing?: boolean;
   /** Cloud video uploads queued or running. */
   uploading: number;
+  /** Pull log requests running right now (not waits between retries). */
+  sendingLog?: number;
 };
 
 /**
@@ -39,6 +41,7 @@ export const busyReasonFrom = (inputs: BusyInputs): string | null => {
   if (inputs.finishing || inputs.saving > 0)
     return 'A recording is still being saved.';
   if (inputs.uploading > 0) return 'A recording is uploading.';
+  if ((inputs.sendingLog ?? 0) > 0) return "A pull's log is being sent.";
   return null;
 };
 

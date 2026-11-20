@@ -18,7 +18,7 @@ const TONES = {
   good: 'text-green-400',
   quiet: 'text-foreground',
   warn: 'text-yellow-400',
-  bad: 'text-red-400',
+  bad: 'text-error-text',
 } as const;
 
 const UploadStatus = () => {

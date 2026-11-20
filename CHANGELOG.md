@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.144] - Unreleased
+### Changed
+- **Pull uploads keep trying.** If a pull's report or full log fails to send, the app retries for several minutes (after 5, 15 and 45 seconds, then 2 and 5 minutes) instead of waiting for the next automatic check.
+- **A pull that ends while the guild server can't be reached waits and is sent when it's back,** checked every couple of minutes for up to 2 hours. Older ones are caught by the automatic check, as before. If your sign-in has expired, it still says so.
+- **Under "Send my Logs", "sent" now means the report is in, and the full log has its own line:** "Sending the full log…", "The full log will be sent by the automatic check", or that it wasn't sent and is tried again later.
+- Two pulls close together no longer overwrite each other's status: the line always shows the newest pull.
+- "Quit when it's done" also waits for a pull log that's being sent.
+- A full log the guild server keeps failing on is given up on after a few automatic checks, instead of being sent every half hour for a week; the automatic check also stops waiting between retries as soon as a pull starts.
+- A pull report that timed out is no longer sent twice (which could post it to Discord twice); the automatic check sends it later if the server didn't keep it.
+
 ## [1.9.143] - Unreleased
 ### Changed
 - **Safer sign-in and links.** Your Discord sign-in now stays inside the app's background process and is stored encrypted on your PC (Windows' own protection). You stay signed in after updating.
