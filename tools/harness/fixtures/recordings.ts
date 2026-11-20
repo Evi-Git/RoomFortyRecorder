@@ -156,7 +156,7 @@ const cloudList: Fixture[] = [
     }),
     cloud: true,
   },
-].map((v) => ({
+].map((v: Fixture) => ({
   ...v,
   videoKey: `${v.videoName}.mp4`,
   videoSource: `https://fixture.invalid/video/${v.videoName}.mp4`,
