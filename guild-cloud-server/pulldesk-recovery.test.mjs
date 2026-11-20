@@ -8,6 +8,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { createPullDesk, PREP_VERSION } from './pulldesk.mjs';
+import { at as testAt, night as testNight } from './test-dates.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const lines = fs.readFileSync(path.join(here, '../tests/logs/retail/beloren_boss_hp.txt'), 'utf8').split('\n');
@@ -16,14 +17,14 @@ const end = lines.findIndex((l) => l.includes('  ENCOUNTER_END,'));
 const slice = `${lines.slice(start, end + 1).join('\n')}\n`;
 const METERS = { v: 4, source: 'app', bucketSeconds: 5, duration: 172, damage: [], healing: [], taken: [], mitigation: [] };
 const LOG = zlib.gzipSync(`${slice}ROOMFORTY_METERS ${JSON.stringify(METERS)}\n`);
-const startedAt = Date.parse('2026-10-21T20:05:00');
+const startedAt = testAt('2026-10-21T20:05:00');
 
 const basePull = (fields) => ({
   id: 'p1',
   encounterId: 3182,
   encounterName: "Belo'ren, Child of Al'ar",
   difficultyId: 16,
-  night: '2026-10-21',
+  night: testNight('2026-10-21'),
   pullNumber: 1,
   totalPullNumber: 1,
   createdAt: startedAt,
