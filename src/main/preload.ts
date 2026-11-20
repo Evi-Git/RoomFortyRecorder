@@ -71,7 +71,8 @@ export type Channels =
   | 'pullDesk'
   | 'pullDeskUpdated'
   | 'pullDeskUploadState'
-  | 'coachClipStage';
+  | 'coachClipStage'
+  | 'uploadFailureAction';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {

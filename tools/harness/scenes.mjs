@@ -789,6 +789,40 @@ export const scenes = [
     },
   },
   {
+    name: 'status-upload-failed',
+    shows: 'Sidebar card: two video uploads that failed (storage full, stalled) with Try again and Dismiss, plus the toast',
+    steps: async (t) => {
+      await t.settle(500);
+      await t.emit('uploadFailures', [
+        {
+          id: 'f2',
+          path: 'D:\\Recordings\\Kith-ix 4.mp4',
+          name: "Kith'ix (Heroic)",
+          kind: 'stalled',
+          message: 'The upload stalled. Check your connection and try again.',
+          at: Date.parse('2026-10-21T22:41:00'),
+        },
+        {
+          id: 'f1',
+          path: 'D:\\Recordings\\Ula-tek 2.mp4',
+          name: "Ula'tek (Mythic)",
+          kind: 'full',
+          message:
+            "The guild's cloud storage is full (or this file is over the size limit). Ask an officer.",
+          at: Date.parse('2026-10-21T22:12:00'),
+        },
+      ]);
+      await t.emit('uploadFailed', {
+        id: 'f2',
+        name: "Kith'ix (Heroic)",
+        message: 'The upload stalled. Check your connection and try again.',
+      });
+      await t.settle(400);
+      await t.page.getByText('Cloud:').hover();
+      await t.settle(800);
+    },
+  },
+  {
     name: 'status-connecting',
     shows: 'Sidebar card: checking the sign-in',
     init: { signIn: { state: 'connecting' } },

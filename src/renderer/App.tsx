@@ -31,6 +31,8 @@ import { TooltipProvider } from './components/Tooltip/Tooltip';
 import Toaster from './components/Toast/Toaster';
 import SideMenu from './SideMenu';
 import { useToast } from './components/Toast/useToast';
+import { ToastAction } from './components/Toast/Toast';
+import { failureToastText, nextTally, Tally } from './uploadToast';
 import { Button } from './components/Button/Button';
 import { ErrorBoundary } from 'react-error-boundary';
 import { RotateCcw } from 'lucide-react';
@@ -82,6 +84,10 @@ const WarcraftRecorder = () => {
   const [micStatus, setMicStatus] = useState<MicStatus>(MicStatus.NONE);
   const [errorReports, setErrorReports] = useState<ErrorReport[]>([]);
   const updateNotified = useRef(false);
+  const uploadToast = useRef<{
+    handle: ReturnType<typeof toast>;
+    tally: Tally;
+  } | null>(null);
   const { toast } = useToast();
   const [combatLoggingStatus, setCombatLoggingStatus] =
     useState<CombatLoggingStatus>({
@@ -250,6 +256,45 @@ const WarcraftRecorder = () => {
       description: String(message),
       variant: 'destructive',
     });
+  };
+
+  // [RoomFortyRecorder] A video upload gave up (after its retries): say so
+  // once. The sidebar's Cloud card keeps the list with Try again / Dismiss.
+  const uploadFailed = (failure: unknown) => {
+    const f = failure as { id?: string; name?: string; message?: string };
+    const tally = nextTally(uploadToast.current?.tally ?? null, Date.now());
+    const text = failureToastText(tally.count, f);
+    const shown = uploadToast.current;
+
+    if (shown && tally.count > 1) {
+      // Same toast, counting up (and back open if it was closed).
+      shown.handle.update({
+        ...text,
+        id: shown.handle.id,
+        open: true,
+        variant: 'destructive',
+      });
+      shown.tally = tally;
+      return;
+    }
+
+    const handle = toast({
+      ...text,
+      variant: 'destructive',
+      action: f.id ? (
+        <ToastAction
+          altText="Try again"
+          onClick={() => {
+            ipc
+              .invoke('uploadFailureAction', [{ action: 'retry', id: f.id }])
+              .catch(() => {});
+          }}
+        >
+          Try again
+        </ToastAction>
+      ) : undefined,
+    });
+    uploadToast.current = { handle, tally };
   };
 
   const updateDiskStatus = (status: unknown) => {
@@ -500,6 +545,7 @@ const WarcraftRecorder = () => {
     ipc.on('updateDiskStatus', updateDiskStatus);
     ipc.on('updateCloudStatus', updateCloudStatus);
     ipc.on('cloudActionFailed', cloudActionFailed);
+    ipc.on('uploadFailed', uploadFailed);
     ipc.on('updateAvailable', onUpdateAvailable);
     ipc.on('playAudio', playAudio);
     ipc.on('setCloudVideos', setCloudVideos);
@@ -521,6 +567,7 @@ const WarcraftRecorder = () => {
       ipc.removeAllListeners('updateDiskStatus');
       ipc.removeAllListeners('updateCloudStatus');
       ipc.removeAllListeners('cloudActionFailed');
+      ipc.removeAllListeners('uploadFailed');
       ipc.removeAllListeners('updateAvailable');
       ipc.removeAllListeners('playAudio');
       ipc.removeAllListeners('setCloudVideos');

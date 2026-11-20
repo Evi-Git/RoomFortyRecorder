@@ -1,6 +1,6 @@
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
-import { CloudDownload, CloudUpload } from 'lucide-react';
+import { AlertTriangle, CloudDownload, CloudUpload } from 'lucide-react';
 import { ConfigurationSchema } from 'config/configSchema';
 import { AppState, CloudState } from 'main/types';
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
@@ -13,6 +13,8 @@ import { Button } from 'renderer/components/Button/Button';
 import Separator from 'renderer/components/Separator/Separator';
 import { StatusLightVariant } from 'renderer/components/StatusLight/StatusLight';
 import { cn } from 'renderer/components/utils';
+import type { UploadFailure } from 'main/uploadFailures';
+import UploadFailureList from './UploadFailureList';
 
 type StatusProps = {
   appState: AppState;
@@ -76,6 +78,32 @@ const CloudStatus = ({
       ipc.removeAllListeners('updateUploadQueueLength');
     };
   }, []);
+
+  // [RoomFortyRecorder] Uploads that gave up. The main process owns the list
+  // and sends all of it on every change.
+  const [failures, setFailures] = useState<UploadFailure[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    const apply = (list: unknown) => {
+      if (live && Array.isArray(list)) setFailures(list as UploadFailure[]);
+    };
+    ipc
+      .invoke('uploadFailureAction', [{ action: 'list' }])
+      .then(apply)
+      .catch(() => {});
+    const unsubscribe = ipc.on('uploadFailures', apply);
+    return () => {
+      live = false;
+      unsubscribe?.();
+    };
+  }, []);
+
+  const failureAction = (action: string, id?: string) =>
+    ipc
+      .invoke('uploadFailureAction', [{ action, id }])
+      .then((list) => Array.isArray(list) && setFailures(list))
+      .catch(() => {});
 
   // [RoomFortyRecorder] Sign-in countdown: the main process sends when it will
   // retry (nextRetryAt); we tick once a second to show the seconds left.
@@ -229,6 +257,12 @@ const CloudStatus = ({
           {actionLabel}
         </Button>
       )}
+      <UploadFailureList
+        failures={failures}
+        onRetry={(id) => failureAction('retry', id)}
+        onDismiss={(id) => failureAction('dismiss', id)}
+        onDismissAll={() => failureAction('dismissAll')}
+      />
     </div>
   );
 
@@ -244,6 +278,20 @@ const CloudStatus = ({
         <span className="text-[0.60rem] text-foreground mx-[2px]">
           {cloudState.queuedUploads > 1 && `+${cloudState.queuedUploads - 1}`}
         </span>
+      </div>
+    );
+  };
+
+  const renderFailedIcon = () => {
+    if (failures.length < 1) return <></>;
+    return (
+      <div
+        className="inline-flex items-center gap-x-[2px] text-xs text-error-text"
+        data-state="failed"
+        aria-label={`${failures.length} upload${failures.length === 1 ? '' : 's'} failed`}
+      >
+        <AlertTriangle size={14} />
+        {failures.length}
       </div>
     );
   };
@@ -299,6 +347,7 @@ const CloudStatus = ({
               : rowLabel}
           </span>
           <div className="ml-auto flex items-center gap-x-2 shrink-0">
+            {renderFailedIcon()}
             {renderDownloadIcon()}
             {renderUploadIcon()}
           </div>

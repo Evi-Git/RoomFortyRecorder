@@ -12,6 +12,7 @@ import {
   UploadQueueItem,
 } from 'main/types';
 import path from 'path';
+import { pipeline } from 'stream/promises';
 import { z } from 'zod';
 import {
   Affiliation,
@@ -35,6 +36,9 @@ import {
   setSessionToken,
 } from 'main/secretStore';
 import { isSafeExternalUrl } from 'main/externalUrl';
+import { startStallWatch } from 'main/stallTimer';
+import { classifyUpload, StallError } from 'main/uploadFailures';
+import { withRetry } from 'main/pullUploadRetry';
 import ConfigService from 'config/ConfigService';
 import { app, clipboard, ipcMain, powerMonitor } from 'electron';
 import VideoProcessQueue from 'main/VideoProcessQueue';
@@ -52,6 +56,40 @@ import {
 
 /** The sign-in check's requests give up after this so it can't hang. */
 const CONFIGURE_TIMEOUT_MS = 15000;
+
+/**
+ * Every ordinary guild server request (lists, state, likes, chat, links,
+ * delete...) gives up after this. Calls that set their own `timeout` keep it;
+ * video transfers set `timeout: 0` and use a stall guard instead.
+ */
+const REQUEST_TIMEOUT_MS = 30000;
+
+/** One axios instance, so no request can be left without a timeout. */
+const cloudHttp = axios.create({ timeout: REQUEST_TIMEOUT_MS });
+
+/** A video upload step (signing, one PUT, one part) is tried this often. */
+const UPLOAD_ATTEMPTS = 3;
+
+/**
+ * Run one video transfer with a stall guard instead of a total timeout (a
+ * 4 GB upload can take an hour): if no bytes move for STALL_MS the request is
+ * aborted and a StallError thrown. `run` must pass `signal` to the request,
+ * set `timeout: 0`, and call `record(bytesSoFar)` from its progress event.
+ */
+const withStallGuard = async <T>(
+  run: (signal: AbortSignal, record: (bytes: number) => void) => Promise<T>,
+): Promise<T> => {
+  const controller = new AbortController();
+  const watch = startStallWatch({ onStall: () => controller.abort() });
+  try {
+    return await run(controller.signal, watch.record);
+  } catch (error) {
+    if (watch.stalled) throw new StallError();
+    throw error;
+  } finally {
+    watch.stop();
+  }
+};
 
 const enum VideoMessages {
   CREATE = 'vc',
@@ -412,7 +450,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video`;
     const headers = { Authorization: this.authHeader };
 
-    const statePromise = axios.get(url, {
+    const statePromise = cloudHttp.get(url, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -478,7 +516,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/bulk/delete`;
     const headers = { Authorization: this.authHeader };
 
-    const response = await axios.post(url, videoNames, {
+    const response = await cloudHttp.post(url, videoNames, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -502,7 +540,7 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const body = { videos: videoNames, protect: protect };
 
-    const response = await axios.post(url, body, {
+    const response = await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -526,7 +564,7 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const body = { videos: videoNames, tag };
 
-    const response = await axios.post(url, body, {
+    const response = await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -868,7 +906,7 @@ export default class CloudClient implements StorageClient {
         const startUrl = `${CloudClient.website}/auth/discord/start?callback=${encodeURIComponent(callback)}`;
 
         try {
-          const response = await axios.get(startUrl, {
+          const response = await cloudHttp.get(startUrl, {
             maxRedirects: 0,
             validateStatus: (status) => status >= 300 && status < 400,
           });
@@ -886,7 +924,7 @@ export default class CloudClient implements StorageClient {
       });
     });
 
-    const response = await axios.post(
+    const response = await cloudHttp.post(
       `${CloudClient.api}/auth/discord/exchange`,
       { code },
     );
@@ -929,10 +967,14 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video`;
     const headers = { Authorization: this.authHeader };
 
-    await axios.post(url, metadata, {
-      headers,
-      validateStatus: (s) => this.validateResponseStatus(s),
-    });
+    // The last step of an upload: a blip here must not strand the video, so
+    // it is retried like the transfer itself.
+    await this.retryUpload(metadata.videoKey, 'Saving', () =>
+      cloudHttp.post(url, metadata, {
+        headers,
+        validateStatus: (s) => this.validateResponseStatus(s),
+      }),
+    );
 
     console.info(
       '[CloudClient] Added',
@@ -957,7 +999,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video/${key}/timeline`;
     const headers = { Authorization: this.authHeader };
 
-    await axios.put(url, timeline, {
+    await cloudHttp.put(url, timeline, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -975,7 +1017,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video/${key}/timeline`;
     const headers = { Authorization: this.authHeader };
 
-    const res = await axios.get(url, {
+    const res = await cloudHttp.get(url, {
       headers,
       validateStatus: (s) => s === 404 || this.validateResponseStatus(s),
     });
@@ -1015,7 +1057,7 @@ export default class CloudClient implements StorageClient {
       headers['X-View-As-Role'] = CloudClient.viewAsRole;
     if (options.contentType) headers['Content-Type'] = options.contentType;
 
-    const res = await axios
+    const res = await cloudHttp
       .request({
         method,
         url,
@@ -1056,7 +1098,7 @@ export default class CloudClient implements StorageClient {
 
     const sizeUrl = `${CloudClient.api}/guild/${encGuild}/video/${encKey}/size`;
 
-    const sizeRsp = await axios.get(sizeUrl, {
+    const sizeRsp = await cloudHttp.get(sizeUrl, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1066,24 +1108,60 @@ export default class CloudClient implements StorageClient {
 
     console.info('[CloudClient] Bytes to download', bytes, 'for key', key);
 
-    const config: AxiosRequestConfig = {
-      responseType: 'stream',
-      onDownloadProgress: (event) =>
-        progressCallback(Math.round((100 * event.loaded) / bytes)),
-    };
-
-    // Don't worry about 401s here, this is direct to R2.
-    const response = await axios.get(url, config);
     const file = path.join(dir, key);
-    const writer = fs.createWriteStream(file);
+    // Written here and renamed when whole. The name has no ".mp4" so the
+    // video scan never picks it up, and a failure can't touch a video that
+    // is already on disk under the real name.
+    const partial = path.join(dir, `${path.basename(key, '.mp4')}.part`);
 
-    const finished = new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
+    try {
+      await withStallGuard(async (signal, record) => {
+        // Don't worry about 401s here, this is direct to R2.
+        const response = await cloudHttp.get(url, {
+          responseType: 'stream',
+          // No total timeout: the stall guard cuts it off if bytes stop.
+          timeout: 0,
+          signal,
+          onDownloadProgress: (event) => {
+            record(event.loaded);
+            progressCallback(Math.round((100 * event.loaded) / bytes));
+          },
+        });
+
+        // pipeline fails if the download breaks half way (a plain pipe
+        // would hang) and closes the file.
+        await pipeline(response.data, fs.createWriteStream(partial));
+      });
+      await fs.promises.rename(partial, file);
+    } catch (error) {
+      // Never leave half a video behind; only the partial is removed.
+      await fs.promises.rm(partial, { force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
+  /**
+   * One video upload step, tried up to UPLOAD_ATTEMPTS times with a short
+   * wait between: a stall or a dropped connection is retried, a 4xx from the
+   * server (taken, too big, not allowed) is final.
+   */
+  private retryUpload<T>(key: string, step: string, fn: () => Promise<T>) {
+    return withRetry(fn, {
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      classify: classifyUpload,
+      maxAttempts: UPLOAD_ATTEMPTS,
+      onRetry: ({ attempt, delayMs, error }) => {
+        console.warn(
+          `[CloudClient] ${step} of ${key} failed (attempt ${attempt} of ${UPLOAD_ATTEMPTS}), trying again in ${Math.round(delayMs / 1000)} s:`,
+          axios.isAxiosError(error) ? error.message : String(error),
+        );
+      },
+      // A 401: wait for the sign-in check, and go on only if it passed.
+      onAuth: async () => {
+        await this.waitForSignIn(20000);
+        return this.pullDeskReady();
+      },
     });
-
-    response.data.pipe(writer);
-    await finished;
   }
 
   /**
@@ -1100,7 +1178,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/upload`;
     const body = { key, bytes };
 
-    const response = await axios.post(url, body, {
+    const response = await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1130,7 +1208,7 @@ export default class CloudClient implements StorageClient {
       part: this.multiPartSizeBytes,
     };
 
-    const response = await axios.post(url, body, {
+    const response = await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1154,7 +1232,7 @@ export default class CloudClient implements StorageClient {
       key,
     };
 
-    await axios.post(url, body, {
+    await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1292,7 +1370,7 @@ export default class CloudClient implements StorageClient {
     const guild = encodeURIComponent(this.guild);
     const url = `${CloudClient.api}/guild/${guild}/usage`;
 
-    const response = await axios.get(url, {
+    const response = await cloudHttp.get(url, {
       headers,
       timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),
@@ -1313,7 +1391,7 @@ export default class CloudClient implements StorageClient {
     const guild = encodeURIComponent(this.guild);
     const url = `${CloudClient.api}/guild/${guild}/limit`;
 
-    const response = await axios.get(url, {
+    const response = await cloudHttp.get(url, {
       headers,
       timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),
@@ -1343,7 +1421,7 @@ export default class CloudClient implements StorageClient {
       cfg.validateStatus = (s) => this.validateResponseStatus(s);
     }
 
-    const response = await axios.get(url, cfg);
+    const response = await cloudHttp.get(url, cfg);
 
     const { data } = response;
     const affiliations = z.array(Affiliation).parse(data);
@@ -1362,7 +1440,7 @@ export default class CloudClient implements StorageClient {
     const guild = encodeURIComponent(this.guild);
     const url = `${CloudClient.api}/guild/${guild}/housekeeper`;
 
-    const response = await axios.post(url, undefined, {
+    const response = await cloudHttp.post(url, undefined, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1428,8 +1506,6 @@ export default class CloudClient implements StorageClient {
     const contentType = CloudClient.getContentType(key);
 
     const config: AxiosRequestConfig = {
-      onUploadProgress: (event) =>
-        progressCallback(Math.round((100 * event.loaded) / stats.size)),
       headers: { 'Content-Length': stats.size, 'Content-Type': contentType },
 
       // Without this, we buffer the whole file (which can be several GB)
@@ -1437,41 +1513,50 @@ export default class CloudClient implements StorageClient {
       // a different HTTP library. https://github.com/axios/axios/issues/1045.
       maxRedirects: 0,
 
+      // No total timeout (a big file takes a while); see withStallGuard.
+      timeout: 0,
+
       // Apply the rate limit here if it's in-play.
       // Convert units from MB/s to bytes per sec.
       maxRate: rate > 0 ? rate * 1024 ** 2 : undefined,
     };
 
-    const signedUrl = await this.signPutUrl(key, stats.size);
     const start = new Date();
 
-    // Retry the upload up to 5 times to allow for network errors, R2
-    // errors or anything else intermittent going wrong.
-    let attempts = 0;
-    let success = false;
-
-    while (!success && attempts < 5) {
-      attempts++;
+    // Try the upload a few times to allow for network errors, R2 errors or
+    // anything else intermittent going wrong. A failure that survives that
+    // is thrown, so the caller can show the reason.
+    await this.retryUpload(key, 'Upload', async () => {
+      // A fresh URL every attempt: they last an hour, and a big rate-limited
+      // upload that stalls late would retry with an expired one. (Signing
+      // again for your own reservation is allowed.)
+      const signedUrl = await this.signPutUrl(key, stats.size);
       const stream = fs.createReadStream(file);
 
       try {
         // Don't worry about 401s here, this is direct to R2.
-        await axios.put(signedUrl, stream, config);
-        success = true;
+        await withStallGuard((signal, record) =>
+          cloudHttp.put(signedUrl, stream, {
+            ...config,
+            signal,
+            onUploadProgress: (event) => {
+              record(event.loaded);
+              progressCallback(Math.round((100 * event.loaded) / stats.size));
+            },
+          }),
+        );
       } catch (error) {
         if (axios.isAxiosError(error)) {
-          const msg = '[CloudClient] Single part retryable failure: ' + key;
-          logAxiosError(msg, error);
-        } else {
-          console.error('[CloudClient] Not an AxiosError', key, String(error));
+          logAxiosError(
+            '[CloudClient] Single part upload failure: ' + key,
+            error,
+          );
         }
+        throw error;
+      } finally {
+        stream.destroy();
       }
-    }
-
-    if (!success) {
-      console.error('[CloudClient] Failed to upload:', key);
-      throw new Error('Retry attempts exhausted');
-    }
+    });
 
     const duration = (new Date().valueOf() - start.valueOf()) / 1000;
 
@@ -1528,36 +1613,24 @@ export default class CloudClient implements StorageClient {
 
       const config: AxiosRequestConfig = {
         headers: { 'Content-Length': bytes, 'Content-Type': contentType },
-        onUploadProgress: (event) => {
-          // This determines the total progress made, accounting for the progress
-          // we are through the parts. It falls a bit short on the final part, assuming
-          // it's the same size as the others, but it's good enough.
-          const previous = 100 * (part / numParts);
-          const current = 100 * (event.loaded / bytes);
-          const normalized = (1 / numParts) * current;
-          const actual = Math.round(previous + normalized);
-          progressCallback(actual);
-        },
 
         // Without this, we buffer the whole file (which can be several GB)
         // into memory which is just a disaster. This makes me want to pick
         // a different HTTP library. https://github.com/axios/axios/issues/1045.
         maxRedirects: 0,
 
+        // No total timeout; see withStallGuard.
+        timeout: 0,
+
         // Apply the rate limit here if it's in-play.
         // Convert units from MB/s to bytes per sec.
         maxRate: rate > 0 ? rate * 1024 ** 2 : undefined,
       };
 
-      // Retry each part upload a few times on failure to allow for
-      // intermittent failures the same way we do for single part uploads.
-      let attempts = 0;
-      let success = false;
-      let rsp;
-
-      while (!success && attempts < 5) {
-        attempts++;
-
+      // Retry each part a few times on failure to allow for intermittent
+      // failures the same way we do for single part uploads. The last
+      // failure is thrown.
+      const rsp = await this.retryUpload(key, `Part ${part + 1}`, async () => {
         const stream = fs.createReadStream(file, {
           start: offset,
           end: offset + bytes - 1,
@@ -1565,27 +1638,32 @@ export default class CloudClient implements StorageClient {
 
         try {
           // Don't worry about 401s here, this is direct to R2.
-          rsp = await axios.put(url, stream, config);
-          success = true;
+          return await withStallGuard((signal, record) =>
+            cloudHttp.put(url, stream, {
+              ...config,
+              signal,
+              onUploadProgress: (event) => {
+                record(event.loaded);
+                // This determines the total progress made, accounting for the
+                // progress we are through the parts. It falls a bit short on
+                // the final part, assuming it's the same size as the others,
+                // but it's good enough.
+                const previous = 100 * (part / numParts);
+                const current = 100 * (event.loaded / bytes);
+                const normalized = (1 / numParts) * current;
+                progressCallback(Math.round(previous + normalized));
+              },
+            }),
+          );
         } catch (error) {
-          // Almost certainly this is an AxiosError.
           if (axios.isAxiosError(error)) {
-            const msg = '[CloudClient] Multipart retryable failure: ' + key;
-            logAxiosError(msg, error);
-          } else {
-            console.error(
-              '[CloudClient] Not an AxiosError',
-              key,
-              String(error),
-            );
+            logAxiosError('[CloudClient] Multipart failure: ' + key, error);
           }
+          throw error;
+        } finally {
+          stream.destroy();
         }
-      }
-
-      if (!success || !rsp) {
-        console.error('[CloudClient] Multipart upload failed:', key);
-        throw new Error('Multipart upload failed, retry attempts exhausted');
-      }
+      });
 
       const { headers } = rsp;
       const { etag } = headers;
@@ -1639,7 +1717,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video/${video}/link`;
     const headers = { Authorization: this.authHeader };
 
-    const response = await axios.post(url, undefined, {
+    const response = await cloudHttp.post(url, undefined, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1888,7 +1966,7 @@ export default class CloudClient implements StorageClient {
 
     const headers = { Authorization: this.authHeader };
 
-    const rsp = await axios.post(url, undefined, {
+    const rsp = await cloudHttp.post(url, undefined, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1908,7 +1986,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/chat/${correlator}`;
     const headers = { Authorization: this.authHeader };
 
-    const rsp = await axios.get(url, {
+    const rsp = await cloudHttp.get(url, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1937,7 +2015,7 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
     const body = { message };
 
-    await axios.post(url, body, {
+    await cloudHttp.post(url, body, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
@@ -1960,7 +2038,7 @@ export default class CloudClient implements StorageClient {
     const headers = { Authorization: this.authHeader };
 
     try {
-      await axios.delete(url, {
+      await cloudHttp.delete(url, {
         headers,
         validateStatus: (s) => this.validateResponseStatus(s),
       });
@@ -1980,7 +2058,7 @@ export default class CloudClient implements StorageClient {
     console.info('[CloudClient] Get keystone timers for', mapId);
     const url = `${CloudClient.api}/keystone/timer/${mapId}`;
 
-    const rsp = await axios.get(url, {
+    const rsp = await cloudHttp.get(url, {
       validateStatus: (s) => this.validateResponseStatus(s),
     });
 
@@ -2002,7 +2080,7 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${encodeURIComponent(this.guild)}`;
     const headers = { Authorization: this.authHeader };
 
-    const rsp = await axios.get(url, {
+    const rsp = await cloudHttp.get(url, {
       headers,
       timeout: CONFIGURE_TIMEOUT_MS,
       validateStatus: (s) => this.validateResponseStatus(s),

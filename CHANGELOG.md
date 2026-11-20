@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.146] - Unreleased
+### Changed
+- **Failed uploads now tell you why, and nothing hangs.** A recording that fails to upload is no longer shown as finished. You get a notice with Try again, and the Cloud line in the sidebar shows a warning: hover it to see each failed upload with its reason, Try again and Dismiss.
+- Reasons in plain English: someone else's recording is already there, the guild's storage is full or the file is too big, your sign-in can't upload, the guild server can't be reached, the upload link expired, or the upload stalled.
+- Uploads that stall or lose the connection are retried a couple of times, each with a fresh upload link, before giving up.
+- Several failures in a row share one notice that counts them, instead of stacking up.
+- Every request to the guild server now has a time limit, and uploads and downloads give up if no data moves for a minute, so one stuck upload no longer blocks the rest.
+- A download that fails now says so and leaves no half-downloaded file. A recording you already have is never touched.
+
 ## [1.9.145] - Unreleased
 ### Changed
 - **Recordings in the Brass & Walnut look.** Raids, Mythic+, Clips and Manual now match Logs, the Dashboard and Settings.
