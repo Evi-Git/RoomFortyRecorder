@@ -182,6 +182,20 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
     ],
     { cwd: repo, stdio: 'inherit' },
   );
+  // App.css points at ../../assets/fonts (as the app's bundler resolves it);
+  // here the stylesheet sits in the output folder, so copy the fonts next to it.
+  const fonts = path.join(repo, 'assets', 'fonts');
+  fs.mkdirSync(path.join(out, 'fonts'), { recursive: true });
+  for (const f of fs.readdirSync(fonts)) {
+    if (f.endsWith('.woff2')) {
+      fs.copyFileSync(path.join(fonts, f), path.join(out, 'fonts', f));
+    }
+  }
+  const cssFile = path.join(out, 'app.css');
+  fs.writeFileSync(
+    cssFile,
+    fs.readFileSync(cssFile, 'utf8').replaceAll('../../assets/fonts/', './fonts/'),
+  );
   return out;
 };
 
