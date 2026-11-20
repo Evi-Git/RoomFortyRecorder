@@ -46,7 +46,7 @@ import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Dispatch, SetStateAction } from 'react';
 import { dateTime, shortDate, timeOfDay } from './clock';
-import { formatDurationPadded } from './format';
+import { bossPercent as bossPercentText, formatDurationPadded } from './format';
 import { READABLE_CLASS_COLOR } from './classColors';
 
 const getVideoResult = (video: RendererVideo): boolean => {
@@ -729,7 +729,7 @@ const getVideoResultText = (
     const bossPercent = raidResultToPercent(video);
 
     if (bossPercent !== undefined) {
-      return `${bossPercent}%`;
+      return bossPercentText(bossPercent);
     }
 
     return getLocalePhrase(language, Phrase.Wipe);

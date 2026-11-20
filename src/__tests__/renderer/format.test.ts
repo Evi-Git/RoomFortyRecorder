@@ -1,6 +1,7 @@
 import {
   bossPercent,
   compact,
+  compactShort,
   fileSize,
   formatDuration,
   formatDurationLong,
@@ -41,6 +42,16 @@ describe('compact numbers', () => {
   });
 });
 
+describe('compactShort', () => {
+  it('drops decimals from 100 of a unit up', () => {
+    expect(compactShort(123450000)).toBe('123m');
+    expect(compactShort(1234567)).toBe('1.2m');
+    expect(compactShort(612000)).toBe('612k');
+    expect(compactShort(12345)).toBe('12.3k');
+    expect(compactShort(999)).toBe('999');
+  });
+});
+
 describe('exact numbers and percentages', () => {
   it('groups thousands', () => {
     expect(grouped(491238)).toBe('491,238');
@@ -53,8 +64,16 @@ describe('exact numbers and percentages', () => {
     expect(percentValue(12.34)).toBe('12.3%');
     expect(percentValue(null)).toBe('–');
     expect(percentValue(undefined)).toBe('–');
+    expect(bossPercent(0.4)).toBe('0.4%');
+    expect(bossPercent(0.04)).toBe('0.1%');
+    expect(bossPercent(0)).toBe('0%');
+    expect(bossPercent(4.75)).toBe('4.8%');
+    expect(bossPercent(5)).toBe('5%');
+    expect(bossPercent(9.96)).toBe('10%');
     expect(bossPercent(12.4)).toBe('12%');
+    expect(bossPercent(12.5)).toBe('13%');
     expect(bossPercent(69.6)).toBe('70%');
+    expect(bossPercent(70)).toBe('70%');
     expect(bossPercent(null)).toBe('–');
     expect(percentSigned(3.21)).toBe('+3.2%');
     expect(percentSigned(-1)).toBe('-1.0%');
@@ -75,7 +94,9 @@ describe('durations', () => {
     expect(formatDuration(725)).toBe('12:05');
     expect(formatDuration(3600)).toBe('1:00:00');
     expect(formatDuration(3723)).toBe('1:02:03');
-    expect(formatDuration(-5)).toBe('0:00');
+    expect(formatDuration(-3)).toBe('-0:03');
+    expect(formatDuration(-65.5)).toBe('-1:05');
+    expect(formatDuration(-0.5)).toBe('0:00');
   });
   it('rounds when asked', () => {
     expect(formatDurationRounded(65.6)).toBe('1:06');
@@ -95,6 +116,9 @@ describe('durations', () => {
     expect(formatDurationLong(45 * 60)).toBe('45 min');
     expect(formatDurationLong(3600)).toBe('1 h');
     expect(formatDurationLong(3600 + 23 * 60)).toBe('1 h 23 min');
+    expect(formatDurationLong(7170)).toBe('2 h');
+    expect(formatDurationLong(3570)).toBe('1 h');
+    expect(formatDurationLong(3540)).toBe('59 min');
   });
 });
 
@@ -102,7 +126,8 @@ describe('dates', () => {
   const year = new Date().getFullYear();
   it('labels days', () => {
     const d = new Date(year, 9, 21, 12);
-    expect(dayLabel(d)).toBe('Wed, Oct 21'.replace('Wed', weekdayShort(d)));
+    expect(dayLabel(new Date(2026, 9, 21, 12))).toBe('Wed, Oct 21');
+    expect(dayLabel(d)).toContain('Oct 21');
     expect(monthDay(d)).toBe('Oct 21');
     expect(monthShort(d)).toBe('Oct');
     expect(weekdayShort(new Date(2026, 9, 21, 12))).toBe('Wed');

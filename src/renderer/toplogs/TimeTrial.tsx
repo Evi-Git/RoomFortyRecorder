@@ -13,7 +13,7 @@ import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
 import type { PullMeta } from '../logs/store';
 import { classColor } from '../logs/format';
-import { compact, formatDuration } from '../format';
+import { bossPercent, compact, formatDuration } from '../format';
 import { Cooldown, ourTrack, raidersOf, Track, vodInfo } from './trial';
 import {
   alignByPhase,
@@ -60,7 +60,7 @@ const pullLabel = (p: OurPull) =>
   `${shortNight(p.night)} · ${rowLabel(p)} · ${
     p.result === 'kill'
       ? `Kill ${formatDuration(p.duration)}`
-      : `${p.bossPercent ?? '?'}% at ${formatDuration(p.duration)}`
+      : `${bossPercent(p.bossPercent)} at ${formatDuration(p.duration)}`
   }`;
 
 const TimeTrial = ({

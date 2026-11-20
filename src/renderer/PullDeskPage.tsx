@@ -1,5 +1,5 @@
 import { dateTime, nightLabel, timeOfDay } from 'renderer/clock';
-import { compact, formatDuration } from './format';
+import { bossPercent, compact, formatDuration } from './format';
 import React from 'react';
 import {
   BarChart3,
@@ -306,10 +306,6 @@ const KIND_STYLE: Record<DefensiveKind, string> = {
   healthstone: 'text-emerald-300',
   combatPotion: 'text-amber-300',
 };
-
-// Pre-pull uses have negative times.
-const timeLabel = (seconds: number) =>
-  seconds < 0 ? `-${formatDuration(-seconds)}` : formatDuration(seconds);
 
 type Section =
   | 'deaths'
@@ -881,7 +877,7 @@ const PullDeskPage = (props: IProps) => {
                   ? 'Kill'
                   : failed
                     ? 'Failed'
-                    : `${pull.bossPercent ?? '?'}%`;
+                    : bossPercent(pull.bossPercent);
                 const deathText =
                   pull.deaths === null
                     ? '–'
@@ -1025,7 +1021,7 @@ const PullDeskPage = (props: IProps) => {
             <span className="text-foreground">
               {a.usedCount === 0
                 ? ' · not used this pull'
-                : ` · last used ${timeLabel(a.lastUsed ?? 0)}`}
+                : ` · last used ${formatDuration(a.lastUsed ?? 0)}`}
             </span>
           </div>
         ))}
@@ -1088,7 +1084,7 @@ const PullDeskPage = (props: IProps) => {
                     className="rounded border border-panel-line bg-panel-raised px-2 py-0.5 text-[13px]"
                   >
                     <span className="font-mono text-foreground">
-                      {timeLabel(use.t)}
+                      {formatDuration(use.t)}
                     </span>{' '}
                     <span className="text-brand-soft">{use.ability}</span>
                     <span className="text-foreground"> · {use.name}</span>
@@ -1167,7 +1163,7 @@ const PullDeskPage = (props: IProps) => {
                         className="flex items-center gap-x-2 py-1 pl-[34px] pr-2"
                       >
                         <span className="w-40 font-mono text-foreground">
-                          {timeLabel(use.t)}
+                          {formatDuration(use.t)}
                         </span>
                         <span className="w-56 truncate">
                           {use.ability}
@@ -1867,7 +1863,7 @@ const PullDeskPage = (props: IProps) => {
                 <span
                   className={`font-semibold tabular-nums ${kill ? 'text-green-400' : 'text-foreground-lighter'}`}
                 >
-                  {kill ? 'Kill' : `${r.bossPercent ?? '?'}%`} ·{' '}
+                  {kill ? 'Kill' : bossPercent(r.bossPercent)} ·{' '}
                   {formatDuration(r.duration)}
                 </span>
                 <span

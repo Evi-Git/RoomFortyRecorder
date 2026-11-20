@@ -1,5 +1,5 @@
 import { timeOfDay } from 'renderer/clock';
-import { compact, formatDuration, ratioPercent } from './format';
+import { bossPercent, compact, formatDuration, ratioPercent } from './format';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import {
   ArrowLeft,
@@ -1763,7 +1763,7 @@ const LogsPane = ({
                         kill
                           ? 'kill'
                           : p.bossPercent !== null
-                            ? `${p.bossPercent}% left`
+                            ? `${bossPercent(p.bossPercent)} left`
                             : 'wipe'
                       }${p.startedAt ? `, ${timeOfDay(p.startedAt)}` : ''}, ${formatDuration(p.duration)}`}
                       onMouseDown={(e) => {
@@ -1790,9 +1790,9 @@ const LogsPane = ({
                             className="w-9 shrink-0"
                           />
                           <span className="tabular-nums text-foreground-lighter">
-                            {p.bossPercent !== null
-                              ? `${p.bossPercent}%`
-                              : 'Wipe'}
+                            {bossPercent(p.bossPercent) === '–'
+                              ? 'Wipe'
+                              : bossPercent(p.bossPercent)}
                           </span>
                         </>
                       )}

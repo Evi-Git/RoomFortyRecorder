@@ -374,7 +374,9 @@ const DeathsView = ({
       >
         {multi && <td className={`${td} text-foreground`}>{d.pullLabel}</td>}
         <td className={`${td} text-foreground`}>{d.order}</td>
-        <td className={`${td} text-foreground font-mono`}>
+        <td
+          className={`${td} text-foreground font-mono tabular-nums text-right`}
+        >
           {formatDuration(d.t)}
         </td>
         <td
@@ -530,7 +532,9 @@ const DeathsView = ({
                         <td className={`${td} text-foreground`}>
                           {first.order}
                         </td>
-                        <td className={`${td} text-foreground font-mono`}>
+                        <td
+                          className={`${td} text-foreground font-mono tabular-nums text-right`}
+                        >
                           {formatDuration(first.t)}
                         </td>
                         <td className={`${td} font-semibold text-red-400`}>

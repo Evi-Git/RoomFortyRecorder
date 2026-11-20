@@ -239,7 +239,7 @@ const EventsView = ({
                 style={{ top: (first + n) * ROW, height: ROW }}
                 onClick={() => onWatch?.(at, watchName)}
               >
-                <span className="w-[74px] shrink-0 tabular-nums text-foreground">
+                <span className="w-[74px] shrink-0 text-right tabular-nums text-foreground">
                   {formatDurationMillis(at)}
                 </span>
                 {multi && (

@@ -1,4 +1,4 @@
-import { monthDay, monthYear } from '../clock';
+import { monthDay, monthYear, nightDate } from '../clock';
 /**
  * [RoomFortyRecorder] Calendar helpers for the Logs page's night picker:
  * month / week grids of days, difficulty grouping and the short night
@@ -45,10 +45,7 @@ export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /** YYYY-MM-DD → local Date at noon (safe across DST). */
-export const parseKey = (key: string) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d, 12);
-};
+export const parseKey = nightDate;
 
 export const addDays = (key: string, days: number) => {
   const d = parseKey(key);

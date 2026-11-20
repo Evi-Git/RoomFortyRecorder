@@ -19,6 +19,19 @@ export const compact = (n: number) => {
   return String(Math.round(n));
 };
 
+/**
+ * `compact` for narrow labels: no decimals from 100 of a unit up ("123m"),
+ * one below ("1.2m", "12.3k").
+ */
+export const compactShort = (n: number) => {
+  const a = Math.abs(n);
+  const unit = a >= 1e9 ? 1e9 : a >= 1e6 ? 1e6 : a >= 1e3 ? 1e3 : 0;
+  if (!unit) return String(Math.round(n));
+  const suffix = unit === 1e9 ? 'b' : unit === 1e6 ? 'm' : 'k';
+  const v = n / unit;
+  return `${Math.abs(v) >= 100 ? Math.round(v) : v.toFixed(1)}${suffix}`;
+};
+
 /** An exact whole number with thousands separators: 491,238. */
 export const grouped = (n: number) =>
   Math.round(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -31,9 +44,19 @@ export const ratioPercent = (fraction: number, digits = 1) =>
 export const percentValue = (value: number | null | undefined, digits = 1) =>
   value === null || value === undefined ? '–' : `${value.toFixed(digits)}%`;
 
-/** Boss health left, as a whole number: "12%"; a dash when unknown. ("Kill" is the caller's.) */
-export const bossPercent = (value: number | null | undefined) =>
-  value === null || value === undefined ? '–' : `${Math.round(value)}%`;
+/**
+ * Boss health left: a whole number from 10% up ("13%"), one decimal below 10
+ * when not whole ("0.4%", "4.8%", "5%"), and never "0%" for a value above 0
+ * (that reads as a kill). A dash when unknown; "Kill" is the caller's.
+ */
+export const bossPercent = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return '–';
+  if (value <= 0) return '0%';
+  if (value >= 10) return `${Math.round(value)}%`;
+  const tenth = Math.max(0.1, Math.round(value * 10) / 10);
+  if (tenth >= 10) return '10%';
+  return Number.isInteger(tenth) ? `${tenth}%` : `${tenth.toFixed(1)}%`;
+};
 
 /** `part` of `whole` as a percentage; a dash when there is no whole. */
 export const pct = (part: number, whole: number, digits = 2) =>
@@ -43,15 +66,15 @@ export const pct = (part: number, whole: number, digits = 2) =>
 export const percentSigned = (value: number, digits = 1) =>
   `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;
 
-const floorSeconds = (s: number) => Math.max(0, Math.floor(s));
-
 /**
  * A length of time: m:ss under an hour (4:52, 12:05), h:mm:ss from an hour
  * (1:02:03). Fight clocks, pull lengths, video positions. Seconds are cut
- * (not rounded) so a clock never runs ahead of the fight.
+ * (not rounded) so a clock never runs ahead of the fight. A negative time
+ * (a pre-pull use) keeps its sign: -0:03.
  */
-export const formatDuration = (seconds: number) => {
-  const total = floorSeconds(seconds);
+export const formatDuration = (seconds: number): string => {
+  const total = Math.floor(Math.abs(seconds));
+  if (seconds < 0 && total > 0) return `-${formatDuration(total)}`;
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
@@ -94,9 +117,10 @@ export const formatDurationPadded = (seconds: number) => {
 
 /** Spoken length: "45 min", "1 h 23 min", "2 h". */
 export const formatDurationLong = (seconds: number) => {
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
+  const minutes = Math.round(Math.max(0, seconds) / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
 };
 
