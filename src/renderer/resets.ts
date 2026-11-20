@@ -19,6 +19,19 @@ export const isReset = (pull: { duration?: number | null; reset?: boolean }) =>
   (typeof pull.duration === 'number' && pull.duration < RESET_SECONDS);
 
 /**
+ * Bosses to list: those with no pull but resets are left out unless "Show
+ * resets" is on (or every boss is like that, so the list is never empty).
+ * Older servers never send `pulls: 0` for them, so nothing changes there.
+ */
+export const withoutEmptyBosses = <B extends { pulls: number }>(
+  bosses: B[],
+  showResets: boolean,
+): B[] =>
+  showResets || bosses.every((b) => b.pulls === 0)
+    ? bosses
+    : bosses.filter((b) => b.pulls > 0);
+
+/**
  * A pull's label: "Pull 3" (or `${prefix}3`), or "Reset" for a reset, which
  * has no number of its own. Works with old servers (no `reset` field).
  */

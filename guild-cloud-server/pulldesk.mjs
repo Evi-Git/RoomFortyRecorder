@@ -1058,6 +1058,7 @@ export const createPullDesk = (options) => {
     bossSettings(encounterId).channelId || envChannels[String(encounterId)] || defaultChannel;
 
   const discordPost = async (pull, report) => {
+    if (isReset(pull)) return; // resets aren't pulls: no post
     const channelId = channelFor(pull.encounterId);
     if (!channelId || !botToken) return;
 

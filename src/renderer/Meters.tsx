@@ -13,7 +13,12 @@ import { getCategoryIndex } from './rendererutils';
 import { classColor } from './logs/format';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import BossBar from './components/BossBar/BossBar';
-import { isReset, pullLabel, useShowResets } from './resets';
+import {
+  isReset,
+  pullLabel,
+  useShowResets,
+  withoutEmptyBosses,
+} from './resets';
 import { LogsTarget, takeLogsTarget } from './logs/openTarget';
 import {
   allResets,
@@ -1230,6 +1235,16 @@ type NightBoss = {
   bestPercent?: number | null;
   firstKillAt?: number;
 };
+/** True when `a` came after `b` (resets share the number before them). */
+const isNewer = (
+  a: { pullNumber: number; startedAt?: number | null },
+  b?: { pullNumber: number; startedAt?: number | null },
+) => {
+  if (!b) return true;
+  const [x, y] = [a.startedAt ?? 0, b.startedAt ?? 0];
+  return x !== y ? x > y : a.pullNumber > b.pullNumber;
+};
+
 type NightPull = {
   id: string;
   pullNumber: number;
@@ -1440,20 +1455,28 @@ const LogsPane = ({
   }, [tabActive]);
 
   const keyOf = (b: NightBoss) => `${b.encounterId}:${b.difficultyId}`;
-  const shownBosses = bosses ?? [];
+  const shownBosses = withoutEmptyBosses(bosses ?? [], showResets);
   const boss =
     shownBosses.find((b) => keyOf(b) === bossKey) ??
     [...shownBosses].sort((a, b) => b.pulls - a.pulls)[0];
   const pulls = React.useMemo(
     () =>
-      [...(boss?.pullsList ?? [])].sort((a, b) => b.pullNumber - a.pullNumber),
+      [...(boss?.pullsList ?? [])].sort(
+        (a, b) =>
+          b.pullNumber - a.pullNumber ||
+          (b.startedAt ?? 0) - (a.startedAt ?? 0),
+      ),
     [boss],
   );
   const comparing = React.useMemo(
     () =>
       pulls
         .filter((p) => picked.includes(p.id))
-        .sort((a, b) => a.pullNumber - b.pullNumber)
+        .sort(
+          (a, b) =>
+            a.pullNumber - b.pullNumber ||
+            (a.startedAt ?? 0) - (b.startedAt ?? 0),
+        )
         .map((p) => ({
           id: p.id,
           label: pullLabel(p),
@@ -1497,7 +1520,7 @@ const LogsPane = ({
     (p) =>
       arrived.includes(p.id) &&
       (showResets || !isReset(p)) &&
-      p.pullNumber > (pull?.pullNumber ?? 0) &&
+      isNewer(p, pull) &&
       picked.length < 2,
   );
 
@@ -1531,7 +1554,11 @@ const LogsPane = ({
     comparing.length >= 2
       ? pulls
           .filter((p) => picked.includes(p.id))
-          .sort((a, b) => a.pullNumber - b.pullNumber)
+          .sort(
+            (a, b) =>
+              a.pullNumber - b.pullNumber ||
+              (a.startedAt ?? 0) - (b.startedAt ?? 0),
+          )
           .map(metaOf)
       : pull && pull.source !== 'wcl'
         ? [metaOf(pull)]
@@ -1583,7 +1610,10 @@ const LogsPane = ({
     <div className="relative flex flex-col gap-y-4">
       <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
         <NightPicker
-          nights={nights}
+          nights={nights.map((n) => ({
+            ...n,
+            bosses: withoutEmptyBosses(n.bosses, showResets),
+          }))}
           night={night}
           showLabel={false}
           onPick={(n, key) => {

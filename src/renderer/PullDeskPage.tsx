@@ -900,7 +900,11 @@ const PullDeskPage = (props: IProps) => {
                     type="button"
                     key={pull.id}
                     aria-current={selected ? 'true' : undefined}
-                    title={`Pull ${pull.totalPullNumber} overall`}
+                    title={
+                      isReset(pull)
+                        ? undefined
+                        : `Pull ${pull.totalPullNumber} overall`
+                    }
                     onClick={() => {
                       setSelectedId(pull.id);
                       setExpandedDeath(null);
@@ -1829,7 +1833,11 @@ const PullDeskPage = (props: IProps) => {
                 </span>
                 <span
                   className="text-[13px] text-foreground"
-                  title={`Pull ${r.totalPullNumber} overall · ${r.difficulty}`}
+                  title={
+                    isReset(r)
+                      ? r.difficulty
+                      : `Pull ${r.totalPullNumber} overall · ${r.difficulty}`
+                  }
                 >
                   {r.startedAt ? `${dateTime(r.startedAt)} · ` : ''}
                   {r.difficulty} · log from {r.uploadedBy || 'unknown'}

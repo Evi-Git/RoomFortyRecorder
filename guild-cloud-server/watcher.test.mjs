@@ -30,6 +30,13 @@ test('progress: pulls in order up to the first kill, duplicates merged', () => {
   assert.equal(bosses[3492].kill, null);
 });
 
+test('progress: resets (under 10 s) are not pulls', () => {
+  const reset = { encounterID: 3429, startTime: 0, endTime: 4000, kill: false, fightPercentage: 100 };
+  const bosses = buildProgress([{ startTime: T0, fights: [reset, fight(3429, 5, 60), { ...reset, startTime: 600000, endTime: 603000 }] }], { 3429: 'The Coiled Altar' });
+  assert.equal(bosses[3429].pulls, 1);
+  assert.deepEqual(bosses[3429].series.map((s) => s.percent), [60]);
+});
+
 test('crawl: resolves the zone and guild, saves results; officers only', async () => {
   const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'watcher-'));
   const respond = (data) => ({ ok: true, status: 200, json: async () => ({ data: { ...data, rateLimitData: { limitPerHour: 18000, pointsSpentThisHour: 10, pointsResetIn: 3000 } } }) });

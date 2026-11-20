@@ -1,4 +1,4 @@
-import { isReset, pullLabel } from '../../renderer/resets';
+import { isReset, pullLabel, withoutEmptyBosses } from '../../renderer/resets';
 
 describe('pullLabel', () => {
   it('numbers real pulls', () => {
@@ -20,5 +20,16 @@ describe('pullLabel', () => {
   it('isReset honours the server flag', () => {
     expect(isReset({ reset: true })).toBe(true);
     expect(isReset({ reset: false, duration: 60 })).toBe(false);
+  });
+});
+
+describe('withoutEmptyBosses', () => {
+  const bosses = [{ pulls: 0 }, { pulls: 3 }];
+  it('hides bosses pulled only as resets unless shown', () => {
+    expect(withoutEmptyBosses(bosses, false)).toEqual([{ pulls: 3 }]);
+    expect(withoutEmptyBosses(bosses, true)).toEqual(bosses);
+  });
+  it('never empties the list', () => {
+    expect(withoutEmptyBosses([{ pulls: 0 }], false)).toEqual([{ pulls: 0 }]);
   });
 });
