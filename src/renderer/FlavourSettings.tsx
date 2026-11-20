@@ -5,14 +5,20 @@ import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValue, setConfigValues } from './useSettings';
 import { pathSelect } from './rendererutils';
 import Switch from './components/Switch/Switch';
-import Label from './components/Label/Label';
 import { Input } from './components/Input/Input';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import TextBanner from './components/TextBanner/TextBanner';
-import { FolderOpen, Info } from 'lucide-react';
+import { FolderOpen } from 'lucide-react';
 import { Phrase } from 'localisation/phrases';
 import { Button } from './components/Button/Button';
 import UploadStatus from './UploadStatus';
+import {
+  SettingRow,
+  useScopedIds,
+  SettingsSection,
+  settingsButtonClass,
+  settingsFieldClass,
+} from './components/SettingsCard/SettingsCard';
 
 interface IProps {
   recorderStatus: RecStatus;
@@ -31,7 +37,10 @@ const FlavourSettings: React.FC<IProps> = ({
   appState,
   combatLoggingStatus,
 }) => {
+  const sid = useScopedIds();
   const initialRender = React.useRef(true);
+  // Days are all we show, so the time is read once.
+  const [now] = React.useState(() => Date.now());
   const disabled =
     recorderStatus === RecStatus.Recording ||
     recorderStatus === RecStatus.Overrunning;
@@ -82,7 +91,7 @@ const FlavourSettings: React.FC<IProps> = ({
     const mtime = combatLoggingStatus[key].latestLogAgeMs;
     if (mtime === -1) {
       return (
-        <span className="inline-flex ml-2 text-xs font-normal text-warning">
+        <span className="inline-flex text-xs font-normal text-warning">
           {getLocalePhrase(
             appState.language,
             Phrase.LatestCombatLogFileNotFound,
@@ -91,7 +100,7 @@ const FlavourSettings: React.FC<IProps> = ({
       );
     }
 
-    const ageDays = Math.floor((Date.now() - mtime) / (1000 * 60 * 60 * 24));
+    const ageDays = Math.floor((now - mtime) / (1000 * 60 * 60 * 24));
     const age =
       ageDays > 31
         ? getLocalePhrase(
@@ -114,7 +123,7 @@ const FlavourSettings: React.FC<IProps> = ({
               );
 
     return (
-      <span className="inline-flex ml-2 text-xs font-normal text-success">
+      <span className="inline-flex text-xs font-normal text-success">
         {getLocalePhrase(appState.language, Phrase.LatestCombatLogFileText)}{' '}
         {age}
       </span>
@@ -131,89 +140,99 @@ const FlavourSettings: React.FC<IProps> = ({
     description: Phrase,
     invalid: Phrase,
   ) => (
-    <div className="flex flex-row gap-x-6">
-      <div className="flex flex-col w-[160px]">
-        <Label htmlFor={enabledKey} className="flex items-center">
-          {getLocalePhrase(appState.language, label)}
-          <Tooltip
-            content={getLocalePhrase(appState.language, description)}
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={enabled}
-            name={enabledKey}
-            onCheckedChange={(value) => setBoolean(enabledKey, value)}
-            disabled={disabled}
-          />
-        </div>
-      </div>
+    <>
+      <SettingRow
+        label={getLocalePhrase(appState.language, label)}
+        help={getLocalePhrase(appState.language, description)}
+        htmlFor={sid(enabledKey)}
+      >
+        <Switch
+          id={sid(enabledKey)}
+          checked={enabled}
+          name={enabledKey}
+          onCheckedChange={(value) => setBoolean(enabledKey, value)}
+          disabled={disabled}
+        />
+      </SettingRow>
       {enabled && (
-        <div className="flex flex-col w-1/2">
-          <Label htmlFor={pathKey} className="flex items-center">
-            {getLocalePhrase(appState.language, pathLabel)}
-            <Tooltip
-              content={getLocalePhrase(
-                appState.language,
-                configSchema[pathKey].description,
-              )}
-              side="top"
-            >
-              <Info size={20} className="inline-flex ml-2" />
-            </Tooltip>
-            {getLastLogAgeDisplay(config[pathKey], statusKey)}
-          </Label>
-          <div className="flex">
-            <Input
-              value={config[pathKey]}
-              onClick={() => choosePath(pathKey)}
-              readOnly
-              required
-              disabled={disabled}
-            />
-            <Tooltip
-              content={getLocalePhrase(
-                appState.language,
-                Phrase.OpenFolderButtonTooltip,
-              )}
-              side="top"
-            >
+        <SettingRow
+          label={getLocalePhrase(appState.language, pathLabel)}
+          help={getLocalePhrase(
+            appState.language,
+            configSchema[pathKey].description,
+          )}
+          labelId={sid(`${pathKey}-label`)}
+          aside={getLastLogAgeDisplay(config[pathKey], statusKey)}
+        >
+          <div className="flex w-[360px] flex-col gap-y-1">
+            <div className="flex gap-x-2">
+              <Input
+                aria-labelledby={sid(`${pathKey}-label`)}
+                value={config[pathKey]}
+                onClick={() => choosePath(pathKey)}
+                readOnly
+                required
+                disabled={disabled}
+                className={settingsFieldClass}
+              />
               <Button
-                variant="ghost"
-                disabled={disabled || !config[pathKey]}
-                onClick={() => ipc.openSystemExplorer(config[pathKey])}
+                variant="outline"
+                className={settingsButtonClass}
+                disabled={disabled}
+                onClick={() => choosePath(pathKey)}
               >
-                <FolderOpen size={20} />
+                Browse
               </Button>
-            </Tooltip>
+              <Tooltip
+                content={getLocalePhrase(
+                  appState.language,
+                  Phrase.OpenFolderButtonTooltip,
+                )}
+                side="top"
+              >
+                <Button
+                  variant="outline"
+                  className={`${settingsButtonClass} w-9 px-0`}
+                  aria-label={getLocalePhrase(
+                    appState.language,
+                    Phrase.OpenFolderButtonTooltip,
+                  )}
+                  disabled={disabled || !config[pathKey]}
+                  onClick={() => ipc.openSystemExplorer(config[pathKey])}
+                >
+                  <FolderOpen size={18} />
+                </Button>
+              </Tooltip>
+            </div>
+            {!config[pathKey] && (
+              <span className="text-error-text text-sm">
+                {getLocalePhrase(appState.language, invalid)}
+              </span>
+            )}
+            {!combatLoggingStatus[statusKey].advanced && (
+              <span className="text-error-text text-sm">
+                {getLocalePhrase(
+                  appState.language,
+                  Phrase.AdvancedCombatLoggingDisabledWarning,
+                )}
+              </span>
+            )}
           </div>
-          {!config[pathKey] && (
-            <span className="text-error text-sm">
-              {getLocalePhrase(appState.language, invalid)}
-            </span>
-          )}
-          {!combatLoggingStatus[statusKey].advanced && (
-            <span className="text-error text-sm">
-              {getLocalePhrase(
-                appState.language,
-                Phrase.AdvancedCombatLoggingDisabledWarning,
-              )}
-            </span>
-          )}
-        </div>
+        </SettingRow>
       )}
-    </div>
+    </>
   );
 
   return (
-    <div className="flex flex-col gap-y-4">
+    <SettingsSection
+      title={getLocalePhrase(appState.language, Phrase.GameSettingsLabel)}
+    >
       {disabled && (
-        <TextBanner>
-          {getLocalePhrase(appState.language, Phrase.SettingsDisabledText)}
-        </TextBanner>
+        <div className="px-[18px] py-3.5">
+          <TextBanner>
+            {getLocalePhrase(appState.language, Phrase.SettingsDisabledText)}
+          </TextBanner>
+        </div>
       )}
       {getPathSetting(
         config.recordRetail,
@@ -236,31 +255,31 @@ const FlavourSettings: React.FC<IProps> = ({
         Phrase.InvalidRetailPtrLogPathText,
       )}
       {/* [RoomFortyRecorder] Upload this PC's pull logs to the guild server. */}
-      <div className="flex flex-col w-[160px]">
-        <Label htmlFor="pullDeskUpload" className="flex items-center">
-          Send my Logs
-          <Tooltip
-            content="When on, your app may upload your combat log for each raid pull to the guild server (Dashboard and Logs). Only one raider's upload is used per pull."
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.pullDeskUpload !== false}
-            name="pullDeskUpload"
-            onCheckedChange={(value) => {
-              setConfig((previous) => ({ ...previous, pullDeskUpload: value }));
-              setConfigValue('pullDeskUpload', value);
-            }}
-          />
-        </div>
-        <div className="w-[340px]">
-          <UploadStatus />
-        </div>
-      </div>
-    </div>
+      <SettingRow
+        label="Send my logs"
+        help={
+          <>
+            Upload your combat log for each raid pull to the guild server, for
+            the Dashboard and Logs. Only one raider&apos;s upload is used per
+            pull.
+            <div className="mt-2 max-w-[460px]">
+              <UploadStatus />
+            </div>
+          </>
+        }
+        htmlFor={sid('pullDeskUpload')}
+      >
+        <Switch
+          id={sid('pullDeskUpload')}
+          checked={config.pullDeskUpload !== false}
+          name="pullDeskUpload"
+          onCheckedChange={(value) => {
+            setConfig((previous) => ({ ...previous, pullDeskUpload: value }));
+            setConfigValue('pullDeskUpload', value);
+          }}
+        />
+      </SettingRow>
+    </SettingsSection>
   );
 };
 

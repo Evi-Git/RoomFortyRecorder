@@ -4,10 +4,13 @@ import { AppState } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues } from './useSettings';
 import Switch from './components/Switch/Switch';
-import Label from './components/Label/Label';
 import { Dispatch, SetStateAction, useEffect, useRef } from 'react';
-import { Tooltip } from './components/Tooltip/Tooltip';
 import { Phrase } from 'localisation/phrases';
+import {
+  SettingRow,
+  useScopedIds,
+  SettingsSection,
+} from './components/SettingsCard/SettingsCard';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -18,6 +21,7 @@ interface IProps {
 }
 
 const WindowsSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState, config, setConfig } = props;
 
   const effect1 = useRef(false);
@@ -59,47 +63,25 @@ const WindowsSettings = (props: IProps) => {
     ipc.reconfigureBase();
   }, [config.validateNtfs]);
 
-  const getSwitch = (
-    preference: keyof ConfigurationSchema,
-    changeFn: (checked: boolean) => void,
-  ) => (
-    <Switch
-      checked={Boolean(config[preference])}
-      name={preference}
-      onCheckedChange={changeFn}
-    />
-  );
-
   const getSwitchForm = (
     preference: keyof ConfigurationSchema,
     label: Phrase,
     changeFn: (checked: boolean) => void,
-    info: Phrase | undefined = undefined,
-  ) => {
-    return (
-      <div className="flex flex-col">
-        {info && (
-          <Tooltip
-            content={getLocalePhrase(appState.language, info)}
-            side="right"
-          >
-            <Label htmlFor="separateBufferPath">
-              {getLocalePhrase(appState.language, label)}
-            </Label>
-          </Tooltip>
-        )}
-        {!info && (
-          <Label htmlFor="separateBufferPath">
-            {getLocalePhrase(appState.language, label)}
-          </Label>
-        )}
-
-        <div className="flex h-10 items-center">
-          {getSwitch(preference, changeFn)}
-        </div>
-      </div>
-    );
-  };
+    help: Phrase,
+  ) => (
+    <SettingRow
+      label={getLocalePhrase(appState.language, label)}
+      help={getLocalePhrase(appState.language, help)}
+      htmlFor={sid(preference)}
+    >
+      <Switch
+        id={sid(preference)}
+        checked={Boolean(config[preference])}
+        name={preference}
+        onCheckedChange={changeFn}
+      />
+    </SettingRow>
+  );
 
   const setRunOnStartup = (checked: boolean) => {
     setConfig((prevState) => {
@@ -156,22 +138,32 @@ const WindowsSettings = (props: IProps) => {
   };
 
   return (
-    <div className="flex flex-row flex-wrap gap-x-8">
-      {getSwitchForm('startUp', Phrase.RunOnStartupLabel, setRunOnStartup)}
+    <SettingsSection
+      title={getLocalePhrase(appState.language, Phrase.WindowsSettingsLabel)}
+    >
+      {getSwitchForm(
+        'startUp',
+        Phrase.RunOnStartupLabel,
+        setRunOnStartup,
+        Phrase.StartUpDescription,
+      )}
       {getSwitchForm(
         'startMinimized',
         Phrase.StartMinimizedLabel,
         setStartMinimized,
+        Phrase.StartMinimizedDescription,
       )}
       {getSwitchForm(
         'minimizeOnQuit',
         Phrase.MinimizeOnQuitLabel,
         setMinimizeOnQuit,
+        Phrase.MinimizeOnQuitDescription,
       )}
       {getSwitchForm(
         'minimizeToTray',
         Phrase.MinimizeToTrayLabel,
         setMinimizeToTray,
+        Phrase.MinimizeToTrayDescription,
       )}
       {getSwitchForm(
         'hardwareAcceleration',
@@ -185,7 +177,7 @@ const WindowsSettings = (props: IProps) => {
         setValidateNtfs,
         Phrase.ValidateNtfsDescription,
       )}
-    </div>
+    </SettingsSection>
   );
 };
 

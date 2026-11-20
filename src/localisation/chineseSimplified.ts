@@ -120,7 +120,6 @@ const CHINESE_SIMPLIFIED: Translations = {
   [Phrase.ClassicLogPathLabel]: '怀旧服日志路径',
   [Phrase.RecordClassicEraLabel]: '录制经典旧世服',
   [Phrase.ClassicEraLogPathLabel]: '经典旧世服日志路径',
-  [Phrase.PVESettingsLabel]: 'PvE 设置',
   [Phrase.RecordRaidsLabel]: '录制团队副本',
   [Phrase.MinimumEncounterDurationLabel]: '首领战最短时长 (秒)',
   [Phrase.RaidOverrunLabel]: '团队副本额外录制 (秒)',

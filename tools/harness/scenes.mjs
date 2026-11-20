@@ -533,6 +533,7 @@ export const scenes = [
     shows: 'Settings > Application tab',
     steps: async (t) => {
       await t.nav('General');
+      await t.page.getByRole('tab', { name: 'Application', exact: true }).click();
       await t.settle();
     },
   },
@@ -541,7 +542,7 @@ export const scenes = [
     shows: 'Settings > Game tab',
     continue: true,
     steps: async (t) => {
-      await t.page.getByRole('tab').nth(1).click();
+      await t.page.getByRole('tab', { name: 'Game', exact: true }).click();
       await t.settle();
     },
   },
@@ -550,8 +551,35 @@ export const scenes = [
     shows: 'Settings > Cloud tab (signed in, Send my Logs on)',
     continue: true,
     steps: async (t) => {
-      await t.page.getByRole('tab').nth(2).click();
+      await t.page.getByRole('tab', { name: 'Cloud', exact: true }).click();
       await t.settle();
+    },
+  },
+  {
+    name: 'settings-cloud-lower',
+    shows: 'Settings > Cloud tab scrolled to the bottom (filters, character filter)',
+    continue: true,
+    steps: async (t) => {
+      await t.page.evaluate(() => {
+        document
+          .querySelectorAll('[data-radix-scroll-area-viewport]')
+          .forEach((e) => { e.scrollTop = e.scrollHeight; });
+      });
+      await t.settle(400);
+    },
+  },
+  {
+    name: 'settings-game-lower',
+    shows: 'Settings > Game tab scrolled to the bottom (Mythic+, manual recording)',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('tab', { name: 'Game', exact: true }).click();
+      await t.page.evaluate(() => {
+        document
+          .querySelectorAll('[data-radix-scroll-area-viewport]')
+          .forEach((e) => { e.scrollTop = e.scrollHeight; });
+      });
+      await t.settle(400);
     },
   },
   {
@@ -693,13 +721,33 @@ export const scenes = [
     ['Top logs', 'toplogs'],
     ['General', 'settings'],
     ['Watch live', 'watch-live'],
-  ].map(([label, key]) => ({
-    name: `small-${key}`,
-    shows: `${label} at 1100x700`,
-    viewport: small,
-    steps: async (t) => {
-      await t.nav(label);
-      await t.settle(1200);
+  ].flatMap(([label, key]) => [
+    {
+      name: `small-${key}`,
+      shows: `${label} at 1100x700`,
+      viewport: small,
+      steps: async (t) => {
+        await t.nav(label);
+        await t.settle(1200);
+      },
     },
-  })),
+    // The other two Settings tabs, straight after the first one.
+    ...(key === 'settings'
+      ? [
+          ['Game', 'game'],
+          ['Cloud', 'cloud'],
+        ].map(([tabLabel, tabKey]) => ({
+          name: `small-settings-${tabKey}`,
+          shows: `Settings > ${tabLabel} tab at 1100x700`,
+          viewport: small,
+          continue: true,
+          steps: async (t) => {
+            await t.page
+              .getByRole('tab', { name: tabLabel, exact: true })
+              .click();
+            await t.settle(800);
+          },
+        }))
+      : []),
+  ]),
 ];

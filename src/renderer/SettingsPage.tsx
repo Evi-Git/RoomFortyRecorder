@@ -1,4 +1,4 @@
-import React, { Dispatch, SetStateAction } from 'react';
+import React, { Dispatch, SetStateAction, useState } from 'react';
 import {
   CombatLoggingStatus,
   AppState,
@@ -11,13 +11,7 @@ import GeneralSettings from './GeneralSettings';
 import FlavourSettings from './FlavourSettings';
 import PVESettings from './PVESettings';
 import CloudSettings from './CloudSettings';
-import {
-  Tabs,
-  TabsList,
-  TabsContent,
-  TabsTrigger,
-} from './components/Tabs/Tabs';
-import Separator from './components/Separator/Separator';
+import { PageHeader } from './components/PageHeader/PageHeader';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import LocaleSettings from './LocaleSettings';
 import WindowsSettings from './WindowsSettings';
@@ -34,9 +28,7 @@ interface IProps {
   videoState: RendererVideo[];
 }
 
-const CategoryHeading = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="text-foreground-lighter font-bold">{children}</h2>
-);
+type SettingsTab = 'application' | 'game' | 'pro';
 
 const SettingsPage: React.FC<IProps> = (props: IProps) => {
   const {
@@ -48,134 +40,88 @@ const SettingsPage: React.FC<IProps> = (props: IProps) => {
     combatLoggingStatus,
     videoState,
   } = props;
+  const { language } = appState;
+  const [tab, setTab] = useState<SettingsTab>('application');
 
   return (
-    <div className="w-full h-full bg-background-higher pt-[32px] px-4">
-      <Tabs defaultValue="application" className="w-full">
-        <TabsList>
-          <TabsTrigger value="application">
-            {getLocalePhrase(
-              appState.language,
-              Phrase.SettingsPageApplicationHeader,
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="game">
-            {getLocalePhrase(appState.language, Phrase.SettingsPageGameHeader)}
-          </TabsTrigger>
-          <TabsTrigger value="pro">
-            {getLocalePhrase(appState.language, Phrase.CloudSettingsLabel)}
-          </TabsTrigger>
-        </TabsList>
-        <ScrollArea
-          withScrollIndicators={false}
-          className="h-[calc(100svh-48px)] pb-8"
-        >
-          <TabsContent value="application">
-            <div className="p-4 flex flex-col gap-y-8">
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.GeneralSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <GeneralSettings
-                  recorderStatus={recorderStatus}
-                  appState={appState}
-                />
-              </div>
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.WindowsSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <WindowsSettings
-                  appState={appState}
-                  config={config}
-                  setConfig={setConfig}
-                />
-              </div>
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.LocaleSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <LocaleSettings
-                  config={config}
-                  setConfig={setConfig}
-                  appState={appState}
-                  setAppState={setAppState}
-                />
-              </div>
-            </div>
-          </TabsContent>
+    <div className="w-full h-full bg-background-higher pt-[32px]">
+      <ScrollArea
+        withScrollIndicators={false}
+        className="h-[calc(100svh-32px)]"
+      >
+        <div className="mx-auto flex max-w-[880px] flex-col gap-y-[22px] px-7 py-6 pb-10">
+          <PageHeader<SettingsTab>
+            title={getLocalePhrase(language, Phrase.SettingsHeading)}
+            tabsLabel="Settings sections"
+            tab={tab}
+            onTab={setTab}
+            tabs={[
+              {
+                key: 'application',
+                label: getLocalePhrase(
+                  language,
+                  Phrase.SettingsPageApplicationHeader,
+                ),
+              },
+              {
+                key: 'game',
+                label: getLocalePhrase(language, Phrase.SettingsPageGameHeader),
+              },
+              {
+                key: 'pro',
+                label: getLocalePhrase(language, Phrase.CloudSettingsLabel),
+              },
+            ]}
+          />
 
-          <TabsContent value="game">
-            <div className="p-4 flex flex-col gap-y-8">
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(appState.language, Phrase.GameSettingsLabel)}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <FlavourSettings
-                  recorderStatus={recorderStatus}
-                  config={config}
-                  setConfig={setConfig}
-                  appState={appState}
-                  combatLoggingStatus={combatLoggingStatus}
-                />
-              </div>
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(appState.language, Phrase.PVESettingsLabel)}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <PVESettings appState={appState} />
-              </div>
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.ManualRecordSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <ManualSettings
-                  appState={appState}
-                  config={config}
-                  setConfig={setConfig}
-                />
-              </div>
-            </div>
-          </TabsContent>
-          <TabsContent value="pro">
-            <div className="p-4 flex flex-col gap-y-8">
-              <div>
-                <CategoryHeading>
-                  {getLocalePhrase(
-                    appState.language,
-                    Phrase.CloudSettingsLabel,
-                  )}
-                </CategoryHeading>
-                <Separator className="mt-2 mb-4" />
-                <CloudSettings
-                  appState={appState}
-                  config={config}
-                  setConfig={setConfig}
-                  videoState={videoState}
-                />
-              </div>
-            </div>
-          </TabsContent>
-        </ScrollArea>
-      </Tabs>
+          {tab === 'application' && (
+            <>
+              <GeneralSettings
+                recorderStatus={recorderStatus}
+                appState={appState}
+              />
+              <WindowsSettings
+                appState={appState}
+                config={config}
+                setConfig={setConfig}
+              />
+              <LocaleSettings
+                config={config}
+                setConfig={setConfig}
+                appState={appState}
+                setAppState={setAppState}
+              />
+            </>
+          )}
+
+          {tab === 'game' && (
+            <>
+              <FlavourSettings
+                recorderStatus={recorderStatus}
+                config={config}
+                setConfig={setConfig}
+                appState={appState}
+                combatLoggingStatus={combatLoggingStatus}
+              />
+              <PVESettings appState={appState} />
+              <ManualSettings
+                appState={appState}
+                config={config}
+                setConfig={setConfig}
+              />
+            </>
+          )}
+
+          {tab === 'pro' && (
+            <CloudSettings
+              appState={appState}
+              config={config}
+              setConfig={setConfig}
+              videoState={videoState}
+            />
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 };

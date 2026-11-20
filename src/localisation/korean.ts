@@ -120,7 +120,6 @@ const KOREAN: Translations = {
   [Phrase.ClassicLogPathLabel]: '클래식 로그 경로',
   [Phrase.RecordClassicEraLabel]: '클래식 시대 기록',
   [Phrase.ClassicEraLogPathLabel]: '클래식 시대 로그 경로',
-  [Phrase.PVESettingsLabel]: 'PvE 설정',
   [Phrase.RecordRaidsLabel]: '레이드 기록',
   [Phrase.MinimumEncounterDurationLabel]: '최소 전투 시간 (초)',
   [Phrase.RaidOverrunLabel]: '레이드 오버런 (초)',

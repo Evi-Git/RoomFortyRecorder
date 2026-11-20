@@ -10,11 +10,14 @@ import { AppState } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues } from './useSettings';
 import Switch from './components/Switch/Switch';
-import Label from './components/Label/Label';
 import { Phrase } from 'localisation/phrases';
-import { Tooltip } from './components/Tooltip/Tooltip';
-import { Info } from 'lucide-react';
 import { Input } from './components/Input/Input';
+import {
+  SettingRow,
+  useScopedIds,
+  SettingsSection,
+  settingsFieldClass,
+} from './components/SettingsCard/SettingsCard';
 import {
   getKeyModifiersString,
   getKeyPressEventString,
@@ -30,6 +33,7 @@ interface IProps {
 }
 
 const ManualSettings = (props: IProps) => {
+  const sid = useScopedIds();
   const { appState, config, setConfig } = props;
   const initialRender = useRef(true);
   const manualHotKeyInputRef = useRef<HTMLInputElement>(null);
@@ -94,40 +98,27 @@ const ManualSettings = (props: IProps) => {
     config.manualRecordSoundAlert,
   ]);
 
-  const getSwitch = (
-    preference: keyof ConfigurationSchema,
-    changeFn: (checked: boolean) => void,
-  ) => (
-    <Switch
-      checked={Boolean(config[preference])}
-      name={preference}
-      onCheckedChange={changeFn}
-    />
-  );
-
   const getSwitchForm = (
     preference: keyof ConfigurationSchema,
     label: Phrase,
     changeFn: (checked: boolean) => void,
   ) => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label htmlFor={preference} className="flex items-center">
-          {getLocalePhrase(appState.language, label)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema[preference].description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          {getSwitch(preference, changeFn)}
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, label)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema[preference].description,
+        )}
+        htmlFor={sid(preference)}
+      >
+        <Switch
+          id={sid(preference)}
+          checked={Boolean(config[preference])}
+          name={preference}
+          onCheckedChange={changeFn}
+        />
+      </SettingRow>
     );
   };
 
@@ -166,33 +157,38 @@ const ManualSettings = (props: IProps) => {
 
   const getManualHotKeySelect = () => {
     return (
-      <div className="flex flex-col">
-        <Label htmlFor="pttKey" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.ManualRecordHotKeyLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              Phrase.ManualRecordHotKeyDescription,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(
+          appState.language,
+          Phrase.ManualRecordHotKeyLabel,
+        )}
+        help={getLocalePhrase(
+          appState.language,
+          Phrase.ManualRecordHotKeyDescription,
+        )}
+        labelId={sid('manualHotKeyInput-label')}
+      >
         <Input
+          aria-labelledby={sid('manualHotKeyInput-label')}
           ref={manualHotKeyInputRef}
           name="manualHotKeyInput"
           value={getHotkeyString()}
           onFocus={() => setManualHotKeyFieldFocused(true)}
           onBlur={() => setManualHotKeyFieldFocused(false)}
           readOnly
+          className={`${settingsFieldClass} w-60`}
         />
-      </div>
+      </SettingRow>
     );
   };
 
   return (
-    <div className="flex flex-row flex-wrap gap-x-4">
+    <SettingsSection
+      title={getLocalePhrase(
+        appState.language,
+        Phrase.ManualRecordSettingsLabel,
+      )}
+    >
       {getSwitchForm(
         'manualRecord',
         Phrase.ManualRecordSwitchLabel,
@@ -207,7 +203,7 @@ const ManualSettings = (props: IProps) => {
         )}
 
       {config.manualRecord && getManualHotKeySelect()}
-    </div>
+    </SettingsSection>
   );
 };
 
