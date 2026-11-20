@@ -1,12 +1,6 @@
 import { AppState, RendererVideo } from 'main/types';
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from './components/ToggleGroup/ToggleGroup';
-import Label from './components/Label/Label';
+import { Segmented } from './logs/Segmented';
 import { LayoutGrid, TvMinimal } from 'lucide-react';
-import { getLocalePhrase } from 'localisation/translations';
-import { Phrase } from 'localisation/phrases';
 
 interface IProps {
   appState: AppState;
@@ -17,7 +11,7 @@ interface IProps {
 
 const MultiPovPlaybackToggles = (props: IProps) => {
   const { appState, setAppState, allowMultiPlayer, opts } = props;
-  const { selectedVideos, multiPlayerMode, language } = appState;
+  const { selectedVideos, multiPlayerMode } = appState;
 
   const onValueChange = (value: string) => {
     let s = [...selectedVideos];
@@ -42,26 +36,27 @@ const MultiPovPlaybackToggles = (props: IProps) => {
   };
 
   return (
-    <div className="flex items-center gap-x-5">
-      <div>
-        <Label>{getLocalePhrase(language, Phrase.PlayerModeLabel)}</Label>
-        <ToggleGroup
-          type="single"
-          value={multiPlayerMode.toString()}
-          size="sm"
-          onValueChange={onValueChange}
-          variant="outline"
-          className="border border-background"
-        >
-          <ToggleGroupItem value="false">
-            <TvMinimal size={18} />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="true" disabled={!allowMultiPlayer}>
-            <LayoutGrid size={18} />
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-    </div>
+    <Segmented
+      tall
+      label="Player mode"
+      value={multiPlayerMode ? 'multi' : 'single'}
+      onChange={(key) => onValueChange(key === 'multi' ? 'true' : 'false')}
+      items={[
+        {
+          key: 'single',
+          label: <TvMinimal size={16} />,
+          title: 'One viewpoint at a time',
+        },
+        {
+          key: 'multi',
+          label: <LayoutGrid size={16} />,
+          title: allowMultiPlayer
+            ? 'Several viewpoints side by side'
+            : 'Needs a recording with more than one viewpoint',
+          disabled: !allowMultiPlayer,
+        },
+      ]}
+    />
   );
 };
 

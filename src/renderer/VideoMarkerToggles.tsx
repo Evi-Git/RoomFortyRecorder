@@ -2,29 +2,23 @@ import { VideoCategory } from 'types/VideoCategory';
 import { useEffect, useRef } from 'react';
 import { ConfigurationSchema } from 'config/configSchema';
 import { AppState, DeathMarkers } from 'main/types';
-import { getLocalePhrase } from 'localisation/translations';
-import { Phrase } from 'localisation/phrases';
 import { setConfigValues } from './useSettings';
 import {
   convertNumToDeathMarkers,
   convertDeathMarkersToNum,
 } from './rendererutils';
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from './components/ToggleGroup/ToggleGroup';
-import Label from './components/Label/Label';
+import { Segmented } from './logs/Segmented';
 
 interface IProps {
   config: ConfigurationSchema;
   setConfig: React.Dispatch<React.SetStateAction<ConfigurationSchema>>;
   category: VideoCategory;
-  appState: AppState;
+  appState?: AppState;
 }
 
 const VideoMarkerToggles = (props: IProps) => {
   const initialRender = useRef(true);
-  const { category, config, setConfig, appState } = props;
+  const { category, config, setConfig } = props;
   const deathMarkers = convertNumToDeathMarkers(config.deathMarkers);
 
   useEffect(() => {
@@ -61,62 +55,60 @@ const VideoMarkerToggles = (props: IProps) => {
 
   const renderDeathSelection = () => {
     return (
-      <div>
-        <Label>
-          {getLocalePhrase(appState.language, Phrase.ShowDeathsLabel)}
-        </Label>
-        <ToggleGroup
-          type="single"
-          value={deathMarkers}
-          size="sm"
-          onValueChange={setDeaths}
-          variant="outline"
-          className="border border-background"
-        >
-          <ToggleGroupItem value={DeathMarkers.ALL}>
-            {getLocalePhrase(appState.language, Phrase.All)}
-          </ToggleGroupItem>
-          <ToggleGroupItem value={DeathMarkers.OWN}>
-            {getLocalePhrase(appState.language, Phrase.Own)}
-          </ToggleGroupItem>
-          <ToggleGroupItem value={DeathMarkers.NONE}>
-            {getLocalePhrase(appState.language, Phrase.None)}
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      <Segmented
+        tall
+        label="Show deaths"
+        value={deathMarkers}
+        onChange={setDeaths}
+        items={[
+          {
+            key: DeathMarkers.ALL,
+            label: 'All deaths',
+            title: 'Mark every death on the timeline',
+          },
+          {
+            key: DeathMarkers.OWN,
+            label: 'Mine',
+            title: 'Mark only your own deaths on the timeline',
+          },
+          {
+            key: DeathMarkers.NONE,
+            label: 'None',
+            title: 'No death marks on the timeline',
+          },
+        ]}
+      />
     );
   };
 
   const renderEncounterSelection = () => {
     return (
-      <div>
-        <Label>
-          {getLocalePhrase(appState.language, Phrase.ShowEncountersLabel)}
-        </Label>
-        <ToggleGroup
-          type="single"
-          value={config.encounterMarkers.toString()}
-          size="sm"
-          variant="outline"
-          onValueChange={setEncounterMarkers}
-          className="border border-background"
-        >
-          <ToggleGroupItem value="true">
-            {getLocalePhrase(appState.language, Phrase.On)}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="false">
-            {getLocalePhrase(appState.language, Phrase.Off)}
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
+      <Segmented
+        tall
+        label="Show encounters"
+        value={config.encounterMarkers ? 'on' : 'off'}
+        onChange={(key) => setEncounterMarkers(key === 'on' ? 'true' : 'false')}
+        items={[
+          {
+            key: 'on',
+            label: 'Encounters on',
+            title: 'Mark boss fights on the timeline',
+          },
+          {
+            key: 'off',
+            label: 'Off',
+            title: 'No boss fight marks on the timeline',
+          },
+        ]}
+      />
     );
   };
 
   return (
-    <div className="flex items-center gap-x-2">
+    <>
       {renderDeathSelection()}
       {category === VideoCategory.MythicPlus && renderEncounterSelection()}
-    </div>
+    </>
   );
 };
 

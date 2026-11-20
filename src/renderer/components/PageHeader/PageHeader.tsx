@@ -104,6 +104,8 @@ type PageHeaderProps<K extends string> = {
   onTab?: (key: K) => void;
   /** Screen-reader name of the tabs when `title` isn't a string. */
   tabsLabel?: string;
+  /** A muted line beside the title, e.g. "7 recordings · 18 of 50 GB". */
+  subtitle?: React.ReactNode;
   /** Right-hand side: buttons, pickers. */
   actions?: React.ReactNode;
   className?: string;
@@ -115,6 +117,7 @@ export function PageHeader<K extends string>({
   tab,
   onTab,
   tabsLabel,
+  subtitle,
   actions,
   className,
 }: PageHeaderProps<K>) {
@@ -129,6 +132,9 @@ export function PageHeader<K extends string>({
         <h1 className="pb-2.5 font-display text-[26px] font-bold leading-tight text-foreground-lighter">
           {title}
         </h1>
+        {subtitle && (
+          <p className="m-0 pb-3 text-[13px] text-foreground">{subtitle}</p>
+        )}
         {tabs && tab !== undefined && onTab && (
           <UnderlineTabs
             items={tabs}

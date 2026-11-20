@@ -2,7 +2,8 @@ import React from 'react';
 
 /**
  * [RoomFortyRecorder] Design A segmented control: one bordered group, the
- * active part filled brass with walnut text. 34px tall.
+ * active part filled brass with walnut text. 34px tall (36px with `tall`,
+ * to sit level with 36px inputs).
  */
 export type SegmentItem<K extends string> = {
   key: K;
@@ -16,18 +17,22 @@ export function Segmented<K extends string>({
   value,
   onChange,
   label,
+  tall = false,
 }: {
   items: SegmentItem<K>[];
   value: K;
   onChange: (key: K) => void;
   /** For screen readers, e.g. "Friendlies or enemies". */
   label: string;
+  tall?: boolean;
 }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className="inline-flex h-[34px] shrink-0 overflow-hidden rounded-lg border border-panel-line"
+      className={`inline-flex ${
+        tall ? 'h-9' : 'h-[34px]'
+      } shrink-0 overflow-hidden rounded-lg border border-panel-line`}
     >
       {items.map((item) => {
         const on = item.key === value;

@@ -1,13 +1,6 @@
 import { AppState, RendererVideo, StorageFilter } from 'main/types';
 import { Dispatch, SetStateAction } from 'react';
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from './components/ToggleGroup/ToggleGroup';
-import CloudIcon from '@mui/icons-material/Cloud';
-import SaveIcon from '@mui/icons-material/Save';
-import { Workflow } from 'lucide-react';
-import { Tooltip } from './components/Tooltip/Tooltip';
+import { Segmented } from './logs/Segmented';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 
@@ -37,41 +30,31 @@ const StorageFilterToggle = (props: IProps) => {
   };
 
   return (
-    <ToggleGroup
-      type="single"
+    <Segmented
+      tall
+      label="Storage filter"
       value={storageFilter}
-      size="sm"
-      onValueChange={setStorageFilter}
-      variant="outline"
-      className="border border-background"
-    >
-      <ToggleGroupItem value={StorageFilter.DISK} disabled={!hasDisk}>
-        <Tooltip
-          content={getLocalePhrase(language, Phrase.ShowDiskOnlyTooltip)}
-          onClick={() => {}}
-        >
-          <SaveIcon sx={{ height: 18, width: 18 }} />
-        </Tooltip>
-      </ToggleGroupItem>
-
-      <ToggleGroupItem value={StorageFilter.CLOUD} disabled={!hasCloud}>
-        <Tooltip
-          content={getLocalePhrase(language, Phrase.ShowCloudOnlyTooltip)}
-          onClick={() => {}}
-        >
-          <CloudIcon sx={{ height: 18, width: 18 }} />
-        </Tooltip>
-      </ToggleGroupItem>
-
-      <ToggleGroupItem value={StorageFilter.BOTH}>
-        <Tooltip
-          content={getLocalePhrase(language, Phrase.ShowBothTooltip)}
-          onClick={() => {}}
-        >
-          <Workflow size={18} />
-        </Tooltip>
-      </ToggleGroupItem>
-    </ToggleGroup>
+      onChange={setStorageFilter}
+      items={[
+        {
+          key: StorageFilter.BOTH,
+          label: 'All',
+          title: getLocalePhrase(language, Phrase.ShowBothTooltip),
+        },
+        {
+          key: StorageFilter.DISK,
+          label: 'This PC',
+          title: getLocalePhrase(language, Phrase.ShowDiskOnlyTooltip),
+          disabled: !hasDisk,
+        },
+        {
+          key: StorageFilter.CLOUD,
+          label: 'Cloud',
+          title: getLocalePhrase(language, Phrase.ShowCloudOnlyTooltip),
+          disabled: !hasCloud,
+        },
+      ]}
+    />
   );
 };
 

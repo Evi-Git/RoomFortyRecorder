@@ -3,7 +3,6 @@ import { KeyboardEventHandler, useEffect, useRef, useState } from 'react';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import VideoFilter from './VideoFilter';
-import Label from './components/Label/Label';
 import {
   InputRendererProps,
   OptionRendererProps,
@@ -288,11 +287,12 @@ const SearchBar = (props: IProps) => {
 
     return (
       <div className="flex items-center mx-3">
-        <Search size={15} />
+        <Search size={15} className="text-foreground" />
         <input
           className={classNames.input}
           style={{ width: inputWidth }}
           {...inputProps}
+          aria-label="Search boss, player or note"
           onKeyDown={onKeyDown}
         />
       </div>
@@ -300,19 +300,19 @@ const SearchBar = (props: IProps) => {
   };
 
   const classNames = {
-    root: 'relative flex items-center cursor-text w-full h-[38px] rounded-md border border-background bg-card text-sm text-foreground-lighter',
+    root: 'relative flex items-center cursor-text w-full h-9 rounded-lg border border-panel-line bg-panel text-sm text-foreground-lighter focus-within:border-brand/60',
     rootIsActive: 'is-active',
     rootIsDisabled: 'is-disabled',
     rootIsInvalid: 'is-invalid',
     label: 'react-tags__label',
     tagList: 'flex items-center',
     tagListItem: 'react-tags__list-item inline-flex items-center',
-    tag: 'h-8 p-1 px-2 mx-1 rounded-md text-white text-sm',
+    tag: 'h-7 p-1 px-2 mx-1 rounded-md text-white text-sm',
     tagName: 'react-tags__tag-name',
     comboBox: 'react-tags__combobox',
     input: 'react-tags__combobox-input mx-2 placeholder:text-foreground',
     listBox:
-      'react-tags__listbox  bg-card rounded-md border border-background scrollbar-thin',
+      'react-tags__listbox  bg-panel-raised rounded-lg border border-panel-line scrollbar-thin',
     option: 'react-tags__listbox-option',
     optionIsActive: 'is-active',
     highlight: 'react-tags__listbox-option-highlight',
@@ -320,9 +320,6 @@ const SearchBar = (props: IProps) => {
 
   return (
     <div onKeyDown={(event) => event.stopPropagation()}>
-      <Label htmlFor="search-bar">
-        {getLocalePhrase(language, Phrase.SearchLabel)}
-      </Label>
       <ReactTags
         ref={api}
         allowResize={false}
