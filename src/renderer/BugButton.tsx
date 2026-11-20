@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useState } from 'react';
+import { Dispatch, SetStateAction, useRef, useState } from 'react';
 import { Bug } from 'lucide-react';
 import { AppState, Pages } from 'main/types';
 import { Button } from './components/Button/Button';
@@ -44,6 +44,8 @@ export default function BugButton({
   setPreviewEnabled?: Dispatch<SetStateAction<boolean>>;
 }) {
   const [open, setOpen] = useState(false);
+  // The preview setting from before the dialog opened (Scene may have it off).
+  const previewBefore = useRef(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(
@@ -82,7 +84,14 @@ export default function BugButton({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        setPreviewEnabled?.(!next);
+        if (next) {
+          setPreviewEnabled?.((prev) => {
+            previewBefore.current = prev;
+            return false;
+          });
+        } else {
+          setPreviewEnabled?.(previewBefore.current);
+        }
         if (next) setStatus(null);
       }}
     >

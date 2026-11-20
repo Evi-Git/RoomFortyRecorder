@@ -277,6 +277,9 @@ const AdminPage = () => {
   const [error, setError] = React.useState('');
   // What the failed step was, shown before the friendly reason.
   const [errorWhat, setErrorWhat] = React.useState("Couldn't load the page");
+  // What "Try again" runs: the step that failed, not always a reload (a
+  // reload would drop unsaved permission edits).
+  const [retry, setRetry] = React.useState<(() => void) | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState('');
   const [viewRole, setViewRole] = React.useState('');
@@ -288,6 +291,7 @@ const AdminPage = () => {
       if (cancelled) return;
       if (!response.ok) {
         setErrorWhat("Couldn't load the permissions");
+        setRetry(() => () => setTick((t) => t + 1));
         setError(response.error);
         return;
       }
@@ -346,6 +350,7 @@ const AdminPage = () => {
     setBusy(false);
     if (!response.ok) {
       setErrorWhat("Couldn't save the permissions");
+      setRetry(() => save);
       setError(response.error);
       return;
     }
@@ -362,6 +367,7 @@ const AdminPage = () => {
     setBusy(false);
     if (!response.ok) {
       setErrorWhat("Couldn't reset the permissions");
+      setRetry(() => reset);
       setError(response.error);
       return;
     }
@@ -374,8 +380,24 @@ const AdminPage = () => {
     const response = await setViewAs(role);
     if (!response.ok) {
       setErrorWhat("Couldn't switch the view");
+      setRetry(() => () => startViewAs(role));
       setError(response.error);
     }
+  };
+
+  // Re-reads the Discord roles only: grants, columns and unsaved edits stay.
+  const refreshRoles = async () => {
+    const response = await call<Table>({ action: 'permissions' });
+    if (!response.ok) return;
+    setTable((prev) =>
+      prev
+        ? {
+            ...prev,
+            roles: response.data.roles,
+            roleError: response.data.roleError,
+          }
+        : prev,
+    );
   };
 
   if (permissions && !permissions.owner) {
@@ -412,8 +434,9 @@ const AdminPage = () => {
               error={error}
               what={errorWhat}
               onRetry={() => {
+                const again = retry;
                 setError('');
-                setTick((t) => t + 1);
+                again?.();
               }}
             />
           )}
@@ -503,7 +526,10 @@ const AdminPage = () => {
                 <ErrorState
                   error={table.roleError}
                   what="Couldn't load the Discord roles (names show as saved)"
-                  onRetry={() => setTick((t) => t + 1)}
+                  message="The guild server couldn't reach Discord. Try again in a minute."
+                  onRetry={() => {
+                    refreshRoles();
+                  }}
                   compact
                 />
               )}

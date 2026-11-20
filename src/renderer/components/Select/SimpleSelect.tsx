@@ -24,6 +24,8 @@ import { cn } from '../utils';
  */
 
 export type SelectOption = {
+  /** React key when values can repeat across rows (defaults to the value). */
+  key?: string;
   value: string;
   label: React.ReactNode;
   disabled?: boolean;
@@ -68,7 +70,11 @@ export function SimpleSelect({
     known && (value !== '' || hasEmptyOption) ? toItem(value) : '';
 
   const item = (o: SelectOption) => (
-    <SelectItem key={o.value} value={toItem(o.value)} disabled={o.disabled}>
+    <SelectItem
+      key={o.key ?? o.value}
+      value={toItem(o.value)}
+      disabled={o.disabled}
+    >
       {o.label}
     </SelectItem>
   );

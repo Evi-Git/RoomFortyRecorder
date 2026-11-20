@@ -298,7 +298,7 @@ const TimeTrial = ({
           Our pull
           <SimpleSelect
             className={field}
-            value={pullId}
+            value={pull?.id ?? pulls?.[0]?.id ?? pullId}
             onChange={setPullId}
             disabled={!pulls?.length}
             options={(pulls ?? []).map((p) => ({
@@ -315,6 +315,7 @@ const TimeTrial = ({
               value={me?.name ?? ''}
               onChange={pickCharacter}
               options={sorted.map((r) => ({
+                key: r.guid,
                 value: r.name,
                 label: `${r.name} (${specTitle(r.specId)})`,
               }))}

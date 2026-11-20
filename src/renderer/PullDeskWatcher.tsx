@@ -11,6 +11,8 @@ import { Input } from './components/Input/Input';
  * kill. Frozen (no automatic crawls) until an officer unfreezes it.
  */
 
+const REGIONS = ['us', 'eu', 'kr', 'tw'];
+
 const ipc = window.electron.ipcRenderer;
 
 type Response<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -259,9 +261,13 @@ export const WatcherSettings = ({
               <SimpleSelect
                 className="h-8 w-20 min-w-0 text-sm"
                 aria-label="Region"
-                value={g.region}
+                value={
+                  REGIONS.includes(g.region.toLowerCase())
+                    ? g.region.toLowerCase()
+                    : REGIONS[0]
+                }
                 onChange={(region) => update(i, 'region', region)}
-                options={['us', 'eu', 'kr', 'tw'].map((r) => ({
+                options={REGIONS.map((r) => ({
                   value: r,
                   label: r.toUpperCase(),
                 }))}
