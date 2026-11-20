@@ -5,8 +5,8 @@ import { nightHeading, nightKind } from './trendsLabel';
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
  * or damage taken night by night on one boss, from the
- * stored meters. Only kills count (the first kill, then every reclear), so
- * weeks compare like with like.
+ * stored meters. Progression nights count every pull up to the first kill;
+ * after that only kills do, so reclear weeks compare like with like.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -574,10 +574,11 @@ export const LogsTrends = () => {
             </table>
           </div>
           <p className="text-xs text-foreground m-0">
-            Only kills count: the first kill, then every reclear, so weeks
-            compare like with like. {meta.rate} over the kills&apos; fight time.
-            Shading: each raider against their own best night. Change: their
-            last night against their first
+            Progression nights count every pull up to the first kill; after that
+            only kills count, so reclear weeks compare like with like.{' '}
+            {meta.rate} over the fight time counted. Shading: each raider
+            against their own best night. Change: their last night against their
+            first
             {kind === 'taken' ? ' (less damage taken is green)' : ''}.
           </p>
         </>

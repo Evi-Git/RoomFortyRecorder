@@ -20,7 +20,21 @@ const stamp = (t: number) => {
 };
 const src = `${ME},"Azraelus-Zul'jin-US",0x514,0x80000000`;
 
-const pull = () => {
+const DEFAULT_AURAS: [number, string, number, string][] = [
+  [0, 'APPLIED', 77764, 'Stampeding Roar'],
+  [5, 'APPLIED', 77761, 'Stampeding Roar'],
+  [10, 'REMOVED', 77764, 'Stampeding Roar'],
+  [15, 'REMOVED', 77761, 'Stampeding Roar'],
+  [20, 'APPLIED', 77764, 'Stampeding Roar'],
+  [25, 'REMOVED', 77764, 'Stampeding Roar'],
+  [30, 'APPLIED', 1126, 'Mark of the Wild'],
+  [40, 'REMOVED', 1126, 'Mark of the Wild'],
+];
+
+const pull = (
+  auras: [number, string, number, string][] = DEFAULT_AURAS,
+  id = 'x',
+) => {
   const combat = fs
     .readFileSync(
       path.join(__dirname, '../../../tests/logs/retail/kithix_calibration.txt'),
@@ -40,21 +54,12 @@ const pull = () => {
     lines.push(
       `${stamp(t)}SPELL_AURA_${type},${src},${src},${id},"${name}",0x8,BUFF`,
     );
-  // Three IDs called Stampeding Roar: 0-10 and 5-15 overlap, 20-25 alone.
-  aura(0, 'APPLIED', 77764, 'Stampeding Roar');
-  aura(5, 'APPLIED', 77761, 'Stampeding Roar');
-  aura(10, 'REMOVED', 77764, 'Stampeding Roar');
-  aura(15, 'REMOVED', 77761, 'Stampeding Roar');
-  aura(20, 'APPLIED', 77764, 'Stampeding Roar');
-  aura(25, 'REMOVED', 77764, 'Stampeding Roar');
-  // A buff with one ID, 30-40.
-  aura(30, 'APPLIED', 1126, 'Mark of the Wild');
-  aura(40, 'REMOVED', 1126, 'Mark of the Wild');
+  auras.forEach(([t, type, spell, name]) => aura(t, type, spell, name));
   lines.push(`${stamp(120)}ENCOUNTER_END,3513,"Kith'ix",16,22,0,120000`);
   const b = new StoreBuilder();
   lines.forEach((l) => b.feed(l));
   return b.finish({
-    id: 'x',
+    id,
     label: 'Pull 1',
     encounterId: 3513,
     difficultyId: 16,
@@ -100,5 +105,47 @@ describe('Buffs rows', () => {
     expect(d.targets).toHaveLength(1);
     expect(d.targets[0].count).toBe(3);
     expect(d.targets[0].uptime).toBeCloseTo(20);
+  });
+
+  describe('with several pulls', () => {
+    const one = pull([
+      [0, 'APPLIED', 77764, 'Stampeding Roar'],
+      [10, 'REMOVED', 77764, 'Stampeding Roar'],
+      [20, 'APPLIED', 1126, ''],
+      [30, 'REMOVED', 1126, ''],
+    ]);
+    const two = pull(
+      [
+        [0, 'APPLIED', 77761, 'Stampeding Roar'],
+        [10, 'REMOVED', 77761, 'Stampeding Roar'],
+        [20, 'APPLIED', 1126, 'Mark of the Wild'],
+        [30, 'REMOVED', 1126, 'Mark of the Wild'],
+      ],
+      'y',
+    );
+    const both = makeCtx([one, two], DEFAULT_FILTERS);
+
+    test('a buff unnamed in one pull joins its named row; keys are unique', () => {
+      const rows = auraRows(both, { debuffs: false, who: null });
+      const keys = rows.map((r) => r.key);
+      expect(new Set(keys).size).toBe(keys.length);
+      const mark = rows.filter((r) => r.ids.includes(1126));
+      expect(mark).toHaveLength(1);
+      // 2 from the pulls' own lines, 2 worn from before each pull (the
+      // fixture's COMBATANT_INFO lists 1126 with no name).
+      expect([mark[0].name, mark[0].count]).toEqual(['Mark of the Wild', 4]);
+    });
+
+    test('opening a row keeps a pull that only has another ID of the name', () => {
+      const rows = auraRows(both, { debuffs: false, who: null });
+      const roar = rows.find((r) => r.name === 'Stampeding Roar')!;
+      expect(roar.count).toBe(2);
+      // Whichever ID the row stands for, both pulls are in the detail.
+      [77764, 77761].forEach((id) => {
+        const d = auraDetail(both, id, { debuffs: false, who: null });
+        expect(d.targets[0].count).toBe(2);
+        expect(d.targets[0].uptime).toBeCloseTo(20);
+      });
+    });
   });
 });

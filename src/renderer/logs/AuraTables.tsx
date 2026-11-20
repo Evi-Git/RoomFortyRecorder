@@ -154,7 +154,7 @@ const Section = ({
           <tbody>
             {shown.map((r) => (
               <tr
-                key={r.spellId}
+                key={r.key}
                 className="border-b border-card/40 hover:bg-card/30"
               >
                 <td className={`${td} text-foreground-lighter truncate`}>
@@ -265,7 +265,7 @@ const AuraTables = ({
     () =>
       new Map(
         (who ? auraRows(ctx, { debuffs, who: null }) : rows).map((r) => [
-          r.spellId,
+          r.key,
           !r.name && CONSUMABLE.test(names.get(r.spellId) ?? '')
             ? 'consumable'
             : r.category,
@@ -310,7 +310,7 @@ const AuraTables = ({
         ? r.category
         : 'other'
       : sectionOf(
-          { ...r, category: raidCategory.get(r.spellId) ?? r.category },
+          { ...r, category: raidCategory.get(r.key) ?? r.category },
           texts.get(r.spellId) ?? '',
         );
   // The aura opened up (per tab and side).
