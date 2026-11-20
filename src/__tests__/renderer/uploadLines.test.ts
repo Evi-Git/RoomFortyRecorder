@@ -14,7 +14,9 @@ test('every state has a line, and the tone fits', () => {
   const tones = (
     [
       'waiting',
+      'queued',
       'uploading',
+      'retrying',
       'sent',
       'otherRaider',
       'undecided',
@@ -24,6 +26,8 @@ test('every state has a line, and the tone fits', () => {
     ] as const
   ).map((state) => describeUpload({ ...base, state }).tone);
   expect(tones).toEqual([
+    'busy',
+    'warn',
     'busy',
     'busy',
     'good',
@@ -56,4 +60,19 @@ test('backfill line', () => {
   expect(describeBackfill({ at, uploaded: 0, files: 1 })).toContain(
     'nothing was missing',
   );
+});
+
+test('the full log sub-state is told honestly', () => {
+  expect(describeUpload({ ...base, full: 'sending' }).text).toContain(
+    'Sending the full log',
+  );
+  const failed = describeUpload({ ...base, full: 'failed' });
+  expect(failed.tone).toBe('warn');
+  expect(failed.text).toContain("full log wasn't sent");
+  expect(describeUpload({ ...base, full: 'sent' }).text).toBe(
+    describeUpload({ ...base, full: 'none' }).text,
+  );
+  expect(
+    describeUpload({ ...base, state: 'retrying', attempt: 2 }).text,
+  ).toContain('try 3');
 });

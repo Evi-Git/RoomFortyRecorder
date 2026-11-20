@@ -9,28 +9,43 @@ import PullLogCapture, {
 } from 'parsing/PullLogCapture';
 import { leadingFields } from 'parsing/PullLogFilter';
 import CloudClient from 'storage/CloudClient';
+import { sendWithRetry } from './pullUploadClient';
 
-/** Sends every line of the pull (gzipped) for the Logs page. */
+export type FullLogResult = 'sent' | 'failed' | 'none';
+
+/**
+ * Sends every line of the pull (gzipped) for the Logs page, retrying network
+ * trouble and 5xx on the pull upload schedule. 'none' when the pull has no
+ * full log (it got too big); 'failed' when every try failed.
+ */
 export const uploadFullLog = async (
   client: CloudClient,
   pullId: string,
   pull: CapturedPull,
-) => {
+  // Lets the caller count the request as in flight (see PullDesk).
+  track: <T>(request: () => Promise<T>) => Promise<T> = (request) => request(),
+): Promise<FullLogResult> => {
   const full = await pull.full;
-  if (!full) return;
+  if (!full) return 'none';
   console.info(
     `[PullBackfill] Sending pull ${pullId}'s full log:`,
     `${(full.length / 1e6).toFixed(1)} MB gzipped`,
   );
   try {
-    await client.pullDeskRequest(
-      'put',
-      `/pulls/${encodeURIComponent(pullId)}/full`,
-      full,
-      { contentType: 'application/gzip', timeout: 600000 },
+    await sendWithRetry(client, `Full log ${pullId}`, () =>
+      track(() =>
+        client.pullDeskRequest(
+          'put',
+          `/pulls/${encodeURIComponent(pullId)}/full`,
+          full,
+          { contentType: 'application/gzip', timeout: 600000 },
+        ),
+      ),
     );
+    return 'sent';
   } catch (error) {
     console.warn('[PullBackfill] Full log upload failed', String(error));
+    return 'failed';
   }
 };
 
@@ -307,8 +322,11 @@ export default class PullBackfill {
         body,
         { contentType: 'application/gzip', timeout: 180000 },
       );
-      await uploadFullLog(client, claim.pullId, pull);
+      const full = await uploadFullLog(client, claim.pullId, pull);
       this.status.uploaded += 1;
+      // The report is in, but the full log isn't: count it as failed so the
+      // automatic check looks at this file again instead of marking it done.
+      if (full === 'failed') this.status.failed += 1;
     } catch (error) {
       console.warn('[PullBackfill] Pull failed', String(error));
       this.status.failed += 1;

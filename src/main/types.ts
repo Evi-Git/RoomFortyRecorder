@@ -808,8 +808,10 @@ export {
 export type PullUploadState = {
   state:
     | 'waiting' // asking the server which raider's log it wants
+    | 'queued' // the guild server is unreachable; sent when it is back
     | 'uploading'
-    | 'sent'
+    | 'retrying' // a send failed; trying again shortly
+    | 'sent' // the report (filtered log) is in; see `full` for the rest
     | 'otherRaider' // another raider's fuller log was picked
     | 'undecided' // the server was still collecting; backfill will check
     | 'skipped' // a difficulty the guild doesn't track
@@ -821,4 +823,10 @@ export type PullUploadState = {
   /** When this state was reached, epoch ms. */
   at: number;
   error?: string;
+  /** When the pull started (combat log time): tells newer from older pulls. */
+  startedAt?: number;
+  /** Retry number, while `retrying`. */
+  attempt?: number;
+  /** The full combat log, once the report is in. */
+  full?: 'sending' | 'sent' | 'failed' | 'none';
 };

@@ -16,9 +16,31 @@ export const describeUpload = (u: PullUploadState): UploadLine => {
   switch (u.state) {
     case 'waiting':
       return { tone: 'busy', text: `${what}: asking the guild server…` };
+    case 'queued':
+      return {
+        tone: 'warn',
+        text: `${when}: waiting for the guild server. It will be sent when it's back.`,
+      };
     case 'uploading':
       return { tone: 'busy', text: `${what}: sending your log…` };
+    case 'retrying':
+      return {
+        tone: 'busy',
+        text: `${what}: couldn't send yet, trying again${u.attempt ? ` (try ${u.attempt + 1})` : ''}…`,
+      };
     case 'sent':
+      if (u.full === 'failed') {
+        return {
+          tone: 'warn',
+          text: `${when}: your log was used. The full log wasn't sent; it's tried again automatically later.`,
+        };
+      }
+      if (u.full === 'sending') {
+        return {
+          tone: 'good',
+          text: `${when}: your log was used. Sending the full log…`,
+        };
+      }
       return { tone: 'good', text: `${when}: your log was used.` };
     case 'otherRaider':
       return { tone: 'quiet', text: `${when}: another raider's log was used.` };

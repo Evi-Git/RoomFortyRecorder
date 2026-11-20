@@ -209,6 +209,9 @@ export default class CloudClient implements StorageClient {
   /** The one timer that retries an offline check. Always cleared before set. */
   private retryTimer: NodeJS.Timeout | null = null;
 
+  /** Called on every sign-in state change (see onSignInChange). */
+  private signInListeners = new Set<(state: SignInState) => void>();
+
   /** Callers waiting for a sign-in check to finish (see waitForSignIn). */
   private signInWaiters = new Set<() => void>();
 
@@ -579,11 +582,32 @@ export default class CloudClient implements StorageClient {
       this.lastLoggedSignIn = next.state;
     }
 
+    this.signInListeners.forEach((listener) => {
+      try {
+        listener(next);
+      } catch (error) {
+        console.warn('[CloudClient] Sign-in listener failed', String(error));
+      }
+    });
+
     if (next.state !== 'connecting') {
       const waiters = [...this.signInWaiters];
       this.signInWaiters.clear();
       waiters.forEach((wake) => wake());
     }
+  }
+
+  /** Where the guild sign-in stands right now. */
+  public signInSnapshot(): SignInState {
+    return this.signIn;
+  }
+
+  /** Be told whenever the sign-in state changes. Returns the unsubscribe. */
+  public onSignInChange(listener: (state: SignInState) => void) {
+    this.signInListeners.add(listener);
+    return () => {
+      this.signInListeners.delete(listener);
+    };
   }
 
   /**

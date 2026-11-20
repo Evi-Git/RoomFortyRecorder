@@ -19,7 +19,9 @@ import {
  *  - PullDesk's log capture: an encounter started in the combat log,
  *  - LiveStreamer: Go live is connecting or live,
  *  - VideoProcessQueue: recordings being cut or re-encoded, and cloud video
- *    uploads (not downloads or pull uploads: they retry cheaply).
+ *    uploads (not downloads),
+ *  - PullDesk: a pull log request running right now. A pull waiting for the
+ *    guild server to come back doesn't count: the backfill catches it later.
  * Returns null when idle, else a short reason.
  */
 export const currentBusyReason = (): string | null => {
@@ -40,6 +42,7 @@ export const currentBusyReason = (): string | null => {
       live: LiveStreamer.getInstance().isActive(),
       saving: queue.saving,
       uploading: queue.uploading,
+      sendingLog: PullDesk.getInstance().pullUploadsInFlight,
     });
   } catch (error) {
     // Never block the user from quitting because the check itself broke.

@@ -25,7 +25,7 @@ export const NOT_AFFILIATED_REASON =
 export const CANNOT_UPLOAD_REASON =
   "Your Discord role can't upload to the guild.";
 
-const NETWORK_CODES = new Set([
+export const NETWORK_CODES = new Set([
   'ECONNREFUSED',
   'ENOTFOUND',
   'ETIMEDOUT',

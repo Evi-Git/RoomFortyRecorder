@@ -30,6 +30,16 @@ describe('busyReasonFrom', () => {
     );
   });
 
+  it('counts a pull log being sent, after recordings', () => {
+    expect(busyReasonFrom({ ...idle, sendingLog: 1 })).toBe(
+      "A pull's log is being sent.",
+    );
+    expect(busyReasonFrom({ ...idle, sendingLog: 0 })).toBeNull();
+    expect(busyReasonFrom({ ...idle, uploading: 1, sendingLog: 1 })).toBe(
+      'A recording is uploading.',
+    );
+  });
+
   it('covers log capture, live, saving and uploading', () => {
     expect(busyReasonFrom({ ...idle, capturingPull: true })).toBe(
       'A pull is being recorded.',
