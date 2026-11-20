@@ -581,11 +581,10 @@ export default class PullDesk {
 
     const bossPercent = this.bossFor(pull);
 
-    // /claim only matches a pull within 120 s of its first claim, so the
-    // route is chosen for each attempt, counting from the first answer we got
-    // (or from the start, if none yet).
+    // /claim only matches a pull within 120 s of its first claim reaching the
+    // server, so the route is chosen for each attempt, counting from when we
+    // first sent one (an attempt can reach the server and still time out).
     const started = Date.now();
-    let firstAnswerAt: number | null = null;
     const retrying = (info: { attempt: number; kind: string }) =>
       this.setUpload(pull, 'retrying', { attempt: info.attempt });
 
@@ -604,8 +603,7 @@ export default class PullDesk {
         client,
         'Claim',
         () => {
-          const late =
-            lateSend || Date.now() - (firstAnswerAt ?? started) > CLAIM_SAFE_MS;
+          const late = lateSend || Date.now() - started > CLAIM_SAFE_MS;
           if (late && options.claimOnly) {
             throw Object.assign(new Error('Too late to claim'), {
               code: TOO_LATE_CODE,
@@ -626,7 +624,6 @@ export default class PullDesk {
         },
       );
       if (failed) this.setUpload(pull, 'waiting');
-      firstAnswerAt ??= Date.now();
       return claim;
     };
 
@@ -645,15 +642,20 @@ export default class PullDesk {
       // lists a chosen raider's stale claim for backfill after 10 min, so
       // another raider's automatic check covers a raider who never uploads.
       if (!claim.upload && claim.standby) {
-        const lateBy =
-          Date.now() + STANDBY_CHECK_MS - (firstAnswerAt ?? started);
+        const lateBy = Date.now() + STANDBY_CHECK_MS - started;
         if (lateBy <= CLAIM_SAFE_MS) {
           await sleep(STANDBY_CHECK_MS);
           try {
             claim = await ask({ claimOnly: true });
           } catch (error) {
+            // Too late, or the re-check itself failed: keep the answer we
+            // had (another raider's log), rather than queue this pull and
+            // send it again through /backfill.
             if ((error as { code?: unknown })?.code !== TOO_LATE_CODE) {
-              throw error;
+              console.info(
+                '[PullDesk] Standby re-check failed; keeping the earlier answer',
+                String(error),
+              );
             }
           }
         }
