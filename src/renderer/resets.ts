@@ -2,18 +2,30 @@ import React from 'react';
 
 /**
  * [RoomFortyRecorder] Resets: pulls so short they were a reset or an
- * accidental pull (audit X2). The Logs and Dashboard pull lists hide them
- * unless "Show resets" is on. One switch for both pages, remembered on this
- * PC. Only the lists change: the server's pull counts and numbers stay as
- * they are.
+ * accidental pull (audit X2). The Logs and Dashboard pull lists and the
+ * Night summary table hide them unless "Show resets" is on. One switch for
+ * every page, remembered on this PC. From 1.9.148 the guild server also
+ * leaves resets out of its pull counts and numbers (a reset carries the
+ * previous real pull's number and `reset: true`); older servers still number
+ * them, so the app decides from `reset` or, failing that, the duration.
  */
 
 /** Pulls shorter than this (seconds) are resets. */
 export const RESET_SECONDS = 10;
 
 /** A pull with no known duration is never treated as a reset. */
-export const isReset = (pull: { duration?: number | null }) =>
-  typeof pull.duration === 'number' && pull.duration < RESET_SECONDS;
+export const isReset = (pull: { duration?: number | null; reset?: boolean }) =>
+  pull.reset === true ||
+  (typeof pull.duration === 'number' && pull.duration < RESET_SECONDS);
+
+/**
+ * A pull's label: "Pull 3" (or `${prefix}3`), or "Reset" for a reset, which
+ * has no number of its own. Works with old servers (no `reset` field).
+ */
+export const pullLabel = (
+  p: { pullNumber: number; duration?: number | null; reset?: boolean },
+  prefix = 'Pull ',
+) => (isReset(p) ? 'Reset' : `${prefix}${p.pullNumber}`);
 
 const KEY = 'rf-show-resets';
 const listeners = new Set<() => void>();

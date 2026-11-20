@@ -31,7 +31,7 @@ import NightPicker from './logs/NightPicker';
 import { classColor, compact } from './logs/format';
 import { setLogsTarget } from './logs/openTarget';
 import { TabsContext } from './tabs/tabs';
-import { isReset, useShowResets } from './resets';
+import { isReset, pullLabel, useShowResets } from './resets';
 import { PageHeader, UnderlineTabs } from './components/PageHeader/PageHeader';
 import BossBar from './components/BossBar/BossBar';
 import { ErrorState, LoadingState } from './components/States/States';
@@ -67,6 +67,7 @@ type PullSummary = {
   night: string;
   pullNumber: number;
   totalPullNumber: number;
+  reset?: boolean;
   createdAt: number;
   startedAt: number | null;
   uploadedBy: string | null;
@@ -190,6 +191,7 @@ type Report = {
   spellNames?: Record<string, string | null>;
   pullNumber: number;
   totalPullNumber: number;
+  reset?: boolean;
   startedAt: number | null;
   uploadedBy: string | null;
 };
@@ -912,7 +914,7 @@ const PullDeskPage = (props: IProps) => {
                   >
                     <div className="flex items-center gap-x-2">
                       <span className="text-[13px] tabular-nums text-foreground">
-                        #{pull.pullNumber}
+                        {pullLabel(pull, '#')}
                       </span>
                       <span className="truncate text-sm font-medium">
                         {pull.encounterName}
@@ -1816,7 +1818,7 @@ const PullDeskPage = (props: IProps) => {
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
               <h2 className="font-display text-[22px] font-bold leading-tight text-foreground-lighter">
-                Pull {r.pullNumber} · {r.encounterName}
+                {pullLabel(r)} · {r.encounterName}
               </h2>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
                 <span

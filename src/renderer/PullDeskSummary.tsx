@@ -9,6 +9,7 @@ import MiniSwitch from './components/Switch/MiniSwitch';
 import NightPicker from './logs/NightPicker';
 import BossStrip from './logs/BossStrip';
 import { Button } from './components/Button/Button';
+import { isReset, useShowResets } from './resets';
 import {
   guildKey,
   loadWatcher,
@@ -81,6 +82,7 @@ type PullRow = {
   result: 'kill' | 'wipe' | string;
   bossPercent: number | null;
   duration: number;
+  reset?: boolean;
   deaths: number | null;
   cause: string | null;
   source?: 'app' | 'wcl';
@@ -826,6 +828,7 @@ const BossNightCard = ({
   onToggle: (name: string) => void;
 }) => {
   const [showPulls, setShowPulls] = React.useState(false);
+  const [showResets] = useShowResets();
 
   return (
     <AbilityScope
@@ -926,50 +929,54 @@ const BossNightCard = ({
                 </tr>
               </thead>
               <tbody>
-                {boss.pullsList.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-card/40 hover:bg-card/30"
-                  >
-                    <td className="px-2 py-1 tabular-nums">{p.pullNumber}</td>
-                    <td className="px-2 py-1">
-                      {p.result === 'kill' ? (
-                        <span className="text-green-400">Kill</span>
-                      ) : (
-                        <span className="tabular-nums">
-                          {pct(p.bossPercent)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums">
-                      {mmss(p.duration)}
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums">
-                      {p.deaths ?? '–'}
-                    </td>
-                    <td className="px-2 py-1 truncate max-w-[280px]">
-                      {p.cause ?? ''}
-                    </td>
-                    <td className="px-2 py-1 text-right">
-                      {p.source === 'wcl' ? (
-                        <span
-                          className="text-xs text-foreground/50"
-                          title="Imported from Warcraft Logs: no app report to open"
-                        >
-                          WCL
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-xs text-brand hover:underline"
-                          onClick={() => onOpenPull(p.id)}
-                        >
-                          Open
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {boss.pullsList
+                  .filter((p) => showResets || !isReset(p))
+                  .map((p) => (
+                    <tr
+                      key={p.id}
+                      className="border-b border-card/40 hover:bg-card/30"
+                    >
+                      <td className="px-2 py-1 tabular-nums">
+                        {isReset(p) ? 'Reset' : p.pullNumber}
+                      </td>
+                      <td className="px-2 py-1">
+                        {p.result === 'kill' ? (
+                          <span className="text-green-400">Kill</span>
+                        ) : (
+                          <span className="tabular-nums">
+                            {pct(p.bossPercent)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {mmss(p.duration)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {p.deaths ?? '–'}
+                      </td>
+                      <td className="px-2 py-1 truncate max-w-[280px]">
+                        {p.cause ?? ''}
+                      </td>
+                      <td className="px-2 py-1 text-right">
+                        {p.source === 'wcl' ? (
+                          <span
+                            className="text-xs text-foreground/50"
+                            title="Imported from Warcraft Logs: no app report to open"
+                          >
+                            WCL
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-xs text-brand hover:underline"
+                            onClick={() => onOpenPull(p.id)}
+                          >
+                            Open
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           ) : (

@@ -13,7 +13,7 @@ import { getCategoryIndex } from './rendererutils';
 import { classColor } from './logs/format';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import BossBar from './components/BossBar/BossBar';
-import { isReset, useShowResets } from './resets';
+import { isReset, pullLabel, useShowResets } from './resets';
 import { LogsTarget, takeLogsTarget } from './logs/openTarget';
 import {
   allResets,
@@ -1237,6 +1237,7 @@ type NightPull = {
   result: string;
   bossPercent: number | null;
   duration: number;
+  reset?: boolean;
   source?: 'app' | 'wcl';
   hasFull?: boolean;
   startedAt?: number | null;
@@ -1455,7 +1456,7 @@ const LogsPane = ({
         .sort((a, b) => a.pullNumber - b.pullNumber)
         .map((p) => ({
           id: p.id,
-          label: `Pull ${p.pullNumber}`,
+          label: pullLabel(p),
           result: p.result,
         })),
     [pulls, picked],
@@ -1474,7 +1475,9 @@ const LogsPane = ({
   if (boss && comparing.length > 1) {
     tabTitle = `${boss.encounterName} ×${comparing.length}`;
   } else if (boss && titlePull) {
-    tabTitle = `${boss.encounterName} #${titlePull.pullNumber}`;
+    tabTitle = isReset(titlePull)
+      ? `${boss.encounterName} · reset`
+      : `${boss.encounterName} #${titlePull.pullNumber}`;
   }
   useTabTitle(tabTitle);
 
@@ -1518,7 +1521,7 @@ const LogsPane = ({
 
   const metaOf = (p: NightPull): PullMeta => ({
     id: p.id,
-    label: `Pull ${p.pullNumber}`,
+    label: pullLabel(p),
     encounterId: boss?.encounterId ?? 0,
     difficultyId: boss?.difficultyId ?? 0,
     startedAt: p.startedAt ?? 0,
@@ -1636,7 +1639,7 @@ const LogsPane = ({
             title="Open the newest pull"
           >
             {newPulls.length === 1
-              ? `Pull ${newPulls[0].pullNumber} just came in`
+              ? `${pullLabel(newPulls[0])} just came in`
               : `${newPulls.length} new pulls`}
             <ChevronsRight size={14} />
           </button>
@@ -1684,7 +1687,7 @@ const LogsPane = ({
                 {comparing.length >= 2
                   ? `${comparing.length} pulls`
                   : pull
-                    ? `Pull ${pull.pullNumber}`
+                    ? pullLabel(pull)
                     : 'Pulls'}
               </span>
             </button>
@@ -1738,7 +1741,7 @@ const LogsPane = ({
                       key={p.id}
                       type="button"
                       aria-pressed={active}
-                      aria-label={`Pull ${p.pullNumber}, ${
+                      aria-label={`${pullLabel(p)}, ${
                         kill
                           ? 'kill'
                           : p.bossPercent !== null
@@ -1755,7 +1758,7 @@ const LogsPane = ({
                       }`}
                     >
                       <span className="w-6 shrink-0 text-xs tabular-nums text-foreground">
-                        {p.pullNumber}
+                        {isReset(p) ? '–' : p.pullNumber}
                       </span>
                       {kill ? (
                         <span className="font-semibold text-green-400">
