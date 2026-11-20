@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.149] - Unreleased
+### Changed
+- **The sidebar in the Brass & Walnut look, with a status card that says if you're ready.** The card at the top tells you at a glance: "Ready to record" (green), "Waiting for WoW" (grey, until the game is detected), "Recording" with the timer, or "Not ready" and why.
+- Under it: the guild server's version and who you're signed in as, or the sign-in state ("Guild server: Offline, retrying", "Sign-in expired", …). If the server is out of date it says so there, with the right wording for the owner and for raiders.
+- If your last pull is still sending, waiting for the server, or failed to send, a short line says so.
+- A calmer menu: sentence-case headings, a brass bar on the page you're on, counts and "2 live" on the right. Menu items can be reached with the keyboard.
+- When the window is short, only the menu list scrolls; the card, Go live and the bottom buttons stay in place.
+- With the sidebar folded, the card is one dot (green, grey, brass or red); hover it for the details. A second small dot shows when the guild server, an upload or your last pull needs a look.
+- German, Korean and Chinese keep their translated status words.
+
 ## [1.9.148] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed
