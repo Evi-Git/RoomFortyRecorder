@@ -99,3 +99,23 @@ test('a Discord that never answers gives a 502 after the timeout, and does not u
   clearTimeout(keepAlive2);
   assert.equal(again.status, 502); // not 429: the failed send didn't count
 });
+
+test('two reports sent at the same moment: only one goes', async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push(url);
+    await gate;
+    return { ok: true, status: 204 };
+  };
+  const bugs = createBugReport({ env: { GUILD_CLOUD_BUG_WEBHOOK: 'https://h' }, fetchImpl });
+  const a = bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  const b = bugs.send({ discordId: '1', userName: 'a', text: 'broken' });
+  release();
+  const statuses = (await Promise.all([a, b])).map((r) => r.status).sort();
+  assert.deepEqual(statuses, [200, 429]);
+  assert.equal(calls.length, 1);
+});

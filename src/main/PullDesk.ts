@@ -23,7 +23,8 @@ import {
   createSingleFlight,
   gunzipsCleanly,
   isStaleTemp,
-  judgeCachedFile,
+  retryOperation,
+  judgeCachedBytes,
   looksLikeGzip,
   tempPathFor,
 } from './fullLogCache';
@@ -968,19 +969,27 @@ export default class PullDesk {
         'The full log came back damaged. Try opening the pull again.',
       );
     }
-    await fs.promises.mkdir(dir, { recursive: true });
-    // Written beside the file and renamed, so a crash leaves no half file
-    // under the real name.
-    const temp = tempPathFor(file);
+    // The cache is best effort: whatever fails below, the open still works.
     try {
+      await fs.promises.mkdir(dir, { recursive: true });
+      // Written beside the file and renamed, so a crash leaves no half file
+      // under the real name.
+      const temp = tempPathFor(file);
       await fs.promises.writeFile(temp, bytes);
-      await fs.promises.rename(temp, file);
-      this.verifiedLogs.add(file);
+      const renamed = await retryOperation(() =>
+        fs.promises.rename(temp, file),
+      );
+      if (renamed) {
+        this.verifiedLogs.add(file);
+      } else {
+        console.warn('[PullDesk] Could not cache the full log for', pullId);
+        await fs.promises.unlink(temp).catch(() => {});
+      }
+      await this.pruneLogCache(dir);
     } catch (error) {
-      await fs.promises.unlink(temp).catch(() => {});
-      throw error;
+      console.warn('[PullDesk] Full log cache failed', error);
+      await fs.promises.unlink(tempPathFor(file)).catch(() => {});
     }
-    await this.pruneLogCache(dir);
     return { bytes: new Uint8Array(bytes) };
   }
 
@@ -995,11 +1004,7 @@ export default class PullDesk {
     } catch {
       return null; // Not cached yet.
     }
-    const verdict = judgeCachedFile({
-      head: cached.subarray(0, 4),
-      size: cached.length,
-      verified: this.verifiedLogs.has(file),
-    });
+    const verdict = judgeCachedBytes(cached, this.verifiedLogs.has(file));
     if (verdict === 'check') {
       if (await gunzipsCleanly(cached)) this.verifiedLogs.add(file);
       else return this.dropCachedFullLog(file);

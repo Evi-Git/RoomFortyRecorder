@@ -3,7 +3,9 @@ import {
   createSingleFlight,
   gunzipsCleanly,
   isStaleTemp,
+  judgeCachedBytes,
   judgeCachedFile,
+  retryOperation,
   looksLikeGzip,
   tempPathFor,
 } from '../../main/fullLogCache';
@@ -73,25 +75,18 @@ describe('judgeCachedFile', () => {
       }),
     ).toBe('bad');
     expect(judgeCachedFile({ head, size: 10, verified: true })).toBe('bad');
+  });
+  it('judges a real cached file by the same call the app makes', () => {
+    expect(judgeCachedBytes(gz, false)).toBe('check');
+    expect(judgeCachedBytes(gz, true)).toBe('ok');
+    expect(judgeCachedBytes(gz.subarray(0, 10), true)).toBe('bad');
     expect(
-      judgeCachedFile({
-        head,
-        size: gz.length,
-        expectedSize: gz.length + 5,
-        verified: true,
-      }),
+      judgeCachedBytes(Buffer.from('{"error":"x"} and more bytes here'), true),
     ).toBe('bad');
-    expect(
-      judgeCachedFile({
-        head,
-        size: gz.length,
-        expectedSize: gz.length,
-        verified: true,
-      }),
-    ).toBe('ok');
   });
   it('looksLikeGzip needs the header and a whole-file minimum', () => {
     expect(looksLikeGzip(gz)).toBe(true);
+    expect(looksLikeGzip(gz.subarray(0, 4))).toBe(true);
     expect(looksLikeGzip(Buffer.alloc(40))).toBe(false);
   });
 });
@@ -118,5 +113,39 @@ describe('temp files', () => {
     expect(isStaleTemp('p1.log.gz.tmp', now - 60 * 60 * 1000, now)).toBe(true);
     expect(isStaleTemp('p1.log.gz.tmp', now - 1000, now)).toBe(false);
     expect(isStaleTemp('p1.log.gz', now - 60 * 60 * 1000, now)).toBe(false);
+  });
+});
+
+describe('retryOperation', () => {
+  const noWait = async () => {};
+  it('retries until it works', async () => {
+    let calls = 0;
+    const ok = await retryOperation(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw new Error('EPERM');
+      },
+      [1, 1, 1],
+      noWait,
+    );
+    expect(ok).toBe(true);
+    expect(calls).toBe(3);
+  });
+  it('gives up after the last delay and reports false', async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const ok = await retryOperation(
+      async () => {
+        calls += 1;
+        throw new Error('EBUSY');
+      },
+      [5, 6],
+      async (ms) => {
+        waits.push(ms);
+      },
+    );
+    expect(ok).toBe(false);
+    expect(calls).toBe(3);
+    expect(waits).toEqual([5, 6]);
   });
 });

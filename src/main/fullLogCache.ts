@@ -31,9 +31,9 @@ export const createSingleFlight = () => {
   };
 };
 
-/** A gzip stream starts with 1f 8b 08 and a whole file is at least 18 bytes. */
+/** A gzip stream starts with the bytes 1f 8b 08; the size is judged apart. */
 export const looksLikeGzip = (bytes: Uint8Array): boolean =>
-  bytes.length >= 18 &&
+  bytes.length >= 3 &&
   bytes[0] === 0x1f &&
   bytes[1] === 0x8b &&
   bytes[2] === 0x08;
@@ -42,20 +42,28 @@ export type CachedFileVerdict = 'ok' | 'check' | 'bad';
 
 /**
  * What to do with a cached file before serving it. 'bad': delete it (not gzip,
- * or not the length the server sent). 'check': looks right but has not been
+ * or too small to be a whole one). 'check': looks right but has not been
  * decompressed in full yet this session, so do that once. 'ok': served.
  */
 export const judgeCachedFile = (input: {
   head: Uint8Array;
   size: number;
-  expectedSize?: number | null;
   verified: boolean;
 }): CachedFileVerdict => {
   if (input.size < 18 || !looksLikeGzip(input.head)) return 'bad';
-  if (input.expectedSize != null && input.expectedSize !== input.size)
-    return 'bad';
   return input.verified ? 'ok' : 'check';
 };
+
+/** Reads the file and decides, with the call shape the app uses. */
+export const judgeCachedBytes = (
+  cached: Uint8Array,
+  verified: boolean,
+): CachedFileVerdict =>
+  judgeCachedFile({
+    head: cached.subarray(0, 4),
+    size: cached.length,
+    verified,
+  });
 
 /** True when `bytes` gunzip to the end without an error (so it is not cut short). */
 export const gunzipsCleanly = async (bytes: Uint8Array): Promise<boolean> => {
@@ -89,3 +97,32 @@ export const isStaleTemp = (
   now: number,
   graceMs = 15 * 60 * 1000,
 ): boolean => name.endsWith(TMP_SUFFIX) && now - modifiedMs > graceMs;
+
+/** Pauses (ms) between tries to rename a finished download into place. */
+export const RENAME_RETRY_DELAYS = [100, 250, 400, 250];
+
+/**
+ * Runs `attempt`, retrying after each delay on failure (Windows can refuse a
+ * rename for a moment while an antivirus scan or indexer has the file open).
+ * Resolves true when it worked, false when every try failed.
+ */
+export const retryOperation = async (
+  attempt: () => Promise<void>,
+  delays: number[] = RENAME_RETRY_DELAYS,
+  wait: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    }),
+): Promise<boolean> => {
+  for (let i = 0; i <= delays.length; i += 1) {
+    try {
+      await attempt();
+      return true;
+    } catch {
+      if (i === delays.length) return false;
+
+      await wait(delays[i]);
+    }
+  }
+  return false;
+};

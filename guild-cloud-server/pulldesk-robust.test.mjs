@@ -33,23 +33,26 @@ const backfillBody = {
 const newPull = async (call) => (await call('POST', ['backfill'], backfillBody, '1')).body.pullId;
 
 // A Discord that counts the messages posted to it.
-const discordStub = async () => {
+// `answer(n)` (n = how many posts so far, this one included) can return
+// { status, body } to fail it.
+const discordStub = async (answer = () => ({ status: 200, body: {} })) => {
   const posts = [];
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => (body += d));
     req.on('end', () => {
       posts.push({ url: req.url, body });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{}');
+      const { status, body: reply } = answer(posts.length);
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(reply));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return { posts, url: `http://127.0.0.1:${server.address().port}`, close: () => server.close() };
 };
 
-const setup = async (env = {}, botToken = '') => {
-  const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'pd-robust-'));
+const setup = async (env = {}, botToken = '', existing = null) => {
+  const storage = existing || (await fsp.mkdtemp(path.join(os.tmpdir(), 'pd-robust-')));
   const desk = createPullDesk({
     storage,
     readBody: async (req) => req.body || {},
@@ -107,25 +110,116 @@ test('a second PUT of the log while the pull is analysing is answered without a 
   }
 });
 
-test('discordPost records postedAt and a repeat upload with meters does not post again', async () => {
+const postEnv = (discord) => ({
+  GUILD_CLOUD_PULLDESK_POST_PULLS: '1',
+  GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL: '555',
+  GUILD_CLOUD_PULLDESK_DISCORD_API: discord.url,
+});
+const PLAIN = zlib.gzipSync(slice); // a log without meters
+const readIndex = (storage) => JSON.parse(fs.readFileSync(path.join(storage, 'pulldesk', 'index.json'), 'utf8'));
+const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
+
+test('postedAt is saved, and a later log with meters for the same pull does not post again', async () => {
   const discord = await discordStub();
-  const { call, storage } = await setup(
-    {
-      GUILD_CLOUD_PULLDESK_POST_PULLS: '1',
-      GUILD_CLOUD_PULLDESK_DEFAULT_CHANNEL: '555',
-      GUILD_CLOUD_PULLDESK_DISCORD_API: discord.url,
-    },
-    'bot-token',
-  );
+  const { call, storage } = await setup(postEnv(discord), 'bot-token');
   try {
     const id = await newPull(call);
-    assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+    assert.equal((await call('PUT', ['pulls', id, 'log'], PLAIN, '1')).body.status, 'ready');
+    await settle();
     assert.equal(discord.posts.length, 1);
-    const read = () => JSON.parse(fs.readFileSync(path.join(storage, 'pulldesk', 'index.json'), 'utf8'));
-    assert.ok(read().pulls[0].postedAt > 0, 'postedAt is saved with the index');
+    assert.ok(readIndex(storage).pulls[0].postedAt > 0, 'postedAt is saved with the index');
+    // The repeat: the pull has a log but no meters, so this one is analysed again.
+    assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+    await settle();
+    assert.equal(discord.posts.length, 1, 'still one post');
   } finally {
     discord.close();
   }
+});
+
+test('a pull from before postedAt existed is not posted again by a meters re-send', async () => {
+  const discord = await discordStub();
+  const first = await setup({});
+  const id = await newPull(first.call);
+  await first.call('PUT', ['pulls', id, 'log'], PLAIN, '1');
+  const index = readIndex(first.storage);
+  delete index.pulls[0].postedAt;
+  fs.writeFileSync(path.join(first.storage, 'pulldesk', 'index.json'), JSON.stringify(index));
+  const { call, storage } = await setup(postEnv(discord), 'bot-token', first.storage);
+  try {
+    assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+    await settle();
+    assert.equal(discord.posts.length, 0);
+    assert.ok(readIndex(storage).pulls[0].postedAt > 0);
+  } finally {
+    discord.close();
+  }
+});
+
+test('a pull saved as analyzing with no log is not stuck: it becomes claimed and takes an upload', async () => {
+  const first = await setup({});
+  const id = await newPull(first.call);
+  const index = readIndex(first.storage);
+  index.pulls[0].status = 'analyzing';
+  index.pulls[0].hasLog = false;
+  fs.writeFileSync(path.join(first.storage, 'pulldesk', 'index.json'), JSON.stringify(index));
+  const { call } = await setup({}, '', first.storage);
+  assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+});
+
+test('a re-analysis that is already running answers analyzing instead of starting another', async () => {
+  const { call } = await setup({});
+  const id = await newPull(call);
+  assert.equal((await call('PUT', ['pulls', id, 'log'], LOG, '1')).body.status, 'ready');
+  const [a, b] = await Promise.all([call('POST', ['pulls', id, 'reanalyze'], {}, '1'), call('POST', ['pulls', id, 'reanalyze'], {}, '1')]);
+  const bodies = [a.body, b.body];
+  assert.equal(bodies.filter((r) => r.status === 'analyzing').length, 1);
+  assert.equal(bodies.filter((r) => r.id === id).length, 1);
+});
+
+test('a Discord post answered with 429 waits and tries once more', async () => {
+  const discord = await discordStub((n) => (n === 1 ? { status: 429, body: { retry_after: 0.05 } } : { status: 200, body: {} }));
+  const { call, storage } = await setup(postEnv(discord), 'bot-token');
+  try {
+    const id = await newPull(call);
+    await call('PUT', ['pulls', id, 'log'], LOG, '1');
+    await settle();
+    assert.equal(discord.posts.length, 2);
+    assert.ok(readIndex(storage).pulls[0].postedAt > 0);
+  } finally {
+    discord.close();
+  }
+});
+
+test('a Discord post that fails is not counted as posted, so a later upload posts it', async () => {
+  const discord = await discordStub((n) => (n === 1 ? { status: 500, body: {} } : { status: 200, body: {} }));
+  const { call, storage } = await setup(postEnv(discord), 'bot-token');
+  try {
+    const id = await newPull(call);
+    await call('PUT', ['pulls', id, 'log'], PLAIN, '1');
+    await settle();
+    assert.equal(discord.posts.length, 1);
+    assert.equal(readIndex(storage).pulls[0].postedAt, undefined);
+    await call('PUT', ['pulls', id, 'log'], LOG, '1');
+    await settle();
+    assert.equal(discord.posts.length, 2);
+    assert.ok(readIndex(storage).pulls[0].postedAt > 0);
+  } finally {
+    discord.close();
+  }
+});
+
+test('a Discord that refuses the connection does not count as posted', async () => {
+  // A port that was just closed: connections are refused.
+  const closed = await discordStub();
+  closed.close();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const dead = { url: closed.url, posts: [] };
+  const { call, storage } = await setup(postEnv(dead), 'bot-token');
+  const id = await newPull(call);
+  await call('PUT', ['pulls', id, 'log'], LOG, '1');
+  await settle();
+  assert.equal(readIndex(storage).pulls[0].postedAt, undefined);
 });
 
 test('the patched report is cached per pull and rebuilt when the stored report changes', async () => {
