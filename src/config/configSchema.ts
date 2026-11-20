@@ -53,7 +53,9 @@ export type ConfigurationSchema = {
   cloudUploadRetail: boolean;
   cloudUploadRateLimit: boolean;
   cloudUploadRateLimitMbps: number;
-  cloudSessionToken: string;
+  // Main process only (see secretKeys.ts); never sent to the renderer.
+  cloudSessionToken?: string;
+  cloudSessionTokenEnc?: string;
   liveResolution: string;
   liveFps: string;
   liveBitrate: number;
@@ -371,6 +373,11 @@ export const configSchema = {
     default: 100,
   },
   cloudSessionToken: {
+    description: Phrase.CloudStorageDescription,
+    type: 'string',
+    default: '',
+  },
+  cloudSessionTokenEnc: {
     description: Phrase.CloudStorageDescription,
     type: 'string',
     default: '',

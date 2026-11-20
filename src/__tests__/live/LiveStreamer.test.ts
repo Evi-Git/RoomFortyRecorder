@@ -27,6 +27,9 @@ jest.mock(
   }),
   { virtual: true },
 );
+jest.mock('../../main/secretStore', () => ({
+  getSessionToken: async () => 'token',
+}));
 jest.mock(
   'utils/Poller',
   () => ({

@@ -4,6 +4,7 @@ import path from 'path';
 import { EventEmitter } from 'stream';
 import { configSchema, ConfigurationSchema } from './configSchema';
 import _ from 'lodash';
+import { redactForLog, rendererMayWrite, valueForRenderer } from './secretKeys';
 
 /**
  * Interface for the ConfigService class.
@@ -77,11 +78,7 @@ export default class ConfigService
 
     this.cleanupStore();
 
-    const loggable = this._store.store;
-
-    if (loggable.cloudSessionToken) {
-      loggable.cloudSessionToken = '**********';
-    }
+    const loggable = redactForLog({ ...this._store.store });
 
     console.info('[Config Service] Using configuration', loggable);
 
@@ -95,13 +92,21 @@ export default class ConfigService
     ipcMain.on('config', (event, args) => {
       switch (args[0]) {
         case 'get': {
-          const value = this.get(args[1]);
+          // Secrets never go to the renderer.
+          const value = valueForRenderer(args[1], this.get(args[1]));
           event.returnValue = value;
           return;
         }
 
         case 'set': {
           const [key, value] = [args[1], args[2]];
+
+          if (!rendererMayWrite(key)) {
+            console.warn(
+              '[ConfigService] Ignored renderer write to a secret key',
+            );
+            return;
+          }
 
           if (!this.configValueChanged(key, value)) {
             return;
@@ -119,6 +124,13 @@ export default class ConfigService
           const newConfigValues: { [key: string]: any } = {};
 
           configKeys.forEach((key: string) => {
+            if (!rendererMayWrite(key)) {
+              console.warn(
+                '[ConfigService] Ignored renderer write to a secret key',
+              );
+              return;
+            }
+
             if (!this.configValueChanged(key, configObject[key])) {
               return;
             }
@@ -244,10 +256,9 @@ export default class ConfigService
   }
 
   private static logConfigChanged(newConfig: { [key: string]: any }): void {
-    if (newConfig.cloudSessionToken) {
-      newConfig.cloudSessionToken = '**********';
-    }
-
-    console.info('[Config Service] Configuration changed:', newConfig);
+    console.info(
+      '[Config Service] Configuration changed:',
+      redactForLog(newConfig),
+    );
   }
 }

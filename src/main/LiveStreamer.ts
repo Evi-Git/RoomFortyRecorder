@@ -2,6 +2,7 @@ import EventEmitter from 'events';
 import axios from 'axios';
 import noobs, { ObsData, Signal } from 'noobs';
 import ConfigService from 'config/ConfigService';
+import { getSessionToken } from './secretStore';
 import Poller from 'utils/Poller';
 import { cloudService } from './cloudService';
 import { ESupportedEncoders } from './obsEnums';
@@ -83,7 +84,7 @@ export default class LiveStreamer extends EventEmitter {
       return;
     }
 
-    const token = this.cfg.get<string>('cloudSessionToken');
+    const token = await getSessionToken();
 
     if (!token) {
       this.setState({

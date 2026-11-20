@@ -71,7 +71,6 @@ export const getSettings = (): ConfigurationSchema => {
     cloudUploadRateLimitMbps: getConfigValue<number>(
       'cloudUploadRateLimitMbps',
     ),
-    cloudSessionToken: getConfigValue<string>('cloudSessionToken'),
     liveResolution: getConfigValue<string>('liveResolution'),
     liveFps: getConfigValue<string>('liveFps'),
     liveBitrate: getConfigValue<number>('liveBitrate'),

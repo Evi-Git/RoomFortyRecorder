@@ -1,5 +1,5 @@
 import axios from 'axios';
-import ConfigService from 'config/ConfigService';
+import { getSessionToken } from './secretStore';
 import { cloudService } from './cloudService';
 import CloudClient from 'storage/CloudClient';
 
@@ -32,8 +32,6 @@ export type LiveList = {
 export default class LiveViewer {
   private static instance: LiveViewer;
 
-  private cfg = ConfigService.getInstance();
-
   private whepUrls = new Map<string, string>();
 
   private session?: { url: string; token: string };
@@ -43,12 +41,12 @@ export default class LiveViewer {
     return LiveViewer.instance;
   }
 
-  private token() {
-    return this.cfg.get<string>('cloudSessionToken') || '';
+  private async token() {
+    return (await getSessionToken()) || '';
   }
 
   public async list(): Promise<LiveList> {
-    const token = this.token();
+    const token = await this.token();
     if (!token) return { allowed: false, signedIn: false, streams: [] };
 
     try {
@@ -91,7 +89,7 @@ export default class LiveViewer {
   /** Returns MediaMTX's SDP answer for the renderer's offer. */
   public async watch(name: string, offerSdp: string): Promise<string> {
     await this.stop();
-    const token = this.token();
+    const token = await this.token();
     if (!token) throw new Error('Sign in with Discord first (Cloud settings).');
 
     if (!this.whepUrls.has(name)) await this.list();
