@@ -1,12 +1,15 @@
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react';
 import { configSchema, ConfigurationSchema } from 'config/configSchema';
-import { Info, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { AppState, SceneItem } from 'main/types';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues } from './useSettings';
 import { imageSelect } from './rendererutils';
-import Label from './components/Label/Label';
-import { Tooltip } from './components/Tooltip/Tooltip';
+import {
+  SettingRow,
+  settingsFieldClass,
+  useScopedIds,
+} from './components/SettingsCard/SettingsCard';
 import Switch from './components/Switch/Switch';
 import { Input } from './components/Input/Input';
 import { Phrase } from 'localisation/phrases';
@@ -23,6 +26,7 @@ interface IProps {
 const ChatOverlayControls = (props: IProps) => {
   const { appState, config, setConfig } = props;
   const { cloudStatus } = appState;
+  const sid = useScopedIds();
   const initialRender = useRef(true);
 
   const [cropMaxX, setCropMaxX] = useState(0);
@@ -88,59 +92,48 @@ const ChatOverlayControls = (props: IProps) => {
 
   const getChatOverlayEnabledSwitch = () => {
     return (
-      <div className="flex flex-col">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.ChatOverlayLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.chatOverlayEnabled.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.chatOverlayEnabled}
-            onCheckedChange={setOverlayEnabled}
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.ChatOverlayLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.chatOverlayEnabled.description,
+        )}
+        htmlFor={sid('overlay')}
+      >
+        <Switch
+          id={sid('overlay')}
+          checked={config.chatOverlayEnabled}
+          onCheckedChange={setOverlayEnabled}
+        />
+      </SettingRow>
     );
   };
 
   const getChatOverlayOwnImageSwitch = () => {
     return (
-      <div className="flex flex-col">
-        <Label className="flex items-center gap-x-2">
-          {getLocalePhrase(appState.language, Phrase.OwnImageLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.chatOverlayOwnImage.description,
-            )}
-            side="right"
-          >
-            {cloudStatus.authorized ? (
-              <Info size={20} className="inline-flex" />
-            ) : (
-              <Lock size={20} className="inline-flex" />
-            )}
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.chatOverlayOwnImage}
-            onCheckedChange={setOwnImage}
-            disabled={
-              !config.chatOverlayOwnImage &&
-              (!config.chatOverlayEnabled || !cloudStatus.authorized)
-            }
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.OwnImageLabel)}
+        aside={
+          !cloudStatus.authorized && (
+            <Lock size={14} className="self-center text-foreground" />
+          )
+        }
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.chatOverlayOwnImage.description,
+        )}
+        htmlFor={sid('ownImage')}
+      >
+        <Switch
+          id={sid('ownImage')}
+          checked={config.chatOverlayOwnImage}
+          onCheckedChange={setOwnImage}
+          disabled={
+            !config.chatOverlayOwnImage &&
+            (!config.chatOverlayEnabled || !cloudStatus.authorized)
+          }
+        />
+      </SettingRow>
     );
   };
 
@@ -161,28 +154,23 @@ const ChatOverlayControls = (props: IProps) => {
 
   const getOwnImagePathField = () => {
     return (
-      <div className="flex flex-col w-1/3 min-w-60 max-w-80">
-        <Label htmlFor="overlayImagePath" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.ImagePathLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.chatOverlayOwnImagePath.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <>
-          <Input
-            name="overlayImagePath"
-            value={config.chatOverlayOwnImagePath}
-            onClick={setOverlayPath}
-            readOnly
-          />
-        </>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.ImagePathLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.chatOverlayOwnImagePath.description,
+        )}
+        htmlFor={sid('overlayImagePath')}
+      >
+        <Input
+          id={sid('overlayImagePath')}
+          name="overlayImagePath"
+          className={`${settingsFieldClass} w-[340px]`}
+          value={config.chatOverlayOwnImagePath}
+          onClick={setOverlayPath}
+          readOnly
+        />
+      </SettingRow>
     );
   };
 
@@ -206,52 +194,44 @@ const ChatOverlayControls = (props: IProps) => {
 
   const getChatOverlayCropSliders = () => {
     return (
-      <div className="flex flex-col gap-y-4 w-full mt-2">
-        <div className="flex gap-x-3 items-center">
-          <Label className="flex items-center w-[75px] mb-0">
-            {getLocalePhrase(appState.language, Phrase.WidthLabel)}
-            <Tooltip
-              content={getLocalePhrase(
-                appState.language,
-                configSchema.chatOverlayCropX.description,
-              )}
-              side="right"
-            >
-              <Info size={20} className="inline-flex ml-2" />
-            </Tooltip>
-          </Label>
-          <div className="flex w-[150px] items-center">
+      <>
+        <SettingRow
+          label={getLocalePhrase(appState.language, Phrase.WidthLabel)}
+          help={getLocalePhrase(
+            appState.language,
+            configSchema.chatOverlayCropX.description,
+          )}
+          htmlFor={sid('cropX')}
+        >
+          <div className="flex w-[180px] items-center">
             <Slider
+              id={sid('cropX')}
               value={[config.chatOverlayCropX]}
               max={cropMaxX}
               step={1}
               onValueChange={setCropX}
             />
           </div>
-        </div>
-        <div className="flex gap-x-3 items-center">
-          <Label className="flex items-center w-[75px] mb-0">
-            {getLocalePhrase(appState.language, Phrase.HeightLabel)}
-            <Tooltip
-              content={getLocalePhrase(
-                appState.language,
-                configSchema.chatOverlayCropY.description,
-              )}
-              side="right"
-            >
-              <Info size={20} className="inline-flex ml-2" />
-            </Tooltip>
-          </Label>
-          <div className="flex w-[150px] items-center">
+        </SettingRow>
+        <SettingRow
+          label={getLocalePhrase(appState.language, Phrase.HeightLabel)}
+          help={getLocalePhrase(
+            appState.language,
+            configSchema.chatOverlayCropY.description,
+          )}
+          htmlFor={sid('cropY')}
+        >
+          <div className="flex w-[180px] items-center">
             <Slider
+              id={sid('cropY')}
               value={[config.chatOverlayCropY]}
               max={cropMaxY}
               step={1}
               onValueChange={setCropY}
             />
           </div>
-        </div>
-      </div>
+        </SettingRow>
+      </>
     );
   };
 
@@ -261,16 +241,14 @@ const ChatOverlayControls = (props: IProps) => {
     !config.chatOverlayOwnImagePath.endsWith('.gif');
 
   return (
-    <div className="flex flex-col items-center content-center w-full flex-wrap gap-4">
-      <div className="flex items-center content-center w-full gap-8">
-        {getChatOverlayEnabledSwitch()}
-        {config.chatOverlayEnabled && getChatOverlayOwnImageSwitch()}
-        {config.chatOverlayEnabled &&
-          config.chatOverlayOwnImage &&
-          getOwnImagePathField()}
-      </div>
+    <div className="divide-y divide-panel-line">
+      {getChatOverlayEnabledSwitch()}
+      {config.chatOverlayEnabled && getChatOverlayOwnImageSwitch()}
+      {config.chatOverlayEnabled &&
+        config.chatOverlayOwnImage &&
+        getOwnImagePathField()}
       {showPathWarning && (
-        <p className="flex w-full text-red-500 text-sm">
+        <p className="m-0 px-[18px] py-3.5 text-sm text-error-text">
           {getLocalePhrase(appState.language, Phrase.ErrorCustomImageFileType)}
         </p>
       )}

@@ -1,4 +1,3 @@
-import { Box } from '@mui/material';
 import React, { Dispatch, SetStateAction, useState } from 'react';
 import { AppState, RecStatus, SceneItem } from 'main/types';
 import { Phrase } from 'localisation/phrases';
@@ -10,15 +9,17 @@ import AudioSourceControls from './AudioSourceControls';
 import VideoBaseControls from './VideoBaseControls';
 import { ScrollArea } from './components/ScrollArea/ScrollArea';
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from './components/Tabs/Tabs';
+  PageHeader,
+  TabItem,
+  UnderlineTabs,
+} from './components/PageHeader/PageHeader';
+import { settingsButtonClass } from './components/SettingsCard/SettingsCard';
 import { Button } from './components/Button/Button';
 import Switch from './components/Switch/Switch';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import { ConfigurationSchema } from 'config/configSchema';
+
+type SceneTab = 'source' | 'video' | 'audio' | 'overlay';
 
 const ipc = window.electron.ipcRenderer;
 const devMode = process.env.NODE_ENV === 'development';
@@ -42,13 +43,14 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
     setPreviewEnabled,
   } = props;
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [tab, setTab] = useState<SceneTab>('source');
 
   const renderResetGameButton = () => {
     return (
       <Button
-        className="flex w-[80px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
+        className={settingsButtonClass}
         variant="ghost"
-        size="xs"
+        size="sm"
         onClick={() => ipc.resetSourcePosition(SceneItem.GAME)}
       >
         {getLocalePhrase(appState.language, Phrase.ResetGameButtonText)}
@@ -59,9 +61,9 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
   const renderResetOverlayButton = () => {
     return (
       <Button
-        className="flex w-[80px] text-xs text-foreground-lighter whitespace-normal break-words text-center"
+        className={settingsButtonClass}
         variant="ghost"
-        size="xs"
+        size="sm"
         onClick={() => {
           setConfig((prev) => ({
             ...prev,
@@ -85,7 +87,7 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
         )}
         side="bottom"
       >
-        <div className="flex items-center justify-center text-xs text-card-foreground font-medium gap-x-2">
+        <div className="flex items-center justify-center text-[13px] text-foreground-lighter font-medium gap-x-2">
           {getLocalePhrase(appState.language, Phrase.SourceSnappingSwitchText)}
           <Switch checked={snapEnabled} onCheckedChange={setSnapEnabled} />
         </div>
@@ -97,7 +99,7 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
     // This is a dev mode only thing so don't worry about translations.
     return (
       <Tooltip content="Toggle preview." side="bottom">
-        <div className="flex items-center justify-center text-xs text-card-foreground font-medium gap-x-2">
+        <div className="flex items-center justify-center text-[13px] text-foreground-lighter font-medium gap-x-2">
           Preview
           <Switch
             checked={previewEnabled}
@@ -108,87 +110,99 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
     );
   };
 
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        height: '100%',
-        borderBottomLeftRadius: '6px',
-      }}
-      className="bg-background-higher pt-[32px]"
-    >
-      <Box sx={{ width: '100%', height: '60%' }}>
-        <RecorderPreview
-          appState={appState}
-          previewEnabled={previewEnabled}
-          config={config}
-          snapEnabled={snapEnabled}
-        />
-      </Box>
-      <Tabs defaultValue="source" className="w-full h-[40%] px-4">
-        <TabsList>
-          <TabsTrigger value="source">
-            {getLocalePhrase(appState.language, Phrase.SourceHeading)}
-          </TabsTrigger>
-          <TabsTrigger value="video">
-            {getLocalePhrase(appState.language, Phrase.VideoHeading)}
-          </TabsTrigger>
-          <TabsTrigger value="audio">
-            {getLocalePhrase(appState.language, Phrase.AudioHeading)}
-          </TabsTrigger>
-          <TabsTrigger value="overlay">
-            {getLocalePhrase(appState.language, Phrase.OverlayHeading)}
-          </TabsTrigger>
-          <div className="flex ml-auto items-center justify-center gap-x-4">
-            {renderResetGameButton()}
-            {config.chatOverlayEnabled && renderResetOverlayButton()}
-            {renderToggleSnappingSwitch()}
-            {devMode && renderShowPreviewSwitch()}
-          </div>
-        </TabsList>
+  const waitingForGame = recorderStatus === RecStatus.WaitingForWoW;
 
-        <ScrollArea
-          withScrollIndicators={false}
-          className="h-[calc(100%-48px)] pb-8"
-        >
-          <TabsContent value="source">
-            <div className="p-4">
-              <VideoSourceControls appState={appState} />
+  const tabs: TabItem<SceneTab>[] = [
+    {
+      key: 'source',
+      label: getLocalePhrase(appState.language, Phrase.SourceHeading),
+    },
+    {
+      key: 'video',
+      label: getLocalePhrase(appState.language, Phrase.VideoHeading),
+    },
+    {
+      key: 'audio',
+      label: getLocalePhrase(appState.language, Phrase.AudioHeading),
+    },
+    {
+      key: 'overlay',
+      label: getLocalePhrase(appState.language, Phrase.OverlayHeading),
+    },
+  ];
+
+  return (
+    <div className="flex h-full w-full flex-col bg-background-higher pt-[32px]">
+      <div className="flex h-full w-full min-h-0 flex-col gap-y-3 px-7 pt-6 pb-4">
+        <PageHeader
+          title={getLocalePhrase(appState.language, Phrase.SceneButtonText)}
+          subtitle={getLocalePhrase(appState.language, Phrase.SceneSubtitle)}
+          actions={
+            <>
+              {renderResetGameButton()}
+              {config.chatOverlayEnabled && renderResetOverlayButton()}
+              {renderToggleSnappingSwitch()}
+              {devMode && renderShowPreviewSwitch()}
+            </>
+          }
+        />
+
+        {/* The OBS preview is drawn by the app over this box, so anything
+            that must stay readable sits above or below it, not on it. */}
+        <div className="min-h-[140px] flex-[2] overflow-hidden rounded-lg border border-panel-line bg-black">
+          <RecorderPreview
+            appState={appState}
+            previewEnabled={previewEnabled}
+            config={config}
+            snapEnabled={snapEnabled}
+          />
+        </div>
+        {waitingForGame && (
+          <div data-state="empty" className="text-[13px] text-foreground">
+            {getLocalePhrase(appState.language, Phrase.SceneWaitingForGame)}
+          </div>
+        )}
+
+        <div className="flex min-h-0 flex-[3] flex-col gap-y-3">
+          <UnderlineTabs<SceneTab>
+            items={tabs}
+            value={tab}
+            onChange={setTab}
+            label="Scene settings"
+          />
+          <ScrollArea
+            withScrollIndicators={false}
+            className="min-h-0 flex-1 rounded-lg border border-panel-line bg-panel"
+          >
+            <div>
+              {tab === 'source' && <VideoSourceControls appState={appState} />}
+              {tab === 'video' && (
+                <VideoBaseControls
+                  recorderStatus={recorderStatus}
+                  appState={appState}
+                  setPreviewEnabled={setPreviewEnabled}
+                  config={config}
+                  setConfig={setConfig}
+                />
+              )}
+              {tab === 'audio' && (
+                <AudioSourceControls
+                  appState={appState}
+                  setPreviewEnabled={setPreviewEnabled}
+                />
+              )}
+              {tab === 'overlay' && (
+                <ChatOverlayControls
+                  appState={appState}
+                  config={config}
+                  setConfig={setConfig}
+                />
+              )}
             </div>
-          </TabsContent>
-          <TabsContent value="video">
-            <div className="p-4">
-              <VideoBaseControls
-                recorderStatus={recorderStatus}
-                appState={appState}
-                setPreviewEnabled={setPreviewEnabled}
-                config={config}
-                setConfig={setConfig}
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="audio">
-            <div className="p-4">
-              <AudioSourceControls
-                appState={appState}
-                setPreviewEnabled={setPreviewEnabled}
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="overlay">
-            <div className="p-4">
-              <ChatOverlayControls
-                appState={appState}
-                config={config}
-                setConfig={setConfig}
-              />
-            </div>
-          </TabsContent>
-        </ScrollArea>
-      </Tabs>
-    </Box>
+          </ScrollArea>
+        </div>
+      </div>
+    </div>
   );
 };
 

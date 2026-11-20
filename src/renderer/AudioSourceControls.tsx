@@ -4,7 +4,6 @@ import { configSchema } from 'config/configSchema';
 import {
   AppWindow,
   AudioLines,
-  Info,
   MicVocal,
   PlusIcon,
   Speaker,
@@ -23,8 +22,13 @@ import {
   getPTTKeyPressEventFromConfig,
 } from './rendererutils';
 import { PTTKeyPressEvent, UiohookKeyMap } from '../types/KeyTypesUIOHook';
-import Label from './components/Label/Label';
-import { Tooltip } from './components/Tooltip/Tooltip';
+import { EmptyState } from './components/States/States';
+import {
+  SettingRow,
+  settingsButtonClass,
+  settingsFieldClass,
+  useScopedIds,
+} from './components/SettingsCard/SettingsCard';
 import Slider from './components/Slider/Slider';
 import Switch from './components/Switch/Switch';
 import { Input } from './components/Input/Input';
@@ -79,6 +83,7 @@ const AudioSourceControls = (props: IProps) => {
   const { appState, setPreviewEnabled } = props;
   const { language } = appState;
   const [config, setConfig] = useSettings();
+  const sid = useScopedIds();
   const initialRender = useRef(true);
   const pttInputRef = useRef<HTMLInputElement>(null);
 
@@ -264,48 +269,39 @@ const AudioSourceControls = (props: IProps) => {
 
   const getMonoSwitch = () => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.MonoInputLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.obsForceMono.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.obsForceMono}
-            onCheckedChange={setForceMono}
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.MonoInputLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.obsForceMono.description,
+        )}
+        htmlFor={sid('mono')}
+      >
+        <Switch
+          id={sid('mono')}
+          checked={config.obsForceMono}
+          onCheckedChange={setForceMono}
+        />
+      </SettingRow>
     );
   };
 
   const getPushToTalkSwitch = () => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.PushToTalkLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.pushToTalk.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch checked={config.pushToTalk} onCheckedChange={setPushToTalk} />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.PushToTalkLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.pushToTalk.description,
+        )}
+        htmlFor={sid('ptt')}
+      >
+        <Switch
+          id={sid('ptt')}
+          checked={config.pushToTalk}
+          onCheckedChange={setPushToTalk}
+        />
+      </SettingRow>
     );
   };
 
@@ -350,53 +346,44 @@ const AudioSourceControls = (props: IProps) => {
 
   const getPushToTalkSelect = () => {
     return (
-      <div className="flex flex-col">
-        <Label htmlFor="pttKey" className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.PushToTalkKeyLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.pushToTalkKey.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.PushToTalkKeyLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.pushToTalkKey.description,
+        )}
+        htmlFor={sid('pttKey')}
+      >
         <Input
+          id={sid('pttKey')}
           name="pttKey"
           ref={pttInputRef}
+          className={`${settingsFieldClass} w-[260px]`}
           value={getHotkeyString()}
           onFocus={() => setPttHotKeyFieldFocused(true)}
           onBlur={() => setPttHotKeyFieldFocused(false)}
           readOnly
         />
-      </div>
+      </SettingRow>
     );
   };
 
   const getAudioSuppressionSwitch = () => {
     return (
-      <div className="flex flex-col w-[140px]">
-        <Label className="flex items-center">
-          {getLocalePhrase(appState.language, Phrase.AudioSuppressionLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              appState.language,
-              configSchema.obsAudioSuppression.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex h-10 items-center">
-          <Switch
-            checked={config.obsAudioSuppression}
-            onCheckedChange={setAudioSuppression}
-          />
-        </div>
-      </div>
+      <SettingRow
+        label={getLocalePhrase(appState.language, Phrase.AudioSuppressionLabel)}
+        help={getLocalePhrase(
+          appState.language,
+          configSchema.obsAudioSuppression.description,
+        )}
+        htmlFor={sid('suppress')}
+      >
+        <Switch
+          id={sid('suppress')}
+          checked={config.obsAudioSuppression}
+          onCheckedChange={setAudioSuppression}
+        />
+      </SettingRow>
     );
   };
 
@@ -411,22 +398,20 @@ const AudioSourceControls = (props: IProps) => {
   };
 
   const getPushToTalkReleaseDelaySlider = () => (
-    <div className="flex flex-col w-[300px]">
-      <Label className="flex items-center">
-        {getLocalePhrase(appState.language, Phrase.PushToTalkReleaseDelayLabel)}
-        <Tooltip
-          content={getLocalePhrase(
-            appState.language,
-            configSchema.pushToTalkReleaseDelay.description,
-          )}
-          side="right"
-        >
-          <Info size={20} className="inline-flex ml-2" />
-        </Tooltip>
-      </Label>
+    <SettingRow
+      label={getLocalePhrase(
+        appState.language,
+        Phrase.PushToTalkReleaseDelayLabel,
+      )}
+      help={getLocalePhrase(
+        appState.language,
+        configSchema.pushToTalkReleaseDelay.description,
+      )}
+      htmlFor={sid('release-delay')}
+    >
       <div className="flex h-10 items-center gap-x-2 text-foreground-lighter">
         <Slider
-          id="release-delay-slider"
+          id={sid('release-delay')}
           key={`release-delay-${config.pushToTalkReleaseDelay}`}
           defaultValue={[config.pushToTalkReleaseDelay]}
           value={[localReleaseDelay]}
@@ -436,7 +421,7 @@ const AudioSourceControls = (props: IProps) => {
           max={2000}
           step={1}
           withTooltip={false}
-          className="w-[80px]"
+          className="w-[120px]"
         />
         <span className="text-sm text-foreground-lighter tabular-nums min-w-[60px] text-right whitespace-nowrap">
           {localReleaseDelay > 999
@@ -444,7 +429,7 @@ const AudioSourceControls = (props: IProps) => {
             : `${localReleaseDelay} ms`}
         </span>
       </div>
-    </div>
+    </SettingRow>
   );
 
   const setSourceDevice = (src: AudioSource, device: string) => {
@@ -568,7 +553,7 @@ const AudioSourceControls = (props: IProps) => {
         onValueChange={(value) => setSourceDevice(src, value)}
         onOpenChange={(open) => setPreviewEnabled(!open)}
       >
-        <SelectTrigger className="w-[500px]">
+        <SelectTrigger className={`${settingsFieldClass} w-[320px]`}>
           <SelectValue
             placeholder={
               src.type !== AudioSourceType.PROCESS
@@ -759,10 +744,10 @@ const AudioSourceControls = (props: IProps) => {
         <thead>
           <tr className="h-6">
             <th></th>
-            <th className="px-2 text-center text-xs font-normal text-foreground-lighter">
+            <th className="px-2 text-center text-xs font-normal text-foreground">
               {getLocalePhrase(language, Phrase.SourceHeading)}
             </th>
-            <th className="px-2 text-center text-xs font-normal text-foreground-lighter">
+            <th className="px-2 text-center text-xs font-normal text-foreground">
               {getLocalePhrase(language, Phrase.AudioTracksLabel)}
             </th>
             <th></th>
@@ -782,9 +767,9 @@ const AudioSourceControls = (props: IProps) => {
 
   const renderHelpText = () => {
     return (
-      <div className="flex flex-col text-sm text-foreground-lighter mx-2">
+      <EmptyState>
         {getLocalePhrase(language, Phrase.NoAudioSourcesText)}
-      </div>
+      </EmptyState>
     );
   };
 
@@ -793,11 +778,12 @@ const AudioSourceControls = (props: IProps) => {
       <div className="flex flex-col gap-y-2">
         {config.audioSources.length > 0 && renderSourceTable()}
         {config.audioSources.length < 1 && renderHelpText()}
-        <div className="flex gap-2 mx-2">
+        <div className="flex gap-2">
           <Button
             onClick={() => addSource(AudioSourceType.OUTPUT)}
             disabled={!sourcesAreFullyDefined}
-            variant="outline"
+            variant="ghost"
+            className={settingsButtonClass}
           >
             <PlusIcon className="px-0" />
             {getLocalePhrase(language, Phrase.AddSpeakerButtonText)}
@@ -805,7 +791,8 @@ const AudioSourceControls = (props: IProps) => {
           <Button
             onClick={() => addSource(AudioSourceType.INPUT)}
             disabled={!sourcesAreFullyDefined}
-            variant="outline"
+            variant="ghost"
+            className={settingsButtonClass}
           >
             <PlusIcon className="px-0" />
             {getLocalePhrase(language, Phrase.AddMicrophoneButtonText)}
@@ -813,7 +800,8 @@ const AudioSourceControls = (props: IProps) => {
           <Button
             onClick={() => addSource(AudioSourceType.PROCESS)}
             disabled={!sourcesAreFullyDefined}
-            variant="outline"
+            variant="ghost"
+            className={settingsButtonClass}
           >
             <PlusIcon className="px-0" />
             {getLocalePhrase(language, Phrase.AddApplicationButtonText)}
@@ -823,28 +811,18 @@ const AudioSourceControls = (props: IProps) => {
     );
   };
 
-  const getSettingsSection = () => {
-    return (
-      <div className="flex gap-y-8 flex-col m-4">
-        <div className="flex items-center content-start w-full gap-10 flex-wrap">
-          {getAudioSuppressionSwitch()}
-          {getMonoSwitch()}
-          {getPushToTalkSwitch()}
-          {config.pushToTalk && (
-            <>
-              {getPushToTalkSelect()}
-              {getPushToTalkReleaseDelaySlider()}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="flex flex-col w-full h-full gap-4">
-      {getSourcesSection()}
-      {getSettingsSection()}
+    <div className="divide-y divide-panel-line">
+      <div className="p-[18px]">{getSourcesSection()}</div>
+      {getAudioSuppressionSwitch()}
+      {getMonoSwitch()}
+      {getPushToTalkSwitch()}
+      {config.pushToTalk && (
+        <>
+          {getPushToTalkSelect()}
+          {getPushToTalkReleaseDelaySlider()}
+        </>
+      )}
     </div>
   );
 };

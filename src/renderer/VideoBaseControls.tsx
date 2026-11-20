@@ -10,7 +10,7 @@ import { AppState, Encoder, RecStatus } from 'main/types';
 import { obsResolutions } from 'main/constants';
 import { configSchema, ConfigurationSchema } from 'config/configSchema';
 import { ESupportedEncoders, QualityPresets } from 'main/obsEnums';
-import { Info, Wand } from 'lucide-react';
+import { Wand } from 'lucide-react';
 import { getLocalePhrase } from 'localisation/translations';
 import { setConfigValues } from './useSettings';
 import {
@@ -20,11 +20,13 @@ import {
   mapStringToEncoder,
   translateQuality,
 } from './rendererutils';
-import Label from './components/Label/Label';
+import { Segmented } from './logs/Segmented';
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from './components/ToggleGroup/ToggleGroup';
+  SettingRow,
+  settingsButtonClass,
+  settingsFieldClass,
+  useScopedIds,
+} from './components/SettingsCard/SettingsCard';
 import { Tooltip } from './components/Tooltip/Tooltip';
 import {
   Select,
@@ -64,6 +66,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
   const { recorderStatus, appState, setPreviewEnabled, config, setConfig } =
     props;
   const { language } = appState;
+  const sid = useScopedIds();
   const initialRender = useRef(true);
   const highRes = isHighRes(config.obsOutputResolution);
   const [encoders, setEncoders] = useState<Encoder[]>([]);
@@ -148,26 +151,24 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label className="flex items-center">
-          {getLocalePhrase(language, Phrase.CanvasResolutionLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.obsOutputResolution.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.CanvasResolutionLabel)}
+        help={getLocalePhrase(
+          language,
+          configSchema.obsOutputResolution.description,
+        )}
+        htmlFor={sid('resolution')}
+      >
         <Select
           value={config.obsOutputResolution}
           onValueChange={setCanvasResolution}
           onOpenChange={(open) => setPreviewEnabled(!open)}
           disabled={isComponentDisabled()}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger
+            id={sid('resolution')}
+            className={`${settingsFieldClass} w-48`}
+          >
             <SelectValue
               placeholder={getLocalePhrase(language, Phrase.SelectResolution)}
             />
@@ -180,7 +181,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </SettingRow>
     );
   };
 
@@ -203,33 +204,21 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div>
-        <Label className="flex items-center">
-          {getLocalePhrase(language, Phrase.FPSLabel)}
-          <Tooltip
-            content={getLocalePhrase(language, configSchema.obsFPS.description)}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <ToggleGroup
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.FPSLabel)}
+        help={getLocalePhrase(language, configSchema.obsFPS.description)}
+      >
+        <Segmented
+          label={getLocalePhrase(language, Phrase.FPSLabel)}
+          tall
           value={config.obsFPS.toString()}
-          onValueChange={setFPS}
-          size="sm"
-          type="single"
-          variant="outline"
-        >
-          {fpsOptions.map((fpsOption) => (
-            <ToggleGroupItem
-              key={fpsOption.toString()}
-              value={fpsOption.toString()}
-            >
-              {fpsOption}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+          onChange={setFPS}
+          items={fpsOptions.map((fpsOption) => ({
+            key: fpsOption.toString(),
+            label: fpsOption,
+          }))}
+        />
+      </SettingRow>
     );
   };
 
@@ -248,9 +237,11 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <TextBanner>
-        {getLocalePhrase(language, Phrase.SettingsDisabledText)}
-      </TextBanner>
+      <div className="px-[18px] py-3.5">
+        <TextBanner>
+          {getLocalePhrase(language, Phrase.SettingsDisabledText)}
+        </TextBanner>
+      </div>
     );
   };
 
@@ -262,26 +253,21 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     const options = Object.values(QualityPresets);
 
     return (
-      <div className="flex flex-col w-1/4 min-w-40 max-w-60">
-        <Label className="flex items-center">
-          {getLocalePhrase(language, Phrase.QualityLabel)}
-          <Tooltip
-            content={getLocalePhrase(
-              language,
-              configSchema.obsQuality.description,
-            )}
-            side="right"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.QualityLabel)}
+        help={getLocalePhrase(language, configSchema.obsQuality.description)}
+        htmlFor={sid('quality')}
+      >
         <Select
           value={config.obsQuality}
           onValueChange={setQuality}
           onOpenChange={(open) => setPreviewEnabled(!open)}
           disabled={isComponentDisabled()}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger
+            id={sid('quality')}
+            className={`${settingsFieldClass} w-48`}
+          >
             <SelectValue
               placeholder={getLocalePhrase(language, Phrase.SelectQuality)}
             />
@@ -294,7 +280,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </SettingRow>
     );
   };
 
@@ -353,48 +339,50 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <div className="flex flex-col w-1/4 min-w-60 max-w-80">
-        <Label className="flex items-center">
-          {getLocalePhrase(language, Phrase.VideoEncoderLabel)}
-          <Tooltip
-            content={tooltip}
-            side="bottom"
-            maxWidth={600}
-            className="whitespace-pre-line"
+      <SettingRow
+        label={getLocalePhrase(language, Phrase.VideoEncoderLabel)}
+        help={<span className="whitespace-pre-line">{tooltip}</span>}
+        htmlFor={sid('encoder')}
+      >
+        <Select
+          value={config.obsRecEncoder}
+          onValueChange={setEncoder}
+          onOpenChange={(open) => setPreviewEnabled(!open)}
+          disabled={isComponentDisabled()}
+        >
+          <SelectTrigger
+            id={sid('encoder')}
+            className={`${settingsFieldClass} w-64`}
           >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
-        </Label>
-        <div className="flex flex-row gap-x-2">
-          <Select
-            value={config.obsRecEncoder}
-            onValueChange={setEncoder}
-            onOpenChange={(open) => setPreviewEnabled(!open)}
-            disabled={isComponentDisabled()}
+            <SelectValue
+              placeholder={getLocalePhrase(language, Phrase.SelectEncoder)}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {encoders.map((encoder) => (
+              <SelectItem key={encoder.name} value={encoder.value}>
+                {mapEncoderToString(encoder, language)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Tooltip
+          content={getLocalePhrase(language, Phrase.AutoSelectEncoderTooltip)}
+          side="right"
+        >
+          <Button
+            variant="ghost"
+            className={settingsButtonClass}
+            aria-label={getLocalePhrase(
+              language,
+              Phrase.AutoSelectEncoderTooltip,
+            )}
+            onClick={autoSelectEncoder}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue
-                placeholder={getLocalePhrase(language, Phrase.SelectEncoder)}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {encoders.map((encoder) => (
-                <SelectItem key={encoder.name} value={encoder.value}>
-                  {mapEncoderToString(encoder, language)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Tooltip
-            content={getLocalePhrase(language, Phrase.AutoSelectEncoderTooltip)}
-            side="right"
-          >
-            <Button variant="ghost" onClick={autoSelectEncoder}>
-              <Wand />
-            </Button>
-          </Tooltip>
-        </div>
-      </div>
+            <Wand size={16} />
+          </Button>
+        </Tooltip>
+      </SettingRow>
     );
   };
 
@@ -415,21 +403,19 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     }
 
     return (
-      <span className="text-error text-sm">
+      <p className="m-0 px-[18px] py-3.5 text-sm text-error-text">
         {getLocalePhrase(appState.language, Phrase.CodecNeedsHardwareRendering)}
-      </span>
+      </p>
     );
   };
 
   return (
-    <div className="flex flex-col items-start w-fullg gap-y-4">
+    <div className="divide-y divide-panel-line">
       {getDisabledText()}
-      <div className="flex items-center w-full gap-x-8">
-        {getFPSToggle()}
-        {getCanvasResolutionSelect()}
-        {getQualitySelect()}
-        {getEncoderSelect()}
-      </div>
+      {getFPSToggle()}
+      {getCanvasResolutionSelect()}
+      {getQualitySelect()}
+      {getEncoderSelect()}
       {getHardwareAccelerationWarning()}
     </div>
   );

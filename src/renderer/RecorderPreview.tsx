@@ -90,7 +90,18 @@ const RecorderPreview = (props: {
     showPreview();
     setupResizeObserver();
 
+    // The preview box can move without resizing (sidebar folds, window
+    // widens): measure again on window resize, one frame at a time.
+    let frame = 0;
+    const onWindowResize = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => configurePreview());
+    };
+    window.addEventListener('resize', onWindowResize);
+
     return () => {
+      window.removeEventListener('resize', onWindowResize);
+      cancelAnimationFrame(frame);
       // Disconnect the resize observer.
       cleanupResizeObserver();
 
@@ -376,6 +387,10 @@ const RecorderPreview = (props: {
 
     if (previewDivRef.current) {
       resizeObserver.observe(previewDivRef.current);
+      // Also the outer box: it changes when the preview only moves.
+      if (previewDivRef.current.parentElement) {
+        resizeObserver.observe(previewDivRef.current.parentElement);
+      }
     }
   };
 

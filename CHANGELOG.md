@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.150] - Unreleased
+### Changed
+- **Scene, Watch live and Instant replay in the Brass & Walnut look.** Scene has a page title, the preview in its own card, and Source, Video, Audio and Overlay as tabs; every setting is a row with a one-line explanation instead of an (i) icon, and the capture mode, monitor and frame rate are one-click choices.
+- When World of Warcraft isn't running, Scene says to start it to see the preview.
+- The Scene preview now stays in place when you fold the sidebar or resize the window.
+- Watch live shows who is live as cards. With nobody live it says "Nobody is live right now. Raiders appear here when they press Go live."
+- Instant replay has a title and a short explanation, and a clear message when there's nothing to replay.
+- Labels use sentence case ("Capture mode", "Push to talk", "Instant replay").
+
 ## [1.9.149] - Unreleased
 ### Changed
 - **The sidebar in the Brass & Walnut look, with a status card that says if you're ready.** The card at the top tells you at a glance: "Ready to record" (green), "Waiting for WoW" (grey, until the game is detected), "Recording" with the timer, or "Not ready" and why.
