@@ -17,6 +17,10 @@
 import { DEFAULT_FILTERS, makeCtx, meterRows, unionLength } from './query';
 import { F, K, PullStore, Spell } from './store';
 import { SPEC_PRESETS } from './specPresets';
+import { PRIMARY_POWER } from './primaryPower';
+
+/** WidgetSpec.power: the resource wasted most in the pull. */
+export const MOST_WASTED = -1;
 
 export type SpellRef = { name: string; id?: number };
 
@@ -50,7 +54,8 @@ export type WidgetSpec = {
   goodSpells?: SpellRef[];
   /** count */
   what?: 'casts' | 'hits' | 'dispels' | 'interrupts';
-  /** resourceWaste: power type (see POWER_NAMES); the most wasted if unset. */
+  /** resourceWaste: power type (see POWER_NAMES); unset is the spec's main
+   * resource, MOST_WASTED the one wasted most. */
   power?: number;
   /** breakdown */
   metric?: 'healing' | 'damage';
@@ -430,15 +435,27 @@ export const runWidget = (
         if (store.k[i] === K.ENERGIZE && store.d[i] === unit) {
           const e = by.get(store.aux[i]) ?? [0, 0];
           e[0] += store.x[i];
-          e[1] += store.a[i] + store.x[i];
+          // Spending (Void Metamorphosis logs Fury as -2) isn't a gain.
+          e[1] += Math.max(0, store.a[i] + store.x[i]);
           by.set(store.aux[i], e);
         }
       }
       const byPower = [...by.entries()]
         .map(([p, [w]]) => [p, w] as [number, number])
         .sort((a, b) => b[1] - a[1]);
-      const power = spec.power ?? byPower[0]?.[0];
-      if (power === undefined)
+      // The widget's own pick; MOST_WASTED for the one wasted most; else the
+      // spec's main resource when the pull logged gains of it (0 if none was
+      // lost). Passive regen (Mana, Energy) isn't logged, so a spec whose
+      // main resource has no gains falls back to the most wasted.
+      const primary = PRIMARY_POWER[store.units[unit].specId];
+      const power =
+        spec.power === MOST_WASTED
+          ? byPower[0]?.[0]
+          : (spec.power ??
+            (primary !== undefined && by.has(primary)
+              ? primary
+              : byPower[0]?.[0]));
+      if (power === undefined || !by.size)
         return { kind: 'empty', reason: 'No resource gains in this pull.' };
       const [wasted, gained] = by.get(power) ?? [0, 0];
       return { kind: 'resourceWaste', power, wasted, gained, byPower };

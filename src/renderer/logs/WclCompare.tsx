@@ -290,12 +290,11 @@ const ourSide = (
   if (tab === 'buffs' || tab === 'debuffs') {
     const debuffs = tab === 'debuffs';
     const seconds = Math.max(1, viewSeconds(ctx));
-    const list = auraRows(ctx, { debuffs, who: auraWho });
+    const list = auraRows(ctx, { debuffs, who: auraWho, byId: true });
     const raid = new Map(
-      (auraWho ? auraRows(ctx, { debuffs, who: null }) : list).map((r) => [
-        r.spellId,
-        r.category,
-      ]),
+      (auraWho ? auraRows(ctx, { debuffs, who: null, byId: true }) : list).map(
+        (r) => [r.spellId, r.category],
+      ),
     );
     return list.map((r) => {
       const why = debuffs
@@ -432,7 +431,7 @@ const WclCompare = ({
   React.useEffect(() => {
     if (!open || tab !== 'buffs') return undefined;
     let cancelled = false;
-    const ids = auraRows(ctx, { debuffs: false, who: null }).map(
+    const ids = auraRows(ctx, { debuffs: false, who: null, byId: true }).map(
       (r) => r.spellId,
     );
     loadSpellTexts(ids).then((found) => {
@@ -495,9 +494,11 @@ const WclCompare = ({
     setAll({ done: 0, total: 0, text: null });
     // Buff descriptions first, for the section each buff lands in.
     const allTexts = new Map<number, string>();
-    const buffIds = auraRows(friendly, { debuffs: false, who: null }).map(
-      (r) => r.spellId,
-    );
+    const buffIds = auraRows(friendly, {
+      debuffs: false,
+      who: null,
+      byId: true,
+    }).map((r) => r.spellId);
     const found = await loadSpellTexts(buffIds);
     buffIds.forEach((id) => allTexts.set(id, found.get(id)?.text ?? ''));
     const rowsOf = new Map<string, MeterRow[]>();

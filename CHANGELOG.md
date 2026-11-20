@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.147] - Unreleased
+### Fixed
+- **Queries, Deaths:** the ready-made Deaths query now counts only raiders' deaths, like the Deaths tab (it was counting enemy deaths too). New filter fields `source.raider` and `target.raider` (true or false) are in the "?" help.
+- **Analyze, resource lost at the cap:** shows the spec's main resource when the pull logged it (Insanity, Fury, Arcane Charges, Chi, Essence, Holy Power and so on), and otherwise the resource wasted most (Mana and Energy regen isn't in the combat log). The widget editor has both choices. A negative gain (Void Metamorphosis) no longer makes the percentage negative.
+- **Buffs:** one row per buff name. Versions of a buff with different spell IDs (talent variants, ranks) used to show as separate rows with counts that didn't add up; uses are now added together and uptime counts overlapping time once. Hover the name to see the spell IDs; opening the row shows all of them, across every picked pull.
+- **Trends:** a progression night with no kill is labelled "Progression", not "First kill".
+
 ## [1.9.146] - Unreleased
 ### Changed
 - **Failed uploads now tell you why, and nothing hangs.** A recording that fails to upload is no longer shown as finished. You get a notice with Try again, and the Cloud line in the sidebar shows a warning: hover it to see each failed upload with its reason, Try again and Dismiss.

@@ -1016,7 +1016,12 @@ export type AuraCategory =
   | 'other';
 
 export type AuraRow = {
+  /** The spell ID with the most uses (the one the row opens and shows). */
   spellId: number;
+  /** Every spell ID of this name that is in the row, most used first. */
+  ids: number[];
+  /** What identifies the row (its name, or the ID of an unnamed spell). */
+  key: string;
   name: string;
   category: AuraCategory;
   /** Times it went on. */
@@ -1039,12 +1044,15 @@ export const CONSUMABLE =
  */
 export const auraRows = (
   ctx: Ctx,
-  opts: { debuffs: boolean; who: string | null },
+  opts: { debuffs: boolean; who: string | null; byId?: boolean },
 ): AuraRow[] => {
   const onEnemy = ctx.filters.side === 'enemy';
   type Agg = {
+    key: string;
     spellId: number;
     name: string;
+    /** Uses per spell ID, for the ID the row stands for. */
+    idCounts: Map<number, number>;
     count: number;
     spans: [number, number][];
     sources: Map<string, number>;
@@ -1057,7 +1065,7 @@ export const auraRows = (
     casters: Set<string>;
     fromEnemy: number;
   };
-  const aggs = new Map<number, Agg>();
+  const aggs = new Map<string, Agg>();
   // Spells each raider cast, and how often.
   const castCounts = new Map<string, number>();
   scan(
@@ -1073,6 +1081,15 @@ export const auraRows = (
       castCounts.set(key, (castCounts.get(key) ?? 0) + 1);
     },
     { kinds: [K.CAST], ignoreExpr: true },
+  );
+
+  // A buff worn from before one pull has no name there but may have one in
+  // another pull: name each ID from wherever it has one.
+  const idNames = new Map<number, string>();
+  ctx.pulls.forEach((p) =>
+    p.spells.forEach((sp) => {
+      if (sp.name && !idNames.has(sp.id)) idNames.set(sp.id, sp.name);
+    }),
   );
 
   ctx.pulls.forEach((p, pi) => {
@@ -1100,11 +1117,20 @@ export const auraRows = (
       const spell = p.spells[a.spell];
       if (!spell) return;
       if (!abilityOk(ctx, spell.id)) return;
-      let agg = aggs.get(spell.id);
+      // Talent variants, ranks and the like share a name: one row, unless
+      // asked for by ID (Warcraft Logs' own rows are per ID).
+      const spellName = spell.name || idNames.get(spell.id) || '';
+      const groupKey =
+        opts.byId || !spellName
+          ? `#${spell.id}`
+          : spellName.trim().toLowerCase();
+      let agg = aggs.get(groupKey);
       if (!agg) {
         agg = {
+          key: groupKey,
           spellId: spell.id,
-          name: spell.name,
+          name: spellName,
+          idCounts: new Map(),
           count: 0,
           spans: [],
           sources: new Map(),
@@ -1116,9 +1142,15 @@ export const auraRows = (
           casters: new Set(),
           fromEnemy: 0,
         };
-        aggs.set(spell.id, agg);
+        aggs.set(groupKey, agg);
       }
-      if (a.start >= from) agg.count += 1 + (a.bumps ?? 0);
+      if (a.start >= from) {
+        agg.count += 1 + (a.bumps ?? 0);
+        agg.idCounts.set(
+          spell.id,
+          (agg.idCounts.get(spell.id) ?? 0) + 1 + (a.bumps ?? 0),
+        );
+      } else if (!agg.idCounts.has(spell.id)) agg.idCounts.set(spell.id, 0);
       if (e > s) agg.spans.push([off + s, off + e]);
       const caster = a.src >= 0 ? rowOf(p, a.src, false) : null;
       const casterName = caster?.player ? caster.name : caster?.name || '';
@@ -1142,6 +1174,14 @@ export const auraRows = (
   const seconds = viewSeconds(ctx);
   return [...aggs.values()]
     .map((agg) => {
+      // One row may stand for several IDs: their casts all count.
+      const castsOf = (guid: string) =>
+        opts.byId || !agg.name
+          ? (castCounts.get(`${guid}|${agg.spellId}`) ??
+            castCounts.get(`${guid}|${agg.name}`) ??
+            0)
+          : (castCounts.get(`${guid}|${agg.name}`) ?? 0);
+      // Spans of every ID merged, so overlapping auras count once.
       const spans = mergeSpans(agg.spans);
       const uptime = spans.reduce((n, [s, e]) => n + e - s, 0);
       // Up nearly all the time (on whoever had it at all).
@@ -1157,27 +1197,26 @@ export const auraRows = (
       else if (agg.maxBurst >= 4) {
         // Pressed for the raid now and then (not a HoT or a proc).
         const pressed = [...agg.casters].some((guid) => {
-          const casts =
-            castCounts.get(`${guid}|${agg.spellId}`) ??
-            castCounts.get(`${guid}|${agg.name}`) ??
-            0;
+          const casts = castsOf(guid);
           return casts > 0 && casts <= Math.max(3, (seconds / 60) * 1.5);
         });
         if (pressed) category = 'raid';
       } else if (!steady) {
         // A cooldown: a spell its caster pressed now and then.
         const pressed = [...agg.casters].some((guid) => {
-          const casts =
-            castCounts.get(`${guid}|${agg.spellId}`) ??
-            castCounts.get(`${guid}|${agg.name}`) ??
-            0;
+          const casts = castsOf(guid);
           return casts > 0 && casts <= Math.max(3, (seconds / 60) * 3);
         });
         if (pressed)
           category = agg.otherCast > agg.selfCast ? 'external' : 'personal';
       }
+      const ids = [...agg.idCounts.entries()]
+        .sort((x, y) => y[1] - x[1] || x[0] - y[0])
+        .map(([id]) => id);
       return {
-        spellId: agg.spellId,
+        key: agg.key,
+        spellId: ids[0] ?? agg.spellId,
+        ids: ids.length ? ids : [agg.spellId],
         name: agg.name,
         category,
         count: agg.count,
@@ -1232,24 +1271,39 @@ export const auraDetail = (
   const stacks = new Float64Array(n);
   const targets = new Map<string, AuraTarget>();
   const sources = new Map<string, [RowRef, number]>();
+  // The row's name, from any pull (the picked ID may be unnamed or absent in
+  // some of them); every ID of that name is part of the aura.
+  const named = (
+    ctx.pulls
+      .flatMap((p) => p.spells)
+      .find((sp) => sp.id === spellId && sp.name)?.name ?? ''
+  )
+    .trim()
+    .toLowerCase();
   let name = '';
   let maxStacks = 1;
   ctx.pulls.forEach((p, pi) => {
     const [from, to] = window_(ctx, pi);
     const off = ctx.offsets[pi];
     const { bosses } = enemyInfo(p);
+    // Every ID of the same name is one row in the table (see auraRows).
     const spellIdx = new Set<number>();
     p.spells.forEach((sp, i) => {
-      if (sp.id === spellId) spellIdx.add(i);
+      if (
+        sp.id === spellId ||
+        (named && sp.name.trim().toLowerCase() === named)
+      )
+        spellIdx.add(i);
     });
     if (!spellIdx.size) return;
     // Stack changes: target -> [t, stacks].
-    const doses = new Map<number, [number, number][]>();
+    const doses = new Map<string, [number, number][]>();
     for (let i = 0; i < p.n; i += 1) {
       if (p.k[i] !== K.DOSE || !spellIdx.has(p.sp[i])) continue;
-      const list = doses.get(p.d[i]) ?? [];
+      const dose = `${p.d[i]}|${p.sp[i]}`;
+      const list = doses.get(dose) ?? [];
       list.push([p.t[i], p.x[i]]);
-      doses.set(p.d[i], list);
+      doses.set(dose, list);
     }
     p.auras.forEach((a) => {
       if (!spellIdx.has(a.spell) || a.debuff !== opts.debuffs) return;
@@ -1268,7 +1322,7 @@ export const auraDetail = (
       const s0 = Math.max(from, a.start);
       const e0 = Math.min(to, a.end);
       if (e0 <= s0) return;
-      name = p.spells[a.spell].name;
+      name = p.spells[a.spell].name || name;
       const ref = rowOf(p, a.dst, true);
       if (!ref) return;
       // Enemies with one name are one row; each instance would be noise.
@@ -1303,7 +1357,7 @@ export const auraDetail = (
       };
       let at = a.start;
       let count = 1;
-      (doses.get(a.dst) ?? []).forEach(([t, c]) => {
+      (doses.get(`${a.dst}|${a.spell}`) ?? []).forEach(([t, c]) => {
         if (t <= a.start || t >= a.end) return;
         piece(at, t, count);
         at = t;

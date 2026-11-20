@@ -1,11 +1,12 @@
 import React from 'react';
 import { classColor } from './logs/format';
+import { nightHeading, nightKind } from './trendsLabel';
 
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
  * or damage taken night by night on one boss, from the
- * stored meters. Only kills count (the first kill, then every reclear), so
- * weeks compare like with like.
+ * stored meters. Progression nights count every pull up to the first kill;
+ * after that only kills do, so reclear weeks compare like with like.
  */
 
 const ipc = window.electron.ipcRenderer;
@@ -427,11 +428,7 @@ export const LogsTrends = () => {
                 <tbody>
                   {(
                     [
-                      [
-                        'Kill',
-                        (n: NightTotals) =>
-                          n.phase === 'first' ? 'First kill' : 'Reclear',
-                      ],
+                      ['Kill', (n: NightTotals) => nightKind(n)],
                       ['Kills', (n: NightTotals) => String(n.kills)],
                       [
                         'Fight time',
@@ -497,11 +494,7 @@ export const LogsTrends = () => {
                       className="px-2 py-1 text-right font-normal whitespace-nowrap"
                     >
                       <div>{shortNight(n.night)}</div>
-                      <div className="text-[10px]">
-                        {n.phase === 'first'
-                          ? 'first kill'
-                          : `${n.kills} kill${n.kills > 1 ? 's' : ''}`}
-                      </div>
+                      <div className="text-[10px]">{nightHeading(n)}</div>
                     </th>
                   ))}
                   <th className="px-2 py-1 text-right font-normal">Average</th>
@@ -581,10 +574,11 @@ export const LogsTrends = () => {
             </table>
           </div>
           <p className="text-xs text-foreground m-0">
-            Only kills count: the first kill, then every reclear, so weeks
-            compare like with like. {meta.rate} over the kills&apos; fight time.
-            Shading: each raider against their own best night. Change: their
-            last night against their first
+            Progression nights count every pull up to the first kill; after that
+            only kills count, so reclear weeks compare like with like.{' '}
+            {meta.rate} over the fight time counted. Shading: each raider
+            against their own best night. Change: their last night against their
+            first
             {kind === 'taken' ? ' (less damage taken is green)' : ''}.
           </p>
         </>

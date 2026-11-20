@@ -1,11 +1,11 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
 import { compileExpression, EXPRESSION_FIELDS } from './expression';
 import { Ctx, scan } from './query';
 import { K } from './store';
 import { compact, thousands } from './format';
 import EventsView from './EventsView';
+import { PRESETS } from './queryPresets';
 import ExpressionInput, { Vocabulary } from './ExpressionInput';
 
 /**
@@ -13,45 +13,6 @@ import ExpressionInput, { Vocabulary } from './ExpressionInput';
  * expressions, with what matched added up by ability, source and target,
  * and the matching events underneath.
  */
-
-const LUST_IDS = [2825, 32182, 80353, 264667, 390386, 466904, 444257];
-const DEFENSIVES = [
-  ...new Set(
-    Object.entries(DAMAGE_REDUCTION).flatMap(([id, dr]) =>
-      dr.castId ? [Number(id), dr.castId] : [Number(id)],
-    ),
-  ),
-];
-
-export const PRESETS: { name: string; expr: string }[] = [
-  { name: 'Deaths', expr: 'type = death' },
-  {
-    name: 'Big hits on raiders (over 1m)',
-    expr: 'type = damage and target.type = player and not source.type = player and amount > 1m',
-  },
-  {
-    name: 'Raiders below 20% health',
-    expr: 'type = damage and target.type = player and target.hp >= 0 and target.hp < 20',
-  },
-  { name: 'Interrupts', expr: 'type = interrupt' },
-  { name: 'Dispels', expr: 'type = dispel' },
-  {
-    name: 'Damage-reduction cooldowns pressed',
-    expr: `type = cast and ability.id in (${DEFENSIVES.join(', ')})`,
-  },
-  {
-    name: 'Potions and healthstones',
-    expr: 'type = cast and (ability.name ~ "potion" or ability.name ~ "healthstone")',
-  },
-  {
-    name: 'Bloodlust',
-    expr: `type = applybuff and ability.id in (${LUST_IDS.join(', ')})`,
-  },
-  {
-    name: 'Boss casts',
-    expr: 'type in (cast, begincast) and source.type = npc',
-  },
-];
 
 const SAVED_KEY = 'rf-logs-queries';
 const readSaved = (): { name: string; expr: string }[] => {

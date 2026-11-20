@@ -154,7 +154,7 @@ const Section = ({
           <tbody>
             {shown.map((r) => (
               <tr
-                key={r.spellId}
+                key={r.key}
                 className="border-b border-card/40 hover:bg-card/30"
               >
                 <td className={`${td} text-foreground-lighter truncate`}>
@@ -162,7 +162,11 @@ const Section = ({
                     type="button"
                     onClick={() => onOpen(r.spellId)}
                     className="inline-flex items-center gap-x-2 max-w-full hover:underline text-left"
-                    title="See who had it, when, and its stacks"
+                    title={
+                      r.ids.length > 1
+                        ? `See who had it, when, and its stacks (spell IDs ${r.ids.join(', ')})`
+                        : 'See who had it, when, and its stacks'
+                    }
                   >
                     <SpellIcon spellId={r.spellId} name={r.name} />
                     <span className="truncate">{r.name}</span>
@@ -261,7 +265,7 @@ const AuraTables = ({
     () =>
       new Map(
         (who ? auraRows(ctx, { debuffs, who: null }) : rows).map((r) => [
-          r.spellId,
+          r.key,
           !r.name && CONSUMABLE.test(names.get(r.spellId) ?? '')
             ? 'consumable'
             : r.category,
@@ -306,7 +310,7 @@ const AuraTables = ({
         ? r.category
         : 'other'
       : sectionOf(
-          { ...r, category: raidCategory.get(r.spellId) ?? r.category },
+          { ...r, category: raidCategory.get(r.key) ?? r.category },
           texts.get(r.spellId) ?? '',
         );
   // The aura opened up (per tab and side).
