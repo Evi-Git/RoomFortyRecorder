@@ -1,5 +1,11 @@
 import { timeOfDay } from 'renderer/clock';
-import { bossPercent, compact, formatDuration, ratioPercent } from './format';
+import {
+  bossPercent,
+  compact,
+  compactShort,
+  formatDuration,
+  ratioPercent,
+} from './format';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import {
   ArrowLeft,
@@ -1128,7 +1134,7 @@ const PullComparison = ({ pulls }: { pulls: ComparePull[] }) => {
                   title={`${p.label}: ${compact(raid[i])} ${meta.rate}`}
                 >
                   <span className="text-[10px] tabular-nums text-foreground">
-                    {compact(raid[i])}
+                    {compactShort(raid[i])}
                   </span>
                   <div
                     className="w-full max-w-[36px] rounded-t-[4px]"
