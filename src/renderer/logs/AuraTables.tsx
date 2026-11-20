@@ -7,7 +7,7 @@ import {
   sectionOf,
 } from './auraSections';
 import { loadSpellTexts } from './SpellIcon';
-import { pct, thousands } from './format';
+import { grouped, pct } from '../format';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import AuraDetail from './AuraDetail';
@@ -172,7 +172,7 @@ const Section = ({
                     <span className="truncate">{r.name}</span>
                   </button>
                 </td>
-                <td className={`${td} text-right`}>{thousands(r.count)}</td>
+                <td className={`${td} text-right`}>{grouped(r.count)}</td>
                 {debuffs && <td className={`${td} text-right`}>{r.targets}</td>}
                 <td className={`${td} text-right text-foreground-lighter`}>
                   {pct(r.uptime, seconds)}

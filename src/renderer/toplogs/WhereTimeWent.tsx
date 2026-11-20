@@ -6,7 +6,7 @@
 import React from 'react';
 import { Play } from 'lucide-react';
 import SpellIcon from '../logs/SpellIcon';
-import { compact, mmss } from '../logs/format';
+import { compact, formatDuration } from '../format';
 import { byKind, Finding, KINDS } from './whereTime';
 
 const BAD = '#E57F7F';
@@ -175,7 +175,9 @@ const WhereTimeWent = ({
                       />
                     </span>
                   </span>
-                  <span className="text-[13px] tabular-nums">{mmss(f.at)}</span>
+                  <span className="text-[13px] tabular-nums">
+                    {formatDuration(f.at)}
+                  </span>
                   <span className="flex gap-x-1.5 justify-end">
                     <button
                       type="button"

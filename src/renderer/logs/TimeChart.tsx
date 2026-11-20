@@ -1,5 +1,5 @@
 import React from 'react';
-import { clock, compact, mmss } from './format';
+import { compact, formatDuration, formatDurationRounded } from '../format';
 import { ZoomContext } from './zoom';
 
 /**
@@ -342,7 +342,7 @@ const TimeChart = ({
             fontSize="11"
             fill="hsl(var(--foreground))"
           >
-            {clock(t)}
+            {formatDurationRounded(t)}
           </text>
         ))}
         <text
@@ -466,7 +466,8 @@ const TimeChart = ({
               fontSize="11"
               fill="hsl(var(--foreground-lighter))"
             >
-              {mmss(shown[0])} – {mmss(shown[1])} ({mmss(shown[1] - shown[0])})
+              {formatDuration(shown[0])} – {formatDuration(shown[1])} (
+              {formatDuration(shown[1] - shown[0])})
             </text>
           </g>
         )}
@@ -500,7 +501,7 @@ const TimeChart = ({
                 : 'translateX(8px)',
           }}
         >
-          <div className="text-foreground">{mmss(hover)}</div>
+          <div className="text-foreground">{formatDuration(hover)}</div>
           {markers
             .filter((m) => Math.abs(m.t - hover) <= Math.max(1, pointSeconds))
             .map((m) => (

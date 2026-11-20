@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDuration } from '../format';
 import { BRAND } from 'renderer/brand';
 
 /**
@@ -6,11 +7,6 @@ import { BRAND } from 'renderer/brand';
  * their units, a red dot on the time axis for every death (a button that
  * watches that moment) and a brass tick at the top for every Watch-live flag.
  */
-
-const mmss = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-};
 
 export type ChartDeath = { name: string; t: number; specId?: number };
 export type ChartFlag = { t: number; label: string };
@@ -117,8 +113,8 @@ const BossHealthChart = ({
               {flags.map((f) => (
                 <span
                   key={`flag-${f.t}-${f.label}`}
-                  title={`${mmss(f.t)}: ${f.label}`}
-                  aria-label={`Flag at ${mmss(f.t)}: ${f.label}`}
+                  title={`${formatDuration(f.t)}: ${f.label}`}
+                  aria-label={`Flag at ${formatDuration(f.t)}: ${f.label}`}
                   role="img"
                   className="absolute top-0 h-3 w-0.5 -translate-x-1/2 bg-brand"
                   style={{ left: `${pctX(f.t)}%` }}
@@ -129,8 +125,8 @@ const BossHealthChart = ({
                 const can = canWatchDeath(death);
                 const label =
                   group.length === 1
-                    ? `Death at ${mmss(death.t)}: ${death.name}`
-                    : `${group.length} deaths at ${mmss(death.t)}: ${group.map((d) => d.name).join(', ')}`;
+                    ? `Death at ${formatDuration(death.t)}: ${death.name}`
+                    : `${group.length} deaths at ${formatDuration(death.t)}: ${group.map((d) => d.name).join(', ')}`;
                 return (
                   <button
                     key={`${death.name}-${death.t}`}
@@ -168,7 +164,7 @@ const BossHealthChart = ({
                       : { left: `${pctX(t)}%` }
                   }
                 >
-                  {mmss(t)}
+                  {formatDuration(t)}
                 </span>
               ))}
             </div>

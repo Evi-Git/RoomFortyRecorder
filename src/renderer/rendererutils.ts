@@ -46,6 +46,7 @@ import { getLocalePhrase, Language } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
 import { Dispatch, SetStateAction } from 'react';
 import { dateTime, shortDate, timeOfDay } from './clock';
+import { formatDurationPadded } from './format';
 import { READABLE_CLASS_COLOR } from './classColors';
 
 const getVideoResult = (video: RendererVideo): boolean => {
@@ -55,23 +56,8 @@ const getVideoResult = (video: RendererVideo): boolean => {
 /**
  * Returns a string of the form MM:SS.
  */
-const getFormattedDuration = (video: RendererVideo) => {
-  const { duration } = video;
-
-  const hours = Math.floor(duration / 3600);
-  const minutes = Math.floor((duration % 3600) / 60);
-  const seconds = Math.round(duration % 60);
-
-  const formattedHours = hours < 10 ? `0${hours}` : hours;
-  const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-  const formattedSeconds = seconds < 10 ? `0${seconds}` : seconds;
-
-  if (hours > 0) {
-    return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
-  }
-
-  return `${formattedMinutes}:${formattedSeconds}`;
-};
+const getFormattedDuration = (video: RendererVideo) =>
+  formatDurationPadded(video.duration);
 
 /**
  * Return an array of death markers for a video.
@@ -707,23 +693,7 @@ const getNextKeyOrMouseEvent = async (): Promise<PTTKeyPressEvent> => {
   return ipc.invoke('getNextKeyPress', []);
 };
 
-const secToMmSs = (s: number) => {
-  const rounded = Math.round(s);
-  const mins = Math.floor(rounded / 60);
-  const secs = rounded - mins * 60;
-
-  const ss = secs.toLocaleString('en-US', {
-    minimumIntegerDigits: 2,
-    useGrouping: false,
-  });
-
-  const mm = mins.toLocaleString('en-US', {
-    minimumIntegerDigits: 2,
-    useGrouping: false,
-  });
-
-  return `${mm}:${ss}`;
-};
+const secToMmSs = (s: number) => formatDurationPadded(s);
 
 /**
  * Get a result text appropriate for the video category that signifies a

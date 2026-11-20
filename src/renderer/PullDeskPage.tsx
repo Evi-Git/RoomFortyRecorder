@@ -1,4 +1,5 @@
-import { dateTime, timeOfDay } from 'renderer/clock';
+import { dateTime, nightLabel, timeOfDay } from 'renderer/clock';
+import { compact, formatDuration } from './format';
 import React from 'react';
 import {
   BarChart3,
@@ -28,7 +29,7 @@ import JournalView from './PullDeskJournal';
 import ConsumablesPanel, { Prep } from './Consumables';
 import PullMeters, { useRecordingWatch, WatchContext } from './Meters';
 import NightPicker from './logs/NightPicker';
-import { classColor, compact } from './logs/format';
+import { classColor } from './logs/format';
 import { setLogsTarget } from './logs/openTarget';
 import { TabsContext } from './tabs/tabs';
 import { isReset, pullLabel, useShowResets } from './resets';
@@ -242,18 +243,13 @@ const VIDEO_MATCH_MS = 2 * 60 * 1000;
 const call = <T,>(request: Record<string, unknown>) =>
   ipc.invoke('pullDesk', [request]) as Promise<Response<T>>;
 
-const mmss = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-};
-
 const lines = (count: number) => `${count} ${count === 1 ? 'line' : 'lines'}`;
 
 // "+3.2s" / "-6s": how far a cast was from its assigned time.
 const signed = (seconds: number) => {
   const rounded = Math.round(seconds * 10) / 10;
   if (Math.abs(rounded) >= 60) {
-    return `${rounded < 0 ? '-' : '+'}${mmss(Math.abs(rounded))}`;
+    return `${rounded < 0 ? '-' : '+'}${formatDuration(Math.abs(rounded))}`;
   }
   return `${rounded > 0 ? '+' : rounded < 0 ? '-' : '±'}${Math.abs(rounded)}s`;
 };
@@ -263,15 +259,6 @@ const sourceText = (source?: string) =>
   source && source !== 'nil' ? ` · ${source}` : '';
 
 const hitsLabel = (count: number) => `${count} ${count === 1 ? 'hit' : 'hits'}`;
-
-const nightLabel = (night: string) => {
-  const date = new Date(`${night}T12:00:00`);
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-};
 
 // [RoomFortyRecorder] Difficulty filter for the pull list (a heroic group
 // raiding alongside the mythic one made the list confusing).
@@ -322,7 +309,7 @@ const KIND_STYLE: Record<DefensiveKind, string> = {
 
 // Pre-pull uses have negative times.
 const timeLabel = (seconds: number) =>
-  seconds < 0 ? `-${mmss(-seconds)}` : mmss(seconds);
+  seconds < 0 ? `-${formatDuration(-seconds)}` : formatDuration(seconds);
 
 type Section =
   | 'deaths'
@@ -710,7 +697,7 @@ const PullDeskPage = (props: IProps) => {
         disabled={!video}
         title={
           video
-            ? `Open ${name}'s recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
+            ? `Open ${name}'s recording at ${formatDuration(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
             : `No recording from ${name} for this pull`
         }
         onClick={() => video && watch(video, seconds)}
@@ -729,7 +716,7 @@ const PullDeskPage = (props: IProps) => {
         disabled={!video}
         title={
           video
-            ? `Open ${video.player?._name ? `${video.player._name}'s` : 'a'} recording at ${mmss(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
+            ? `Open ${video.player?._name ? `${video.player._name}'s` : 'a'} recording at ${formatDuration(Math.max(0, seconds - WATCH_LEAD_SECONDS))}`
             : 'No recording of this pull'
         }
         onClick={() => video && watch(video, seconds)}
@@ -957,7 +944,7 @@ const PullDeskPage = (props: IProps) => {
                         </span>
                       ) : null}
                       <span className="tabular-nums">
-                        {mmss(pull.duration)}
+                        {formatDuration(pull.duration)}
                       </span>
                       <span>{deathText}</span>
                       {typeof pull.avoidableHits === 'number' &&
@@ -1044,7 +1031,7 @@ const PullDeskPage = (props: IProps) => {
         ))}
         {cooling.map((a) => (
           <div key={a.ability} className="text-foreground">
-            On cooldown {a.ability} · ready in {mmss(a.readyIn)}
+            On cooldown {a.ability} · ready in {formatDuration(a.readyIn)}
           </div>
         ))}
       </>
@@ -1151,7 +1138,7 @@ const PullDeskPage = (props: IProps) => {
                   <span className="w-24 text-xs">
                     {player.diedAt !== null ? (
                       <span className="text-red-400">
-                        died {mmss(player.diedAt)}
+                        died {formatDuration(player.diedAt)}
                       </span>
                     ) : (
                       <span className="text-foreground">alive</span>
@@ -1258,10 +1245,10 @@ const PullDeskPage = (props: IProps) => {
             {renderChevron(
               open,
               () => setExpandedDeath(open ? null : index),
-              `Details of ${death.name}'s death at ${mmss(death.t)}`,
+              `Details of ${death.name}'s death at ${formatDuration(death.t)}`,
             )}
             <span className="w-11 shrink-0 tabular-nums text-foreground">
-              {mmss(death.t)}
+              {formatDuration(death.t)}
             </span>
             <span
               className="w-32 shrink-0 truncate font-semibold"
@@ -1316,7 +1303,9 @@ const PullDeskPage = (props: IProps) => {
                   ? 'No damage recorded in the last 10 s.'
                   : death.lastHits.map((hit) => (
                       <div key={`${hit.t}-${hit.spellId}`}>
-                        <span className="tabular-nums">{mmss(hit.t)}</span>{' '}
+                        <span className="tabular-nums">
+                          {formatDuration(hit.t)}
+                        </span>{' '}
                         {hit.spellName}
                         {sourceText(hit.source)} · {compact(hit.amount)}
                         {hit.overkill > 0 &&
@@ -1398,10 +1387,10 @@ const PullDeskPage = (props: IProps) => {
           {renderChevron(
             open,
             toggleGroup,
-            `${segment.length} deaths at ${mmss(first.t)}`,
+            `${segment.length} deaths at ${formatDuration(first.t)}`,
           )}
           <span className="w-11 shrink-0 tabular-nums text-foreground">
-            {mmss(first.t)}
+            {formatDuration(first.t)}
           </span>
           <span className="w-32 shrink-0 truncate font-semibold text-red-400">
             {segment.length} raiders
@@ -1591,7 +1580,7 @@ const PullDeskPage = (props: IProps) => {
                       className="flex items-center gap-x-2 py-1 pl-[34px] pr-2"
                     >
                       <span className="w-40 font-mono text-foreground">
-                        {mmss(item.t)}
+                        {formatDuration(item.t)}
                       </span>
                       <span className="w-56 truncate">{renderSpell(item)}</span>
                       <span className="flex-1">{renderPlanStatus(item)}</span>
@@ -1686,13 +1675,13 @@ const PullDeskPage = (props: IProps) => {
             onClick={() => video && watch(video, hit.t, HIT_LEAD_SECONDS)}
             title={
               video
-                ? `Watch ${name} from ${mmss(Math.max(0, hit.t - HIT_LEAD_SECONDS))}: ${hitsLabel(hit.hits)}${hit.end ? ` over ${Math.round(hit.end - hit.t)} s` : ''}, ${compact(hit.damage)} damage`
+                ? `Watch ${name} from ${formatDuration(Math.max(0, hit.t - HIT_LEAD_SECONDS))}: ${hitsLabel(hit.hits)}${hit.end ? ` over ${Math.round(hit.end - hit.t)} s` : ''}, ${compact(hit.damage)} damage`
                 : `No recording from ${name} for this pull`
             }
             className="inline-flex items-center gap-x-1 rounded border border-panel-line px-1.5 py-0.5 text-xs tabular-nums enabled:hover:border-brand enabled:hover:text-foreground-lighter disabled:opacity-50"
           >
             {video && <Play size={10} />}
-            {mmss(hit.t)}
+            {formatDuration(hit.t)}
             {hit.hits > 1 && (
               <span className="text-foreground">×{hit.hits}</span>
             )}
@@ -1879,7 +1868,7 @@ const PullDeskPage = (props: IProps) => {
                   className={`font-semibold tabular-nums ${kill ? 'text-green-400' : 'text-foreground-lighter'}`}
                 >
                   {kill ? 'Kill' : `${r.bossPercent ?? '?'}%`} ·{' '}
-                  {mmss(r.duration)}
+                  {formatDuration(r.duration)}
                 </span>
                 <span
                   className="text-[13px] text-foreground"
@@ -1970,7 +1959,7 @@ const PullDeskPage = (props: IProps) => {
             {flagsHere.map((f) => (
               <div key={f.id} className="flex items-center gap-x-2 text-sm">
                 <span className="font-semibold tabular-nums text-brand">
-                  ⚑ {mmss(f.t)}
+                  ⚑ {formatDuration(f.t)}
                 </span>
                 <span className="text-foreground-lighter">
                   {f.note || 'Flagged'}

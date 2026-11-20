@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import SpellIcon from '../logs/SpellIcon';
-import { compact, mmss } from '../logs/format';
+import { compact, formatDuration } from '../format';
 import type { Track } from './trial';
 import {
   Aligned,
@@ -265,7 +265,9 @@ const TrialTimeline = ({
           </div>
           <div className={`${leftCell} h-10 flex items-center justify-between`}>
             <span className="text-xs font-semibold">
-              {marker !== null ? `Gap at ${mmss(marker)}` : 'Gap so far'}
+              {marker !== null
+                ? `Gap at ${formatDuration(marker)}`
+                : 'Gap so far'}
             </span>
             <span
               className="text-xs tabular-nums"
@@ -323,7 +325,7 @@ const TrialTimeline = ({
                   className="absolute top-1 -translate-x-1/2 text-[11px] text-foreground"
                   style={{ left: pct(t) }}
                 >
-                  {mmss(t)}
+                  {formatDuration(t)}
                 </span>
               ))}
             </div>
@@ -342,7 +344,7 @@ const TrialTimeline = ({
                         ? '#231F1C'
                         : '#1E1A17',
                   }}
-                  title={`${p.name}: ${mmss(p.from)}–${mmss(p.to)}`}
+                  title={`${p.name}: ${formatDuration(p.from)}–${formatDuration(p.to)}`}
                 >
                   {p.short}
                 </span>
@@ -352,7 +354,7 @@ const TrialTimeline = ({
                   key={`${b.spellId}@${b.t}`}
                   className="absolute top-[24px] flex items-center gap-x-1 text-[11px] whitespace-nowrap"
                   style={{ left: pct(b.t), transform: 'translateX(-5px)' }}
-                  title={`${b.name} ${mmss(b.t)}`}
+                  title={`${b.name} ${formatDuration(b.t)}`}
                 >
                   <span
                     className="w-2.5 h-2.5 rotate-45 flex-none"
@@ -377,7 +379,7 @@ const TrialTimeline = ({
                       borderColor: THEM,
                       background: `${THEM}22`,
                     }}
-                    title={`Them: ${p.name} at ${mmss(p.from)}`}
+                    title={`Them: ${p.name} at ${formatDuration(p.from)}`}
                   />
                 ))}
                 {ourPhases.map((p) => (
@@ -390,7 +392,7 @@ const TrialTimeline = ({
                       borderColor: YOU,
                       background: `${YOU}22`,
                     }}
-                    title={`You: ${p.name} at ${mmss(p.from)}`}
+                    title={`You: ${p.name} at ${formatDuration(p.from)}`}
                   />
                 ))}
                 {pacing.map((p) =>
@@ -506,7 +508,7 @@ const TrialTimeline = ({
                       key={`t${p.them}`}
                       className="absolute top-2 flex items-center gap-x-1 whitespace-nowrap"
                       style={chipAt(p.them as number)}
-                      title={`Them ${mmss(p.them as number)}`}
+                      title={`Them ${formatDuration(p.them as number)}`}
                     >
                       <span
                         className="rounded-[4px]"
@@ -516,7 +518,7 @@ const TrialTimeline = ({
                       </span>
                       {roomAfter(theirTimes, i) && (
                         <span className="text-[11px] tabular-nums text-foreground">
-                          {mmss(p.them as number)}
+                          {formatDuration(p.them as number)}
                         </span>
                       )}
                     </span>
@@ -529,7 +531,7 @@ const TrialTimeline = ({
                           key={`m${p.them}`}
                           className="absolute top-8 flex items-center gap-x-1 whitespace-nowrap"
                           style={chipAt(p.them as number)}
-                          title={`They pressed it at ${mmss(p.them as number)}; you didn't`}
+                          title={`They pressed it at ${formatDuration(p.them as number)}; you didn't`}
                         >
                           <span
                             className="w-[18px] h-[18px] rounded-[3px] box-border"
@@ -547,7 +549,7 @@ const TrialTimeline = ({
                       );
                     }
                     const d = p.them === null ? null : p.you - p.them;
-                    let text = mmss(p.you);
+                    let text = formatDuration(p.you);
                     if (p.them === null) text += ' extra';
                     else if (Math.round(d as number) !== 0)
                       text += ` (${driftText(d)})`;
@@ -563,8 +565,8 @@ const TrialTimeline = ({
                         style={chipAt(p.you)}
                         title={
                           p.them === null
-                            ? `You ${mmss(p.you)}; they didn't press one here`
-                            : `You ${mmss(p.you)}, ${driftText(d)} vs them`
+                            ? `You ${formatDuration(p.you)}; they didn't press one here`
+                            : `You ${formatDuration(p.you)}, ${driftText(d)} vs them`
                         }
                       >
                         <span
@@ -612,7 +614,7 @@ const TrialTimeline = ({
                       : { left: `calc(${pct(marker)} + 8px)` }
                   }
                 >
-                  <b>{mmss(marker)}</b>
+                  <b>{formatDuration(marker)}</b>
                   {ourPhase && ` · ${ourPhase.short}`}
                   {nextPhase &&
                     ` · ${nextPhase.short} in ${Math.round(nextPhase.from - marker)} s`}

@@ -12,7 +12,8 @@ import { Tooltip } from '../components/Tooltip/Tooltip';
 import { WatchContext } from '../Meters';
 import { usePullStores } from '../logs/load';
 import type { PullMeta } from '../logs/store';
-import { classColor, compact, mmss } from '../logs/format';
+import { classColor } from '../logs/format';
+import { compact, formatDuration } from '../format';
 import { Cooldown, ourTrack, raidersOf, Track, vodInfo } from './trial';
 import {
   alignByPhase,
@@ -25,6 +26,7 @@ import {
   perSecond,
   phasesOf,
 } from './timeline';
+import { shortNight } from 'renderer/clock';
 import { findings } from './whereTime';
 import { setGhost } from './ghost';
 import WhereTimeWent from './WhereTimeWent';
@@ -55,13 +57,10 @@ const LINE_UP_KEY = 'rf-trial-line-up';
 type LineUp = 'start' | 'phase';
 
 const pullLabel = (p: OurPull) =>
-  `${new Date(`${p.night}T12:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })} · ${rowLabel(p)} · ${
+  `${shortNight(p.night)} · ${rowLabel(p)} · ${
     p.result === 'kill'
-      ? `Kill ${mmss(p.duration)}`
-      : `${p.bossPercent ?? '?'}% at ${mmss(p.duration)}`
+      ? `Kill ${formatDuration(p.duration)}`
+      : `${p.bossPercent ?? '?'}% at ${formatDuration(p.duration)}`
   }`;
 
 const TimeTrial = ({
@@ -288,7 +287,7 @@ const TimeTrial = ({
           </span>{' '}
           <span className="text-foreground">
             ({specTitle(specId)}, {bossName}, {compact(them.amount)}{' '}
-            {metric === 'hps' ? 'HPS' : 'DPS'}, {mmss(them.duration)})
+            {metric === 'hps' ? 'HPS' : 'DPS'}, {formatDuration(them.duration)})
           </span>
         </span>
       </div>

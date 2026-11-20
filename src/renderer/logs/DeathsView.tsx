@@ -8,7 +8,8 @@ import {
   killingBlows,
   RecapKind,
 } from './deaths';
-import { classColor, compact, ENEMY_COLOR, mmss, thousands } from './format';
+import { ENEMY_COLOR, classColor } from './format';
+import { compact, formatDuration, grouped } from '../format';
 import SpellIcon from './SpellIcon';
 
 /**
@@ -109,7 +110,7 @@ const Recap = ({
         <span>
           <span style={{ color: classColor(death.specId) }}>{death.name}</span>{' '}
           <span className="font-normal text-foreground">
-            died at {mmss(death.t)}
+            died at {formatDuration(death.t)}
             {death.pullLabel ? ` · ${death.pullLabel}` : ''}
           </span>
         </span>
@@ -184,7 +185,7 @@ const Recap = ({
             <span className="text-foreground-lighter">
               {death.used.length
                 ? death.used
-                    .map((u) => `${u.ability} (${mmss(u.t)})`)
+                    .map((u) => `${u.ability} (${formatDuration(u.t)})`)
                     .join(', ')
                 : 'nothing tracked'}
             </span>
@@ -278,7 +279,7 @@ const Recap = ({
                     {r.kind === 'damage' ||
                     r.kind === 'heal' ||
                     r.kind === 'shield'
-                      ? `${r.kind === 'damage' ? '-' : '+'}${thousands(r.amount + r.absorbed)}`
+                      ? `${r.kind === 'damage' ? '-' : '+'}${grouped(r.amount + r.absorbed)}`
                       : ''}
                     {r.crit && <span className="text-foreground"> *</span>}
                     {r.absorbed > 0 && r.kind === 'damage' && (
@@ -373,7 +374,9 @@ const DeathsView = ({
       >
         {multi && <td className={`${td} text-foreground`}>{d.pullLabel}</td>}
         <td className={`${td} text-foreground`}>{d.order}</td>
-        <td className={`${td} text-foreground font-mono`}>{mmss(d.t)}</td>
+        <td className={`${td} text-foreground font-mono`}>
+          {formatDuration(d.t)}
+        </td>
         <td
           className={`${td} font-semibold`}
           style={{ color: classColor(d.specId) }}
@@ -528,7 +531,7 @@ const DeathsView = ({
                           {first.order}
                         </td>
                         <td className={`${td} text-foreground font-mono`}>
-                          {mmss(first.t)}
+                          {formatDuration(first.t)}
                         </td>
                         <td className={`${td} font-semibold text-red-400`}>
                           {group.length} raiders

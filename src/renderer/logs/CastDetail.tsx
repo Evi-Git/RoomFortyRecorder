@@ -1,7 +1,8 @@
 import React from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { castRows, Ctx } from './query';
-import { classColor, ENEMY_COLOR, mmss } from './format';
+import { ENEMY_COLOR, classColor } from './format';
+import { formatDuration } from '../format';
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { useViewWindow } from './zoom';
@@ -167,7 +168,7 @@ const CastDetail = ({
                 <th className={`${th} text-right`}>Avg gap</th>
                 <th className={`${th} text-left`}>
                   {len < total
-                    ? `${mmss(v0)} – ${mmss(v1)}`
+                    ? `${formatDuration(v0)} – ${formatDuration(v1)}`
                     : 'Over the fight (click a mark to watch)'}
                 </th>
               </tr>
@@ -229,8 +230,8 @@ const CastDetail = ({
                             <button
                               key={t}
                               type="button"
-                              title={`${mmss(t)}${onWatch ? ' · click to watch' : ''}`}
-                              aria-label={`${name} at ${mmss(t)}`}
+                              title={`${formatDuration(t)}${onWatch ? ' · click to watch' : ''}`}
+                              aria-label={`${name} at ${formatDuration(t)}`}
                               onClick={() =>
                                 onWatch?.(t, c.row.player ? c.row.name : null)
                               }

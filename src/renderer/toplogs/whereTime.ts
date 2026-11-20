@@ -16,6 +16,7 @@
  *   Lull         15 s or more with no main cooldown pressed by either of
  *                you in the 15 s before, while they did more.
  */
+import { compact, formatDuration } from '../format';
 import type { Track } from './trial';
 import {
   Aligned,
@@ -51,17 +52,6 @@ export type Finding = {
   to: number;
   /** The seconds it covers (Show highlights each). */
   spans: [number, number][];
-};
-
-/** 1:05 (the Logs page's format module pulls in the app's constants). */
-const mmss = (s: number) =>
-  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-export const compact = (n: number) => {
-  const a = Math.abs(n);
-  if (a >= 1e9) return `${(n / 1e9).toFixed(2)}b`;
-  if (a >= 1e6) return `${(n / 1e6).toFixed(2)}m`;
-  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-  return String(Math.round(n));
 };
 
 const LATE = 3;
@@ -142,13 +132,13 @@ export const findings = (
         title: name,
         what:
           late.length === 1
-            ? `Late once: ${signed(drifts[0])} s at ${mmss(first.you)}`
-            : `Late ${late.length} of ${both.length} times from ${mmss(first.them)} on: ${drifts
+            ? `Late once: ${signed(drifts[0])} s at ${formatDuration(first.you)}`
+            : `Late ${late.length} of ${both.length} times from ${formatDuration(first.them)} on: ${drifts
                 .map((d) => signed(d))
                 .join(', ')} s`,
         why: chained
           ? `One late ${name} pushed every later one back.`
-          : `Pressed after them (theirs at ${mmss(first.them)}, yours at ${mmss(first.you)}).`,
+          : `Pressed after them (theirs at ${formatDuration(first.them)}, yours at ${formatDuration(first.you)}).`,
         spans,
         cost: 0,
         at: first.them,
@@ -179,10 +169,10 @@ export const findings = (
         spellId: cd.spellId,
         title: name,
         what: fewer
-          ? `${mineCount} vs their ${theirCount}; not pressed at ${counted.map((p) => mmss(p.them)).join(', ')}`
-          : `${mineCount} vs their ${theirCount}; they pressed it at ${mmss(at)}`,
+          ? `${mineCount} vs their ${theirCount}; not pressed at ${counted.map((p) => formatDuration(p.them)).join(', ')}`
+          : `${mineCount} vs their ${theirCount}; they pressed it at ${formatDuration(at)}`,
         why: lateBefore
-          ? `Your previous one came at ${mmss(before.you)}, ${Math.round(before.you - before.them)} s late, so this one wasn't ready.`
+          ? `Your previous one came at ${formatDuration(before.you)}, ${Math.round(before.you - before.them)} s late, so this one wasn't ready.`
           : 'They pressed it there and you had it ready (or didn’t press it at all).',
         spans,
         cost: 0,
@@ -214,7 +204,7 @@ export const findings = (
           out.push({
             kind: 'lull',
             title: 'No cooldowns up',
-            what: `${mmss(start)}–${mmss(i)}: ${compact(b / len)} vs ${compact(a / len)} ${unit}`,
+            what: `${formatDuration(start)}–${formatDuration(i)}: ${compact(b / len)} vs ${compact(a / len)} ${unit}`,
             why: 'Neither of you had a main cooldown up; they kept higher filler.',
             spans: [[start, i]],
             cost: 0,

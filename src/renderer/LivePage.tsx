@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDurationLong } from './format';
 import {
   Flag as FlagIcon,
   Lock,
@@ -77,8 +78,7 @@ const liveFor = (since: string | null) => {
     0,
     Math.floor((Date.now() - Date.parse(since)) / 60000),
   );
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return formatDurationLong(minutes * 60);
 };
 
 /**

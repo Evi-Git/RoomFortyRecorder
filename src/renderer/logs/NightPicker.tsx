@@ -1,4 +1,5 @@
 import React from 'react';
+import { monthDay, monthShort, nightLabel } from '../clock';
 import {
   CalendarDays,
   ChevronDown,
@@ -107,18 +108,6 @@ const store = (key: string, value: string) => {
   } catch {
     // Not remembered.
   }
-};
-
-export const nightLabel = (night: string) => {
-  const d = parseKey(night);
-  return d.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    ...(d.getFullYear() !== new Date().getFullYear()
-      ? { year: 'numeric' as const }
-      : {}),
-  });
 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -708,14 +697,11 @@ const zoomLabel = (zoom: Zoom, cursor: string) => {
     const days = weekGrid(cursor);
     const a = parseKey(days[0].date);
     const b = parseKey(days[6].date);
-    const short = (x: Date) =>
-      x.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    return `${short(a)} – ${short(b)}, ${b.getFullYear()}`;
+    return `${monthDay(a)} – ${monthDay(b)}, ${b.getFullYear()}`;
   }
   const first = parseKey(addMonths(cursor, -3));
   const last = parseKey(cursor);
-  const m = (x: Date) => x.toLocaleDateString(undefined, { month: 'short' });
-  return `${m(first)} – ${m(last)} ${last.getFullYear()}`;
+  return `${monthShort(first)} – ${monthShort(last)} ${last.getFullYear()}`;
 };
 
 /** B: a full-page calendar over the Logs page. */
