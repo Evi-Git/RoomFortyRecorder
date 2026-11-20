@@ -124,6 +124,8 @@ const ScrollDownIndicator = ({
 type ScrollAreaProps = {
   withScrollIndicators?: boolean;
   scrollabilityIndicatorClasses?: string;
+  /** Also render a horizontal scrollbar (wide content scrolls sideways). */
+  horizontal?: boolean;
 };
 
 const ScrollArea = React.forwardRef<
@@ -137,6 +139,7 @@ const ScrollArea = React.forwardRef<
       children,
       withScrollIndicators = true,
       scrollabilityIndicatorClasses = '',
+      horizontal = false,
       ...props
     },
     ref,
@@ -174,6 +177,7 @@ const ScrollArea = React.forwardRef<
           )}
         </ScrollAreaPrimitive.Viewport>
         <ScrollBar />
+        {horizontal && <ScrollBar orientation="horizontal" />}
         <ScrollAreaPrimitive.Corner />
       </ScrollAreaPrimitive.Root>
     );

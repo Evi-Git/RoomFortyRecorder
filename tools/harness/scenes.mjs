@@ -33,6 +33,7 @@ const tab = async (t, name) => {
 };
 
 const small = { width: 1100, height: 700 };
+const smallest = { width: 1024, height: 640 };
 
 // A made-up night for the Dashboard: a kill, two wipes and a reset, with
 // deaths, a boss health curve, prep and meters (the test logs have none).
@@ -750,4 +751,46 @@ export const scenes = [
         }))
       : []),
   ]),
+
+  // ---- Smallest window (1024x640, the app's minimum) ----------------------
+  ...[
+    ['Raids', 'raids'],
+    ['Dashboard', 'dashboard'],
+    ['Logs', 'logs'],
+    ['General', 'settings'],
+  ].map(([label, key]) => ({
+    name: `smallest-${key}`,
+    shows: `${label} at 1024x640`,
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav(label);
+      await t.settle(1200);
+    },
+  })),
+  // Unfolded at 1024x640: the user's own choice sticks at this width.
+  ...[
+    ['Raids', 'raids'],
+    ['Mythic+', 'mythicplus'],
+  ].map(([label, key]) => ({
+    name: `smallest-unfolded-${key}`,
+    shows: `${label} at 1024x640 with the sidebar unfolded`,
+    viewport: smallest,
+    steps: async (t) => {
+      await t.page.locator('svg.lucide-panel-left-open').locator('xpath=..').click();
+      await t.settle();
+      await t.nav(label);
+      await t.settle(1200);
+    },
+  })),
+  {
+    name: 'smallest-then-wide-raids',
+    shows: 'Raids after a narrow moment, back at 1440x900: the player is 500 again',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.settle(800);
+      await t.page.setViewportSize({ width: 1440, height: 900 });
+      await t.settle(1200);
+    },
+  },
 ];

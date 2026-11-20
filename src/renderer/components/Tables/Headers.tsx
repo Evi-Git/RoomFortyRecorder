@@ -14,96 +14,120 @@ import {
 } from 'lucide-react';
 
 export const EncounterHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Gamepad2 />
-    {getLocalePhrase(language, Phrase.TableHeaderEncounter)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Gamepad2 className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderEncounter)}
+    </span>
   </span>
 );
 
 export const ResultHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Trophy />
-    {getLocalePhrase(language, Phrase.TableHeaderResult)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Trophy className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderResult)}
+    </span>
   </span>
 );
 
 export const PullHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Hash />
-    {getLocalePhrase(language, Phrase.TableHeaderPull)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Hash className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderPull)}
+    </span>
   </span>
 );
 
 export const DifficultyHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Swords />
-    {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Swords className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
+    </span>
   </span>
 );
 
 export const DurationHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Hourglass />
-    {getLocalePhrase(language, Phrase.TableHeaderDuration)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Hourglass className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderDuration)}
+    </span>
   </span>
 );
 
 export const DateHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <CalendarDays />
-    {getLocalePhrase(language, Phrase.TableHeaderDate)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <CalendarDays className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderDate)}
+    </span>
   </span>
 );
 
 export const ClippedAtHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <CalendarDays />
-    {getLocalePhrase(language, Phrase.ClippedAtLabel)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <CalendarDays className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.ClippedAtLabel)}
+    </span>
   </span>
 );
 
 export const ViewpointsHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Eye />
-    {getLocalePhrase(language, Phrase.TableHeaderViewpoints)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Eye className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderViewpoints)}
+    </span>
   </span>
 );
 
 export const MapHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <MapPinned />
-    {getLocalePhrase(language, Phrase.TableHeaderMap)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <MapPinned className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderMap)}
+    </span>
   </span>
 );
 
 export const LevelHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Swords />
-    {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Swords className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderDifficulty)}
+    </span>
   </span>
 );
 
 export const AffixesHeader = () => (
-  <span className="inline-flex gap-x-1">
-    <Zap />
-    Affixes
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Zap className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">Affixes</span>
   </span>
 );
 
 export const TypeHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Joystick />
-    {getLocalePhrase(language, Phrase.TableHeaderType)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Joystick className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.TableHeaderType)}
+    </span>
   </span>
 );
 
 export const ActivityHeader = (language: Language) => (
-  <span className="inline-flex gap-x-1">
-    <Gamepad2 />
-    {getLocalePhrase(language, Phrase.Activity)}
+  <span className="inline-flex min-w-0 items-center gap-x-1">
+    <Gamepad2 className="h-[18px] w-[18px] shrink-0" />
+    <span className="truncate">
+      {getLocalePhrase(language, Phrase.Activity)}
+    </span>
   </span>
 );
 
 export const DetailsHeader = () => (
-  <span className="inline-flex gap-x-1"></span>
+  <span className="inline-flex min-w-0 items-center gap-x-1"></span>
 );

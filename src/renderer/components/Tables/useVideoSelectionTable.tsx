@@ -414,6 +414,32 @@ const useVideoSelectionTable = (
       throw new Error('Unrecognized category');
   }
 
+  // [RoomFortyRecorder] Every column has a width to start from and one it
+  // never goes below, so a narrow window scrolls the table sideways instead
+  // of crushing the headers into each other. Matches the 1024 px window
+  // minimum (see VideoSelectionTable for the table's own minimum).
+  const columnSizes: Record<string, [size: number, minSize: number]> = {
+    Details: [80, 80],
+    Encounter: [140, 130],
+    Map: [140, 130],
+    Result: [92, 88],
+    Pull: [72, 72],
+    Difficulty: [104, 100],
+    Level: [88, 88],
+    Affixes: [110, 100],
+    Duration: [96, 92],
+    Date: [126, 120],
+    Viewpoints: [150, 140],
+    'Kill Video Creator': [50, 50],
+    Source: [50, 50],
+    Type: [100, 100],
+    Activity: [140, 130],
+  };
+  columns = columns.map((c) => {
+    const sizes = columnSizes[c.id ?? ''];
+    return sizes ? { ...c, size: sizes[0], minSize: sizes[1] } : c;
+  });
+
   const features = tableFeatures({
     ...stockFeatures,
     sortedRowModel: createSortedRowModel(),

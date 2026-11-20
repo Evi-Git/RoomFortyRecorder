@@ -75,6 +75,23 @@ interface IProps {
   playerHeightRef: RefObject<number>;
 }
 
+const DEFAULT_PLAYER_HEIGHT = 500;
+
+/**
+ * How tall the player shows, and the most it can be dragged to. The height
+ * the user chose stays in `playerHeightRef`; a short window only limits what
+ * shows, so the player grows back when the window does. An untouched player
+ * (the default) also leaves room for the toolbar and a few table rows.
+ */
+const playerHeights = (chosen: number, windowHeight: number) => {
+  const max = Math.max(280, windowHeight - 96);
+  const shown =
+    chosen === DEFAULT_PLAYER_HEIGHT
+      ? Math.min(chosen, Math.max(280, windowHeight - 322))
+      : Math.min(chosen, max);
+  return { shown, max };
+};
+
 /**
  * A page representing a video category.
  */
@@ -221,23 +238,21 @@ const CategoryPage = (props: IProps) => {
   const resizableRef = useRef<Resizable>(null);
   const videoPlayerRef = useRef<VideoPlayerRef>(null);
 
+  const [windowHeight, setWindowHeight] = useState(window.innerHeight);
+  const [chosenPlayerHeight, setChosenPlayerHeight] = useState(
+    // eslint-disable-next-line react-hooks/refs
+    () => playerHeightRef.current,
+  );
+  const { shown: shownPlayerHeight, max: maxPlayerHeight } = playerHeights(
+    chosenPlayerHeight,
+    windowHeight,
+  );
+
   useEffect(() => {
     const handleWindowResize = () => {
-      if (!resizableRef.current) {
-        // Could on only happen if we're resizing in the
-        // middle of the initial mount.
-        return;
-      }
-
-      // 96px = 32 (top bar) + 40 (video controls) + 24 (grip)
-      if (playerHeightRef.current + 96 > window.innerHeight) {
-        // The video is bigger than the window. Reset it
-        // to the original size. Could probably check that
-        // 500 is smaller than the window but who resizes
-        // their window to be smaller than 500px?
-        resizableRef.current.updateSize({ height: 500 });
-        playerHeightRef.current = 500;
-      }
+      // A minimized window reports a tiny height; leave the player alone.
+      if (window.innerHeight < 300) return;
+      setWindowHeight(window.innerHeight);
     };
 
     window.addEventListener('resize', handleWindowResize);
@@ -245,7 +260,11 @@ const CategoryPage = (props: IProps) => {
     return () => {
       window.removeEventListener('resize', handleWindowResize);
     };
-  }, [playerHeightRef]);
+  }, []);
+
+  useEffect(() => {
+    resizableRef.current?.updateSize({ height: shownPlayerHeight });
+  }, [shownPlayerHeight]);
 
   const renderChat = (video: RendererVideo | undefined) => {
     if (!video) {
@@ -288,6 +307,7 @@ const CategoryPage = (props: IProps) => {
   ) => {
     const height = element.clientHeight;
     playerHeightRef.current = height;
+    setChosenPlayerHeight(height);
   };
 
   const renderDrawerOpen = (
@@ -409,7 +429,7 @@ const CategoryPage = (props: IProps) => {
       <Resizable
         ref={resizableRef}
         defaultSize={{
-          height: `${playerHeightRef.current}px`,
+          height: `${shownPlayerHeight}px`,
           width: '100%',
         }}
         enable={{
@@ -424,7 +444,12 @@ const CategoryPage = (props: IProps) => {
         }}
         bounds="parent"
         onResize={onResize}
-        minHeight={chatOpen ? 500 : undefined}
+        maxHeight={maxPlayerHeight}
+        minHeight={
+          chatOpen
+            ? Math.min(500, shownPlayerHeight, maxPlayerHeight)
+            : undefined
+        }
         handleStyles={{
           bottom: {
             width: '50%',
@@ -676,7 +701,7 @@ const CategoryPage = (props: IProps) => {
 
     return (
       <>
-        <div className="w-full flex justify-evenly items-center gap-x-2 px-4 py-2">
+        <div className="w-full flex flex-wrap justify-evenly items-center gap-x-2 gap-y-2 px-4 py-2">
           <MultiPovPlaybackToggles
             appState={appState}
             setAppState={setAppState}
@@ -692,8 +717,8 @@ const CategoryPage = (props: IProps) => {
             />
           )}
 
-          <div className="flex flex-grow gap-x-2">
-            <div className="flex-grow">
+          <div className="flex flex-grow gap-x-2 min-w-[300px]">
+            <div className="flex-grow min-w-[120px]">
               <SearchBar
                 key={category}
                 appState={appState}

@@ -67,7 +67,7 @@ export default function RendererTitleBar() {
     >
       {/* [RoomFortyRecorder] Lockup sits over the sidebar, left aligned. */}
       <KeyholeMark size={18} className="text-brand mr-2" />
-      <div className="text-sm">
+      <div className="text-sm whitespace-nowrap [html[data-rail='1']_&]:hidden">
         <span className="font-display font-semibold text-foreground-lighter">
           Room Forty
         </span>{' '}
