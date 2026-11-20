@@ -55,6 +55,9 @@ The main conversation model (Fable when available, otherwise Opus) is the
   errors in ConfigService.ts, LiveStreamer.ts and uiohook).
 - Don't run Prettier over `guild-cloud-server/*.mjs` (they aren't formatted
   with it).
+- CI: `.github/workflows/tests.yml` runs the app suites that work on Linux
+  (parsing, renderer, main, cloud) and the server tests on every PR;
+  `node.js.yml` builds on Windows. Both must pass before merging.
 
 ## Releasing
 
