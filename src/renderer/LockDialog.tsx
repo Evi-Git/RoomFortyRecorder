@@ -211,7 +211,7 @@ export default function LockDialog(props: IProps) {
         {renderTable()}
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost">
+            <Button variant="outline">
               {getLocalePhrase(language, Phrase.Close)}
             </Button>
           </DialogClose>

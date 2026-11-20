@@ -66,7 +66,7 @@ const BulkTransferDialog = ({
         {getMessage()}
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost">
+            <Button variant="outline">
               {getLocalePhrase(appState.language, Phrase.CancelTooltip)}
             </Button>
           </DialogClose>

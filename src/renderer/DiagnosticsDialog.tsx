@@ -4,8 +4,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  dialogPanelClass,
-  dialogTitleClass,
 } from './components/Dialog/Dialog';
 import { Button } from './components/Button/Button';
 import { settingsButtonClass } from './components/SettingsCard/SettingsCard';
@@ -159,9 +157,9 @@ const DiagnosticsDialog = (props: IProps) => {
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className={dialogPanelClass}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle className={dialogTitleClass}>
+          <DialogTitle>
             {getLocalePhrase(language, Phrase.Diagnostics)}
           </DialogTitle>
         </DialogHeader>

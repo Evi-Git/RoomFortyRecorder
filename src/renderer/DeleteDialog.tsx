@@ -360,7 +360,7 @@ const DeleteDialog = (props: DeleteDialogProps) => {
         {getWarningMessage()}
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost">
+            <Button variant="outline">
               {getLocalePhrase(language, Phrase.Close)}
             </Button>
           </DialogClose>

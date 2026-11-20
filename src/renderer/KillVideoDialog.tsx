@@ -284,11 +284,11 @@ const KillVideoDialog = (props: IProps) => {
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost">
+            <Button variant="outline">
               {getLocalePhrase(language, Phrase.CancelTooltip)}
             </Button>
           </DialogClose>
-          <Button onClick={resetSettings} variant="ghost">
+          <Button onClick={resetSettings} variant="outline">
             {getLocalePhrase(language, Phrase.Reset)}
           </Button>
           <DialogClose asChild>

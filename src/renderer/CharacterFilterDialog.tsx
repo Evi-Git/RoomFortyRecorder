@@ -22,8 +22,7 @@ import {
 import { specImages } from './images';
 import { Input } from './components/Input/Input';
 import { Button } from './components/Button/Button';
-import { Info, Plus } from 'lucide-react';
-import { Tooltip } from './components/Tooltip/Tooltip';
+import { Plus } from 'lucide-react';
 import { ConfigurationSchema } from 'config/configSchema';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
@@ -177,18 +176,14 @@ const CharacterFilterDialog = (props: IProps) => {
           {unique.map(renderRaidFrame)}
         </div>
         <Separator />
-        <div className="flex">
+        <div className="flex flex-col gap-y-1">
           <p className="text-sm text-foreground">
             {getLocalePhrase(language, Phrase.CharacterFilterAddManual)}
           </p>
-          <Tooltip
-            content={
-              "Realm name must match combat log format, e.g. 'TwistingNether' not 'Twisting Nether'."
-            }
-            side="top"
-          >
-            <Info size={20} className="inline-flex ml-2" />
-          </Tooltip>
+          <p className="text-xs text-foreground m-0">
+            Realm name must match combat log format, e.g.
+            &apos;TwistingNether&apos; not &apos;Twisting Nether&apos;.
+          </p>
         </div>
         <form
           onSubmit={(e) => {

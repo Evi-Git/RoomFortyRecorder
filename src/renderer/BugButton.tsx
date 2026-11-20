@@ -11,8 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  dialogPanelClass,
-  dialogTitleClass,
 } from './components/Dialog/Dialog';
 import { Textarea } from './components/TextArea/textarea';
 
@@ -106,9 +104,9 @@ export default function BugButton({
           <Bug size={20} />
         </Button>
       </DialogTrigger>
-      <DialogContent className={dialogPanelClass}>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle className={dialogTitleClass}>Report a bug</DialogTitle>
+          <DialogTitle>Report a bug</DialogTitle>
           <DialogDescription>
             {`Goes to #toolkitbugs with your name${page ? ` and page (${page})` : ''}.`}
           </DialogDescription>
@@ -137,7 +135,7 @@ export default function BugButton({
             </span>
           )}
           <DialogClose asChild>
-            <Button variant="ghost">Close</Button>
+            <Button variant="outline">Close</Button>
           </DialogClose>
           <Button disabled={sending || text.trim().length < 3} onClick={send}>
             {sending ? 'Sending…' : 'Send'}
