@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.153] - Unreleased
+### Changed
+- **One number style everywhere.** Big numbers read the same on every page (`612.0k`, `1.23m`, `1.50b`) instead of switching between `612K`, `1.23M` and full digits.
+- Fight clocks, pull lengths and video times use one style: `4:52`, and `1:05:00` once past an hour (no more `65:00` or `00:60`). Presses before the pull show as `-0:03`.
+- Boss percents are whole numbers from 10% up and keep one decimal below ("0.4%"), so a near-kill wipe never reads "0%"; every page shows the same value for the same pull.
+- Dates are always English (US) and show the year when it isn't this year ("Wed, Oct 21", "Oct 21, 2025"). Thousands separators are always commas.
+- Watch live's "live for" reads `1 h 5 min`; long video times and the YouTube description timeline pad the hour (`01:01:40`).
+
 ## [1.9.152] - Unreleased
 ### Changed
 - **The Admin page in the Brass & Walnut look:** header, cards, and permission and member tables in the Logs style. If the guild server or Discord roles can't be loaded you get a clear message, and Try again retries what failed without losing unsaved changes. Locked boxes and disabled Sign-out buttons say why when you hover them.
