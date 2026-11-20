@@ -59,6 +59,16 @@ const Root = ({
         if (e.button === 1 && !disabled) onValueChange(value, true);
       }}
       role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      aria-current={active ? 'page' : undefined}
+      onKeyDown={(e) => {
+        if (disabled || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onValueChange(value, e.ctrlKey || e.metaKey);
+        }
+      }}
     >
       {active && (
         <span

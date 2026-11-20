@@ -9,6 +9,43 @@ import { timeOfDay } from './clock';
  * server version and who you're signed in as) and line 3 (the last pull).
  */
 
+export type SidebarLabels = {
+  ready: string;
+  waiting: string;
+  recording: string;
+  notReady: string;
+  finishing: string;
+  gettingReady: string;
+  guildServer: string;
+  lastPull: string;
+  needsUpdate: string;
+  signedInAs: string;
+  sent: string;
+  queued: string;
+  notSent: string;
+  sending: string;
+  connected: string;
+};
+
+/** English; the app passes its own language's (sidebarLabels.ts). */
+export const EN_LABELS: SidebarLabels = {
+  ready: 'Ready to record',
+  waiting: 'Waiting for WoW',
+  recording: 'Recording',
+  notReady: 'Not ready',
+  finishing: 'Finishing the recording',
+  gettingReady: 'Getting ready…',
+  guildServer: 'Guild server',
+  lastPull: 'Last pull',
+  needsUpdate: 'needs an update',
+  signedInAs: 'signed in as',
+  sent: 'sent',
+  queued: 'queued',
+  notSent: 'not sent',
+  sending: 'Sending the last pull…',
+  connected: 'connected',
+};
+
 export type Tone = 'good' | 'brass' | 'bad' | 'warn' | 'quiet';
 
 export type RecorderLine = {
@@ -19,23 +56,26 @@ export type RecorderLine = {
 };
 
 /**
- * Line 1. Waiting for WoW counts as ready: the app is set up and will start
- * by itself. `error` is the recorder's own message for the two broken states.
+ * Line 1. Only ReadyToRecord is green: while waiting for WoW the dot is grey,
+ * so a raider in game can tell the recorder hasn't seen the game.
+ * `error` is the recorder's own message for the two broken states.
  */
 export const recorderLine = (
   status: RecStatus,
   error: string,
+  labels: SidebarLabels = EN_LABELS,
 ): RecorderLine => {
   const reason = (fallback: string) => {
     const text = (error || '').replace(/\s+/g, ' ').trim();
-    return `Not ready: ${text || fallback}`;
+    return `${labels.notReady}: ${text || fallback}`;
   };
   switch (status) {
     case RecStatus.Recording:
-      return { tone: 'brass', pulse: true, text: 'Recording' };
+      return { tone: 'brass', pulse: true, text: labels.recording };
     case RecStatus.ReadyToRecord:
+      return { tone: 'good', pulse: false, text: labels.ready };
     case RecStatus.WaitingForWoW:
-      return { tone: 'good', pulse: false, text: 'Ready to record' };
+      return { tone: 'quiet', pulse: false, text: labels.waiting };
     case RecStatus.InvalidConfig:
       return {
         tone: 'bad',
@@ -45,10 +85,10 @@ export const recorderLine = (
     case RecStatus.FatalError:
       return { tone: 'bad', pulse: false, text: reason('recorder error') };
     case RecStatus.Overrunning:
-      return { tone: 'warn', pulse: true, text: 'Finishing the recording' };
+      return { tone: 'warn', pulse: true, text: labels.finishing };
     case RecStatus.Reconfiguring:
     default:
-      return { tone: 'quiet', pulse: true, text: 'Getting ready…' };
+      return { tone: 'quiet', pulse: true, text: labels.gettingReady };
   }
 };
 
@@ -69,25 +109,26 @@ export const serverLine = (input: {
   rowLabel: string;
   userName?: string;
   server: ServerCheck;
+  labels?: SidebarLabels;
 }): ServerLine => {
-  const { variant, rowLabel, userName, server } = input;
+  const { variant, rowLabel, userName, server, labels = EN_LABELS } = input;
   if (variant === 'connected' || variant === 'active') {
     const lead =
       server.state === 'unknown'
-        ? 'Guild server'
-        : `Guild server ${server.server}`;
+        ? labels.guildServer
+        : `${labels.guildServer} ${server.server}`;
     if (server.state === 'behind') {
-      return { tone: 'warn', lead, trail: 'needs an update' };
+      return { tone: 'warn', lead, trail: labels.needsUpdate };
     }
     return {
       tone: 'quiet',
       lead,
-      trail: userName ? `signed in as ${userName}` : 'connected',
+      trail: userName ? `${labels.signedInAs} ${userName}` : labels.connected,
     };
   }
   return {
     tone: variant === 'error' ? 'bad' : 'quiet',
-    lead: rowLabel,
+    lead: `${labels.guildServer}: ${rowLabel}`,
     trail: '',
   };
 };
@@ -101,25 +142,35 @@ export type PullLine = { tone: Tone; text: string; title: string };
 export const pullLine = (
   u: PullUploadState | null | undefined,
   detail: string,
+  labels: SidebarLabels = EN_LABELS,
 ): PullLine | null => {
+  const lp = labels.lastPull;
   if (!u) return null;
   const at = timeOfDay(u.at);
   switch (u.state) {
     case 'waiting':
     case 'uploading':
     case 'retrying':
-      return { tone: 'brass', text: 'Sending the last pull…', title: detail };
+      return { tone: 'brass', text: labels.sending, title: detail };
     case 'queued':
-      return { tone: 'warn', text: 'Last pull: queued', title: detail };
+      return { tone: 'warn', text: `${lp}: ${labels.queued}`, title: detail };
     case 'sent':
       if (u.full === 'failed' || u.full === 'refused') {
-        return { tone: 'warn', text: `Last pull: sent ${at}`, title: detail };
+        return {
+          tone: 'warn',
+          text: `${lp}: ${labels.sent} ${at}`,
+          title: detail,
+        };
       }
-      return { tone: 'quiet', text: `Last pull: sent ${at}`, title: detail };
+      return {
+        tone: 'quiet',
+        text: `${lp}: ${labels.sent} ${at}`,
+        title: detail,
+      };
     case 'notSignedIn':
-      return { tone: 'warn', text: 'Last pull: not sent', title: detail };
+      return { tone: 'warn', text: `${lp}: ${labels.notSent}`, title: detail };
     case 'failed':
-      return { tone: 'bad', text: 'Last pull: not sent', title: detail };
+      return { tone: 'bad', text: `${lp}: ${labels.notSent}`, title: detail };
     default:
       // Another raider's log, undecided, skipped: nothing to act on.
       return null;

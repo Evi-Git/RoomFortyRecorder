@@ -599,7 +599,22 @@ const KOREAN: Translations = {
   [Phrase.LatestCombatLogFileOverAMonthOld]: '한 달 이상 지남',
   [Phrase.LatestCombatLogFileDayOld]: '1일 지남',
   [Phrase.LatestCombatLogFileDaysOld]: '일 지남',
-  [Phrase.LatestCombatLogFileLessThanADayOld]: '하루 미만 지남'
+  [Phrase.LatestCombatLogFileLessThanADayOld]: '하루 미만 지남',
+  [Phrase.SidebarReady]: '녹화 준비 완료',
+  [Phrase.SidebarWaiting]: '대기 중',
+  [Phrase.SidebarRecording]: '녹화 중',
+  [Phrase.SidebarNotReady]: '잘못된 구성',
+  [Phrase.SidebarFinishing]: '오버런 중',
+  [Phrase.SidebarGettingReady]: '대기 중',
+  [Phrase.SidebarGuildServer]: '클라우드',
+  [Phrase.SidebarLastPull]: 'Last pull',
+  [Phrase.SidebarNeedsUpdate]: 'needs an update',
+  [Phrase.SidebarSignedInAs]: 'signed in as',
+  [Phrase.SidebarSent]: 'sent',
+  [Phrase.SidebarQueued]: 'queued',
+  [Phrase.SidebarNotSent]: 'not sent',
+  [Phrase.SidebarSending]: 'Sending the last pull…',
+  [Phrase.SidebarConnected]: 'connected',
 };
 
 export default KOREAN;

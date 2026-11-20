@@ -15,6 +15,8 @@ import { cn } from 'renderer/components/utils';
 import type { UploadFailure } from 'main/uploadFailures';
 import UploadFailureList from './UploadFailureList';
 import { TONE_TEXT } from './Dot';
+import { sidebarLabels } from 'renderer/sidebarLabels';
+import { usePermissions } from 'renderer/usePermissions';
 import { serverLine } from 'renderer/sidebarStatus';
 import type { ServerCheck } from 'renderer/serverVersion';
 
@@ -86,6 +88,7 @@ const CloudStatus = ({
   server = { state: 'unknown' },
 }: StatusProps) => {
   const { cloudStatus, language } = appState;
+  const perms = usePermissions();
 
   const [cloudState, setCloudState] = useState<CloudState>({
     uploadProgress: 0,
@@ -256,6 +259,7 @@ const CloudStatus = ({
     rowLabel,
     userName,
     server,
+    labels: sidebarLabels(language),
   });
 
   const actionLabel =
@@ -298,7 +302,11 @@ const CloudStatus = ({
       )}
       {server.state === 'behind' && (
         <p className="text-xs text-yellow-400" data-state="behind">
-          {`The guild server is on ${server.server}; ${server.needed} changed it. Some newer features may not work until the guild owner runs update-server.cmd on the server PC.`}
+          {`The guild server is on ${server.server}; ${server.needed} changed it. ${
+            perms?.owner
+              ? 'Run update-server.cmd on the server PC.'
+              : 'Some newer features may not work until the guild owner updates it.'
+          }`}
         </p>
       )}
       <UploadFailureList

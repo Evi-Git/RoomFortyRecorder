@@ -2,20 +2,32 @@ import { RecStatus } from '../../main/types';
 import type { PullUploadState } from '../../main/types';
 import { checkServer } from '../../renderer/serverVersion';
 import {
+  EN_LABELS,
   pullLine,
   recorderLine,
   serverLine,
 } from '../../renderer/sidebarStatus';
 
 describe('recorderLine', () => {
-  it('is ready (green) when waiting for WoW or ready', () => {
-    for (const s of [RecStatus.WaitingForWoW, RecStatus.ReadyToRecord]) {
-      expect(recorderLine(s, '')).toEqual({
-        tone: 'good',
-        pulse: false,
-        text: 'Ready to record',
-      });
-    }
+  it('is green only when ready; waiting for WoW is a quiet grey', () => {
+    expect(recorderLine(RecStatus.ReadyToRecord, '')).toEqual({
+      tone: 'good',
+      pulse: false,
+      text: 'Ready to record',
+    });
+    expect(recorderLine(RecStatus.WaitingForWoW, '')).toEqual({
+      tone: 'quiet',
+      pulse: false,
+      text: 'Waiting for WoW',
+    });
+  });
+
+  it('uses the labels it is given', () => {
+    const de = { ...EN_LABELS, ready: 'Bereit', notReady: 'Ungültig' };
+    expect(recorderLine(RecStatus.ReadyToRecord, '', de).text).toBe('Bereit');
+    expect(recorderLine(RecStatus.FatalError, 'x', de).text).toBe(
+      'Ungültig: x',
+    );
   });
 
   it('pulses brass while recording', () => {
@@ -91,7 +103,11 @@ describe('serverLine', () => {
         rowLabel: 'Offline, retrying',
         server: current,
       }),
-    ).toEqual({ tone: 'bad', lead: 'Offline, retrying', trail: '' });
+    ).toEqual({
+      tone: 'bad',
+      lead: 'Guild server: Offline, retrying',
+      trail: '',
+    });
     expect(
       serverLine({
         variant: 'disconnected',

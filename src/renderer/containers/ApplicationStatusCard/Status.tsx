@@ -19,6 +19,7 @@ import {
 import Separator from 'renderer/components/Separator/Separator';
 import { Tooltip } from 'renderer/components/Tooltip/Tooltip';
 import { recorderLine } from 'renderer/sidebarStatus';
+import { sidebarLabels } from 'renderer/sidebarLabels';
 import Dot from './Dot';
 import { cn } from 'renderer/components/utils';
 import { secToMmSs } from 'renderer/rendererutils';
@@ -238,7 +239,7 @@ const Status = ({
 
   const statusDescription = RecStatusDescription[status];
 
-  const line = recorderLine(status, error);
+  const line = recorderLine(status, error, sidebarLabels(language));
   // "Ready to record" while WoW isn't running yet: the card says what it's waiting for.
   const waiting = status === RecStatus.WaitingForWoW;
   const isSaving = savingStatus === SaveStatus.Saving;
@@ -258,7 +259,7 @@ const Status = ({
             type="button"
             data-status="recorder"
             data-state={line.tone}
-            aria-label={`${line.text}${waiting ? ' (waiting for WoW)' : ''}`}
+            aria-label={line.text}
             className="relative flex h-6 w-6 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
           >
             <Dot tone={line.tone} pulse={line.pulse} />
@@ -272,7 +273,11 @@ const Status = ({
             <Dot tone={line.tone} pulse={line.pulse} />
             <div
               className="rf-status-text min-w-0 flex items-center gap-x-1.5 text-[13px] leading-5 font-medium text-foreground-lighter whitespace-nowrap"
-              title={waiting ? 'Waiting for WoW to start' : undefined}
+              title={
+                waiting
+                  ? getLocalePhrase(language, Phrase.StatusDescriptionWaiting)
+                  : undefined
+              }
             >
               <span
                 className={cn('truncate', {

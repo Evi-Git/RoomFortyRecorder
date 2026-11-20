@@ -599,7 +599,22 @@ const GERMAN: Translations = {
   [Phrase.LatestCombatLogFileOverAMonthOld]: 'über einen Monat alt',
   [Phrase.LatestCombatLogFileDayOld]: '1 Tag alt',
   [Phrase.LatestCombatLogFileDaysOld]: 'Tage alt',
-  [Phrase.LatestCombatLogFileLessThanADayOld]: 'weniger als einen Tag alt'
+  [Phrase.LatestCombatLogFileLessThanADayOld]: 'weniger als einen Tag alt',
+  [Phrase.SidebarReady]: 'Bereit',
+  [Phrase.SidebarWaiting]: 'Warten',
+  [Phrase.SidebarRecording]: 'Aufnahme',
+  [Phrase.SidebarNotReady]: 'Ungültig',
+  [Phrase.SidebarFinishing]: 'Überlaufen',
+  [Phrase.SidebarGettingReady]: 'Neukonfigurieren',
+  [Phrase.SidebarGuildServer]: 'Cloud',
+  [Phrase.SidebarLastPull]: 'Last pull',
+  [Phrase.SidebarNeedsUpdate]: 'needs an update',
+  [Phrase.SidebarSignedInAs]: 'signed in as',
+  [Phrase.SidebarSent]: 'sent',
+  [Phrase.SidebarQueued]: 'queued',
+  [Phrase.SidebarNotSent]: 'not sent',
+  [Phrase.SidebarSending]: 'Sending the last pull…',
+  [Phrase.SidebarConnected]: 'connected',
 };
 
 export default GERMAN;
