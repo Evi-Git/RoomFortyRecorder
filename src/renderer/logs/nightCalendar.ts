@@ -1,3 +1,4 @@
+import { monthDay, monthYear, nightDate } from '../clock';
 /**
  * [RoomFortyRecorder] Calendar helpers for the Logs page's night picker:
  * month / week grids of days, difficulty grouping and the short night
@@ -44,10 +45,7 @@ export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /** YYYY-MM-DD → local Date at noon (safe across DST). */
-export const parseKey = (key: string) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d, 12);
-};
+export const parseKey = nightDate;
 
 export const addDays = (key: string, days: number) => {
   const d = parseKey(key);
@@ -99,11 +97,7 @@ export const weekGrid = (key: string): CalendarDay[] => {
   });
 };
 
-export const monthName = (key: string) =>
-  parseKey(key).toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
-  });
+export const monthName = (key: string) => monthYear(parseKey(key));
 
 /** Bosses that match the difficulty filter ('All' keeps every one). */
 export const filterBosses = (bosses: CalendarBoss[], difficulty: string) =>
@@ -236,11 +230,7 @@ export const recentNights = (
 /** The picker's label for several nights: "3 nights · Oct 21 – Oct 29". */
 export const nightsLabel = (picked: string[]) => {
   const sorted = [...picked].sort();
-  const short = (key: string) =>
-    parseKey(key).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    });
+  const short = (key: string) => monthDay(parseKey(key));
   return `${sorted.length} nights · ${short(sorted[0])} – ${short(
     sorted[sorted.length - 1],
   )}`;

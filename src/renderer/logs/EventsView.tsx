@@ -1,7 +1,8 @@
 import React from 'react';
 import { abilityOk, Ctx, enemyOk, rowOf, scan } from './query';
 import { F, K, KIND_NAMES, MISS_TYPES, POWER_NAMES, PullStore } from './store';
-import { classColor, compact, ENEMY_COLOR, mmssms, thousands } from './format';
+import { ENEMY_COLOR, classColor } from './format';
+import { compact, formatDurationMillis, grouped } from '../format';
 
 /**
  * [RoomFortyRecorder] Logs page Events: every event behind the current tab
@@ -135,7 +136,7 @@ const describe = (p: PullStore, i: number) => {
   switch (kind) {
     case K.DMG: {
       const amount = p.a[i] + p.b[i];
-      parts.push(thousands(amount));
+      parts.push(grouped(amount));
       if (f & F.CRIT) parts.push('crit');
       if (f & F.TICK) parts.push('tick');
       if (p.b[i]) parts.push(`${compact(p.b[i])} absorbed`);
@@ -145,13 +146,13 @@ const describe = (p: PullStore, i: number) => {
       break;
     }
     case K.HEAL:
-      parts.push(thousands(p.a[i] + p.b[i]));
+      parts.push(grouped(p.a[i] + p.b[i]));
       if (f & F.CRIT) parts.push('crit');
       if (p.x[i]) parts.push(`${compact(p.x[i])} overheal`);
       if (p.hp[i] !== 255) parts.push(`${p.hp[i]}% hp`);
       break;
     case K.ABSORB:
-      parts.push(`${thousands(p.a[i])} absorbed`);
+      parts.push(`${grouped(p.a[i])} absorbed`);
       if (p.spells[p.aux[i]]) parts.push(`from ${p.spells[p.aux[i]].name}`);
       break;
     case K.MISS:
@@ -165,8 +166,8 @@ const describe = (p: PullStore, i: number) => {
       if (p.spells[p.aux[i]]) parts.push(p.spells[p.aux[i]].name);
       break;
     case K.ENERGIZE:
-      parts.push(`+${thousands(p.a[i])} ${POWER_NAMES[p.aux[i]] ?? ''}`);
-      if (p.x[i]) parts.push(`${thousands(p.x[i])} wasted`);
+      parts.push(`+${grouped(p.a[i])} ${POWER_NAMES[p.aux[i]] ?? ''}`);
+      if (p.x[i]) parts.push(`${grouped(p.x[i])} wasted`);
       break;
     default:
       break;
@@ -209,7 +210,7 @@ const EventsView = ({
   return (
     <div className="flex flex-col gap-y-2">
       <div className="text-xs text-foreground">
-        {thousands(list.idx.length)} events
+        {grouped(list.idx.length)} events
         {list.capped ? ' (the first 250,000)' : ''}
         {onWatch ? ' · click one to watch that moment' : ''}
       </div>
@@ -238,8 +239,8 @@ const EventsView = ({
                 style={{ top: (first + n) * ROW, height: ROW }}
                 onClick={() => onWatch?.(at, watchName)}
               >
-                <span className="w-[74px] shrink-0 tabular-nums text-foreground">
-                  {mmssms(at)}
+                <span className="w-[74px] shrink-0 text-right tabular-nums text-foreground">
+                  {formatDurationMillis(at)}
                 </span>
                 {multi && (
                   <span className="w-[56px] shrink-0 text-foreground truncate">

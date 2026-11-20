@@ -4,17 +4,13 @@
  * A stat returns null when the data isn't there, and the tile is hidden
  * rather than showing a made-up 0.
  */
+import { formatDuration } from '../format';
 
 export type Stat = {
   /** The big number, already formatted. */
   value: string;
   /** The small muted line under it ('' for none). */
   note: string;
-};
-
-const mmss = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
 /**
@@ -32,14 +28,17 @@ export const raidDpsStat = (
   if (!(total > 0)) return null;
   return {
     value: compact(total / data.duration),
-    note: `${compact(total)} damage in ${mmss(data.duration)}`,
+    note: `${compact(total)} damage in ${formatDuration(data.duration)}`,
   };
 };
 
 export const deathsStat = (deaths: { t: number }[]): Stat => {
   if (!deaths.length) return { value: '0', note: 'no deaths' };
   const first = Math.min(...deaths.map((d) => d.t));
-  return { value: String(deaths.length), note: `first at ${mmss(first)}` };
+  return {
+    value: String(deaths.length),
+    note: `first at ${formatDuration(first)}`,
+  };
 };
 
 type AvoidableRow = {

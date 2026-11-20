@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDuration } from './format';
 import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Play } from 'lucide-react';
 import { classColor } from './logs/format';
@@ -26,9 +27,6 @@ export type TimelineData = {
   deaths?: { t: number; name: string; spell: string | null }[];
 };
 type Range = { from: number; to: number } | null; // seconds
-
-const mmss = (s: number) =>
-  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -78,7 +76,7 @@ const useZoom = (duration: number) => {
       {view ? (
         <>
           <span>
-            Zoomed in on {mmss(view[0])}–{mmss(view[1])}
+            Zoomed in on {formatDuration(view[0])}–{formatDuration(view[1])}
           </span>
           <button
             type="button"
@@ -208,7 +206,7 @@ const Axis = ({ duration }: { duration: number }) => {
               f === 0 ? 'none' : f === 1 ? 'translateX(-100%)' : undefined,
           }}
         >
-          {mmss(v0 + f * len)}
+          {formatDuration(v0 + f * len)}
         </span>
       ))}
     </div>
@@ -317,8 +315,8 @@ export const CastTimeline = ({
                           e.stopPropagation();
                           onWatch(r.name, t);
                         }}
-                        title={`${s.name} at ${mmss(t)}: open ${r.name}'s recording`}
-                        aria-label={`${s.name} at ${mmss(t)}`}
+                        title={`${s.name} at ${formatDuration(t)}: open ${r.name}'s recording`}
+                        aria-label={`${s.name} at ${formatDuration(t)}`}
                         className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full ring-1 ring-background hover:scale-150 transition-transform"
                         style={{
                           left: at(t),
@@ -367,8 +365,8 @@ export const CastTimeline = ({
                             e.stopPropagation();
                             onWatch(r.name, t);
                           }}
-                          title={`${s.name} at ${mmss(t)}: open ${r.name}'s recording`}
-                          aria-label={`${s.name} at ${mmss(t)}`}
+                          title={`${s.name} at ${formatDuration(t)}: open ${r.name}'s recording`}
+                          aria-label={`${s.name} at ${formatDuration(t)}`}
                           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-background hover:scale-125 transition-transform"
                           style={{
                             left: at(t),
@@ -537,7 +535,8 @@ export const AuraView = ({
           {zoom.bar}
           {range && (
             <span className="text-xs text-foreground">
-              Uptime inside the slice {mmss(range.from)}–{mmss(range.to)}
+              Uptime inside the slice {formatDuration(range.from)}–
+              {formatDuration(range.to)}
             </span>
           )}
         </div>

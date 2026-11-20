@@ -5,19 +5,16 @@
  * our boss phases and the gap, with the playhead.
  */
 import React from 'react';
+import { compact, formatDuration } from '../format';
 import { X } from 'lucide-react';
 import SpellIcon from '../logs/SpellIcon';
 import { comingUp, Ghost, ghostAt, hideGhost } from './ghost';
 import { castsFor, gapSoFar, perSecond } from './timeline';
-import { compact } from './whereTime';
 
 const YOU = '#CCA85C';
 const THEM = '#8FA3FF';
 const GOOD = '#5FBF7F';
 const BAD = '#E57F7F';
-
-const mmss = (s: number) =>
-  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 /** The card over the video. */
 export const GhostCard = ({ ghost, t }: { ghost: Ghost; t: number }) => {
@@ -29,7 +26,7 @@ export const GhostCard = ({ ghost, t }: { ghost: Ghost; t: number }) => {
       <div className="flex items-center gap-x-2 text-foreground">
         <span className="w-2 h-2 rounded-full" style={{ background: THEM }} />
         <span className="truncate">
-          {`Racing #${ghost.rank} ${ghost.them.name} · ${mmss(t)}`}
+          {`Racing #${ghost.rank} ${ghost.them.name} · ${formatDuration(t)}`}
         </span>
         <button
           type="button"
@@ -54,7 +51,7 @@ export const GhostCard = ({ ghost, t }: { ghost: Ghost; t: number }) => {
       </div>
       {at.phase && (
         <div className="text-foreground">
-          {`Our phase: ${at.phase.name} (since ${mmss(at.phase.from)})`}
+          {`Our phase: ${at.phase.name} (since ${formatDuration(at.phase.from)})`}
         </div>
       )}
       {next.length > 0 && (
@@ -149,7 +146,7 @@ export const GhostLanes = ({
                       width: `calc(${((p.to - p.from) / max) * 100}% - 2px)`,
                       background: i % 2 ? '#A88A4C' : YOU,
                     }}
-                    title={`${p.name}: ${mmss(p.from)}–${mmss(p.to)}`}
+                    title={`${p.name}: ${formatDuration(p.from)}–${formatDuration(p.to)}`}
                   >
                     {p.short}
                   </span>
@@ -172,7 +169,7 @@ export const GhostLanes = ({
                   <button
                     key={`t${c}`}
                     type="button"
-                    title={`Them ${mmss(c)}: go there`}
+                    title={`Them ${formatDuration(c)}: go there`}
                     onClick={() => onSeek(Math.max(0, c - 2))}
                     className="absolute top-[3px] h-[7px] w-[6px] -translate-x-1/2 rounded-sm"
                     style={{ left: pct(c), background: THEM }}
@@ -182,7 +179,7 @@ export const GhostLanes = ({
                   <button
                     key={`y${c}`}
                     type="button"
-                    title={`You ${mmss(c)}: go there`}
+                    title={`You ${formatDuration(c)}: go there`}
                     onClick={() => onSeek(Math.max(0, c - 2))}
                     className="absolute top-[12px] h-[7px] w-[6px] -translate-x-1/2 rounded-sm"
                     style={{ left: pct(c), background: YOU }}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { shortDate } from './clock';
 import { Snowflake, Play, Square } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { SimpleSelect } from './components/Select/SimpleSelect';
@@ -67,12 +68,6 @@ export const guildKey = (g: { name: string; realm: string }) =>
 
 export const loadWatcher = () => call<WatcherState>({ action: 'watcher' });
 
-const date = (at: number) =>
-  new Date(at).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-
 /** The watched guilds on one boss, next to Room Forty. */
 export const WatcherTable = ({
   state,
@@ -134,7 +129,7 @@ export const WatcherTable = ({
                 <td className={cell}>{boss.kill ? 'Kill' : `${boss.best}%`}</td>
                 <td className={cell}>
                   {boss.kill
-                    ? `pull ${boss.kill.pull} · ${date(boss.kill.at)}`
+                    ? `pull ${boss.kill.pull} · ${shortDate(boss.kill.at)}`
                     : '–'}
                 </td>
               </>

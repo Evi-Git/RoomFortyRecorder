@@ -15,14 +15,8 @@ import {
   viewSeconds,
 } from './query';
 import { POWER_NAMES } from './store';
-import {
-  classColor,
-  compact,
-  ENEMY_COLOR,
-  mmss,
-  pct,
-  thousands,
-} from './format';
+import { ENEMY_COLOR, classColor } from './format';
+import { compact, formatDuration, grouped, pct } from '../format';
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
@@ -73,10 +67,10 @@ export const SummaryView = ({
   const sum = (rows: { total: number }[]) =>
     rows.reduce((n, r) => n + r.total, 0);
   const tiles: [string, string][] = [
-    ['Fight time', mmss(seconds)],
-    ['Raid DPS', thousands(sum(damage) / seconds)],
-    ['Raid HPS', thousands(sum(healing) / seconds)],
-    ['Damage taken / s', thousands(sum(taken) / seconds)],
+    ['Fight time', formatDuration(seconds)],
+    ['Raid DPS', grouped(sum(damage) / seconds)],
+    ['Raid HPS', grouped(sum(healing) / seconds)],
+    ['Damage taken / s', grouped(sum(taken) / seconds)],
     ['Deaths', String(deaths.length)],
   ];
   const top = (rows: typeof damage, title: string) => {
@@ -155,7 +149,7 @@ export const SummaryView = ({
                     onClick={() => onWatch?.(d.at - 3, d.name)}
                     title={onWatch ? 'Watch it' : undefined}
                   >
-                    <td className={td}>{mmss(d.at)}</td>
+                    <td className={td}>{formatDuration(d.at)}</td>
                     {ctx.pulls.length > 1 && <td className={td}>{d.pull}</td>}
                     <td
                       className={`${td} font-semibold`}
@@ -322,8 +316,8 @@ const ResourceAbilities = ({
         .map(([name, [g, w]]) => (
           <tr key={name} className="border-b border-card/40">
             <td className={`${td} text-foreground-lighter`}>{name}</td>
-            <td className={`${td} text-right`}>{thousands(g)}</td>
-            <td className={`${td} text-right`}>{thousands(w)}</td>
+            <td className={`${td} text-right`}>{grouped(g)}</td>
+            <td className={`${td} text-right`}>{grouped(w)}</td>
             <td className={`${td} text-right`}>{pct(w, g + w, 1)}</td>
           </tr>
         ))}
@@ -332,7 +326,7 @@ const ResourceAbilities = ({
 );
 
 const pctLabel = (v: number) => `${Math.round(v)}%`;
-const amountLabel = (v: number) => (v >= 10000 ? compact(v) : thousands(v));
+const amountLabel = (v: number) => (v >= 10000 ? compact(v) : grouped(v));
 
 export const ResourceView = ({
   ctx,
@@ -463,7 +457,7 @@ export const ResourceView = ({
         {mine.map((m) => (
           <Box
             key={m.type}
-            title={`${powerName(m.type)}${m.entry ? ` · ${thousands(m.entry.gained)} gained, ${thousands(m.entry.wasted)} wasted (${pct(m.entry.wasted, m.entry.gained + m.entry.wasted, 1)})` : ''}`}
+            title={`${powerName(m.type)}${m.entry ? ` · ${grouped(m.entry.gained)} gained, ${grouped(m.entry.wasted)} wasted (${pct(m.entry.wasted, m.entry.gained + m.entry.wasted, 1)})` : ''}`}
           >
             {m.values && (
               <div className="px-3 pt-2">
@@ -632,12 +626,8 @@ export const ResourceView = ({
                     <td className={`${td} text-foreground-lighter`}>
                       {powerName(t)}
                     </td>
-                    <td className={`${td} text-right`}>
-                      {thousands(e.gained)}
-                    </td>
-                    <td className={`${td} text-right`}>
-                      {thousands(e.wasted)}
-                    </td>
+                    <td className={`${td} text-right`}>{grouped(e.gained)}</td>
+                    <td className={`${td} text-right`}>{grouped(e.wasted)}</td>
                     <td className={`${td} text-right`}>
                       {pct(e.wasted, e.gained + e.wasted, 1)}
                     </td>
@@ -781,7 +771,7 @@ export const CastView = ({
                           <button
                             key={t}
                             type="button"
-                            title={`${mmss(t)}${onWatch ? ' · click to watch' : ''}`}
+                            title={`${formatDuration(t)}${onWatch ? ' · click to watch' : ''}`}
                             onClick={() =>
                               onWatch?.(
                                 t,

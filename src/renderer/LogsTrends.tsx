@@ -1,5 +1,7 @@
 import React from 'react';
 import { classColor } from './logs/format';
+import { shortNight } from 'renderer/clock';
+import { compact, formatDurationRounded } from './format';
 import { nightHeading, nightKind } from './trendsLabel';
 
 /**
@@ -54,21 +56,6 @@ const DIFF: Record<number, string> = {
   17: 'LFR',
   233: 'Mythic',
 };
-
-const compact = (n: number) =>
-  n >= 1e9
-    ? `${(n / 1e9).toFixed(2)}B`
-    : n >= 1e6
-      ? `${(n / 1e6).toFixed(2)}M`
-      : n >= 1e3
-        ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}K`
-        : String(Math.round(n));
-
-const shortNight = (night: string) =>
-  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
 
 const BRAND = 'hsl(var(--brand))';
 
@@ -432,8 +419,7 @@ export const LogsTrends = () => {
                       ['Kills', (n: NightTotals) => String(n.kills)],
                       [
                         'Fight time',
-                        (n: NightTotals) =>
-                          `${Math.floor(n.seconds / 60)}:${String(Math.round(n.seconds % 60)).padStart(2, '0')}`,
+                        (n: NightTotals) => formatDurationRounded(n.seconds),
                       ],
                       [
                         `Raid ${meta.rate}`,

@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { compileExpression, EXPRESSION_FIELDS } from './expression';
 import { Ctx, scan } from './query';
 import { K } from './store';
-import { compact, thousands } from './format';
+import { compact, grouped } from '../format';
 import EventsView from './EventsView';
 import { PRESETS } from './queryPresets';
 import ExpressionInput, { Vocabulary } from './ExpressionInput';
@@ -56,9 +56,7 @@ const Tally = ({
             <td className="px-2 py-1 text-foreground-lighter truncate max-w-[200px]">
               {name || '–'}
             </td>
-            <td className="px-2 py-1 text-right tabular-nums">
-              {thousands(n)}
-            </td>
+            <td className="px-2 py-1 text-right tabular-nums">{grouped(n)}</td>
             <td className="px-2 py-1 text-right tabular-nums">
               {amount ? compact(amount) : '–'}
             </td>

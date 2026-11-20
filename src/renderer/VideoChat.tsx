@@ -1,4 +1,4 @@
-import { dateTime, timeOfDay } from 'renderer/clock';
+import { dateTime, shortDate, timeOfDay } from 'renderer/clock';
 import { MessageSquare, SendHorizontal, Unplug, X } from 'lucide-react';
 import { Textarea } from './components/TextArea/textarea';
 import { Button } from './components/Button/Button';
@@ -199,9 +199,7 @@ const VideoChat = (props: IProps) => {
           date.getMonth() === now.getMonth() &&
           date.getFullYear() === now.getFullYear();
 
-        const formattedDate = isToday
-          ? timeOfDay(date)
-          : date.toLocaleDateString([], { day: '2-digit', month: 'short' });
+        const formattedDate = isToday ? timeOfDay(date) : shortDate(date);
 
         return (
           <div key={chat.id} className="mb-2">

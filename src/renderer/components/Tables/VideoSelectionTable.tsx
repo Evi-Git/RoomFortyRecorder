@@ -1,4 +1,5 @@
 import { AppState, RendererVideo } from 'main/types';
+import { grouped } from '../../format';
 
 import {
   Cell,
@@ -406,7 +407,7 @@ const VideoSelectionTable = (props: IProps) => {
    */
   const renderPagnationButtons = () => {
     const current = table.state.pagination.pageIndex + 1;
-    const total = table.getPageCount().toLocaleString();
+    const total = grouped(table.getPageCount());
     const indicator = `${current} of ${total}`;
 
     return (

@@ -33,3 +33,47 @@ export const shortDate = (at: When) => {
 /** "Nov 7, 9:05 PM". */
 export const dateTime = (at: When, opts: { seconds?: boolean } = {}) =>
   `${shortDate(at)}, ${timeOfDay(at, opts)}`;
+
+/** YYYY-MM-DD (a raid night, a calendar key) → a local Date at noon. */
+export const nightDate = (night: string) => {
+  const [y, m, d] = night.split('-').map(Number);
+  return new Date(y, m - 1, d, 12);
+};
+
+const yearIfOld = (d: Date) =>
+  d.getFullYear() !== new Date().getFullYear()
+    ? { year: 'numeric' as const }
+    : {};
+
+/** "Wed, Oct 21" (with the year when it isn't this year). */
+export const dayLabel = (at: When) => {
+  const d = toDate(at);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...yearIfOld(d),
+  });
+};
+
+/** "Oct 21", never with the year (ranges that name the year once). */
+export const monthDay = (at: When) =>
+  toDate(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+/** "Oct". */
+export const monthShort = (at: When) =>
+  toDate(at).toLocaleDateString('en-US', { month: 'short' });
+
+/** "October 2026". */
+export const monthYear = (at: When) =>
+  toDate(at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+/** "Wed". */
+export const weekdayShort = (at: When) =>
+  toDate(at).toLocaleDateString('en-US', { weekday: 'short' });
+
+/** A raid night (YYYY-MM-DD) as "Wed, Oct 21". */
+export const nightLabel = (night: string) => dayLabel(nightDate(night));
+
+/** A raid night (YYYY-MM-DD) as "Oct 21" ("Oct 21, 2025" in another year). */
+export const shortNight = (night: string) => shortDate(nightDate(night));

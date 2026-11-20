@@ -11,7 +11,8 @@ import { SpellTimeline as SpellTimelineData, VideoMarker } from 'main/types';
 import DeathIcon from '../../../../assets/icon/death.png';
 import SpellIcon from './SpellIcon';
 import SpellFilterMenu from './SpellFilterMenu';
-import { buildRows, fmt, Item, Row, spellColor, store } from './timelineUtils';
+import { formatDurationRounded, formatDurationTenths } from '../../format';
+import { buildRows, Item, Row, spellColor, store } from './timelineUtils';
 
 /**
  * [RoomFortyRecorder] Review timeline under the video: it is the scrub bar
@@ -337,22 +338,15 @@ const SpellTimeline: React.FC<IProps> = ({
     return list;
   }, [scrollLeft, viewWidth, pxPerSec, total, major, minor]);
 
-  const tickLabel = (t: number) => {
-    const m = Math.floor(t / 60);
-    const s = t - m * 60;
-    const secs =
-      major < 1
-        ? s.toFixed(1).padStart(4, '0')
-        : String(Math.round(s)).padStart(2, '0');
-    return `${m}:${secs}`;
-  };
+  const tickLabel = (t: number) =>
+    major < 1 ? formatDurationTenths(t) : formatDurationRounded(t);
 
   // ---- Spell items (memoized: they don't move with the playhead) ---------------
 
   const renderItem = (row: Row, item: Item, index: number) => {
     const left = item.start * pxPerSec;
-    const title = `${item.name} — ${fmt(item.start)}${
-      item.end !== undefined ? `–${fmt(item.end)}` : ''
+    const title = `${item.name} — ${formatDurationTenths(item.start)}${
+      item.end !== undefined ? `–${formatDurationTenths(item.end)}` : ''
     }${item.interrupted ? ' (interrupted)' : ''}`;
     const color = spellColor(item.spellId);
     const icon = icons[item.spellId];
@@ -545,7 +539,7 @@ const SpellTimeline: React.FC<IProps> = ({
             style={{ height: RULER }}
             className="px-2 flex items-end pb-1 text-[10px] text-foreground/40 border-b border-card"
           >
-            {fmt(progress)}
+            {formatDurationTenths(progress)}
           </div>
           {showRows &&
             visibleRows.map((row) => (
@@ -658,7 +652,7 @@ const SpellTimeline: React.FC<IProps> = ({
                 style={{ left: hoverTime * pxPerSec }}
               >
                 <span className="absolute top-0 left-1 text-[10px] text-foreground/70 bg-background/80 px-1 rounded-sm whitespace-nowrap">
-                  {fmt(hoverTime)}
+                  {formatDurationTenths(hoverTime)}
                 </span>
               </div>
             )}

@@ -29,14 +29,12 @@ import SpellIcon, { useSpellLabels } from './SpellIcon';
 import { sortRows, SortState, SortTh, useSort } from './sort';
 import {
   CATEGORICAL,
-  classColor,
-  compact,
   ENEMY_COLOR,
   OTHER_COLOR,
-  pct,
+  classColor,
   specLabel,
-  thousands,
 } from './format';
+import { compact, grouped, pct } from '../format';
 
 /**
  * [RoomFortyRecorder] Logs page tables for damage done, damage taken,
@@ -629,7 +627,7 @@ const Drill = ({
                     {a.casts ? compact(a.total / a.casts) : '–'}
                   </td>
                 )}
-                <td className={`${td} text-right`}>{thousands(a.hits)}</td>
+                <td className={`${td} text-right`}>{grouped(a.hits)}</td>
                 <td className={`${td} text-right`}>
                   {a.hits ? compact(a.total / a.hits) : '–'}
                 </td>
@@ -659,7 +657,7 @@ const Drill = ({
                   </td>
                 )}
                 <td className={`${td} text-right text-foreground-lighter`}>
-                  {thousands(a.total / seconds)}
+                  {grouped(a.total / seconds)}
                 </td>
               </tr>
             ))}
@@ -673,7 +671,7 @@ const Drill = ({
                 </span>
               </td>
               <td colSpan={20} className={`${tdFoot} text-right`}>
-                {thousands(row.total / seconds)}
+                {grouped(row.total / seconds)}
               </td>
             </tr>
           </tfoot>
@@ -833,7 +831,7 @@ const ByAbilityTable = ({
       {(meter === 'damage' || meter === 'healing') && (
         <td className={`${td} text-right`}>{a.casts || '–'}</td>
       )}
-      <td className={`${td} text-right`}>{thousands(a.hits)}</td>
+      <td className={`${td} text-right`}>{grouped(a.hits)}</td>
       {meter !== 'prevented' && (
         <td className={`${td} text-right`}>{pct(a.crits, a.hits, 1)}</td>
       )}
@@ -841,7 +839,7 @@ const ByAbilityTable = ({
         {child ? '' : who([...g.users.values()])}
       </td>
       <td className={`${td} text-right text-foreground-lighter`}>
-        {thousands(a.total / seconds)}
+        {grouped(a.total / seconds)}
       </td>
     </tr>
   );
@@ -1152,7 +1150,7 @@ const MeterView = ({
                     />
                   </td>
                   <td className={`${td} text-right`}>{a.units}</td>
-                  <td className={`${td} text-right`}>{thousands(a.hits)}</td>
+                  <td className={`${td} text-right`}>{grouped(a.hits)}</td>
                   <td className={`${td} text-right`}>
                     {pct(a.crits, a.hits, 1)}
                   </td>
@@ -1172,7 +1170,7 @@ const MeterView = ({
                     {a.users.size > 4 ? ` +${a.users.size - 4}` : ''}
                   </td>
                   <td className={`${td} text-right text-foreground-lighter`}>
-                    {thousands(a.total / seconds)}
+                    {grouped(a.total / seconds)}
                   </td>
                 </tr>
               ))}
@@ -1323,7 +1321,7 @@ const MeterView = ({
                 <td
                   className={`${td} text-right font-semibold text-foreground-lighter`}
                 >
-                  {thousands(r.total / seconds)}
+                  {grouped(r.total / seconds)}
                 </td>
               </tr>
             ))}
@@ -1335,7 +1333,7 @@ const MeterView = ({
                 {compact(total)}
               </td>
               <td colSpan={3} className={`${tdFoot} text-right`}>
-                {thousands(total / seconds)}
+                {grouped(total / seconds)}
               </td>
             </tr>
           </tfoot>

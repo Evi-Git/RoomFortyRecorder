@@ -6,7 +6,8 @@
 import React from 'react';
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import SpellIcon from './SpellIcon';
-import { classColor, compact, mmss } from './format';
+import { classColor } from './format';
+import { compact, formatDuration, ratioPercent } from '../format';
 import { Ctx, raiders } from './query';
 import { POWER_NAMES, PullStore } from './store';
 import {
@@ -222,7 +223,7 @@ const WidgetBody = ({
             onPick={onWatch}
           />
           <Note>
-            {`Brass = on cooldown · dark = ready but not cast (${mmss(idle)}) · cooldown ${Math.round(result.cooldown)} s${
+            {`Brass = on cooldown · dark = ready but not cast (${formatDuration(idle)}) · cooldown ${Math.round(result.cooldown)} s${
               result.estimated
                 ? ' (estimated from the casts; set it in Edit)'
                 : ''
@@ -288,13 +289,15 @@ const WidgetBody = ({
                       onClick={() => onWatch(w.at)}
                       title="Watch our VoD there"
                     >
-                      {mmss(w.at)}
+                      {formatDuration(w.at)}
                     </button>
                   ) : (
-                    mmss(w.at)
+                    formatDuration(w.at)
                   )}
                 </td>
-                <td className="px-2 py-1.5 tabular-nums">{mmss(w.end)}</td>
+                <td className="px-2 py-1.5 tabular-nums">
+                  {formatDuration(w.end)}
+                </td>
                 <td className="px-2 py-1.5">
                   {w.casts.length ? (
                     w.casts.map((c, n) => (
@@ -364,7 +367,7 @@ const WidgetBody = ({
                 key={i}
                 className="h-3.5 rounded-sm"
                 style={{ background: color[p.grade], opacity: 0.8 }}
-                title={`${mmss(p.at)}: ${p.grade}${p.by ? ` (${p.by})` : ''}`}
+                title={`${formatDuration(p.at)}: ${p.grade}${p.by ? ` (${p.by})` : ''}`}
               />
             ))}
           </div>
@@ -480,7 +483,9 @@ const WidgetBody = ({
               <span className="text-right tabular-nums">
                 {compact(r.total)}
               </span>
-              <span className="text-right tabular-nums text-foreground">{`${(r.share * 100).toFixed(1)}%`}</span>
+              <span className="text-right tabular-nums text-foreground">
+                {ratioPercent(r.share)}
+              </span>
             </div>
           ))}
         </div>
@@ -489,10 +494,10 @@ const WidgetBody = ({
       return (
         <>
           <div className="flex items-baseline gap-x-2">
-            <Big
-              color={pctColor(result.share)}
-            >{`${(result.share * 100).toFixed(1)}%`}</Big>
-            <Note>{`active · ${mmss(result.active)} of ${mmss(duration)}`}</Note>
+            <Big color={pctColor(result.share)}>
+              {ratioPercent(result.share)}
+            </Big>
+            <Note>{`active · ${formatDuration(result.active)} of ${formatDuration(duration)}`}</Note>
           </div>
           <Note>Casting or hitting, with a global cooldown after each.</Note>
         </>

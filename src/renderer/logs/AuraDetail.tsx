@@ -1,7 +1,8 @@
 import React from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { auraDetail, AuraTarget, Ctx } from './query';
-import { classColor, ENEMY_COLOR, mmss, pct, thousands } from './format';
+import { ENEMY_COLOR, classColor } from './format';
+import { formatDuration, grouped, pct } from '../format';
 import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { AuraPicker } from './Pickers';
@@ -86,7 +87,7 @@ const Lane = ({
           return (
             <span
               key={`${s}-${c}`}
-              title={`${mmss(s)} – ${mmss(e)} (${(e - s).toFixed(1)} s)${maxStacks > 1 ? `, ${c} stack${c === 1 ? '' : 's'}` : ''}`}
+              title={`${formatDuration(s)} – ${formatDuration(e)} (${(e - s).toFixed(1)} s)${maxStacks > 1 ? `, ${c} stack${c === 1 ? '' : 's'}` : ''}`}
               className="absolute top-[2px] bottom-[2px] rounded-[2px] flex items-center justify-center text-[10px] font-semibold text-background overflow-hidden"
               style={{
                 left: `${left(s)}%`,
@@ -256,7 +257,7 @@ const AuraDetail = ({
           step={detail.step}
           yMax={peak <= 10 ? peak : undefined}
           stepped
-          format={(v) => thousands(Math.round(v))}
+          format={(v) => grouped(Math.round(v))}
           height={180}
         />
         <div className="flex flex-wrap gap-x-3 text-[11px] text-foreground mt-1">
@@ -294,7 +295,7 @@ const AuraDetail = ({
                 )}
                 <th className={`${th} text-left`}>
                   {isZoomed
-                    ? `${mmss(v0)} – ${mmss(v1)}`
+                    ? `${formatDuration(v0)} – ${formatDuration(v1)}`
                     : 'Over the fight (hover a bar for times)'}
                 </th>
               </tr>
@@ -323,7 +324,7 @@ const AuraDetail = ({
                     )}
                   </td>
                   <td className={`${td} text-right`}>
-                    {thousands(
+                    {grouped(
                       range
                         ? r.starts.filter((t) => t >= s0 && t <= s1).length
                         : r.count,

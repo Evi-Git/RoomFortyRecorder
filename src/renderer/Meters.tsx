@@ -1,4 +1,11 @@
 import { timeOfDay } from 'renderer/clock';
+import {
+  bossPercent,
+  compact,
+  compactShort,
+  formatDuration,
+  ratioPercent,
+} from './format';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import {
   ArrowLeft,
@@ -237,18 +244,6 @@ const KINDS: { key: Kind; label: string; rate: string; help: string }[] = [
 const BRAND = 'hsl(var(--brand))';
 const MUTED = 'hsl(30 8% 45%)';
 
-export const compactNumber = (n: number) =>
-  n >= 1e9
-    ? `${(n / 1e9).toFixed(2)}B`
-    : n >= 1e6
-      ? `${(n / 1e6).toFixed(n >= 1e8 ? 0 : 2)}M`
-      : n >= 1e3
-        ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}K`
-        : String(Math.round(n));
-
-const mmss = (s: number) =>
-  `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
 const bucketsOf = (data: MetersData) =>
   Math.max(1, Math.ceil(data.duration / data.bucketSeconds));
 
@@ -468,7 +463,7 @@ const OverTime = ({
               fontSize="11"
               fill="hsl(var(--foreground))"
             >
-              {compactNumber(v)}
+              {compact(v)}
             </text>
           </g>
         ))}
@@ -481,7 +476,7 @@ const OverTime = ({
             fontSize="11"
             fill="hsl(var(--foreground))"
           >
-            {mmss(f * duration)}
+            {formatDuration(f * duration)}
           </text>
         ))}
         {rates.map((values, si) => (
@@ -517,7 +512,8 @@ const OverTime = ({
           }}
         >
           <div className="text-foreground">
-            {mmss(hover * bucketSeconds)}–{mmss((hover + 1) * bucketSeconds)}
+            {formatDuration(hover * bucketSeconds)}–
+            {formatDuration((hover + 1) * bucketSeconds)}
           </div>
           {markers
             .filter(
@@ -538,7 +534,7 @@ const OverTime = ({
               />
               <span className="text-foreground-lighter">{s.name}</span>
               <span className="ml-auto pl-2 tabular-nums text-foreground-lighter">
-                {compactNumber(rates[si][hover] ?? 0)} {rateLabel}
+                {compact(rates[si][hover] ?? 0)} {rateLabel}
               </span>
             </div>
           ))}
@@ -637,13 +633,13 @@ const Breakdown = ({
           <span className="flex flex-col">
             <span className="text-[11px] text-foreground">{meta.rate}</span>
             <span className="font-semibold tabular-nums text-foreground-lighter">
-              {compactNumber(row.total / seconds)}
+              {compact(row.total / seconds)}
             </span>
           </span>
           <span className="flex flex-col">
             <span className="text-[11px] text-foreground">Total</span>
             <span className="font-semibold tabular-nums text-foreground-lighter">
-              {compactNumber(row.total)}
+              {compact(row.total)}
             </span>
           </span>
           {kind === 'healing' && (
@@ -722,12 +718,12 @@ const Breakdown = ({
                       height={10}
                     />
                     <span className="text-xs tabular-nums text-foreground">
-                      {compactNumber(a.total)}
+                      {compact(a.total)}
                     </span>
                   </span>
                 </td>
                 <td className="px-2 py-1 text-right tabular-nums">
-                  {compactNumber(a.total / seconds)}
+                  {compact(a.total / seconds)}
                 </td>
                 {(kind === 'damage' || kind === 'healing') && (
                   <td className="px-2 py-1 text-right tabular-nums text-foreground">
@@ -750,9 +746,7 @@ const Breakdown = ({
                   </td>
                 )}
                 <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                  {row.total
-                    ? `${((a.total / row.total) * 100).toFixed(1)}%`
-                    : '–'}
+                  {row.total ? ratioPercent(a.total / row.total) : '–'}
                 </td>
               </tr>
             ))}
@@ -900,16 +894,18 @@ const PullMeters = ({
           <span className="text-sm text-foreground">
             Raid {meta.rate}{' '}
             <span className="font-semibold text-foreground-lighter tabular-nums">
-              {compactNumber(raidTotal / seconds)}
+              {compact(raidTotal / seconds)}
             </span>{' '}
-            · total {compactNumber(raidTotal)}
+            · total {compact(raidTotal)}
           </span>
         )}
         <span className="ml-auto flex items-center gap-x-2 text-xs text-foreground">
           {range ? (
             <>
-              Slice {mmss(range.from * data.bucketSeconds)}–
-              {mmss(Math.min(data.duration, range.to * data.bucketSeconds))}
+              Slice {formatDuration(range.from * data.bucketSeconds)}–
+              {formatDuration(
+                Math.min(data.duration, range.to * data.bucketSeconds),
+              )}
               <button
                 type="button"
                 onClick={() => setRange(null)}
@@ -1010,17 +1006,15 @@ const PullMeters = ({
                             color={classColor(r.specId)}
                           />
                           <span className="text-xs tabular-nums text-foreground">
-                            {compactNumber(r.total)}
+                            {compact(r.total)}
                           </span>
                         </span>
                       </td>
                       <td className="px-2 py-1 text-right tabular-nums font-semibold text-foreground-lighter">
-                        {compactNumber(r.total / seconds)}
+                        {compact(r.total / seconds)}
                       </td>
                       <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                        {raidTotal
-                          ? `${((r.total / raidTotal) * 100).toFixed(1)}%`
-                          : '–'}
+                        {raidTotal ? ratioPercent(r.total / raidTotal) : '–'}
                       </td>
                     </tr>
                   ))}
@@ -1137,10 +1131,10 @@ const PullComparison = ({ pulls }: { pulls: ComparePull[] }) => {
                 <div
                   key={p.id}
                   className="flex-1 flex flex-col items-center justify-end h-full gap-y-1 min-w-0"
-                  title={`${p.label}: ${compactNumber(raid[i])} ${meta.rate}`}
+                  title={`${p.label}: ${compact(raid[i])} ${meta.rate}`}
                 >
                   <span className="text-[10px] tabular-nums text-foreground">
-                    {compactNumber(raid[i])}
+                    {compactShort(raid[i])}
                   </span>
                   <div
                     className="w-full max-w-[36px] rounded-t-[4px]"
@@ -1196,14 +1190,14 @@ const PullComparison = ({ pulls }: { pulls: ComparePull[] }) => {
                             : 'hsl(var(--foreground) / 0.4)',
                         }}
                       >
-                        {rate ? compactNumber(rate) : '–'}
+                        {rate ? compact(rate) : '–'}
                       </td>
                     ))}
                     <td className="px-2 py-1 text-right tabular-nums font-semibold text-foreground-lighter">
-                      {compactNumber(r.avg)}
+                      {compact(r.avg)}
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums text-foreground">
-                      {compactNumber(r.best)}
+                      {compact(r.best)}
                     </td>
                   </tr>
                 ))}
@@ -1775,9 +1769,9 @@ const LogsPane = ({
                         kill
                           ? 'kill'
                           : p.bossPercent !== null
-                            ? `${p.bossPercent}% left`
+                            ? `${bossPercent(p.bossPercent)} left`
                             : 'wipe'
-                      }${p.startedAt ? `, ${timeOfDay(p.startedAt)}` : ''}, ${mmss(p.duration)}`}
+                      }${p.startedAt ? `, ${timeOfDay(p.startedAt)}` : ''}, ${formatDuration(p.duration)}`}
                       onMouseDown={(e) => {
                         // Shift-click would otherwise select the page's text.
                         if (e.shiftKey) e.preventDefault();
@@ -1802,15 +1796,15 @@ const LogsPane = ({
                             className="w-9 shrink-0"
                           />
                           <span className="tabular-nums text-foreground-lighter">
-                            {p.bossPercent !== null
-                              ? `${p.bossPercent}%`
-                              : 'Wipe'}
+                            {bossPercent(p.bossPercent) === '–'
+                              ? 'Wipe'
+                              : bossPercent(p.bossPercent)}
                           </span>
                         </>
                       )}
                       <span className="ml-auto text-xs text-foreground tabular-nums whitespace-nowrap">
                         {p.startedAt ? `${timeOfDay(p.startedAt)} · ` : ''}
-                        {mmss(p.duration)}
+                        {formatDuration(p.duration)}
                       </span>
                     </button>
                   );

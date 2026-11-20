@@ -1,45 +1,16 @@
 import { specializationById } from 'main/constants';
 import { getSpecClass, getWoWClassColor } from '../rendererutils';
 
-/** [RoomFortyRecorder] Logs page: number and time formatting, colours. */
-
-export const compact = (n: number) => {
-  const a = Math.abs(n);
-  if (a >= 1e9) return `${(n / 1e9).toFixed(2)}b`;
-  if (a >= 1e6) return `${(n / 1e6).toFixed(2)}m`;
-  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-  return String(Math.round(n));
-};
-
-export const thousands = (n: number) =>
-  Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
-
-export const mmss = (s: number) => {
-  const sec = Math.max(0, s);
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(
-    Math.floor(sec % 60),
-  ).padStart(2, '0')}`;
-};
-
-/** Clock time without the leading zero: 0:00, 4:52, 12:05 (chart axes). */
-export const clock = (s: number) => {
-  const sec = Math.max(0, Math.round(s));
-  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-};
+/**
+ * [RoomFortyRecorder] Logs page: spec labels and colours. Numbers and times
+ * are formatted by `renderer/format.ts` (dates and times of day: `clock.ts`).
+ */
 
 /** "Fire Mage" for a spec id; empty when unknown (enemies, pets). */
 export const specLabel = (specId: number) => {
   const spec = specializationById[specId];
   return spec ? `${spec.name} ${spec.label}` : '';
 };
-
-export const mmssms = (s: number) => {
-  const sec = Math.max(0, s);
-  return `${mmss(sec)}.${String(Math.floor((sec % 1) * 1000)).padStart(3, '0')}`;
-};
-
-export const pct = (part: number, whole: number, digits = 2) =>
-  whole > 0 ? `${((part / whole) * 100).toFixed(digits)}%` : '–';
 
 export const classColor = (specId: number) =>
   getWoWClassColor(getSpecClass(specId)) || 'hsl(var(--foreground-lighter))';

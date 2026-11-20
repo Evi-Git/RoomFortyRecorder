@@ -1,4 +1,5 @@
 import { timeOfDay } from 'renderer/clock';
+import { formatDuration } from './format';
 import React from 'react';
 import { Send } from 'lucide-react';
 import {
@@ -47,11 +48,6 @@ export type CoachConfig = {
   channelError: string;
   personal: { discordId: string; name: string; channelId: string }[];
   members: { discordId: string; name: string }[];
-};
-
-const mmss = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
 const selectClass = 'w-full';
@@ -142,7 +138,7 @@ export const SendClipDialog = (props: SendClipProps) => {
       at: Math.floor(currentTime),
       channelId,
       note,
-      title: `${title} at ${mmss(currentTime)}`,
+      title: `${title} at ${formatDuration(currentTime)}`,
     });
     setSending(false);
     setStage('');
@@ -255,9 +251,12 @@ export const SendClipDialog = (props: SendClipProps) => {
 
         <p className="text-sm text-foreground">
           Sends a {CLIP_LENGTH_SECONDS} s clip from{' '}
-          <span className="text-foreground-lighter">{mmss(clipStart)}</span> to{' '}
           <span className="text-foreground-lighter">
-            {mmss(clipStart + CLIP_LENGTH_SECONDS)}
+            {formatDuration(clipStart)}
+          </span>{' '}
+          to{' '}
+          <span className="text-foreground-lighter">
+            {formatDuration(clipStart + CLIP_LENGTH_SECONDS)}
           </span>
           : {CLIP_LEAD_SECONDS} s before where you are, so there&apos;s a lead
           up. It plays right in Discord and is saved under Clips.

@@ -14,7 +14,12 @@ import {
 } from './query';
 import { explainSection, SECTION_TITLES } from './auraSections';
 import { loadSpellTexts } from './SpellIcon';
-import { thousands } from './format';
+import {
+  formatDuration,
+  grouped,
+  percentSigned,
+  percentValue,
+} from '../format';
 
 /**
  * [RoomFortyRecorder] Compare with Warcraft Logs (owner only): our numbers
@@ -195,8 +200,8 @@ const pctGap = (l: CompareLine) => {
 
 const fmt = (n: number | null, uptime: boolean) => {
   if (n === null) return '–';
-  if (uptime) return `${n.toFixed(1)}%`;
-  return thousands(Math.round(n));
+  if (uptime) return percentValue(n);
+  return grouped(n);
 };
 
 /** Tab-separated lines for Claude. `onlyGaps`: leave out rows that agree. */
@@ -675,8 +680,7 @@ const WclCompare = ({
                 <option value="">Pick a fight</option>
                 {fights.fights.map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.id}. {f.name} · {Math.floor(f.seconds / 60)}:
-                    {String(f.seconds % 60).padStart(2, '0')}{' '}
+                    {f.id}. {f.name} · {formatDuration(f.seconds)}{' '}
                     {f.kill ? 'kill' : `wipe ${f.percent ?? ''}%`}
                   </option>
                 ))}
@@ -782,7 +786,7 @@ const WclCompare = ({
                               : 'only ours'
                             : g === Infinity
                               ? 'new'
-                              : `${g > 0 ? '+' : ''}${g.toFixed(1)}%`}
+                              : percentSigned(g)}
                         </td>
                         {uptime && (
                           <td className="px-2 py-1 text-right">

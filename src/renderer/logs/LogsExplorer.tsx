@@ -45,7 +45,8 @@ import AnalyzeView from './AnalyzeView';
 import ExpressionInput, { vocabularyOf } from './ExpressionInput';
 import { timelineOf } from './timeline';
 import { ZoomContext } from './zoom';
-import { CATEGORICAL, classColor, clock, compact } from './format';
+import { CATEGORICAL, classColor } from './format';
+import { compact, formatDurationRounded } from '../format';
 import { AbilityPicker, EnemyPicker, ExcludeTargetsPicker } from './Pickers';
 import { useAuraDrs, usePassiveTalents } from './talents';
 import { loadSpellTexts } from './SpellIcon';
@@ -877,12 +878,13 @@ const LogsExplorer = ({
             {!(mode === 'tables' && meter) && (
               <span>
                 {multi ? `${stores.length} pulls added up` : stores[0].label} ·{' '}
-                {clock(fightSeconds)}
+                {formatDurationRounded(fightSeconds)}
               </span>
             )}
             {filters.range && (
               <span>
-                Slice {clock(filters.range[0])}–{clock(filters.range[1])}
+                Slice {formatDurationRounded(filters.range[0])}–
+                {formatDurationRounded(filters.range[1])}
               </span>
             )}
             {filters.range && (
@@ -941,7 +943,7 @@ const LogsExplorer = ({
                 setWho={setWho}
                 chartInfo={`${
                   multi ? `${stores.length} pulls added up` : stores[0].label
-                } · ${clock(fightSeconds)}`}
+                } · ${formatDurationRounded(fightSeconds)}`}
                 extras={{
                   range: filters.range,
                   setRange: (r) => patch({ range: r }),

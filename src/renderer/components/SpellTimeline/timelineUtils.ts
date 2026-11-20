@@ -57,12 +57,6 @@ export const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
-export const fmt = (seconds: number) => {
-  const m = Math.floor(seconds / 60);
-  const s = (seconds % 60).toFixed(1).padStart(4, '0');
-  return `${m}:${s}`;
-};
-
 /** Pair cast starts with their success into bars; leftovers are markers. */
 export const buildRows = (timeline: SpellTimelineData): Row[] => {
   const perSource = new Map<number, Item[]>();

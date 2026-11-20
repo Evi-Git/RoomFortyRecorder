@@ -1,4 +1,19 @@
-import { dateTime, timeOfDay } from 'renderer/clock';
+import {
+  dateTime,
+  nightLabel,
+  shortDate,
+  shortNight,
+  timeOfDay,
+  weekdayShort,
+} from 'renderer/clock';
+import {
+  compact,
+  fileSize,
+  formatDuration,
+  formatDurationLong,
+  grouped,
+  bossPercent,
+} from './format';
 import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
@@ -179,36 +194,6 @@ const DIFFICULTY: Record<number, string> = {
 const difficultyName = (id: number) => DIFFICULTY[id] ?? `Difficulty ${id}`;
 // Mythic and flex Mythic (Kith'ix).
 const isMythic = (id: number) => id === 16 || id === 233;
-
-const mmss = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
-};
-
-const hours = (seconds: number) => {
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return m ? `${h} h ${m} min` : `${h} h`;
-};
-
-const pct = (value: number | null | undefined) =>
-  value === null || value === undefined
-    ? '–'
-    : `${Math.round(value * 10) / 10}%`;
-
-const nightLabel = (night: string) =>
-  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-
-const shortNight = (night: string) =>
-  new Date(`${night}T12:00:00`).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
 
 /** A raider's readable class colour; plain text when the class isn't known. */
 const nameStyle = (specId?: number): React.CSSProperties | undefined =>
@@ -559,15 +544,6 @@ const RaiderTable = ({
   );
 };
 
-const compact = (n: number) =>
-  n >= 1e9
-    ? `${(n / 1e9).toFixed(1)}B`
-    : n >= 1e6
-      ? `${(n / 1e6).toFixed(1)}M`
-      : n >= 1e3
-        ? `${Math.round(n / 1e3)}K`
-        : String(n);
-
 type AvoidableRaider = AvoidableRow['raiders'][number];
 
 /** One ability's totals from the raiders still included. */
@@ -718,7 +694,7 @@ export const AvoidablePanel = ({
               <Bar value={r.damage} max={top} height={8} muted />
               <span
                 className="tabular-nums text-foreground"
-                title={`${r.damage.toLocaleString()} damage`}
+                title={`${grouped(r.damage)} damage`}
               >
                 {compact(r.damage)}
               </span>
@@ -820,7 +796,7 @@ export const AvoidablePanel = ({
                           <Bar value={totals.damage} max={max} height={12} />
                           <span
                             className="tabular-nums text-foreground"
-                            title={`${totals.damage.toLocaleString()} damage`}
+                            title={`${grouped(totals.damage)} damage`}
                           >
                             {compact(totals.damage)}
                           </span>
@@ -895,13 +871,16 @@ const BossNightCard = ({
           <Stat label="Kills" value={boss.kills} />
           <Stat
             label="Best"
-            value={boss.kills ? 'Kill' : pct(boss.bestPercent)}
+            value={boss.kills ? 'Kill' : bossPercent(boss.bestPercent)}
           />
-          <Stat label="Median wipe" value={pct(boss.medianPercent)} />
-          <Stat label="Time in combat" value={hours(boss.combatSeconds)} />
+          <Stat label="Median wipe" value={bossPercent(boss.medianPercent)} />
+          <Stat
+            label="Time in combat"
+            value={formatDurationLong(boss.combatSeconds)}
+          />
           <Stat
             label="Longest pull"
-            value={boss.longestPull ? mmss(boss.longestPull) : '–'}
+            value={boss.longestPull ? formatDuration(boss.longestPull) : '–'}
           />
         </div>
 
@@ -983,12 +962,12 @@ const BossNightCard = ({
                           <span className="text-green-400">Kill</span>
                         ) : (
                           <span className="tabular-nums">
-                            {pct(p.bossPercent)}
+                            {bossPercent(p.bossPercent)}
                           </span>
                         )}
                       </td>
                       <td className="px-2 py-1 text-right tabular-nums">
-                        {mmss(p.duration)}
+                        {formatDuration(p.duration)}
                       </td>
                       <td className="px-2 py-1 text-right tabular-nums">
                         {p.deaths ?? '–'}
@@ -1515,7 +1494,7 @@ const ProgressionChart = ({
           {hovered ? (
             <>
               <div className="font-semibold text-sm text-foreground-lighter">
-                {hovered.kill ? 'Kill' : pct(hovered.percent)}
+                {hovered.kill ? 'Kill' : bossPercent(hovered.percent)}
               </div>
               <div className="text-foreground">
                 Pull {hovered.n} · {nightLabel(hovered.night)}
@@ -1531,7 +1510,7 @@ const ProgressionChart = ({
                 style={{ background: BRAND }}
               />
               <span className="text-foreground-lighter">
-                {pct(bestAt[hover])}
+                {bossPercent(bestAt[hover])}
               </span>
               {compare ? 'Room Forty best' : 'best so far'}
             </div>
@@ -1543,7 +1522,9 @@ const ProgressionChart = ({
                 style={{ background: COMPARE_COLOR }}
               />
               <span className="text-foreground-lighter">
-                {compareBest[hover] === 0 ? 'Killed' : pct(compareBest[hover])}
+                {compareBest[hover] === 0
+                  ? 'Killed'
+                  : bossPercent(compareBest[hover])}
               </span>
               {compare.name} best
             </div>
@@ -2303,14 +2284,14 @@ export const ProgressionView = ({
                   value={
                     data.firstKill
                       ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
-                      : pct(Number.isFinite(bestWipe) ? bestWipe : null)
+                      : bossPercent(Number.isFinite(bestWipe) ? bestWipe : null)
                   }
                 />
               )}
               <Stat label="Kills" value={data.kills} />
               <Stat
                 label="Time in combat"
-                value={hours(
+                value={formatDurationLong(
                   data.nights.reduce((s, n) => s + n.combatSeconds, 0),
                 )}
               />
@@ -2374,7 +2355,7 @@ export const ProgressionView = ({
                             {p.kill ? (
                               <span className="text-green-400">Kill</span>
                             ) : (
-                              pct(p.percent)
+                              bossPercent(p.percent)
                             )}
                           </td>
                           <td className="px-2 py-1 text-right">
@@ -2499,13 +2480,13 @@ export const ProgressionView = ({
                               {n.kills}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
-                              {n.kills ? 'Kill' : pct(n.bestPercent)}
+                              {n.kills ? 'Kill' : bossPercent(n.bestPercent)}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
-                              {pct(n.medianPercent)}
+                              {bossPercent(n.medianPercent)}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
-                              {hours(n.combatSeconds)}
+                              {formatDurationLong(n.combatSeconds)}
                             </td>
                             <td className="px-2 py-1 truncate max-w-[280px]">
                               {n.topCause ? (
@@ -2604,12 +2585,6 @@ type TierJob = {
   finishedAt: number | null;
 };
 type WclGuild = { name: string; realm: string; region: string };
-
-const shortDate = (at: number) =>
-  new Date(at).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
 
 /**
  * Import every report the guild has on Warcraft Logs for chosen raid zones
@@ -2985,11 +2960,6 @@ const DIFFICULTY_KEYS: Record<number, string> = {
   233: 'mythic',
 };
 
-const fileSize = (bytes: number) =>
-  bytes >= 1e9
-    ? `${(bytes / 1e9).toFixed(1)} GB`
-    : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
-
 /**
  * Send pulls from a saved combat log: for nights nobody had "Send my pull
  * logs" on. Full reports (cooldown plan, avoidable hits, defensives), placed
@@ -3143,8 +3113,8 @@ export const UploadFromLog = ({
           >
             {files.map((f) => (
               <option key={f.name} value={f.name}>
-                {`${new Date(f.modified).toLocaleDateString('en-US', { weekday: 'short' })} ${dateTime(f.modified)}`}{' '}
-                · {fileSize(f.size)} · {f.name}
+                {`${weekdayShort(f.modified)} ${dateTime(f.modified)}`} ·{' '}
+                {fileSize(f.size)} · {f.name}
               </option>
             ))}
           </select>

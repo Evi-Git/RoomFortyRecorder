@@ -19,7 +19,8 @@ import { BossButton, loadSeason, MODE_TEXT } from '../logs/BossStrip';
 import { zoneBosses } from '../logs/bossStripModel';
 import type { SeasonBoss } from '../logs/bossStripModel';
 import SpellIcon from '../logs/SpellIcon';
-import { classColor, compact, mmss } from '../logs/format';
+import { classColor } from '../logs/format';
+import { compact, formatDuration } from '../format';
 import { useTabTitle } from '../tabs/tabs';
 import TimeTrial from './TimeTrial';
 import {
@@ -347,7 +348,7 @@ const RankingsGrid = ({
               className="absolute -translate-x-1/2"
               style={{ left: `${(t / max) * 100}%` }}
             >
-              {mmss(t)}
+              {formatDuration(t)}
             </span>
           ))}
         </div>
@@ -374,7 +375,7 @@ const RankingsGrid = ({
               {compact(row.amount)}
             </span>
             <span className="text-xs text-right tabular-nums text-foreground">
-              {mmss(row.duration)}
+              {formatDuration(row.duration)}
             </span>
             <Lane row={row} max={max} shown={shown} />
             <span className="flex gap-x-1">
