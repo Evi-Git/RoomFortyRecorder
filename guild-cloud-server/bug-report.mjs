@@ -24,6 +24,7 @@ export const createBugReport = ({
   discordApi = 'https://discord.com/api/v10',
   fetchImpl = fetch,
   now = () => Date.now(),
+  timeoutMs = 10000,
 } = {}) => {
   const webhook = String(env.GUILD_CLOUD_BUG_WEBHOOK || '').trim();
   const channel = String(env.GUILD_CLOUD_BUG_CHANNEL_ID || '').trim();
@@ -69,11 +70,19 @@ export const createBugReport = ({
     const headers = { 'Content-Type': 'application/json' };
     if (!webhook) headers.Authorization = `Bot ${botToken}`;
 
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        // Discord not answering must not hold the app's request open.
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      console.warn('[bug-report] Discord did not answer', error?.message || error);
+      return { status: 502, error: 'Discord did not answer, try again in a minute' };
+    }
     if (!response.ok) {
       console.warn(`[bug-report] Discord said ${response.status}`);
       return { status: 502, error: 'Discord did not accept the report' };

@@ -1061,6 +1061,10 @@ export const createPullDesk = (options) => {
     if (isReset(pull)) return; // resets aren't pulls: no post
     const channelId = channelFor(pull.encounterId);
     if (!channelId || !botToken) return;
+    // One post per pull, even if the log is analysed again or uploaded twice.
+    if (pull.postedAt) return;
+    pull.postedAt = Date.now();
+    await persist();
 
     const kill = report.result === 'kill';
     const title = `Pull ${pull.pullNumber} · ${report.encounterName} (${report.difficulty}) · ${
@@ -1137,6 +1141,8 @@ export const createPullDesk = (options) => {
         );
       }
     } catch (error) {
+      // Timed out or unreachable: the post may or may not have gone out, so
+      // keep postedAt (no duplicate) rather than risk a second message.
       console.warn('[pulldesk] Discord post failed', error.message);
     }
   };
@@ -1258,7 +1264,58 @@ export const createPullDesk = (options) => {
     return reply({ upload: false, standby: true });
   };
 
+  // The report as sent to the app: stored JSON with the pull's current numbers
+  // (resets get none), so a report stored before that still shows them.
+  // Patched bodies are kept per pull, keyed by the stored file's mtime and size
+  // and by the numbers, so a repeat request is a stat and a send, not a parse
+  // and a re-serialise of a multi-MB report.
+  const patchedReports = new Map();
+  const PATCHED_MAX_ENTRIES = 24;
+  const PATCHED_MAX_BYTES = 64 * 1024 * 1024;
+  let patchedBytes = 0;
+  const patchedReport = async (pull) => {
+    const file = reportFile(pull.id);
+    const stat = await fsp.stat(file);
+    const reset = isReset(pull);
+    const key = `${stat.mtimeMs}:${stat.size}:${pull.pullNumber}:${pull.totalPullNumber}:${reset}`;
+    const hit = patchedReports.get(pull.id);
+    if (hit && hit.key === key) {
+      // Most recently used goes last.
+      patchedReports.delete(pull.id);
+      patchedReports.set(pull.id, hit);
+      return hit.body;
+    }
+    let body = await fsp.readFile(file);
+    try {
+      body = Buffer.from(
+        JSON.stringify({
+          ...JSON.parse(body.toString('utf8')),
+          pullNumber: pull.pullNumber,
+          totalPullNumber: pull.totalPullNumber,
+          reset,
+        }),
+      );
+    } catch {
+      // Unreadable JSON: send it as stored.
+    }
+    if (hit) patchedBytes -= hit.body.length;
+    patchedReports.delete(pull.id);
+    if (body.length <= PATCHED_MAX_BYTES / 2) {
+      patchedReports.set(pull.id, { key, body });
+      patchedBytes += body.length;
+      while (patchedReports.size > PATCHED_MAX_ENTRIES || patchedBytes > PATCHED_MAX_BYTES) {
+        const [oldest, entry] = patchedReports.entries().next().value;
+        patchedReports.delete(oldest);
+        patchedBytes -= entry.body.length;
+      }
+    }
+    return body;
+  };
+
   const uploadLog = async (req, res, pull) => {
+    // A retry (client timeout) or a second raider while the first log is being
+    // analysed: don't write the log again or run a second analysis.
+    if (pull.status === 'analyzing') return json(res, 200, { status: 'analyzing' });
     if (pull.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION) {
       return json(res, 200, { status: pull.status });
     }
@@ -1280,13 +1337,23 @@ export const createPullDesk = (options) => {
     // A pull that already has a log only takes a new one that brings meters.
     if (pull.hasLog && !text.includes(`\n${METERS_LINE_PREFIX}`)) return json(res, 200, { status: pull.status });
 
-    await fsp.writeFile(logFile(pull.id), gz);
+    // Two uploads can both be past the check at the top while reading their
+    // bodies: the later one stops here, and the first takes the pull now (no
+    // await between this check and the status).
+    if (pull.status === 'analyzing') return json(res, 200, { status: 'analyzing' });
+    const previousStatus = pull.status;
+    pull.status = 'analyzing';
+    try {
+      await fsp.writeFile(logFile(pull.id), gz);
+    } catch (error) {
+      pull.status = previousStatus;
+      throw error;
+    }
     pull.hasLog = true;
     // A Warcraft Logs import gets the full report from the real log.
     if (pull.source === 'wcl') delete pull.source;
     pull.uploadedBy = req.cloudUserName;
     pull.uploadedById = String(req.cloudUserId || req.cloudUserName);
-    pull.status = 'analyzing';
     await persist();
 
     let report;
@@ -1884,21 +1951,7 @@ export const createPullDesk = (options) => {
       if (!third && req.method === 'GET') {
         if (pull.status !== 'ready') return json(res, 200, { pending: true, ...summaryOf(pull) });
         try {
-          let body = await fsp.readFile(reportFile(pull.id));
-          // Numbers are worked out from the index (resets get none), so a
-          // report stored before that still shows the current ones.
-          try {
-            body = Buffer.from(
-              JSON.stringify({
-                ...JSON.parse(body.toString('utf8')),
-                pullNumber: pull.pullNumber,
-                totalPullNumber: pull.totalPullNumber,
-                reset: isReset(pull),
-              }),
-            );
-          } catch {
-            // Unreadable JSON: send it as stored.
-          }
+          const body = await patchedReport(pull);
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Length': body.length,
