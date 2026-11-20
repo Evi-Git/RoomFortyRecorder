@@ -38,7 +38,6 @@ export default class RetailLogHandler extends LogHandler {
     this.combatLogWatcher.lineTap = (line: string) =>
       PullDesk.getInstance().onLogLine(line);
 
-    /* eslint-disable prettier/prettier */
     this.combatLogWatcher
       .on('ENCOUNTER_START', (line: LogLine) => {
         this.logProcessQueue.add(async () =>
@@ -85,7 +84,6 @@ export default class RetailLogHandler extends LogHandler {
       .on('SPELL_DAMAGE', (line: LogLine) => {
         this.logProcessQueue.add(async () => this.handleSpellDamage(line));
       });
-    /* eslint-enable prettier/prettier */
   }
 
   public setIsPtr() {

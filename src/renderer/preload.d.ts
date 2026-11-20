@@ -15,7 +15,10 @@ declare global {
       store: ElectronStore;
       ipcRenderer: {
         sendMessage(channel: Channels, args: unknown[]): void;
+        // The reply type depends on the channel; callers cast it.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sendSync(channel: Channels, args: unknown[]): any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         invoke(channel: Channels, args: unknown[]): Promise<any>;
         on(
           channel: string,
