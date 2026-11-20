@@ -1,4 +1,5 @@
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { useViewWindow } from './zoom';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -495,21 +496,19 @@ export const ResourceView = ({
       {shownType !== undefined && (
         <div className="rounded-md border border-card bg-background/40 p-3">
           <div className="flex items-center gap-x-2 mb-2 flex-wrap">
-            <select
-              className="bg-card text-foreground-lighter rounded px-2 h-7 text-xs border border-background"
-              value={shownType}
-              onChange={(e) => {
-                setType(Number(e.target.value));
+            <SimpleSelect
+              className="h-7 text-xs"
+              value={String(shownType)}
+              onChange={(v) => {
+                setType(Number(v));
                 setHidden(null);
               }}
               aria-label="Resource"
-            >
-              {allTypes.map((t) => (
-                <option key={t} value={t}>
-                  {powerName(t)}
-                </option>
-              ))}
-            </select>
+              options={allTypes.map((t) => ({
+                value: String(t),
+                label: powerName(t),
+              }))}
+            />
             <div className="inline-flex rounded border border-card text-xs overflow-hidden">
               {[
                 [true, '% of max'],

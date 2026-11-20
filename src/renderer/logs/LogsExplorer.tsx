@@ -53,6 +53,10 @@ import { loadSpellTexts } from './SpellIcon';
 import { DAMAGE_REDUCTION } from '../../parsing/PullMeters';
 import WclCompare from './WclCompare';
 import { usePermissions } from '../usePermissions';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
+
+/** Size of the selects in the toolbar (matches the filter box). */
+const selectClass = 'h-9 text-xs';
 
 // Cooldowns are counted from their auras, not as talents.
 const isCooldown = (spellId: number) => Boolean(DAMAGE_REDUCTION[spellId]);
@@ -641,41 +645,47 @@ const LogsExplorer = ({
                 )}
               {(tab === 'buffs' || tab === 'debuffs') &&
                 filters.side === 'friendly' && (
-                  <select
-                    className={field}
+                  <SimpleSelect
+                    className={selectClass}
                     value={auraWho ?? ''}
-                    onChange={(e) => setAuraWho(e.target.value || null)}
+                    onChange={(v) => setAuraWho(v || null)}
                     aria-label="Raider"
-                  >
-                    <option value="">All raiders</option>
-                    {roster.map((r) => (
-                      <option key={r.guid} value={r.guid}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'All raiders' },
+                      ...roster.map((r) => ({
+                        value: String(r.guid),
+                        label: r.name,
+                      })),
+                    ]}
+                  />
                 )}
               {meter && meter !== 'prevented' && (
-                <select
-                  className={field}
+                <SimpleSelect
+                  className={selectClass}
                   value={group}
-                  onChange={(e) => setGroup(e.target.value as Group)}
+                  onChange={(v) => setGroup(v as Group)}
                   aria-label="Group by"
-                >
-                  <option value="source">
-                    {meter === 'taken' ? 'By raider' : 'Done by source'}
-                  </option>
-                  <option value="enemy">
-                    {meter === 'taken'
-                      ? 'By enemy'
-                      : meter === 'healing'
-                        ? 'Done to target'
-                        : 'Done to enemy'}
-                  </option>
-                  <option value="ability">
-                    {meter === 'taken' ? 'By ability' : 'Done by ability'}
-                  </option>
-                </select>
+                  options={[
+                    {
+                      value: 'source',
+                      label: meter === 'taken' ? 'By raider' : 'Done by source',
+                    },
+                    {
+                      value: 'enemy',
+                      label:
+                        meter === 'taken'
+                          ? 'By enemy'
+                          : meter === 'healing'
+                            ? 'Done to target'
+                            : 'Done to enemy',
+                    },
+                    {
+                      value: 'ability',
+                      label:
+                        meter === 'taken' ? 'By ability' : 'Done by ability',
+                    },
+                  ]}
+                />
               )}
               {meter === 'healing' && friendlySide && (
                 <label
@@ -761,38 +771,35 @@ const LogsExplorer = ({
                     <span className="text-foreground">
                       Ignore events after player deaths
                     </span>
-                    <select
-                      className={field}
-                      value={filters.deathCutoff}
-                      onChange={(e) =>
-                        patch({ deathCutoff: Number(e.target.value) })
-                      }
+                    <SimpleSelect
+                      className={selectClass}
+                      value={String(filters.deathCutoff)}
+                      onChange={(v) => patch({ deathCutoff: Number(v) })}
                       aria-label="Ignore events after player deaths"
-                    >
-                      <option value={0}>Count every event</option>
-                      {[1, 2, 3, 4, 5, 10].map((n) => (
-                        <option key={n} value={n}>
-                          Ignore events after death {n}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '0', label: 'Count every event' },
+                        ...[1, 2, 3, 4, 5, 10].map((n) => ({
+                          value: String(n),
+                          label: `Ignore events after death ${n}`,
+                        })),
+                      ]}
+                    />
                   </label>
                   <label
                     className="flex flex-col gap-y-1"
                     title="Enter adds the expression as a filter on the data, or as markers on the charts"
                   >
                     <span className="text-foreground">Add expressions as</span>
-                    <select
-                      className={field}
+                    <SimpleSelect
+                      className={selectClass}
                       value={layerMode}
-                      onChange={(e) =>
-                        setLayerMode(e.target.value as 'filter' | 'mark')
-                      }
+                      onChange={(v) => setLayerMode(v as 'filter' | 'mark')}
                       aria-label="Add expressions as"
-                    >
-                      <option value="filter">Add as filter</option>
-                      <option value="mark">Add as marker</option>
-                    </select>
+                      options={[
+                        { value: 'filter', label: 'Add as filter' },
+                        { value: 'mark', label: 'Add as marker' },
+                      ]}
+                    />
                   </label>
                 </PopoverContent>
               </Popover>
@@ -1051,18 +1058,17 @@ const TimelineMode = ({
     <div className="flex flex-col gap-y-3">
       <div className="flex items-center gap-x-3 flex-wrap">
         {stores.length > 1 && (
-          <select
-            className="bg-panel text-foreground-lighter rounded-lg px-2.5 h-9 text-xs border border-panel-line"
-            value={index}
-            onChange={(e) => setIndex(Number(e.target.value))}
+          <SimpleSelect
+            className={selectClass}
+            value={String(index)}
+            onChange={(v) => setIndex(Number(v))}
             aria-label="Pull"
-          >
-            {stores.map((p, i) => (
-              <option key={p.id} value={i}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+            options={stores.map((p, i) => ({
+              key: p.id,
+              value: String(i),
+              label: p.label,
+            }))}
+          />
         )}
         <Segmented<'casts' | 'buffs'>
           label="Timeline"

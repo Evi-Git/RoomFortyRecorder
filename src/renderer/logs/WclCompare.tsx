@@ -1,4 +1,5 @@
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { ChevronDown, ChevronRight, Copy } from 'lucide-react';
 import { PullMeta } from './store';
 import {
@@ -671,20 +672,21 @@ const WclCompare = ({
               Load fights
             </button>
             {fights && (
-              <select
-                className={field}
-                value={fight ?? ''}
-                onChange={(e) => setFight(Number(e.target.value) || null)}
+              <SimpleSelect
+                className="h-8 text-xs"
+                value={fight === null ? '' : String(fight)}
+                onChange={(v) => setFight(Number(v) || null)}
                 aria-label="Warcraft Logs fight"
-              >
-                <option value="">Pick a fight</option>
-                {fights.fights.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.id}. {f.name} · {formatDuration(f.seconds)}{' '}
-                    {f.kill ? 'kill' : `wipe ${f.percent ?? ''}%`}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'Pick a fight' },
+                  ...fights.fights.map((f) => ({
+                    value: String(f.id),
+                    label: `${f.id}. ${f.name} · ${formatDuration(f.seconds)} ${
+                      f.kill ? 'kill' : `wipe ${f.percent ?? ''}%`
+                    }`,
+                  })),
+                ]}
+              />
             )}
             {lines.length > 0 && (
               <button

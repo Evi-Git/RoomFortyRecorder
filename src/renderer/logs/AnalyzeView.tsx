@@ -28,6 +28,7 @@ import { SPEC_GUIDE } from './specPresets';
 import { usePermissions } from '../usePermissions';
 import { shortDate } from '../clock';
 import { ErrorState, Skeleton } from '../components/States/States';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 
 const GOOD = '#7CC47F';
 const OK = '#E5A55F';
@@ -511,6 +512,9 @@ const WidgetBody = ({
 /* Builder                                                             */
 /* ------------------------------------------------------------------ */
 
+// Size of the selects in the widget editor (the text fields' height).
+const selectInput = 'h-[34px] text-[13px]';
+
 const input =
   'bg-walnut border border-card rounded-md text-foreground-lighter px-2.5 py-1.5 text-[13px] min-h-[34px] box-border';
 
@@ -757,18 +761,18 @@ const Builder = ({
             />
             <span className={label}>Window ends</span>
             <div className="flex gap-x-2 items-center">
-              <select
-                className={input}
+              <SimpleSelect
+                className={selectInput}
+                aria-label="Window ends"
                 value={
                   w.ends === undefined || w.ends === 'buff' ? 'buff' : 'fixed'
                 }
-                onChange={(e) =>
-                  set({ ends: e.target.value === 'buff' ? 'buff' : 15 })
-                }
-              >
-                <option value="buff">When its buff ends</option>
-                <option value="fixed">After a fixed time</option>
-              </select>
+                onChange={(v) => set({ ends: v === 'buff' ? 'buff' : 15 })}
+                options={[
+                  { value: 'buff', label: 'When its buff ends' },
+                  { value: 'fixed', label: 'After a fixed time' },
+                ]}
+              />
               {typeof w.ends === 'number' && (
                 <input
                   className={`${input} w-20`}
@@ -876,39 +880,35 @@ const Builder = ({
           </>
         )}
         {k === 'resourceWaste' && (
-          <select
-            className={input}
-            value={w.power ?? ''}
-            onChange={(e) =>
-              set({
-                power:
-                  e.target.value === '' ? undefined : Number(e.target.value),
-              })
-            }
-          >
-            <option value="">The spec&apos;s main resource</option>
-            <option value={MOST_WASTED}>The one wasted most</option>
-            {powers.map((p) => (
-              <option key={p} value={p}>
-                {POWER_NAMES[p] ?? `Power ${p}`}
-              </option>
-            ))}
-          </select>
+          <SimpleSelect
+            className={selectInput}
+            aria-label="Resource"
+            value={String(w.power ?? '')}
+            onChange={(v) => set({ power: v === '' ? undefined : Number(v) })}
+            options={[
+              { value: '', label: "The spec's main resource" },
+              { value: String(MOST_WASTED), label: 'The one wasted most' },
+              ...powers.map((p) => ({
+                value: String(p),
+                label: POWER_NAMES[p] ?? `Power ${p}`,
+              })),
+            ]}
+          />
         )}
         {k === 'count' && (
           <>
-            <select
-              className={input}
+            <SimpleSelect
+              className={selectInput}
+              aria-label="Count"
               value={w.what ?? 'casts'}
-              onChange={(e) =>
-                set({ what: e.target.value as WidgetSpec['what'] })
-              }
-            >
-              <option value="casts">Casts</option>
-              <option value="hits">Hits and heals</option>
-              <option value="dispels">Dispels</option>
-              <option value="interrupts">Interrupts</option>
-            </select>
+              onChange={(v) => set({ what: v as WidgetSpec['what'] })}
+              options={[
+                { value: 'casts', label: 'Casts' },
+                { value: 'hits', label: 'Hits and heals' },
+                { value: 'dispels', label: 'Dispels' },
+                { value: 'interrupts', label: 'Interrupts' },
+              ]}
+            />
             <span className={label}>Only these (optional)</span>
             <SpellsField
               id="an-count"
@@ -920,16 +920,16 @@ const Builder = ({
           </>
         )}
         {k === 'breakdown' && (
-          <select
-            className={input}
+          <SimpleSelect
+            className={selectInput}
+            aria-label="Breakdown"
             value={w.metric ?? 'healing'}
-            onChange={(e) =>
-              set({ metric: e.target.value as 'healing' | 'damage' })
-            }
-          >
-            <option value="healing">Healing by spell</option>
-            <option value="damage">Damage by spell</option>
-          </select>
+            onChange={(v) => set({ metric: v as 'healing' | 'damage' })}
+            options={[
+              { value: 'healing', label: 'Healing by spell' },
+              { value: 'damage', label: 'Damage by spell' },
+            ]}
+          />
         )}
         {k === 'activeTime' && <Note>Nothing to set.</Note>}
         <label className="flex flex-col gap-y-1">
@@ -1098,21 +1098,23 @@ const AnalyzeView = ({
         <div className="flex flex-wrap items-center gap-2.5">
           <label className="flex items-center gap-x-2 px-2.5 py-1.5 rounded-lg border border-card bg-panel text-[13px]">
             Raider
-            <select
-              className="bg-transparent text-foreground-lighter font-semibold"
+            <SimpleSelect
+              className="h-7 text-[13px] font-semibold"
               value={me.guid}
-              onChange={(e) => pick(e.target.value)}
-              style={{ color: classColor(me.specId) }}
-            >
-              {roster.map((r) => {
+              onChange={pick}
+              aria-label="Raider"
+              options={roster.map((r) => {
                 const s = specInfo(r.specId);
-                return (
-                  <option key={r.guid} value={r.guid}>
-                    {`${r.name}${s ? ` · ${s.name} ${s.label}` : ''}`}
-                  </option>
-                );
+                return {
+                  value: r.guid,
+                  label: (
+                    <span style={{ color: classColor(r.specId) }}>
+                      {`${r.name}${s ? ` · ${s.name} ${s.label}` : ''}`}
+                    </span>
+                  ),
+                };
               })}
-            </select>
+            />
           </label>
           <span className="text-xs text-foreground">
             {waiting
