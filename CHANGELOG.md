@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.154] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Fixed
+- **One analysis and one Discord post per pull.** A retried upload no longer makes the guild server analyse the same pull twice or post it to Discord twice. Older pulls count as already posted. A post that clearly failed (rate limit, server unreachable) is tried again; one that timed out isn't, since it may have gone out.
+- **Discord can't hang the guild server:** sign-in and bug reports give up after 10 seconds, and a bug report says so when Discord doesn't answer. Two bug reports sent at the same moment only go once.
+- **Opening a pull's full log:** two opens at the same time share one download; a cached log cut short by a crash is spotted and downloaded again; saving to the cache is best effort, so a busy file on Windows never stops the log from opening.
+- A pull can no longer get stuck as "analyzing" after the guild server restarts at the wrong moment.
+- Pull reports open faster on the guild server when they're viewed again.
+
 ## [1.9.153] - Unreleased
 ### Changed
 - **One number style everywhere.** Big numbers read the same on every page (`612.0k`, `1.23m`, `1.50b`) instead of switching between `612K`, `1.23M` and full digits.
