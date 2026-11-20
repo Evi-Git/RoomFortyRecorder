@@ -6,6 +6,7 @@
  * by each phase; then "where the time went".
  */
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { ClipboardCopy, Play, Timer } from 'lucide-react';
 import { Tooltip } from '../components/Tooltip/Tooltip';
 import { WatchContext } from '../Meters';
@@ -272,8 +273,7 @@ const TimeTrial = ({
       });
     watcher.open(pullRef, me?.name ?? null, t);
   };
-  const field =
-    'bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background';
+  const field = 'h-8 text-sm';
   const loadingPct = pull ? load.progress[pull.id] : undefined;
 
   return (
@@ -296,33 +296,30 @@ const TimeTrial = ({
       <div className="flex items-center gap-x-3 flex-wrap gap-y-2 text-sm">
         <label className="flex items-center gap-x-2">
           Our pull
-          <select
+          <SimpleSelect
             className={field}
-            value={pullId}
-            onChange={(e) => setPullId(e.target.value)}
+            value={pull?.id ?? pulls?.[0]?.id ?? pullId}
+            onChange={setPullId}
             disabled={!pulls?.length}
-          >
-            {(pulls ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {pullLabel(p)}
-              </option>
-            ))}
-          </select>
+            options={(pulls ?? []).map((p) => ({
+              value: p.id,
+              label: pullLabel(p),
+            }))}
+          />
         </label>
         {raiders.length > 0 && (
           <label className="flex items-center gap-x-2">
             Raider
-            <select
+            <SimpleSelect
               className={field}
               value={me?.name ?? ''}
-              onChange={(e) => pickCharacter(e.target.value)}
-            >
-              {sorted.map((r) => (
-                <option key={r.guid} value={r.name}>
-                  {r.name} ({specTitle(r.specId)})
-                </option>
-              ))}
-            </select>
+              onChange={pickCharacter}
+              options={sorted.map((r) => ({
+                key: r.guid,
+                value: r.name,
+                label: `${r.name} (${specTitle(r.specId)})`,
+              }))}
+            />
           </label>
         )}
         {pull && (

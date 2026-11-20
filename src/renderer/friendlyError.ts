@@ -18,6 +18,8 @@ export const friendlyError = (raw: string | null | undefined) => {
     )
   )
     return "Couldn't reach the guild server. It may be restarting; try again in a minute.";
+  if (/^fetch failed$/i.test(text))
+    return "Couldn't reach the service. Check the connection and try again.";
   if (/timeout|ETIMEDOUT|timed out/i.test(text))
     return 'The guild server took too long to answer.';
   if (/\b50[234]\b/.test(text))

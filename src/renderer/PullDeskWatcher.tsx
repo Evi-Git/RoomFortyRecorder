@@ -1,6 +1,7 @@
 import React from 'react';
 import { Snowflake, Play, Square } from 'lucide-react';
 import { Button } from './components/Button/Button';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Input } from './components/Input/Input';
 
 /**
@@ -9,6 +10,8 @@ import { Input } from './components/Input/Input';
  * for their Mythic progression: every pull on each boss up to the first
  * kill. Frozen (no automatic crawls) until an officer unfreezes it.
  */
+
+const REGIONS = ['us', 'eu', 'kr', 'tw'];
 
 const ipc = window.electron.ipcRenderer;
 
@@ -255,17 +258,20 @@ export const WatcherSettings = ({
                 value={g.realm}
                 onChange={(e) => update(i, 'realm', e.target.value)}
               />
-              <select
-                className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-sm border border-background"
-                value={g.region}
-                onChange={(e) => update(i, 'region', e.target.value)}
-              >
-                {['us', 'eu', 'kr', 'tw'].map((r) => (
-                  <option key={r} value={r}>
-                    {r.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+              <SimpleSelect
+                className="h-8 w-20 min-w-0 text-sm"
+                aria-label="Region"
+                value={
+                  REGIONS.includes(g.region.toLowerCase())
+                    ? g.region.toLowerCase()
+                    : REGIONS[0]
+                }
+                onChange={(region) => update(i, 'region', region)}
+                options={REGIONS.map((r) => ({
+                  value: r,
+                  label: r.toUpperCase(),
+                }))}
+              />
               <Button
                 size="xs"
                 variant="ghost"

@@ -5,7 +5,8 @@ import type { ToastActionElement, ToastProps } from './Toast';
 const TOAST_LIMIT = 3;
 const TOAST_REMOVE_DELAY = 1000000;
 
-type ToasterToast = ToastProps & {
+// Radix's own string-only `title` attribute is replaced by the ReactNode one.
+type ToasterToast = Omit<ToastProps, 'title'> & {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;

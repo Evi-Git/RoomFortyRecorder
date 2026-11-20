@@ -4,6 +4,7 @@
  * player's timings (or ours), by phase or from the pull.
  */
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { Check, ClipboardCopy, X } from 'lucide-react';
 import SpellIcon from '../logs/SpellIcon';
 import type { Track } from './trial';
@@ -161,17 +162,15 @@ const CopyNsrt = ({
         </label>
         <label className="flex items-center gap-x-2">
           Show
-          <select
-            className={field}
-            value={countdown}
-            onChange={(e) => setCountdown(Number(e.target.value))}
-          >
-            {[0, 3, 5, 8].map((n) => (
-              <option key={n} value={n}>
-                {n ? `${n} s countdown` : 'no countdown'}
-              </option>
-            ))}
-          </select>
+          <SimpleSelect
+            className="h-8 text-xs"
+            value={String(countdown)}
+            onChange={(v) => setCountdown(Number(v))}
+            options={[0, 3, 5, 8].map((n) => ({
+              value: String(n),
+              label: n ? `${n} s countdown` : 'no countdown',
+            }))}
+          />
         </label>
       </div>
       <div className="flex flex-wrap gap-1.5">

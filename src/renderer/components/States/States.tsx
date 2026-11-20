@@ -47,6 +47,7 @@ export const ErrorState = ({
   what,
   onRetry,
   compact = false,
+  message,
 }: {
   /** The raw error text (from the server, the network...). */
   error: string;
@@ -54,9 +55,11 @@ export const ErrorState = ({
   what?: string;
   onRetry?: () => void;
   compact?: boolean;
+  /** Replaces the friendly line when the caller knows better (the raw text stays under Copy details). */
+  message?: string;
 }) => {
   const [copied, setCopied] = React.useState(false);
-  const friendly = friendlyError(error);
+  const friendly = message ?? friendlyError(error);
   const copy = () => {
     navigator.clipboard
       ?.writeText(error)

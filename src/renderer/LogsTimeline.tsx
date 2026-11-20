@@ -1,4 +1,5 @@
 import React from 'react';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Play } from 'lucide-react';
 import { classColor } from './logs/format';
 
@@ -266,18 +267,18 @@ export const CastTimeline = ({
         <div className="flex items-center gap-x-3 flex-wrap">
           <label className="flex items-center gap-x-2 text-sm">
             Raider
-            <select
-              className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+            <SimpleSelect
+              className="h-8 text-sm"
               value={who}
-              onChange={(e) => setWho(e.target.value)}
-            >
-              <option value="">Everyone</option>
-              {(data.casts ?? []).map((r) => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={setWho}
+              options={[
+                { value: '', label: 'Everyone' },
+                ...(data.casts ?? []).map((r) => ({
+                  value: r.name,
+                  label: r.name,
+                })),
+              ]}
+            />
           </label>
           <Legend lust={lust.length > 0} deaths={deaths.length > 0} />
           {zoom.bar}
@@ -519,18 +520,18 @@ export const AuraView = ({
         <div className="flex items-center gap-x-3 flex-wrap">
           <label className="flex items-center gap-x-2 text-sm">
             Raider
-            <select
-              className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+            <SimpleSelect
+              className="h-8 text-sm"
               value={who}
-              onChange={(e) => setWho(e.target.value)}
-            >
-              <option value="">Everyone</option>
-              {(data.buffs ?? []).map((r) => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={setWho}
+              options={[
+                { value: '', label: 'Everyone' },
+                ...(data.buffs ?? []).map((r) => ({
+                  value: r.name,
+                  label: r.name,
+                })),
+              ]}
+            />
           </label>
           <Legend lust={lust.length > 0} deaths={deaths.length > 0} />
           {zoom.bar}

@@ -24,3 +24,7 @@ test('anything else is kept as it is', () => {
   );
   expect(friendlyError('')).toBe('Something went wrong.');
 });
+
+test('a bare "fetch failed" becomes a connection hint', () => {
+  expect(friendlyError('fetch failed')).toMatch(/connection/);
+});
