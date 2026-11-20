@@ -81,7 +81,7 @@ export const explainSection = (
     return { section: 'stance', why: `name: "${hit(STANCE, row.name)}"` };
   if (c === 'raidbuff')
     return { section: 'raidbuff', why: 'log: on most of the raid all fight' };
-  if (DAMAGE_REDUCTION[row.spellId])
+  if (row.ids.some((id) => DAMAGE_REDUCTION[id]))
     return { section: 'defensive', why: 'in the DAMAGE_REDUCTION table' };
   const t = text || '';
   if (TOY.test(row.name))

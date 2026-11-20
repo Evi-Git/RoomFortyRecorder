@@ -162,7 +162,11 @@ const Section = ({
                     type="button"
                     onClick={() => onOpen(r.spellId)}
                     className="inline-flex items-center gap-x-2 max-w-full hover:underline text-left"
-                    title="See who had it, when, and its stacks"
+                    title={
+                      r.ids.length > 1
+                        ? `See who had it, when, and its stacks (spell IDs ${r.ids.join(', ')})`
+                        : 'See who had it, when, and its stacks'
+                    }
                   >
                     <SpellIcon spellId={r.spellId} name={r.name} />
                     <span className="truncate">{r.name}</span>
