@@ -1,6 +1,7 @@
 import React from 'react';
 import { Snowflake, Play, Square } from 'lucide-react';
 import { Button } from './components/Button/Button';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Input } from './components/Input/Input';
 
 /**
@@ -255,17 +256,16 @@ export const WatcherSettings = ({
                 value={g.realm}
                 onChange={(e) => update(i, 'realm', e.target.value)}
               />
-              <select
-                className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-sm border border-background"
+              <SimpleSelect
+                className="h-8 w-20 min-w-0 text-sm"
+                aria-label="Region"
                 value={g.region}
-                onChange={(e) => update(i, 'region', e.target.value)}
-              >
-                {['us', 'eu', 'kr', 'tw'].map((r) => (
-                  <option key={r} value={r}>
-                    {r.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                onChange={(region) => update(i, 'region', region)}
+                options={['us', 'eu', 'kr', 'tw'].map((r) => ({
+                  value: r,
+                  label: r.toUpperCase(),
+                }))}
+              />
               <Button
                 size="xs"
                 variant="ghost"

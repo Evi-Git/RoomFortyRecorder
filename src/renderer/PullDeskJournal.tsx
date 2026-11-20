@@ -1,4 +1,5 @@
 import React from 'react';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Check, Plus, RefreshCw } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { Input } from './components/Input/Input';
@@ -428,20 +429,18 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
       <div className="flex items-center gap-x-3 flex-wrap">
         <label className="flex items-center gap-x-2 text-sm">
           Boss
-          <select
-            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+          <SimpleSelect
+            className="h-8 text-sm"
             value={choice}
-            onChange={(e) => {
-              setChoice(e.target.value);
+            onChange={(next) => {
+              setChoice(next);
               setDifficulty(null);
             }}
-          >
-            {bosses.map((b) => (
-              <option key={b.encounterId} value={String(b.encounterId)}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+            options={bosses.map((b) => ({
+              value: String(b.encounterId),
+              label: b.name,
+            }))}
+          />
         </label>
         <div role="tablist" aria-label="Difficulty" className="flex gap-x-1">
           {difficulties.map((d) => (

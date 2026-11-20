@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from './components/Dialog/Dialog';
 import { Button } from './components/Button/Button';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Textarea } from './components/TextArea/textarea';
 import { RendererVideo } from 'main/types';
 
@@ -53,8 +54,7 @@ const mmss = (seconds: number) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
-const selectClass =
-  'w-full bg-card text-foreground-lighter rounded-md px-2 py-2 text-sm border border-background';
+const selectClass = 'w-full';
 
 const loadLastChannel = () => {
   try {
@@ -214,31 +214,32 @@ export const SendClipDialog = (props: SendClipProps) => {
       <div className="flex flex-col gap-y-3">
         <label className="flex flex-col gap-y-1 text-sm">
           Channel
-          <select
+          <SimpleSelect
             className={selectClass}
             value={channelId}
-            onChange={(e) => setChannelId(e.target.value)}
+            onChange={setChannelId}
             disabled={!config.officer && config.channels.length === 1}
-          >
-            {personal.length > 0 && (
-              <optgroup label="Personal channels">
-                {personal.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {personalByChannel.get(c.id)} · #{c.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {[...categories.entries()].map(([category, list]) => (
-              <optgroup key={category} label={category}>
-                {list.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    #{c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            groups={[
+              ...(personal.length > 0
+                ? [
+                    {
+                      label: 'Personal channels',
+                      options: personal.map((c) => ({
+                        value: c.id,
+                        label: `${personalByChannel.get(c.id)} · #${c.name}`,
+                      })),
+                    },
+                  ]
+                : []),
+              ...[...categories.entries()].map(([category, list]) => ({
+                label: category,
+                options: list.map((c) => ({
+                  value: c.id,
+                  label: `#${c.name}`,
+                })),
+              })),
+            ]}
+          />
         </label>
 
         <label className="flex flex-col gap-y-1 text-sm">
@@ -388,26 +389,23 @@ export const PersonalChannelsDialog = ({
               <span className="truncate text-sm text-foreground-lighter">
                 {row.name}
               </span>
-              <select
+              <SimpleSelect
                 className={selectClass}
+                aria-label={`Channel for ${row.name}`}
                 value={row.channelId}
-                onChange={(e) =>
+                placeholder="Pick a channel"
+                onChange={(channelId) =>
                   setRows((current) =>
                     current.map((r) =>
-                      r.discordId === row.discordId
-                        ? { ...r, channelId: e.target.value }
-                        : r,
+                      r.discordId === row.discordId ? { ...r, channelId } : r,
                     ),
                   )
                 }
-              >
-                <option value="">Pick a channel</option>
-                {config.channels.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.category ? `${c.category} / ` : ''}#{c.name}
-                  </option>
-                ))}
-              </select>
+                options={config.channels.map((c) => ({
+                  value: c.id,
+                  label: `${c.category ? `${c.category} / ` : ''}#${c.name}`,
+                }))}
+              />
               <Button
                 size="xs"
                 variant="ghost"
@@ -424,18 +422,14 @@ export const PersonalChannelsDialog = ({
         </div>
 
         <div className="flex items-center gap-x-2">
-          <select
+          <SimpleSelect
             className={selectClass}
+            aria-label="Add a raider"
             value={adding}
-            onChange={(e) => setAdding(e.target.value)}
-          >
-            <option value="">Add a raider…</option>
-            {unmapped.map((m) => (
-              <option key={m.discordId} value={m.discordId}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Add a raider…"
+            onChange={setAdding}
+            options={unmapped.map((m) => ({ value: m.discordId, label: m.name }))}
+          />
           <Button
             size="sm"
             variant="outline"
