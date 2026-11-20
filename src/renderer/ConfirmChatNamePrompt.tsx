@@ -31,18 +31,7 @@ const ConfirmChatNamePrompt = (props: IProps) => {
       <div className="flex flex-col gap-y-2 px-4">
         <p>{getLocalePhrase(language, Phrase.ChatUserText1)}</p>
         {cloudDiscordName.includes('@') && (
-          <p>
-            {getLocalePhrase(language, Phrase.ChatUserText2)}
-            <a
-              href="https://warcraftrecorder.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-foreground-lighter hover:text-brand"
-            >
-              warcraftrecorder.com
-            </a>
-            {getLocalePhrase(language, Phrase.ChatUserText3)}
-          </p>
+          <p>{getLocalePhrase(language, Phrase.ChatUserText2)}</p>
         )}
       </div>
       <Button
