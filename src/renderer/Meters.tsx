@@ -13,7 +13,12 @@ import { getCategoryIndex } from './rendererutils';
 import { classColor } from './logs/format';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import BossBar from './components/BossBar/BossBar';
-import { isReset, useShowResets } from './resets';
+import {
+  isReset,
+  pullLabel,
+  useShowResets,
+  withoutEmptyBosses,
+} from './resets';
 import { LogsTarget, takeLogsTarget } from './logs/openTarget';
 import {
   allResets,
@@ -1230,6 +1235,16 @@ type NightBoss = {
   bestPercent?: number | null;
   firstKillAt?: number;
 };
+/** True when `a` came after `b` (resets share the number before them). */
+const isNewer = (
+  a: { pullNumber: number; startedAt?: number | null },
+  b?: { pullNumber: number; startedAt?: number | null },
+) => {
+  if (!b) return true;
+  const [x, y] = [a.startedAt ?? 0, b.startedAt ?? 0];
+  return x !== y ? x > y : a.pullNumber > b.pullNumber;
+};
+
 type NightPull = {
   id: string;
   pullNumber: number;
@@ -1237,6 +1252,7 @@ type NightPull = {
   result: string;
   bossPercent: number | null;
   duration: number;
+  reset?: boolean;
   source?: 'app' | 'wcl';
   hasFull?: boolean;
   startedAt?: number | null;
@@ -1439,23 +1455,31 @@ const LogsPane = ({
   }, [tabActive]);
 
   const keyOf = (b: NightBoss) => `${b.encounterId}:${b.difficultyId}`;
-  const shownBosses = bosses ?? [];
+  const shownBosses = withoutEmptyBosses(bosses ?? [], showResets);
   const boss =
     shownBosses.find((b) => keyOf(b) === bossKey) ??
     [...shownBosses].sort((a, b) => b.pulls - a.pulls)[0];
   const pulls = React.useMemo(
     () =>
-      [...(boss?.pullsList ?? [])].sort((a, b) => b.pullNumber - a.pullNumber),
+      [...(boss?.pullsList ?? [])].sort(
+        (a, b) =>
+          b.pullNumber - a.pullNumber ||
+          (b.startedAt ?? 0) - (a.startedAt ?? 0),
+      ),
     [boss],
   );
   const comparing = React.useMemo(
     () =>
       pulls
         .filter((p) => picked.includes(p.id))
-        .sort((a, b) => a.pullNumber - b.pullNumber)
+        .sort(
+          (a, b) =>
+            a.pullNumber - b.pullNumber ||
+            (a.startedAt ?? 0) - (b.startedAt ?? 0),
+        )
         .map((p) => ({
           id: p.id,
-          label: `Pull ${p.pullNumber}`,
+          label: pullLabel(p),
           result: p.result,
         })),
     [pulls, picked],
@@ -1474,7 +1498,9 @@ const LogsPane = ({
   if (boss && comparing.length > 1) {
     tabTitle = `${boss.encounterName} ×${comparing.length}`;
   } else if (boss && titlePull) {
-    tabTitle = `${boss.encounterName} #${titlePull.pullNumber}`;
+    tabTitle = isReset(titlePull)
+      ? `${boss.encounterName} · reset`
+      : `${boss.encounterName} #${titlePull.pullNumber}`;
   }
   useTabTitle(tabTitle);
 
@@ -1494,7 +1520,7 @@ const LogsPane = ({
     (p) =>
       arrived.includes(p.id) &&
       (showResets || !isReset(p)) &&
-      p.pullNumber > (pull?.pullNumber ?? 0) &&
+      isNewer(p, pull) &&
       picked.length < 2,
   );
 
@@ -1518,7 +1544,7 @@ const LogsPane = ({
 
   const metaOf = (p: NightPull): PullMeta => ({
     id: p.id,
-    label: `Pull ${p.pullNumber}`,
+    label: pullLabel(p),
     encounterId: boss?.encounterId ?? 0,
     difficultyId: boss?.difficultyId ?? 0,
     startedAt: p.startedAt ?? 0,
@@ -1528,7 +1554,11 @@ const LogsPane = ({
     comparing.length >= 2
       ? pulls
           .filter((p) => picked.includes(p.id))
-          .sort((a, b) => a.pullNumber - b.pullNumber)
+          .sort(
+            (a, b) =>
+              a.pullNumber - b.pullNumber ||
+              (a.startedAt ?? 0) - (b.startedAt ?? 0),
+          )
           .map(metaOf)
       : pull && pull.source !== 'wcl'
         ? [metaOf(pull)]
@@ -1580,7 +1610,10 @@ const LogsPane = ({
     <div className="relative flex flex-col gap-y-4">
       <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
         <NightPicker
-          nights={nights}
+          nights={nights.map((n) => ({
+            ...n,
+            bosses: withoutEmptyBosses(n.bosses, showResets),
+          }))}
           night={night}
           showLabel={false}
           onPick={(n, key) => {
@@ -1636,7 +1669,7 @@ const LogsPane = ({
             title="Open the newest pull"
           >
             {newPulls.length === 1
-              ? `Pull ${newPulls[0].pullNumber} just came in`
+              ? `${pullLabel(newPulls[0])} just came in`
               : `${newPulls.length} new pulls`}
             <ChevronsRight size={14} />
           </button>
@@ -1684,7 +1717,7 @@ const LogsPane = ({
                 {comparing.length >= 2
                   ? `${comparing.length} pulls`
                   : pull
-                    ? `Pull ${pull.pullNumber}`
+                    ? pullLabel(pull)
                     : 'Pulls'}
               </span>
             </button>
@@ -1738,7 +1771,7 @@ const LogsPane = ({
                       key={p.id}
                       type="button"
                       aria-pressed={active}
-                      aria-label={`Pull ${p.pullNumber}, ${
+                      aria-label={`${pullLabel(p)}, ${
                         kill
                           ? 'kill'
                           : p.bossPercent !== null
@@ -1755,7 +1788,7 @@ const LogsPane = ({
                       }`}
                     >
                       <span className="w-6 shrink-0 text-xs tabular-nums text-foreground">
-                        {p.pullNumber}
+                        {isReset(p) ? '–' : p.pullNumber}
                       </span>
                       {kill ? (
                         <span className="font-semibold text-green-400">

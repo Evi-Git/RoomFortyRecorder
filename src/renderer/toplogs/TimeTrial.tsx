@@ -30,6 +30,7 @@ import WhereTimeWent from './WhereTimeWent';
 import CopyNsrt from './CopyNsrt';
 import { ErrorState } from '../components/States/States';
 import TrialTimeline from './TrialTimeline';
+import { pullLabel as rowLabel } from '../resets';
 import { call, RankRow, specTitle, useSpellNames } from './shared';
 
 type OurPull = {
@@ -39,6 +40,7 @@ type OurPull = {
   result: string;
   bossPercent: number | null;
   duration: number;
+  reset?: boolean;
   startedAt?: number | null;
   createdAt: number;
   encounterId: number;
@@ -55,7 +57,7 @@ const pullLabel = (p: OurPull) =>
   `${new Date(`${p.night}T12:00:00`).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
-  })} · Pull ${p.pullNumber} · ${
+  })} · ${rowLabel(p)} · ${
     p.result === 'kill'
       ? `Kill ${mmss(p.duration)}`
       : `${p.bossPercent ?? '?'}% at ${mmss(p.duration)}`
@@ -177,7 +179,7 @@ const TimeTrial = ({
         ? [
             {
               id: pull.id,
-              label: `Pull ${pull.pullNumber}`,
+              label: rowLabel(pull),
               encounterId: pull.encounterId,
               difficultyId: pull.difficultyId,
               startedAt: pull.startedAt ?? 0,

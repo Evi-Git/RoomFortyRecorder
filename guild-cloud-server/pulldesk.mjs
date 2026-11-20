@@ -21,6 +21,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
 import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
+import { isReset, numberPulls } from './pulldesk-resets.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
 import { createWclClient } from './recruit-clients.mjs';
@@ -307,6 +308,7 @@ export const createPullDesk = (options) => {
         bosses: parsed.bosses && typeof parsed.bosses === 'object' ? parsed.bosses : {},
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {}) },
       };
+      renumberAll();
       index.settings.combatPotions = [
         ...new Set([...COMBAT_POTIONS, ...(Array.isArray(index.settings.combatPotions) ? index.settings.combatPotions : [])]),
       ];
@@ -393,6 +395,8 @@ export const createPullDesk = (options) => {
     night: pull.night,
     pullNumber: pull.pullNumber,
     totalPullNumber: pull.totalPullNumber,
+    // Under 10 s: not counted or numbered (pulldesk-resets.mjs).
+    reset: isReset(pull),
     createdAt: pull.createdAt,
     startedAt: pull.startedAt,
     uploadedBy: pull.uploadedBy || null,
@@ -421,14 +425,17 @@ export const createPullDesk = (options) => {
   // Pull numbers in time order for one boss and difficulty, per night and
   // overall. Needed after an import fills in earlier pulls.
   const renumber = (encounterId, difficultyId) => {
-    const pulls = index.pulls
-      .filter((p) => p.encounterId === encounterId && p.difficultyId === difficultyId)
-      .sort((a, b) => (a.startedAt ?? a.createdAt) - (b.startedAt ?? b.createdAt));
-    const perNight = {};
-    pulls.forEach((p, i) => {
-      perNight[p.night] = (perNight[p.night] || 0) + 1;
-      p.pullNumber = perNight[p.night];
-      p.totalPullNumber = i + 1;
+    numberPulls(index.pulls.filter((p) => p.encounterId === encounterId && p.difficultyId === difficultyId));
+  };
+
+  // Numbers come from the pulls' durations (resets get none), so they are
+  // worked out again for every boss on load: history from before resets were
+  // skipped is fixed without a migration.
+  const renumberAll = () => {
+    const groups = new Set(index.pulls.map((p) => `${p.encounterId}:${p.difficultyId}`));
+    groups.forEach((key) => {
+      const [encounterId, difficultyId] = key.split(':').map(Number);
+      renumber(encounterId, difficultyId);
     });
   };
 
@@ -772,6 +779,8 @@ export const createPullDesk = (options) => {
       plan: report.plan.items.length > 0 ? report.plan.summary : null,
       avoidableHits: report.avoidable.reduce((total, row) => total + row.hits, 0),
     });
+    // The real duration may turn a claimed pull into (or out of) a reset.
+    renumber(pull.encounterId, pull.difficultyId);
     if (namesChanged) await persist();
     return report;
   };
@@ -1049,6 +1058,7 @@ export const createPullDesk = (options) => {
     bossSettings(encounterId).channelId || envChannels[String(encounterId)] || defaultChannel;
 
   const discordPost = async (pull, report) => {
+    if (isReset(pull)) return; // resets aren't pulls: no post
     const channelId = channelFor(pull.encounterId);
     if (!channelId || !botToken) return;
 
@@ -1173,9 +1183,6 @@ export const createPullDesk = (options) => {
 
     if (!pull) {
       const night = nightOf(now);
-      const sameBoss = index.pulls.filter(
-        (entry) => entry.encounterId === encounterId && entry.difficultyId === difficultyId,
-      );
       const bossPercent = Number.isFinite(Number(body.bossPercent)) ? Number(body.bossPercent) : null;
       pull = {
         id: `${now.toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
@@ -1183,8 +1190,8 @@ export const createPullDesk = (options) => {
         encounterName: String(body.encounterName || `Encounter ${encounterId}`).slice(0, 100),
         difficultyId,
         night,
-        pullNumber: sameBoss.filter((other) => other.night === night).length + 1,
-        totalPullNumber: sameBoss.length + 1,
+        pullNumber: 0,
+        totalPullNumber: 0,
         createdAt: now,
         startedAt: Number.isFinite(Number(body.startedAt)) ? Number(body.startedAt) : null,
         claimDuration: duration,
@@ -1200,6 +1207,7 @@ export const createPullDesk = (options) => {
         hasLog: false,
       };
       index.pulls.push(pull);
+      renumber(encounterId, difficultyId);
     }
 
     const who = String(req.cloudUserId || req.cloudUserName);
@@ -1876,7 +1884,21 @@ export const createPullDesk = (options) => {
       if (!third && req.method === 'GET') {
         if (pull.status !== 'ready') return json(res, 200, { pending: true, ...summaryOf(pull) });
         try {
-          const body = await fsp.readFile(reportFile(pull.id));
+          let body = await fsp.readFile(reportFile(pull.id));
+          // Numbers are worked out from the index (resets get none), so a
+          // report stored before that still shows the current ones.
+          try {
+            body = Buffer.from(
+              JSON.stringify({
+                ...JSON.parse(body.toString('utf8')),
+                pullNumber: pull.pullNumber,
+                totalPullNumber: pull.totalPullNumber,
+                reset: isReset(pull),
+              }),
+            );
+          } catch {
+            // Unreadable JSON: send it as stored.
+          }
           res.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             'Content-Length': body.length,
@@ -1918,10 +1940,12 @@ export const createPullDesk = (options) => {
         const encounterId = Number(third);
         const difficultyId = Number(url?.searchParams.get('difficulty')) || null;
         const phase = url?.searchParams.get('phase') === 'reclear' ? 'reclear' : 'progression';
-        const pulls = counted.filter(
+        const onBoss = counted.filter(
           (pull) => pull.encounterId === encounterId && (!difficultyId || pull.difficultyId === difficultyId),
         );
-        if (!pulls.length) return fail(res, 404, 'No pulls on that boss yet');
+        if (!onBoss.length) return fail(res, 404, 'No pulls on that boss yet');
+        // Resets are not progression: no counts, no points on the line.
+        const pulls = onBoss.filter((pull) => !isReset(pull));
         // The old "killed before we tracked it" setting is retired: imports
         // from Warcraft Logs give the real first kill.
         const split = splitAtFirstKill(pulls, false);
@@ -1931,6 +1955,7 @@ export const createPullDesk = (options) => {
           .split('|')
           .map((c) => c.trim())
           .filter(Boolean)
+          .map((c) => c.replace(/ \(raid-wide\)$/, ''))
           .slice(0, 50);
         const meta = {
           phase,

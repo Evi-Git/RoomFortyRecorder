@@ -17,6 +17,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createWclClient } from './recruit-clients.mjs';
+import { RESET_SECONDS } from './pulldesk-resets.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { writeJsonSafe } from './safe-json.mjs';
 
@@ -55,6 +56,8 @@ export const buildProgress = (reports, encounterNames) => {
   const pulls = [];
   reports.forEach((report) => {
     (report.fights || []).forEach((fight) => {
+      // Resets (under 10 s) are not pulls, as in our own counts.
+      if ((fight.endTime - fight.startTime) / 1000 < RESET_SECONDS) return;
       pulls.push({
         encounterId: fight.encounterID,
         at: report.startTime + fight.startTime,

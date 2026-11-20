@@ -9,6 +9,7 @@ import MiniSwitch from './components/Switch/MiniSwitch';
 import NightPicker from './logs/NightPicker';
 import BossStrip from './logs/BossStrip';
 import { Button } from './components/Button/Button';
+import { isReset, useShowResets, withoutEmptyBosses } from './resets';
 import {
   guildKey,
   loadWatcher,
@@ -81,6 +82,7 @@ type PullRow = {
   result: 'kill' | 'wipe' | string;
   bossPercent: number | null;
   duration: number;
+  reset?: boolean;
   deaths: number | null;
   cause: string | null;
   source?: 'app' | 'wcl';
@@ -826,6 +828,7 @@ const BossNightCard = ({
   onToggle: (name: string) => void;
 }) => {
   const [showPulls, setShowPulls] = React.useState(false);
+  const [showResets] = useShowResets();
 
   return (
     <AbilityScope
@@ -926,50 +929,54 @@ const BossNightCard = ({
                 </tr>
               </thead>
               <tbody>
-                {boss.pullsList.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-card/40 hover:bg-card/30"
-                  >
-                    <td className="px-2 py-1 tabular-nums">{p.pullNumber}</td>
-                    <td className="px-2 py-1">
-                      {p.result === 'kill' ? (
-                        <span className="text-green-400">Kill</span>
-                      ) : (
-                        <span className="tabular-nums">
-                          {pct(p.bossPercent)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums">
-                      {mmss(p.duration)}
-                    </td>
-                    <td className="px-2 py-1 text-right tabular-nums">
-                      {p.deaths ?? '–'}
-                    </td>
-                    <td className="px-2 py-1 truncate max-w-[280px]">
-                      {p.cause ?? ''}
-                    </td>
-                    <td className="px-2 py-1 text-right">
-                      {p.source === 'wcl' ? (
-                        <span
-                          className="text-xs text-foreground/50"
-                          title="Imported from Warcraft Logs: no app report to open"
-                        >
-                          WCL
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-xs text-brand hover:underline"
-                          onClick={() => onOpenPull(p.id)}
-                        >
-                          Open
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {boss.pullsList
+                  .filter((p) => showResets || !isReset(p))
+                  .map((p) => (
+                    <tr
+                      key={p.id}
+                      className="border-b border-card/40 hover:bg-card/30"
+                    >
+                      <td className="px-2 py-1 tabular-nums">
+                        {isReset(p) ? 'Reset' : p.pullNumber}
+                      </td>
+                      <td className="px-2 py-1">
+                        {p.result === 'kill' ? (
+                          <span className="text-green-400">Kill</span>
+                        ) : (
+                          <span className="tabular-nums">
+                            {pct(p.bossPercent)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {mmss(p.duration)}
+                      </td>
+                      <td className="px-2 py-1 text-right tabular-nums">
+                        {p.deaths ?? '–'}
+                      </td>
+                      <td className="px-2 py-1 truncate max-w-[280px]">
+                        {p.cause ?? ''}
+                      </td>
+                      <td className="px-2 py-1 text-right">
+                        {p.source === 'wcl' ? (
+                          <span
+                            className="text-xs text-foreground/50"
+                            title="Imported from Warcraft Logs: no app report to open"
+                          >
+                            WCL
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-xs text-brand hover:underline"
+                            onClick={() => onOpenPull(p.id)}
+                          >
+                            Open
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           ) : (
@@ -1018,6 +1025,7 @@ export const NightSummaryView = ({
   // The night the shown bosses belong to; differs while a new one loads.
   const [loadedNight, setLoadedNight] = React.useState('');
   const loading = night !== loadedNight;
+  const [showResets] = useShowResets();
   // Raiders left out of this night's widgets (a buyer, say), per PC.
   const [leftOutByNight, setLeftOutByNight] =
     React.useState<Record<string, string[]>>(loadNightLeftOut);
@@ -1098,12 +1106,13 @@ export const NightSummaryView = ({
   const totalKills = current?.bosses.reduce((s, b) => s + b.kills, 0) ?? 0;
 
   // The chosen boss if it was pulled this night, else the most-pulled one.
+  const visible = bosses ? withoutEmptyBosses(bosses, showResets) : bosses;
   const shown =
-    bosses?.find(
+    visible?.find(
       (b) => bossKey(b.encounterId, b.difficultyId) === bossChoice,
     ) ??
-    (bosses?.length
-      ? [...bosses].sort((a, b) => b.pulls - a.pulls)[0]
+    (visible?.length
+      ? [...visible].sort((a, b) => b.pulls - a.pulls)[0]
       : undefined);
   const shownKey = shown ? bossKey(shown.encounterId, shown.difficultyId) : '';
 
@@ -1111,16 +1120,19 @@ export const NightSummaryView = ({
     <div className="flex flex-col gap-y-4">
       <div className="flex items-center gap-x-3 flex-wrap gap-y-2">
         <NightPicker
-          nights={nights}
+          nights={nights.map((n) => ({
+            ...n,
+            bosses: withoutEmptyBosses(n.bosses, showResets),
+          }))}
           night={night}
           onPick={(n, key) => {
             if (n !== night) setNight(n);
             if (key) setBossChoice(key);
           }}
         />
-        {bosses && bosses.length > 0 && (
+        {visible && visible.length > 0 && (
           <BossStrip
-            bosses={bosses}
+            bosses={visible}
             boss={shown}
             onPick={(key) => setBossChoice(key)}
           />
@@ -1836,7 +1848,17 @@ const FILTER_KEY = 'rf-pulldesk-progression-filters';
 const loadFilters = (): Filters => {
   try {
     const parsed = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    // Servers before 1.9.148 named a raid-wide wipe "Ability (raid-wide)";
+    // it is the same cause as "Ability" now.
+    Object.values(parsed as Filters).forEach((f) => {
+      if (Array.isArray(f?.causes)) {
+        f.causes = [
+          ...new Set(f.causes.map((c) => c.replace(/ \(raid-wide\)$/, ''))),
+        ];
+      }
+    });
+    return parsed;
   } catch {
     return {};
   }
