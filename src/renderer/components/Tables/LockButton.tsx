@@ -6,6 +6,7 @@ import { lockVideos, stopPropagation } from 'renderer/rendererutils';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
 import { Dispatch, SetStateAction } from 'react';
+import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
 
 type LockButtonProps = {
   language: Language;
@@ -23,7 +24,11 @@ const LockButton = (props: LockButtonProps) => {
   const noPermission =
     (!write && video.cloud) || (!del && video.cloud && isProtected);
 
-  const icon = isProtected ? <LockKeyhole size={18} /> : <LockOpen size={18} />;
+  const icon = isProtected ? (
+    <LockKeyhole size={ROW_ICON_SIZE} />
+  ) : (
+    <LockOpen size={ROW_ICON_SIZE} />
+  );
 
   let tooltip = '';
 
@@ -41,6 +46,7 @@ const LockButton = (props: LockButtonProps) => {
         <Button
           variant="ghost"
           size="xs"
+          className={rowButtonClass(isProtected)}
           onClick={(event) => {
             stopPropagation(event);
             lockVideos([video], !isProtected, setVideoState);

@@ -7,6 +7,7 @@ import { Tooltip } from '../Tooltip/Tooltip';
 import { Dispatch, SetStateAction } from 'react';
 import { FolderMessageSquareMore } from 'renderer/icons/FolderMessageSquareMore';
 import { FolderMessageSquare } from 'renderer/icons/FolderMessageSquare';
+import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
 
 type MultiTagButtonProps = {
   language: Language;
@@ -27,9 +28,9 @@ const MultiTagButton = (props: MultiTagButtonProps) => {
 
   const icon =
     tagged > 0 ? (
-      <FolderMessageSquareMore size={18} />
+      <FolderMessageSquareMore size={ROW_ICON_SIZE} />
     ) : (
-      <FolderMessageSquare size={18} />
+      <FolderMessageSquare size={ROW_ICON_SIZE} />
     );
 
   return (
@@ -38,6 +39,7 @@ const MultiTagButton = (props: MultiTagButtonProps) => {
         <Button
           variant="ghost"
           size="xs"
+          className={rowButtonClass()}
           onClick={(event) => {
             stopPropagation(event);
             setTagDialogVideoTargetId(parent.uniqueId);

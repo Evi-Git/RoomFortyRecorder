@@ -28,6 +28,11 @@ import SelectRangeShortcut from '../Shortcuts/SelectRangeShortcut';
 import NavigateShortcut from '../Shortcuts/NavigateShortcut';
 import { TabContext } from '../../tabs/tabs';
 
+/** Columns whose text sits on the right edge, in tabular figures. */
+const RIGHT_ALIGNED = new Set(['Pull', 'Duration']);
+/** Columns in the muted text colour. */
+const MUTED = new Set(['Difficulty', 'Date', 'Type']);
+
 interface IProps {
   table: ReturnType<typeof useVideoSelectionTable>;
   appState: AppState;
@@ -277,23 +282,32 @@ const VideoSelectionTable = (props: IProps) => {
         ? 'auto'
         : header.column.getSize();
 
+    const sorted = header.column.getIsSorted();
+    const SortArrow = sorted === 'asc' ? ArrowUp : ArrowDown;
+
     return (
       <th
         key={header.id}
         colSpan={header.colSpan}
-        className="overflow-hidden"
+        className="sticky top-0 z-10 overflow-hidden bg-panel p-0 text-left font-medium shadow-[inset_0_-1px_0_0_theme(colors.panel.line)]"
         style={{ width }}
+        aria-sort={
+          sorted === 'asc'
+            ? 'ascending'
+            : sorted === 'desc'
+              ? 'descending'
+              : undefined
+        }
       >
         <div
-          className="flex flex-row p-2 items-center cursor-pointer select-none min-w-0"
+          className={`flex h-9 min-w-0 cursor-pointer select-none items-center gap-x-1 px-3 text-[13px] font-medium hover:text-foreground-lighter ${
+            RIGHT_ALIGNED.has(header.id) ? 'justify-end' : ''
+          } ${sorted ? 'text-foreground-lighter' : 'text-foreground'}`}
           onClick={header.column.getToggleSortingHandler()}
           title={tooltip}
         >
           {flexRender(header.column.columnDef.header, header.getContext())}
-          {{
-            asc: <ArrowUp className="shrink-0" />,
-            desc: <ArrowDown className="shrink-0" />,
-          }[header.column.getIsSorted() as string] ?? null}
+          {sorted ? <SortArrow size={13} className="shrink-0" /> : null}
         </div>
       </th>
     );
@@ -307,7 +321,7 @@ const VideoSelectionTable = (props: IProps) => {
     const { headers } = groups[0];
 
     return (
-      <thead className="border-video-border border-b border-t mx-2">
+      <thead>
         <tr>{headers.map(renderIndividualHeader)}</tr>
       </thead>
     );
@@ -318,14 +332,28 @@ const VideoSelectionTable = (props: IProps) => {
    */
   const renderBaseCell = (
     cell: Cell<typeof stockFeatures, RendererVideo, unknown>,
+    index: number,
+    selected: boolean,
   ) => {
     const width =
       cell.column.getSize() === Number.MAX_SAFE_INTEGER
         ? 'auto'
         : cell.column.getSize();
 
+    const id = cell.column.id;
+    let className = 'overflow-hidden px-3';
+
+    if (RIGHT_ALIGNED.has(id)) className += ' text-right tabular-nums';
+    if (MUTED.has(id)) className += ' text-foreground';
+    if (id === 'Date') className += ' whitespace-nowrap';
+    // A brass edge on the selected row, so it shows even where the fill is
+    // close to the rows around it.
+    if (selected && index === 0) {
+      className += ' shadow-[inset_2px_0_0_0_hsl(var(--brand))]';
+    }
+
     return (
-      <td className="px-2 overflow-hidden" key={cell.id} style={{ width }}>
+      <td className={className} key={cell.id} style={{ width }}>
         {flexRender(cell.column.columnDef.cell, cell.getContext())}
       </td>
     );
@@ -337,27 +365,21 @@ const VideoSelectionTable = (props: IProps) => {
   const renderBaseRow = (
     row: Row<typeof stockFeatures, RendererVideo>,
     selected: boolean,
-    sortedIndex: number,
   ) => {
     const cells = row.getVisibleCells();
-    let className = 'cursor-pointer  ';
-
-    if (selected) {
-      className += 'bg-secondary/100 ';
-    } else if (sortedIndex % 2 === 0) {
-      className += 'bg-secondary/15 hover:bg-secondary/80 ';
-    } else {
-      className += 'hover:bg-secondary/80 ';
-    }
+    const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${
+      selected ? 'bg-panel-raised' : 'hover:bg-panel-raised/60'
+    }`;
 
     return (
       <tr
         key={row.id}
         ref={selected ? selectedRowRef : undefined}
         className={className}
+        aria-selected={selected}
         onClick={(event) => onRowClick(event, row)}
       >
-        {cells.map(renderBaseCell)}
+        {cells.map((cell, i) => renderBaseCell(cell, i, selected))}
       </tr>
     );
   };
@@ -365,24 +387,17 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render an individual row of the table.
    */
-  const renderRow = (
-    row: Row<typeof stockFeatures, RendererVideo>,
-    sortedIndex: number,
-  ) => {
+  const renderRow = (row: Row<typeof stockFeatures, RendererVideo>) => {
     const selected =
       row.getIsSelected() ||
       (!table.getIsSomeRowsSelected() && row.index === 0);
 
-    return (
-      <Fragment key={row.id}>
-        {renderBaseRow(row, selected, sortedIndex)}
-      </Fragment>
-    );
+    return <Fragment key={row.id}>{renderBaseRow(row, selected)}</Fragment>;
   };
 
   const renderTableBody = () => {
     const { rows } = table.getRowModel();
-    return <tbody>{rows.map((row, i) => renderRow(row, i))}</tbody>;
+    return <tbody>{rows.map((row) => renderRow(row))}</tbody>;
   };
 
   /**
@@ -395,7 +410,7 @@ const VideoSelectionTable = (props: IProps) => {
     const indicator = `${current} of ${total}`;
 
     return (
-      <div className="grid w-full grid-cols-3 items-center border-t border-video-border pt-2">
+      <div className="grid w-full grid-cols-3 items-center px-3 py-2">
         <div className="flex gap-2">
           <SelectRangeShortcut language={language} />
           <SelectMultiShortcut language={language} />
@@ -403,21 +418,21 @@ const VideoSelectionTable = (props: IProps) => {
 
         <div className="flex justify-center items-center gap-2">
           <Button
-            className="p-1"
+            className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.firstPage()}
             disabled={!table.getCanPreviousPage()}
             size="xs"
-            variant="secondary"
+            variant="ghost"
           >
             <ChevronsLeft size={16} />
           </Button>
 
           <Button
-            className="p-1"
+            className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
             size="xs"
-            variant="secondary"
+            variant="ghost"
           >
             <ChevronLeft size={16} />
           </Button>
@@ -427,21 +442,21 @@ const VideoSelectionTable = (props: IProps) => {
           </span>
 
           <Button
-            className="p-1"
+            className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
             size="xs"
-            variant="secondary"
+            variant="ghost"
           >
             <ChevronRight size={16} />
           </Button>
 
           <Button
-            className="p-1"
+            className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.lastPage()}
             disabled={!table.getCanNextPage()}
             size="xs"
-            variant="secondary"
+            variant="ghost"
           >
             <ChevronsRight size={16} />
           </Button>
@@ -456,13 +471,13 @@ const VideoSelectionTable = (props: IProps) => {
   };
 
   return (
-    <div className="w-full h-full overflow-hidden px-2">
+    <div className="h-full w-full min-h-0 overflow-hidden rounded-lg border border-panel-line bg-panel">
       <ScrollArea
         withScrollIndicators={false}
         horizontal
         className="h-full w-full"
       >
-        <div className="pb-2 px-4">
+        <div>
           <table
             className="table-fixed w-full"
             style={{ minWidth: tableMinWidth }}

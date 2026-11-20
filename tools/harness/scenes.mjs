@@ -126,6 +126,65 @@ export const scenes = [
     },
   },
   {
+    name: 'rec-raids-multiselect',
+    shows: 'Raids with three rows selected (Ctrl-click): selection count and the protected, tagged row',
+    continue: true,
+    steps: async (t) => {
+      await t.page.locator('tr', { hasText: "Ula'tek" }).first().click();
+      await t.page.locator('tr', { hasText: 'Heroic' }).first().click({ modifiers: ['Control'] });
+      await t.page.locator('tr', { hasText: "Kith'ix" }).first().click({ modifiers: ['Control'] });
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'rec-raids-protected',
+    shows: 'Raids sorted by date, oldest first: the protected, tagged Heroic kill with a brass lock',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      await t.page.getByRole('columnheader', { name: 'Date' }).click();
+      await t.settle(800);
+      await t.page.locator('tr', { hasText: 'Heroic' }).first().scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: 'rec-search-dropdown',
+    shows: 'Raids with the search suggestions open: the list sits above the sticky table header',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      await t.page.getByRole('combobox', { name: 'Search boss or player' }).click();
+      await t.page.keyboard.type('k');
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'smallest-tall-player',
+    shows: 'Raids: player dragged tall at 1440x900, then the window shrunk to 1024x640 (filter row and table stay on screen)',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      const grip = t.page.locator('svg.lucide-grip-horizontal').first();
+      const box = await grip.boundingBox();
+      await t.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await t.page.mouse.down();
+      await t.page.mouse.move(box.x + box.width / 2, box.y + 250, { steps: 10 });
+      await t.page.mouse.up();
+      await t.settle(500);
+      await t.page.setViewportSize({ width: 1024, height: 640 });
+      await t.settle(1200);
+    },
+  },
+  {
+    name: 'rec-date-picker',
+    shows: 'The date filter open (Nov-style range, "Any date" when empty)',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('group', { name: 'Date filter' }).locator('input').click();
+      await t.settle(600);
+    },
+  },
+  {
     name: 'rec-mythicplus',
     shows: 'Recordings > Mythic+',
     steps: async (t) => {
@@ -157,6 +216,37 @@ export const scenes = [
       await t.emit('setCloudVideos', []);
       await t.nav('Manual');
       await t.settle();
+    },
+  },
+  ...[
+    ['Raids', 'raids'],
+    ['Mythic+', 'mythicplus'],
+    ['Clips', 'clips'],
+  ].map(([label, key]) => ({
+    name: `rec-small-${key}`,
+    shows: `${label} at 1100x700`,
+    viewport: small,
+    steps: async (t) => {
+      await t.nav(label);
+      await t.settle(1000);
+    },
+  })),
+  {
+    name: 'smallest-mythicplus',
+    shows: 'Mythic+ at 1024x640 (filter bar wraps to two rows)',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Mythic+');
+      await t.settle(1200);
+    },
+  },
+  {
+    name: 'smallest-clips',
+    shows: 'Clips at 1024x640',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Clips');
+      await t.settle(1200);
     },
   },
   {

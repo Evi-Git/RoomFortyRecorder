@@ -33,6 +33,7 @@ import {
   populateDateCell,
   populateViewpointCell,
   populateDetailsCell,
+  populateActionsCell,
   populateMapCell,
   populateLevelCell,
   populateActivityCell,
@@ -53,6 +54,7 @@ import {
   TypeHeader,
   ActivityHeader,
   DetailsHeader,
+  ActionsHeader,
   AffixesHeader,
   ClippedAtHeader,
 } from './Headers';
@@ -135,7 +137,6 @@ const useVideoSelectionTable = (
             setVideoState,
             setDialog,
             setLockDialogVideoTargetId,
-            setTagDialogVideoTargetId,
           ),
       },
       {
@@ -185,17 +186,23 @@ const useVideoSelectionTable = (
         sortFn: viewPointCountSort,
       },
       {
-        id: 'Kill Video Creator',
-        size: 50,
+        id: 'Actions',
         accessorFn: (v) => v,
         sortFn: (a, b) => killVideoCreatorSort(a, b),
-        header: DetailsHeader,
+        header: ActionsHeader,
         cell: (ctx) =>
-          populateKillVideoCell(
+          populateActionsCell(
             ctx,
             language,
+            cloudStatus,
             setDialog,
-            setKillDialogVideoTargetId,
+            setTagDialogVideoTargetId,
+            populateKillVideoCell(
+              ctx,
+              language,
+              setDialog,
+              setKillDialogVideoTargetId,
+            ),
           ),
       },
     ];
@@ -224,7 +231,6 @@ const useVideoSelectionTable = (
           setVideoState,
           setDialog,
           setLockDialogVideoTargetId,
-          setTagDialogVideoTargetId,
         ),
     },
     {
@@ -276,6 +282,20 @@ const useVideoSelectionTable = (
       cell: (v) => populateViewpointCell(v),
       sortFn: viewPointCountSort,
     },
+    {
+      id: 'Actions',
+      accessorFn: (v) => v,
+      enableSorting: false,
+      header: ActionsHeader,
+      cell: (ctx) =>
+        populateActionsCell(
+          ctx,
+          language,
+          cloudStatus,
+          setDialog,
+          setTagDialogVideoTargetId,
+        ),
+    },
   ];
 
   /**
@@ -301,7 +321,6 @@ const useVideoSelectionTable = (
           setVideoState,
           setDialog,
           setLockDialogVideoTargetId,
-          setTagDialogVideoTargetId,
         ),
     },
     {
@@ -342,13 +361,19 @@ const useVideoSelectionTable = (
       sortFn: viewPointCountSort,
     },
     {
-      id: 'Source',
-      size: 50,
+      id: 'Actions',
       accessorFn: (v) => v,
       enableSorting: false,
-      header: DetailsHeader,
+      header: ActionsHeader,
       cell: (ctx) =>
-        populateSourceCell(ctx, language, getClipParent, goToClipParent),
+        populateActionsCell(
+          ctx,
+          language,
+          cloudStatus,
+          setDialog,
+          setTagDialogVideoTargetId,
+          populateSourceCell(ctx, language, getClipParent, goToClipParent),
+        ),
     },
   ];
 
@@ -371,7 +396,6 @@ const useVideoSelectionTable = (
           setVideoState,
           setDialog,
           setLockDialogVideoTargetId,
-          setTagDialogVideoTargetId,
         ),
     },
     {
@@ -392,6 +416,20 @@ const useVideoSelectionTable = (
       accessorFn: (v) => videoToDate(v),
       header: () => DateHeader(language),
       cell: populateDateCell,
+    },
+    {
+      id: 'Actions',
+      accessorFn: (v) => v,
+      enableSorting: false,
+      header: ActionsHeader,
+      cell: (ctx) =>
+        populateActionsCell(
+          ctx,
+          language,
+          cloudStatus,
+          setDialog,
+          setTagDialogVideoTargetId,
+        ),
     },
   ];
 
@@ -419,19 +457,18 @@ const useVideoSelectionTable = (
   // of crushing the headers into each other. Matches the 1024 px window
   // minimum (see VideoSelectionTable for the table's own minimum).
   const columnSizes: Record<string, [size: number, minSize: number]> = {
-    Details: [80, 80],
+    Details: [52, 52],
+    Actions: [84, 80],
     Encounter: [140, 130],
     Map: [140, 130],
-    Result: [92, 88],
+    Result: [112, 108],
     Pull: [72, 72],
     Difficulty: [104, 100],
     Level: [88, 88],
     Affixes: [110, 100],
     Duration: [96, 92],
-    Date: [126, 120],
+    Date: [150, 146],
     Viewpoints: [150, 140],
-    'Kill Video Creator': [50, 50],
-    Source: [50, 50],
     Type: [100, 100],
     Activity: [140, 130],
   };
