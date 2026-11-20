@@ -6,7 +6,8 @@ import fs, {
   promises as fspromise,
   Stats,
 } from 'fs';
-import { app, Display, screen } from 'electron';
+import { app, Display, screen, shell } from 'electron';
+import { nearestExistingDirectory, validateExplorerPath } from './explorerPath';
 import {
   EventType,
   uIOhook,
@@ -36,7 +37,7 @@ import { send } from './main';
 import { Readable } from 'stream';
 import { ESupportedEncoders } from './obsEnums';
 import Recorder from './Recorder';
-import { exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { specializationById, wowInstallSearchPaths } from './constants';
 import {
   getPlayerName,
@@ -324,10 +325,43 @@ const writeMetadataFile = async (videoPath: string, metadata: Metadata) => {
 /**
  * Open a folder in system explorer.
  */
-const openSystemExplorer = (filePath: string) => {
-  const windowsPath = filePath.replace(/\//g, '\\');
-  const cmd = `explorer.exe /select,"${windowsPath}"`;
-  exec(cmd, () => {});
+const openSystemExplorer = (filePath: unknown) => {
+  // The path can come from the renderer: no shell, validated first.
+  const cfg = ConfigService.getInstance();
+  const target = validateExplorerPath(filePath, [
+    cfg.get<string>('storagePath'),
+    cfg.get<string>('bufferStoragePath'),
+    cfg.get<string>('retailLogPath'),
+    cfg.get<string>('retailPtrLogPath'),
+  ]);
+
+  if (!target) {
+    console.warn('[Util] Refused to open an invalid path in the file manager');
+    return;
+  }
+
+  if (fs.existsSync(target)) {
+    shell.showItemInFolder(target);
+    return;
+  }
+
+  // Nothing there (moved or deleted): open the nearest folder that exists.
+  // Only ever a directory: openPath on a file would run it.
+  const dir = nearestExistingDirectory(target, (p) => {
+    try {
+      return fs.statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+
+  if (dir) {
+    shell.openPath(dir).then((error) => {
+      if (error) console.warn('[Util] Could not open folder', dir, error);
+    });
+  } else {
+    console.warn('[Util] Path not found, nothing to open', target);
+  }
 };
 
 /**

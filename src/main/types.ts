@@ -476,7 +476,6 @@ type ObsAudioConfig = {
 type CloudConfig = {
   cloudStorage: boolean;
   cloudUpload: boolean;
-  cloudSessionToken: string;
   cloudDiscordName: string;
 };
 

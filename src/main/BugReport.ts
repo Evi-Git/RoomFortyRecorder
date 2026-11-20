@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { app } from 'electron';
-import ConfigService from 'config/ConfigService';
+import { getSessionToken } from './secretStore';
 import { cloudService } from './cloudService';
 
 /**
@@ -12,7 +12,7 @@ export default async function sendBugReport(
   text: string,
   page: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const token = ConfigService.getInstance().get<string>('cloudSessionToken');
+  const token = await getSessionToken();
   if (!token) {
     return { ok: false, error: 'Sign in with Discord first (Cloud settings).' };
   }

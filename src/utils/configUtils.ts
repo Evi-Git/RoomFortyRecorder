@@ -281,7 +281,6 @@ const getCloudConfig = (): CloudConfig => {
   return {
     cloudStorage: cfg.get<boolean>('cloudStorage'),
     cloudUpload: cfg.get<boolean>('cloudUpload'),
-    cloudSessionToken: cfg.get<string>('cloudSessionToken'),
     cloudDiscordName: cfg.get<string>('cloudDiscordName'),
   };
 };
@@ -444,8 +443,6 @@ const validateBaseConfig = async (config: BaseConfig) => {
       Phrase.RetailPtrLogPathLabel,
     );
   }
-
-
 };
 
 export {

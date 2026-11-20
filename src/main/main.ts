@@ -46,6 +46,7 @@ import {
 import MenuBuilder from './menu';
 import { Phrase } from 'localisation/phrases';
 import CloudClient from 'storage/CloudClient';
+import { isSafeExternalUrl } from './externalUrl';
 import DiskClient from 'storage/DiskClient';
 import Poller from 'utils/Poller';
 import Recorder from './Recorder';
@@ -350,8 +351,19 @@ const createWindow = async () => {
 
   // Open urls in the user's browser
   window.webContents.setWindowOpenHandler((edata) => {
-    shell.openExternal(edata.url);
+    openExternalChecked(edata.url);
     return { action: 'deny' };
+  });
+
+  // The app never navigates away from itself: anything else goes to the
+  // browser, if the address is safe.
+  window.webContents.on('will-navigate', (event, url) => {
+    const stripHash = (value: string) => value.split('#')[0];
+    if (stripHash(url) === stripHash(window?.webContents.getURL() || '')) {
+      return;
+    }
+    event.preventDefault();
+    openExternalChecked(url);
   });
 
   uIOhook.start();
@@ -561,11 +573,23 @@ ipcMain.on('reconfigureBase', () => {
 });
 
 /**
+ * Opens a URL in the default browser, only if it is a normal web address.
+ * Requests come from the renderer, which shows guild-supplied text.
+ */
+function openExternalChecked(url: unknown): Promise<void> {
+  if (!isSafeExternalUrl(url)) {
+    console.warn('[Main] Refused to open an unsafe URL');
+    return Promise.resolve();
+  }
+  return shell.openExternal(url as string);
+}
+
+/**
  * Opens a URL in the default browser.
  */
 ipcMain.on('openURL', (event, args) => {
   event.preventDefault();
-  require('electron').shell.openExternal(args[0]);
+  openExternalChecked(args[0]);
 });
 
 /**
@@ -577,7 +601,7 @@ ipcMain.handle('getAllDisplays', (): OurDisplayType[] => {
 
 ipcMain.handle('signInWithDiscord', async () => {
   const client = CloudClient.getInstance();
-  return client.signInWithDiscord((url) => shell.openExternal(url));
+  return client.signInWithDiscord((url) => openExternalChecked(url));
 });
 
 ipcMain.handle('signOutDiscord', async () => {

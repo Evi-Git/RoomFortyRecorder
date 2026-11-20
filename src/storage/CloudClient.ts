@@ -29,6 +29,12 @@ import {
 } from 'main/util';
 import StorageClient from './StorageClient';
 import { getCloudConfig } from 'utils/configUtils';
+import {
+  clearSessionToken,
+  getSessionToken,
+  setSessionToken,
+} from 'main/secretStore';
+import { isSafeExternalUrl } from 'main/externalUrl';
 import ConfigService from 'config/ConfigService';
 import { app, clipboard, ipcMain, powerMonitor } from 'electron';
 import VideoProcessQueue from 'main/VideoProcessQueue';
@@ -658,13 +664,15 @@ export default class CloudClient implements StorageClient {
    */
   private async runConfigure() {
     console.info('[CloudClient] Configuring cloud client');
+    // Read first: awaiting after reset() would leave the old sign-in state
+    // showing while the client is already unready.
+    const cloudSessionToken = await getSessionToken();
     this.clearRetryTimer();
     this.reset();
 
     const config = getCloudConfig();
 
-    const { cloudStorage, cloudSessionToken, cloudDiscordName, cloudUpload } =
-      config;
+    const { cloudStorage, cloudDiscordName, cloudUpload } = config;
 
     console.info('[CloudClient] Configure with:', {
       cloudStorage,
@@ -844,6 +852,9 @@ export default class CloudClient implements StorageClient {
           if (typeof redirectUrl !== 'string') {
             throw new Error('Cloud server did not start Discord sign-in.');
           }
+          if (!isSafeExternalUrl(redirectUrl)) {
+            throw new Error('Cloud server sent an unsafe sign-in address.');
+          }
           await openExternal(redirectUrl);
         } catch (error) {
           finish(error instanceof Error ? error : new Error(String(error)));
@@ -866,7 +877,7 @@ export default class CloudClient implements StorageClient {
     }
 
     const cfg = ConfigService.getInstance();
-    cfg.set('cloudSessionToken', token);
+    await setSessionToken(token);
     cfg.set('cloudDiscordName', userName);
     cfg.set('cloudStorage', true);
 
@@ -877,7 +888,7 @@ export default class CloudClient implements StorageClient {
 
   public async signOutDiscord() {
     const cfg = ConfigService.getInstance();
-    cfg.set('cloudSessionToken', '');
+    await clearSessionToken();
     cfg.set('cloudDiscordName', '');
     cfg.set('cloudStorage', false);
     await this.configure();
