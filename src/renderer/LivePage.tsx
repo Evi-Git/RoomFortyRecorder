@@ -617,7 +617,7 @@ const LivePage: React.FC = () => {
 
         <div
           ref={boxRef}
-          className={`relative flex min-h-[200px] flex-1 items-center justify-center overflow-hidden rounded-lg border border-panel-line ${
+          className={`relative flex min-h-[200px] flex-1 items-center justify-center overflow-hidden rounded-lg border border-panel-line [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
             showingPicture ? 'bg-black' : 'bg-panel'
           }`}
           onDoubleClick={() => watching && toggleFullscreen()}

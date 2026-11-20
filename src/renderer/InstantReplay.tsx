@@ -66,7 +66,7 @@ const InstantReplay = (props: IProps) => {
   const header = (
     <PageHeader
       title={getLocalePhrase(language, Phrase.InstantReplayLabel)}
-      subtitle="Rewatch what just happened while you are still recording"
+      subtitle={getLocalePhrase(language, Phrase.InstantReplaySubtitle)}
       className="mx-7 mt-6 shrink-0"
     />
   );

@@ -133,10 +133,10 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
 
   return (
     <div className="flex h-full w-full flex-col bg-background-higher pt-[32px]">
-      <div className="mx-auto flex h-full w-full max-w-[1280px] min-h-0 flex-col gap-y-3 px-7 pt-6 pb-4">
+      <div className="flex h-full w-full min-h-0 flex-col gap-y-3 px-7 pt-6 pb-4">
         <PageHeader
-          title="Scene"
-          subtitle="What gets recorded: game, overlays, audio"
+          title={getLocalePhrase(appState.language, Phrase.SceneButtonText)}
+          subtitle={getLocalePhrase(appState.language, Phrase.SceneSubtitle)}
           actions={
             <>
               {renderResetGameButton()}
@@ -159,9 +159,7 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
         </div>
         {waitingForGame && (
           <div data-state="empty" className="text-[13px] text-foreground">
-            Start World of Warcraft to see the preview. Drag the game window and
-            the overlay above to place them; the picture fills in once the game
-            is running.
+            {getLocalePhrase(appState.language, Phrase.SceneWaitingForGame)}
           </div>
         )}
 

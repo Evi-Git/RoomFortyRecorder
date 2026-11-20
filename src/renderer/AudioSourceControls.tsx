@@ -407,11 +407,11 @@ const AudioSourceControls = (props: IProps) => {
         appState.language,
         configSchema.pushToTalkReleaseDelay.description,
       )}
-      htmlFor="release-delay-slider"
+      htmlFor={sid('release-delay')}
     >
       <div className="flex h-10 items-center gap-x-2 text-foreground-lighter">
         <Slider
-          id="release-delay-slider"
+          id={sid('release-delay')}
           key={`release-delay-${config.pushToTalkReleaseDelay}`}
           defaultValue={[config.pushToTalkReleaseDelay]}
           value={[localReleaseDelay]}
