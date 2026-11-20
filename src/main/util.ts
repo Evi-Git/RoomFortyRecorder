@@ -186,6 +186,9 @@ const readTimelineFile = async (
 const convertKoreanVideoCategory = (
   metadata: Metadata | CloudSignedMetadata,
 ) => {
+  // Legacy data from old versions: the category may be a Korean string, which
+  // is not in the VideoCategory type.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw = metadata as any;
 
   if (raw.category === '쐐기+') {
@@ -431,7 +434,7 @@ const getAvailableDisplays = (): OurDisplayType[] => {
 
 const deferredPromiseHelper = <T>() => {
   let resolveHelper!: (value: T | PromiseLike<T>) => void;
-  let rejectHelper!: (reason?: any) => void;
+  let rejectHelper!: (reason?: unknown) => void;
 
   const promise = new Promise<T>((resolve, reject) => {
     resolveHelper = resolve;
@@ -919,6 +922,8 @@ const markForVideoForDelete = async (videoPath: string) => {
  * videos from cloud to disk.
  */
 const rendererVideoToMetadata = (video: RendererVideo) => {
+  // Deleting required RendererVideo fields to get back to a Metadata object.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = video as any;
   delete data.videoSource;
   delete data.videoName;
@@ -939,6 +944,8 @@ const cloudSignedMetadataToRendererVideo = (metadata: CloudSignedMetadata) => {
   const uniqueId = `${metadata.videoName}-cloud`;
 
   // We don't want the signed properties themselves.
+  // Deleting a field that the RendererVideo type doesn't have.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mutable: any = metadata;
   delete mutable.signedVideoKey;
 

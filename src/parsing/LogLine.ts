@@ -18,6 +18,7 @@ export default class LogLine {
 
   // Multi-dimensional array of arguments
   // Example: 'ENCOUNTER_START', '9999', 'Hogger', '16', '21', '2481'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- combat log arguments are strings or nested lists of strings, and callers index them freely
   private _args: any[] = [];
 
   // Length of this.args to avoid evaluating this.args.length
@@ -41,6 +42,7 @@ export default class LogLine {
     this.parseLogArg(1);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- combat log arguments are strings or nested lists of strings, and callers index them freely
   arg(index: number): any {
     if (!this._args || index >= this._argsListLen) {
       const maxsplit = Math.max(index + 1, this._argsListLen);
@@ -108,10 +110,12 @@ export default class LogLine {
     //
     // This can end up being multidimensional in the case of some combat events
     // that have complex data stored, like `COMBATANT_INFO`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- combat log arguments are strings or nested lists of strings, and callers index them freely
     const listItems: any[] = [];
 
     let inQuotedString = false;
     let openListCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- combat log arguments are strings or nested lists of strings, and callers index them freely
     let value: any = '';
 
     for (
@@ -190,6 +194,7 @@ export default class LogLine {
   /**
    * Add an argument to the list
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- combat log arguments are strings or nested lists of strings, and callers index them freely
   private addArg(value: any): void {
     this._args.push(value);
     this._argsListLen = this._args.length;
