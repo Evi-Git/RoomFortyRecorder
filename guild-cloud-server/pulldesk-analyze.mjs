@@ -6,6 +6,7 @@
 
 import { availabilityAt, defensiveFor } from './pulldesk-defensives.mjs';
 import { rawPrep } from './consumables.mjs';
+import { RESET_SECONDS } from './pulldesk-resets.mjs';
 
 // The app appends its meters to the pull log as one line with this prefix.
 export const METERS_LINE_PREFIX = 'ROOMFORTY_METERS ';
@@ -677,7 +678,7 @@ export const analyzePull = (logText, options = {}) => {
 
     const parts = [];
     if (deaths.length === 0) {
-      parts.push(duration < 20 ? 'Reset or early wipe, no deaths.' : 'Wipe with no player deaths.');
+      parts.push(duration < RESET_SECONDS ? 'Reset or early wipe, no deaths.' : 'Wipe with no player deaths.');
     } else {
       const describe = (death) =>
         `${death.name}${death.role !== 'dps' ? ` (${death.role})` : ''} to ${

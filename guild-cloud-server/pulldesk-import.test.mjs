@@ -94,6 +94,9 @@ test('import adds pulls to the summaries, skips duplicates, fills stale claims',
   const again = await call('POST', ['import'], { reports: [wclReport.code] });
   assert.equal(again.body.results[0].skipped, 3);
 
+  // The import fetches consumables and avoidable hits in the background and
+  // clears the summary cache as it goes: wait for that before reading.
+  await desk.idle();
   const prog = await call('GET', ['summary', 'boss', String(KITHIX)], undefined, '?difficulty=16');
   assert.equal(prog.status, 200, JSON.stringify(prog.body));
   assert.equal(prog.body.pulls, 3);
@@ -101,7 +104,9 @@ test('import adds pulls to the summaries, skips duplicates, fills stale claims',
   // The app's boss % (from the claim) wins over Warcraft Logs'.
   assert.deepEqual(prog.body.series.map((s) => s.percent), [62.4, 29.5, 0]);
   assert.ok(prog.body.series.every((s) => s.source === 'wcl'));
-  assert.equal(prog.body.causes.find((c) => c.name === 'Unbinding (raid-wide)').count, 1);
+  // One row per ability: the raid-wide wipe to Unbinding is a count on it.
+  assert.equal(prog.body.causes.filter((c) => c.name.startsWith('Unbinding')).length, 1);
+  assert.deepEqual(prog.body.causes.find((c) => c.name === 'Unbinding'), { name: 'Unbinding', count: 1, raidWide: 1, spellId: 901 });
   assert.equal(prog.body.raiders.find((r) => r.name === 'Mage').earlyDeaths, 1); // 3rd to die in pull 2
   assert.equal(prog.body.raiders.find((r) => r.name === 'Evi').earlyDeaths, 1);
 
@@ -172,12 +177,16 @@ test('whole-tier import: find the guild, group reports by zone, import in the ba
   assert.equal(res.body.counts.progression, 3);
   assert.ok(prog.status === 200);
   // Leaving out a wipe cause drops those pulls from every widget.
-  assert.deepEqual(res.body.causeOptions.map((c) => c.name).sort(), ['Rending Swarm', 'Unbinding (raid-wide)']);
+  assert.deepEqual(res.body.causeOptions.map((c) => c.name).sort(), ['Rending Swarm', 'Unbinding']);
   const filtered = {};
-  await desk.handle({ method: 'GET', cloudUserId: '1' }, filtered, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233&exclude=Unbinding%20(raid-wide)'));
+  await desk.handle({ method: 'GET', cloudUserId: '1' }, filtered, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233&exclude=Unbinding'));
   assert.equal(filtered.body.pulls, res.body.pulls - 1);
   assert.equal(filtered.body.excludedPulls, 1);
   assert.equal(filtered.body.causeOptions.length, 2);
+  // An older app still sends the old "(raid-wide)" name: same cause.
+  const oldName = {};
+  await desk.handle({ method: 'GET', cloudUserId: '1' }, oldName, ['summary', 'boss', String(KITHIX)], new URL('http://x/?difficulty=233&exclude=Unbinding%20(raid-wide)'));
+  assert.equal(oldName.body.excludedPulls, 1);
   // Nights list the first kill's time, for ordering bosses.
   const nights = {};
   await desk.handle({ method: 'GET', cloudUserId: '1' }, nights, ['summary', 'nights'], new URL('http://x/'));

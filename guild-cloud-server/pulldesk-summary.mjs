@@ -6,6 +6,7 @@
 // entry (night, pullNumber, totalPullNumber, result, bossPercent, duration,
 // startedAt) and `report` its analyzed report (may be null if not ready).
 import { consumablesOf } from './consumables.mjs';
+import { isReset, RESET_SECONDS } from './pulldesk-resets.mjs';
 
 // Count only the first N deaths of a pull against people, like the
 // recruiting page: later deaths are usually the wipe snowballing.
@@ -19,22 +20,25 @@ const median = (values) => {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 };
 
-/** Why a pull ended, in a few words, or null for a kill. */
+/** Why a pull ended, in a few words, or null for a kill. One ability is one
+ * cause: a raid-wide wipe to it (see `raidWide`) is the same cause. */
 export const wipeCause = (summary, report, leftOut = null) => {
   if (summary.result === 'kill' || report?.result === 'kill') return null;
   if (!report) return 'Not analyzed';
   const mass = report.wipe?.massDeath;
-  if (mass?.spellName) return `${mass.spellName} (raid-wide)`;
+  if (mass?.spellName) return mass.spellName;
   // Raiders left out of the night (1.9.105, e.g. a buyer) don't end pulls:
   // the first death of someone else does.
   const deaths = (report.deaths || []).filter((d) => !leftOut?.has(d.name));
   const first = deaths[0];
   if (first?.killingBlow?.spellName) return first.killingBlow.spellName;
   if (deaths.length) return 'Unknown';
-  return (summary.duration || report.duration || 0) < 20 ? 'Reset' : 'No deaths';
+  return (summary.duration || report.duration || 0) < RESET_SECONDS ? 'Reset' : 'No deaths';
 };
 
-const RAID_WIDE = ' (raid-wide)';
+/** True when the pull ended in a raid-wide mechanic (5+ deaths in 2 s to one ability). */
+const raidWide = (summary, report) =>
+  summary.result !== 'kill' && report?.result !== 'kill' && Boolean(report?.wipe?.massDeath?.spellName);
 
 /** Spell IDs by ability name, from killing blows and raid-wide wipes. */
 const spellIdsOf = (pulls) => {
@@ -64,7 +68,8 @@ export const abilityStats = (pulls) => {
     return e;
   };
   pulls.forEach(({ summary, report }) => {
-    if (!report) return;
+    // Resets are not pulls: they count for nothing here.
+    if (!report || isReset(summary)) return;
     // Every enemy spell that hit the raid, with the IDs it hit as.
     (report.damageTaken || []).forEach((d) => {
       if (!d.spellName) return;
@@ -81,8 +86,7 @@ export const abilityStats = (pulls) => {
     });
     const cause = wipeCause(summary, report);
     if (cause && cause !== 'Reset' && cause !== 'No deaths' && cause !== 'Unknown' && cause !== 'Not analyzed') {
-      const name = cause.endsWith(RAID_WIDE) ? cause.slice(0, -RAID_WIDE.length) : cause;
-      entry(name, report.wipe?.massDeath?.spellId).wipes += 1;
+      entry(cause, report.wipe?.massDeath?.spellId).wipes += 1;
     }
   });
   return Object.values(stats).sort((a, b) => b.wipes - a.wipes || b.deaths - a.deaths);
@@ -163,8 +167,10 @@ const countBy = (items) => {
  * @param {{ summary: object, report: object|null }[]} pulls
  */
 export const summarizePulls = (pulls, { leftOut = null } = {}) => {
-  const ordered = [...pulls].sort((a, b) => (a.summary.startedAt || a.summary.createdAt || 0) - (b.summary.startedAt || b.summary.createdAt || 0));
-  const first = ordered[0]?.summary || {};
+  const listed = [...pulls].sort((a, b) => (a.summary.startedAt || a.summary.createdAt || 0) - (b.summary.startedAt || b.summary.createdAt || 0));
+  // Resets stay in `pullsList` (flagged) but are in no count or average.
+  const ordered = listed.filter((p) => !isReset(p.summary));
+  const first = (ordered[0] || listed[0])?.summary || {};
   const percents = ordered
     .filter((p) => p.summary.result !== 'kill')
     .map((p) => p.summary.bossPercent)
@@ -235,7 +241,7 @@ export const summarizePulls = (pulls, { leftOut = null } = {}) => {
     });
   });
 
-  const pullsList = ordered.map(({ summary, report }) => ({
+  const pullsList = listed.map(({ summary, report }) => ({
     id: summary.id,
     night: summary.night,
     pullNumber: summary.pullNumber,
@@ -245,6 +251,8 @@ export const summarizePulls = (pulls, { leftOut = null } = {}) => {
     duration: summary.duration,
     deaths: report?.deaths?.length ?? summary.deaths ?? null,
     cause: wipeCause(summary, report, leftOut),
+    reset: isReset(summary),
+    raidWide: raidWide(summary, report),
     source: summary.source || 'app',
     hasFull: Boolean(summary.hasFull),
     startedAt: summary.startedAt ?? null,
@@ -267,11 +275,14 @@ export const summarizePulls = (pulls, { leftOut = null } = {}) => {
     medianPercent: median(percents),
     combatSeconds: Math.round(durations.reduce((a, b) => a + b, 0)),
     longestPull: durations.length ? round1(Math.max(...durations)) : null,
-    firstPullAt: ordered[0]?.summary.startedAt || null,
-    lastPullAt: ordered.at(-1)?.summary.startedAt || null,
-    causes: countBy(pullsList.map((p) => p.cause)).map((c) => ({
+    resets: listed.length - ordered.length,
+    firstPullAt: listed[0]?.summary.startedAt || null,
+    lastPullAt: listed.at(-1)?.summary.startedAt || null,
+    causes: countBy(pullsList.filter((p) => !p.reset).map((p) => p.cause)).map((c) => ({
       ...c,
-      spellId: spellIds[c.name.endsWith(RAID_WIDE) ? c.name.slice(0, -RAID_WIDE.length) : c.name] ?? null,
+      // How many of those pulls were a raid-wide wipe to it.
+      raidWide: pullsList.filter((p) => !p.reset && p.cause === c.name && p.raidWide).length,
+      spellId: spellIds[c.name] ?? null,
     })),
     raiders: [...raiders.values()]
       .filter((r) => r.pulls > 0)
@@ -321,7 +332,7 @@ export const summarizeProgression = (pulls) => {
 
   const all = summarizePulls(pulls);
   let n = 0;
-  const series = all.pullsList.map((p) => {
+  const series = all.pullsList.filter((p) => !p.reset).map((p) => {
     n += 1;
     return {
       n,
@@ -367,7 +378,7 @@ export const summarizeProgression = (pulls) => {
 
 /**
  * [RoomFortyRecorder] Raid nights, newest first, with each boss tried that
- * night: pulls, kills, when it first died, and the best (lowest) boss % of
+ * night: pulls (resets, under 10 s, counted apart in `resets`), kills, when it first died, and the best (lowest) boss % of
  * its wipes (null when no wipe has a %). The Logs page's night picker shows
  * "Kill" or that best %.
  */
@@ -381,9 +392,17 @@ export const listNights = (pulls) => {
       encounterName: pull.encounterName,
       difficultyId: pull.difficultyId,
       pulls: 0,
+      resets: 0,
       kills: 0,
       bestPercent: null,
     };
+    if (isReset(pull)) {
+      // Counted apart: the night still lists the boss, but not as a pull.
+      boss.resets += 1;
+      night.set(key, boss);
+      nights.set(pull.night, night);
+      return;
+    }
     boss.pulls += 1;
     if (pull.result === 'kill') {
       boss.kills += 1;

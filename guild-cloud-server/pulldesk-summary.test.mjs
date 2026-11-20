@@ -21,7 +21,7 @@ const pull = (night, n, result, pct, deaths = [], extra = {}) => ({
 });
 
 test('wipe cause: raid-wide mechanic, else first death, else reset', () => {
-  assert.equal(wipeCause({ result: 'wipe' }, { deaths: [], wipe: { massDeath: { spellName: 'Venom Rupture' } } }), 'Venom Rupture (raid-wide)');
+  assert.equal(wipeCause({ result: 'wipe' }, { deaths: [], wipe: { massDeath: { spellName: 'Venom Rupture' } } }), 'Venom Rupture');
   assert.equal(wipeCause({ result: 'wipe' }, { deaths: [{ killingBlow: { spellName: 'Toxic Spit' } }], wipe: {} }), 'Toxic Spit');
   assert.equal(wipeCause({ result: 'wipe', duration: 8 }, { deaths: [], wipe: {} }), 'Reset');
   assert.equal(wipeCause({ result: 'kill' }, {}), null);
@@ -55,7 +55,7 @@ test('night summary per boss with raider table', () => {
   assert.equal(boss.medianPercent, 50.5);
   assert.deepEqual(
     boss.causes.map(({ name, count }) => ({ name, count })),
-    [{ name: 'Toxic Spit', count: 1 }, { name: 'Venom Rupture (raid-wide)', count: 1 }],
+    [{ name: 'Toxic Spit', count: 1 }, { name: 'Venom Rupture', count: 1 }],
   );
   const mage = boss.raiders.find((r) => r.name === 'Mage');
   assert.equal(mage.pulls, 3);
@@ -105,7 +105,7 @@ test('spell IDs for ability names, and per-ability stats for the journal', () =>
   const [boss] = summarizeNight(pulls);
   assert.equal(boss.spellIds['Toxic Spit'], 10000);
   assert.equal(boss.spellIds['Venom Rupture'], 777);
-  assert.equal(boss.causes.find((c) => c.name === 'Venom Rupture (raid-wide)').spellId, 777);
+  assert.equal(boss.causes.find((c) => c.name === 'Venom Rupture').spellId, 777);
   assert.equal(boss.causes.find((c) => c.name === 'Toxic Spit').spellId, 10000);
 
   const stats = abilityStats(pulls);
