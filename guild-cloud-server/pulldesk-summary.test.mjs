@@ -189,3 +189,17 @@ test('night: why pulls ended skips raiders left out of the night', () => {
   );
   assert.equal(without.pullsList[0].cause, 'Toxic Spit');
 });
+
+test('raiders and the progression trend carry specId when the roster has one', () => {
+  const pulls = [pull('2026-10-21', 1, 'wipe', 50)];
+  const fromRoster = summarizePulls(pulls).raiders;
+  assert.equal(fromRoster.find((r) => r.name === 'Evi').specId, 65);
+  const trend = summarizeProgression(pulls).trend;
+  assert.equal(trend.find((r) => r.name === 'Tank').specId, 73);
+  // A summary-only import has specId 0: no field.
+  const wcl = pull('2026-10-22', 1, 'wipe', 50);
+  wcl.report.roster = [{ name: 'Imported', role: 'dps', specId: 0 }];
+  const raider = summarizePulls([wcl]).raiders.find((r) => r.name === 'Imported');
+  assert.ok(raider);
+  assert.equal('specId' in raider, false);
+});

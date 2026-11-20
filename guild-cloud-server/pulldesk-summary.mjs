@@ -209,6 +209,8 @@ export const summarizePulls = (pulls, { leftOut = null } = {}) => {
     if (!report) return;
     (report.roster || []).forEach((p) => {
       if (p.specId > 0 || !report.roster.some((x) => x.specId > 0)) raider(p.name, p.role).pulls += 1;
+      // Class colour on the raider tables (shown only when known).
+      if (p.specId > 0) raider(p.name, p.role).specId = p.specId;
     });
     (report.deaths || []).forEach((death, i) => {
       const r = raider(death.name, death.role);
@@ -349,7 +351,8 @@ export const summarizeProgression = (pulls) => {
   const trend = {};
   perNight.forEach(({ night, raiders }) => {
     raiders.forEach((r) => {
-      trend[r.name] = trend[r.name] || { name: r.name, role: r.role, nights: {} };
+      trend[r.name] = trend[r.name] || { name: r.name, role: r.role, specId: r.specId, nights: {} };
+      if (!trend[r.name].specId && r.specId) trend[r.name].specId = r.specId;
       trend[r.name].nights[night] = {
         pulls: r.pulls,
         earlyDeaths: r.earlyDeaths,

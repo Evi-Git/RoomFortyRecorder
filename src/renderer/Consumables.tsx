@@ -1,5 +1,6 @@
 import React from 'react';
 import { getSpecClass, getWoWClassColor } from './rendererutils';
+import { PANEL_LINE } from './brand';
 
 /**
  * [RoomFortyRecorder] Consumables & buffs: what raiders had at each pull
@@ -171,7 +172,7 @@ const GearStrip = ({
   items: { slot: string; state: 'ok' | 'bad' | 'none'; note: string }[];
 }) => (
   <section className="flex flex-col gap-y-2">
-    <h4 className="text-sm font-semibold text-brand">{title}</h4>
+    <h4 className="font-display text-base text-foreground-lighter">{title}</h4>
     <div
       className="grid gap-1.5"
       style={{
@@ -194,7 +195,7 @@ const GearStrip = ({
                 ? 'rgba(92,196,138,0.35)'
                 : item.state === 'bad'
                   ? 'rgba(229,115,95,0.4)'
-                  : 'hsl(var(--card))',
+                  : PANEL_LINE,
           }}
         >
           <span className="text-[13px] font-semibold text-foreground-lighter">
@@ -223,7 +224,7 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
     return (
       <div
         key={label}
-        className="rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2"
+        className="rounded-lg border border-panel-line bg-panel-deep p-3 flex flex-col gap-y-2"
       >
         <div className="flex items-center gap-x-2">
           <span className="text-sm font-semibold text-foreground-lighter">
@@ -237,7 +238,7 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
           </span>
         </div>
         {!single && (
-          <div className="h-1.5 rounded bg-card overflow-hidden">
+          <div className="h-1.5 rounded bg-panel-line overflow-hidden">
             <div
               className="h-1.5"
               style={{ width: `${pct}%`, background: t.fg }}
@@ -266,7 +267,9 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
           }))}
       />
       <section className="flex flex-col gap-y-2">
-        <h4 className="text-sm font-semibold text-brand">Consumables</h4>
+        <h4 className="font-display text-base text-foreground-lighter">
+          Consumables
+        </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {card(
             'Food',
@@ -289,7 +292,7 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
               ? `${r.names.augment ?? 'Rune'}${inPulls(r.augment)}.`
               : 'No augment rune at the pull.',
           )}
-          <div className="rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+          <div className="rounded-lg border border-panel-line bg-panel-deep p-3 flex flex-col gap-y-2">
             <div className="flex items-center gap-x-2">
               <span className="text-sm font-semibold text-foreground-lighter">
                 Combat potions
@@ -301,7 +304,7 @@ const RaiderView = ({ r, single }: { r: SummaryRaider; single: boolean }) => {
                 {r.potsUsed}/{r.potsPossible}
               </span>
             </div>
-            <div className="h-1.5 rounded bg-card overflow-hidden">
+            <div className="h-1.5 rounded bg-panel-line overflow-hidden">
               <div
                 className="h-1.5"
                 style={{ width: `${potPct}%`, background: tone(potPct).fg }}
@@ -389,7 +392,7 @@ const RaidGrid = ({
           return (
             <div
               key={tile.label}
-              className="rounded-md border border-card bg-background/40 px-3 py-2 flex flex-col gap-y-1"
+              className="rounded-lg border border-panel-line bg-panel-deep px-3 py-2 flex flex-col gap-y-1"
             >
               <span className="text-xs text-foreground">{tile.label}</span>
               <span
@@ -398,22 +401,24 @@ const RaidGrid = ({
               >
                 {tile.pct}%
               </span>
-              <div className="h-1.5 rounded bg-card overflow-hidden">
+              <div className="h-1.5 rounded bg-panel-line overflow-hidden">
                 <div
                   className="h-1.5"
                   style={{ width: `${tile.pct}%`, background: tn.fg }}
                 />
               </div>
-              <span className="text-[11px] text-foreground/80">{tile.sub}</span>
+              <span className="text-[11px] text-foreground-lighter">
+                {tile.sub}
+              </span>
             </div>
           );
         })}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-xs text-foreground border-b border-card">
+          <thead className="text-[13px] text-foreground border-b border-panel-line">
             <tr className="text-center">
-              <th className="px-2 py-1.5 font-normal text-left">
+              <th className="px-2 py-1.5 font-medium text-left">
                 <button
                   type="button"
                   onClick={() => setSort('name')}
@@ -431,7 +436,7 @@ const RaidGrid = ({
             {rows.map((r) => (
               <tr
                 key={r.name}
-                className="border-b border-card/40 hover:bg-card/30 text-center"
+                className="border-b border-panel-line hover:bg-panel-raised text-center"
               >
                 <td className="px-2 py-1 text-left whitespace-nowrap">
                   <button
@@ -514,7 +519,7 @@ const PullOverview = ({ prep, data }: { prep: Prep; data: PrepSummary }) => {
   return (
     <div className="flex flex-col gap-y-4">
       <section className="flex flex-col gap-y-2">
-        <h4 className="text-sm font-semibold text-brand">
+        <h4 className="font-display text-base text-foreground-lighter">
           Raid buffs at the pull
         </h4>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
@@ -546,7 +551,7 @@ const PullOverview = ({ prep, data }: { prep: Prep; data: PrepSummary }) => {
         </div>
       </section>
       <section className="flex flex-col gap-y-2">
-        <h4 className="text-sm font-semibold text-brand">
+        <h4 className="font-display text-base text-foreground-lighter">
           Who was missing something
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
@@ -556,7 +561,7 @@ const PullOverview = ({ prep, data }: { prep: Prep; data: PrepSummary }) => {
             return (
               <div
                 key={l.what}
-                className="rounded-md border border-card bg-background/40 px-3 py-2 flex flex-col gap-y-1"
+                className="rounded-lg border border-panel-line bg-panel-deep px-3 py-2 flex flex-col gap-y-1"
               >
                 <div className="flex items-baseline gap-x-2">
                   <span className="text-sm font-semibold text-foreground-lighter">
@@ -651,7 +656,7 @@ const ConsumablesPanel = ({
           id={`consumables-${scope}`}
           value={who}
           onChange={(e) => setWho(e.target.value)}
-          className="h-8 rounded-md border border-card bg-background px-2 text-sm"
+          className="h-8 rounded-md border border-panel-line bg-panel-deep px-2 text-sm"
         >
           <option value="">Whole raid</option>
           {names.map((n) => (
