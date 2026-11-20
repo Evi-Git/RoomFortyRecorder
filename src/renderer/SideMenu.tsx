@@ -76,6 +76,7 @@ interface IProps {
   errorReports: ErrorReport[];
   savingStatus: SaveStatus;
   config: ConfigurationSchema;
+  setConfig: Dispatch<SetStateAction<ConfigurationSchema>>;
   updateAvailable: boolean;
   recorderCategory: VideoCategory | undefined;
   activityStatus: ActivityStatus | null;
@@ -119,6 +120,7 @@ const SideMenu = (props: IProps) => {
     errorReports,
     savingStatus,
     config,
+    setConfig,
     updateAvailable,
     activityStatus,
     combatLoggingStatus,
@@ -526,6 +528,7 @@ const SideMenu = (props: IProps) => {
           errorReports={errorReports}
           savingStatus={savingStatus}
           config={config}
+          setConfig={setConfig}
           appState={appState}
           combatLoggingStatus={combatLoggingStatus}
           setPreviewEnabled={setPreviewEnabled}

@@ -45,6 +45,8 @@ type Init = {
   config?: Record<string, unknown>;
   answers?: Record<string, unknown>;
   version?: string;
+  /** Force the sidebar's sign-in state (default: from config). */
+  signIn?: { state: string; [key: string]: unknown };
 };
 const init: Init = (window as any).__harnessInit ?? {};
 
@@ -188,6 +190,24 @@ const audioChoices = {
   ],
 };
 
+// The sign-in state the main process would report for this config: off,
+// signed out (no token) or connected. A scene can force another with
+// init.signIn (offline, expired, refused).
+const forced = init.signIn && { ...init.signIn };
+// `nextRetryIn` (ms from page load) stands in for nextRetryAt.
+if (forced && typeof forced.nextRetryIn === 'number') {
+  forced.nextRetryAt = Date.now() + forced.nextRetryIn;
+  delete forced.nextRetryIn;
+}
+const signIn = forced ?? {
+  state: !config.cloudStorage
+    ? 'off'
+    : config.cloudSessionToken
+      ? 'connected'
+      : 'signedOut',
+};
+const signedIn = signIn.state === 'connected';
+
 // What the main process pushes once the window is up.
 const startupState: [string, unknown[]][] = [
   // RecStatus.WaitingForWoW = 0
@@ -197,10 +217,11 @@ const startupState: [string, unknown[]][] = [
     'updateCloudStatus',
     [
       {
-        enabled: true,
-        authenticated: true,
-        authorized: true,
-        guild: 'Room Forty',
+        signIn,
+        enabled: Boolean(config.cloudStorage),
+        authenticated: signedIn,
+        authorized: signedIn,
+        guild: signedIn ? 'Room Forty' : '',
         available: ['Room Forty'],
         read: true,
         write: true,

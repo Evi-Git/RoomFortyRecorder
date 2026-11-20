@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.142] - Unreleased
+### Changed
+- **The sidebar says why the guild server isn't connected,** instead of "Cloud: Login Failed" for everything:
+  - **Offline, retrying:** the server or your internet can't be reached. The app keeps trying by itself (after 5, 15, 30 and 60 seconds, then every 2 minutes, and again when your PC wakes from sleep) and connects as soon as it can. Click the status (or **Try now**) to try straight away.
+  - **Sign-in expired:** with the reason from the server, and **Sign in again**.
+  - **Not allowed:** for example when you no longer have a raider role, with the reason and **Sign in again**.
+  - **Not signed in:** with **Sign in**.
+- Hover the status for the details; the status itself is a button when there's something for you to do, so it also works from the keyboard.
+- A storage hiccup on the guild server no longer looks like being signed out: the Dashboard, Logs and pull uploads keep working.
+- Pull uploads wait up to 30 seconds while the app re-checks your sign-in, instead of being skipped.
+
 ## [1.9.141] - Unreleased
 ### Changed
 - **The window has a minimum size** (1024 x 640, or your screen if it's smaller), so pages no longer squash into overlapping text.
