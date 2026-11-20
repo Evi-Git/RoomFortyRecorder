@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.141] - Unreleased
+### Changed
+- **The window has a minimum size** (1024 x 640, or your screen if it's smaller), so pages no longer squash into overlapping text.
+- **The sidebar folds to icons on narrower windows** (under about 1200 pixels wide). Unfold it and the app remembers that for narrow windows, separately from your choice on a wide window. When the sidebar is open in a short window, the menu scrolls below a line instead of sliding under Go live, and the folded title bar shows just the 40 mark.
+- **Recordings tables keep their columns readable:** they fit a 1024-wide window with the sidebar folded and scroll sideways when they don't fit, instead of cutting columns off. Headers that don't fit end in "…".
+- **In short windows the video player shrinks** so the recordings list stays visible, and grows back when the window does. A height you set by dragging is kept.
+- The Dashboard header fits on one line on wide windows (the night picker no longer drops to a second line).
+
 ## [1.9.140] - Unreleased
 ### Changed
 - **Settings has the new look** (design A, "Brass & Walnut everywhere"): a serif title with Application, Game and Cloud as brass-underlined tabs, and settings grouped into cards (Storage, Windows, Language, Combat logs, Raids, Mythic+, Manual recording, Upload …).
