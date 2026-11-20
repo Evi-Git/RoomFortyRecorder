@@ -37,7 +37,7 @@ const smallest = { width: 1024, height: 640 };
 
 // A made-up night for the Dashboard: a kill, two wipes and a reset, with
 // deaths, a boss health curve, prep and meters (the test logs have none).
-const dashFixture = () => {
+const dashFixture = (rich = false) => {
   const roster = [
     { guid: 'P-1', name: 'Smoggw', specId: 73, role: 'tank' },
     { guid: 'P-2', name: 'Azraelus', specId: 65, role: 'healer' },
@@ -82,6 +82,107 @@ const dashFixture = () => {
       raidBuffs: [],
     },
   };
+  if (rich) {
+    // Defensives, a cooldown plan and spell names for the report sections.
+    report.defensives = {
+      warlockInRaid: false,
+      raid: [
+        { t: 60, name: 'Azraelus', ability: 'Aura Mastery' },
+        { t: 140, name: 'Azraelus', ability: 'Aura Mastery' },
+      ],
+      players: [
+        {
+          name: 'Smoggw',
+          role: 'tank',
+          specId: 73,
+          diedAt: 119,
+          personal: 2,
+          external: 1,
+          raid: 0,
+          potions: 1,
+          healthstones: 0,
+          uses: [
+            { t: 30, ability: 'Shield Wall', kind: 'personal' },
+            { t: 90, ability: 'Ignore Pain', kind: 'personal' },
+            {
+              t: 100,
+              ability: 'Blessing of Sacrifice',
+              kind: 'external',
+              target: 'Smoggw',
+            },
+          ],
+        },
+        {
+          name: 'Azraelus',
+          role: 'healer',
+          specId: 65,
+          diedAt: null,
+          personal: 1,
+          external: 0,
+          raid: 2,
+          potions: 0,
+          healthstones: 0,
+          uses: [{ t: 60, ability: 'Aura Mastery', kind: 'raid' }],
+        },
+        {
+          name: 'Evipaladin',
+          role: 'dps',
+          specId: 70,
+          diedAt: null,
+          personal: 0,
+          external: 0,
+          raid: 0,
+          potions: 0,
+          healthstones: 0,
+          uses: [],
+        },
+      ],
+    };
+    report.plan = {
+      parsed: 1,
+      phaseSkipped: 0,
+      unmatched: 0,
+      noteEncounterId: 3182,
+      summary: { ontime: 3, late: 1, early: 0, missed: 2, dead: 0 },
+      items: [
+        {
+          t: 60,
+          name: 'Azraelus',
+          spellId: 31821,
+          spellName: 'Aura Mastery',
+          status: 'ontime',
+          delta: 1,
+        },
+        {
+          t: 140,
+          name: 'Azraelus',
+          spellId: 31821,
+          spellName: 'Aura Mastery',
+          status: 'late',
+          delta: 6,
+        },
+        {
+          t: 90,
+          name: 'Smoggw',
+          spellId: 871,
+          spellName: 'Shield Wall',
+          status: 'missed',
+          delta: null,
+          nearest: null,
+        },
+        {
+          t: 200,
+          name: 'Milkbagman',
+          spellId: 1,
+          spellName: 'Ice Block',
+          status: 'missed',
+          delta: null,
+          nearest: 14,
+        },
+      ],
+    };
+    report.spellNames = { 11: 'Void Pool', 12: 'Cleave' };
+  }
   const row = (name, specId, total) => ({ name, specId, total, abilities: [] });
   return {
     'pullDesk:list': { ok: true, data: { pulls } },
@@ -370,6 +471,21 @@ export const scenes = [
       await t.settle(600);
     },
   },
+  ...['Defensives', 'Cooldown plan', 'Avoidable hits', 'Consumables & buffs'].map((tab) => ({
+    name: `dash-fixture-${tab.split(' ')[0].toLowerCase()}`,
+    shows: `Dashboard > Pulls, report section "${tab}" (made-up night)`,
+    init: { answers: dashFixture(true) },
+    steps: async (t) => {
+      await t.nav('Dashboard');
+      await t.text('Smoggw');
+      await t.page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+      await t.settle(600);
+      if (tab === 'Defensives') {
+        await t.page.getByText('Smoggw', { exact: true }).last().click();
+        await t.settle(300);
+      }
+    },
+  })),
   {
     name: 'dash-fixture-small',
     shows: 'The made-up night at 1100x700',
