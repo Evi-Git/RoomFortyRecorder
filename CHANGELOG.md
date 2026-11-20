@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.151] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Changed
+- **The rest of the Dashboard in the Brass & Walnut look.** Defensives, Cooldown plan, Avoidable hits and Consumables & buffs are cards with column headings, like the Logs tables.
+- **Night summary, Progression and Reclears show raider names in their class colour** instead of role colours (the guild server now sends each raider's spec; until it's updated, names stay plain).
+- Every raider and wipe-cause switch has a visible "Counted" label, and the Plan columns hide when no cooldown note was checked.
+- Left-out raiders are struck through instead of faded, and info text on these pages is no longer faded, so it's readable everywhere.
+- Failed or empty loads on these views show the standard message with Try again instead of a raw error line.
+- "Upload from combat log" marks bosses that aren't tracked as "(not tracked)".
+
 ## [1.9.150] - Unreleased
 ### Changed
 - **Scene, Watch live and Instant replay in the Brass & Walnut look.** Scene has a page title, the preview in its own card, and Source, Video, Audio and Overlay as tabs; every setting is a row with a one-line explanation instead of an (i) icon, and the capture mode, monitor and frame rate are one-click choices.
