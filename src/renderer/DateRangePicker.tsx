@@ -86,7 +86,7 @@ const DateRangePicker = (props: IProps) => {
     <div
       role="group"
       aria-label="Date filter"
-      className="relative w-[200px] shrink-0"
+      className="relative z-20 w-[200px] shrink-0"
     >
       <CalendarDays
         size={15}

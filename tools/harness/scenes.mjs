@@ -126,6 +126,37 @@ export const scenes = [
     },
   },
   {
+    name: 'rec-raids-multiselect',
+    shows: 'Raids with three rows selected (Ctrl-click): selection count and the protected, tagged row',
+    continue: true,
+    steps: async (t) => {
+      await t.page.locator('tr', { hasText: "Ula'tek" }).first().click();
+      await t.page.locator('tr', { hasText: 'Heroic' }).first().click({ modifiers: ['Control'] });
+      await t.page.locator('tr', { hasText: "Kith'ix" }).first().click({ modifiers: ['Control'] });
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'rec-raids-protected',
+    shows: 'Raids sorted by date, oldest first: the protected, tagged Heroic kill with a brass lock',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      await t.page.getByRole('columnheader', { name: 'Date' }).click();
+      await t.settle(800);
+      await t.page.locator('tr', { hasText: 'Heroic' }).first().scrollIntoViewIfNeeded();
+    },
+  },
+  {
+    name: 'rec-date-picker',
+    shows: 'The date filter open (Nov-style range, "Any date" when empty)',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('group', { name: 'Date filter' }).locator('input').click();
+      await t.settle(600);
+    },
+  },
+  {
     name: 'rec-mythicplus',
     shows: 'Recordings > Mythic+',
     steps: async (t) => {
@@ -157,6 +188,37 @@ export const scenes = [
       await t.emit('setCloudVideos', []);
       await t.nav('Manual');
       await t.settle();
+    },
+  },
+  ...[
+    ['Raids', 'raids'],
+    ['Mythic+', 'mythicplus'],
+    ['Clips', 'clips'],
+  ].map(([label, key]) => ({
+    name: `rec-small-${key}`,
+    shows: `${label} at 1100x700`,
+    viewport: small,
+    steps: async (t) => {
+      await t.nav(label);
+      await t.settle(1000);
+    },
+  })),
+  {
+    name: 'smallest-mythicplus',
+    shows: 'Mythic+ at 1024x640 (filter bar wraps to two rows)',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Mythic+');
+      await t.settle(1200);
+    },
+  },
+  {
+    name: 'smallest-clips',
+    shows: 'Clips at 1024x640',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Clips');
+      await t.settle(1200);
     },
   },
   {

@@ -76,6 +76,7 @@ const dungeon = (
   level: number,
   duration: number,
   result: boolean,
+  upgradeLevel = result ? 2 : 0,
 ) =>
   base(name, {
     category: VideoCategory.MythicPlus,
@@ -87,7 +88,7 @@ const dungeon = (
     zoneID: 2805,
     mapID,
     keystoneLevel: level,
-    upgradeLevel: result ? 2 : 0,
+    upgradeLevel,
     affixes: [9, 10],
     combatants: raidMates,
   });
@@ -124,9 +125,15 @@ const diskList: Fixture[] = [
   raid('Kithix-wipe-2', 143, "Kith'ix", 3513, 233, 'Mythic', 168, false),
   raid('Kithix-wipe-3', 148, "Kith'ix", 3513, 233, 'Mythic', 159, false),
   raid('Kithix-kill', 155, "Kith'ix", 3513, 233, 'Mythic', 292, true),
-  raid('Ulatek-heroic-kill', -1500, "Ula'tek", 3492, 15, 'Heroic', 410, true),
+  // Protected and tagged, so the lock shows brass and the tag button is "on".
+  raid('Ulatek-heroic-kill', -1500, "Ula'tek", 3492, 15, 'Heroic', 410, true, {
+    isProtected: true,
+    protected: true,
+    tag: 'Prog night: tank swap',
+  }),
   dungeon('Windrunner-12', 400, 557, 'Windrunner Spire', 12, 1710, true),
-  dungeon('Skyreach-10-depleted', 460, 161, 'Skyreach', 10, 1980, false),
+  dungeon('Skyreach-10-abandoned', 460, 161, 'Skyreach', 10, 1980, false),
+  dungeon('Skyreach-9-depleted', 520, 161, 'Skyreach', 9, 2400, true, 0),
   clip('Ulatek-clip', 'Ulatek-kill', 10, 28, VideoCategory.Raids),
   clip('Windrunner-clip', 'Windrunner-12', 405, 24, VideoCategory.MythicPlus),
   manual('Manual-1', 500, 150),

@@ -693,21 +693,29 @@ const CategoryPage = (props: IProps) => {
     // [RoomFortyRecorder] Design A: the selection actions sit in the page
     // header, the filters in one row under the player.
     const actions = (
-      <div
-        role="group"
-        aria-label={getLocalePhrase(language, Phrase.Selection)}
-        className="flex items-center gap-x-1.5"
-      >
-        {selectedRows.length > 1 && (
-          <span className="mr-1 text-[13px] text-foreground">
-            {selectedRows.length} selected
-          </span>
-        )}
-        {config.cloudUpload && renderBulkTransferButton(true)}
-        {config.cloudStorage && renderBulkTransferButton(false)}
-        {renderBulkLockButton()}
-        {renderBulkDeleteButton()}
-      </div>
+      <>
+        <MultiPovPlaybackToggles
+          appState={appState}
+          setAppState={setAppState}
+          allowMultiPlayer={allowMultiPlayer}
+          opts={multiPlayerOpts}
+        />
+        <div
+          role="group"
+          aria-label={getLocalePhrase(language, Phrase.Selection)}
+          className="flex items-center gap-x-1.5"
+        >
+          {selectedRows.length > 1 && (
+            <span className="mr-1 text-[13px] text-foreground">
+              {selectedRows.length} selected
+            </span>
+          )}
+          {config.cloudUpload && renderBulkTransferButton(true)}
+          {config.cloudStorage && renderBulkTransferButton(false)}
+          {renderBulkLockButton()}
+          {renderBulkDeleteButton()}
+        </div>
+      </>
     );
 
     const content = (
@@ -734,12 +742,6 @@ const CategoryPage = (props: IProps) => {
             categoryState={categoryState}
             appState={appState}
             setAppState={setAppState}
-          />
-          <MultiPovPlaybackToggles
-            appState={appState}
-            setAppState={setAppState}
-            allowMultiPlayer={allowMultiPlayer}
-            opts={multiPlayerOpts}
           />
         </div>
         <div className="min-h-0 w-full flex-1 overflow-hidden">

@@ -289,7 +289,7 @@ const VideoSelectionTable = (props: IProps) => {
       <th
         key={header.id}
         colSpan={header.colSpan}
-        className="overflow-hidden p-0 text-left font-medium"
+        className="sticky top-0 z-10 overflow-hidden bg-panel p-0 text-left font-medium shadow-[inset_0_-1px_0_0_theme(colors.panel.line)]"
         style={{ width }}
         aria-sort={
           sorted === 'asc'
@@ -321,7 +321,7 @@ const VideoSelectionTable = (props: IProps) => {
     const { headers } = groups[0];
 
     return (
-      <thead className="border-b border-panel-line">
+      <thead>
         <tr>{headers.map(renderIndividualHeader)}</tr>
       </thead>
     );
