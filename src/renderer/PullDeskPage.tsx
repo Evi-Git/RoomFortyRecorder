@@ -293,7 +293,7 @@ const STATUS_STYLE: Record<PlanStatus, { label: string; className: string }> = {
   late: { label: 'Late', className: 'text-yellow-400' },
   early: { label: 'Early', className: 'text-yellow-400' },
   missed: { label: 'Missed', className: 'text-red-400' },
-  dead: { label: 'Died before it', className: 'text-foreground/50' },
+  dead: { label: 'Died before it', className: 'text-foreground' },
 };
 
 const KIND_LABEL: Record<DefensiveKind, string> = {
@@ -987,7 +987,7 @@ const PullDeskPage = (props: IProps) => {
   const renderAvailable = (death: Report['deaths'][number]) => {
     if (!death.available) {
       return (
-        <span className="text-foreground/50">
+        <span className="text-foreground">
           Re-run this report to see what was available.
         </span>
       );
@@ -996,23 +996,23 @@ const PullDeskPage = (props: IProps) => {
     const cooling = death.available.filter((a) => a.status === 'cooldown');
     return (
       <>
-        <div className="mb-1 font-semibold text-foreground/80">
+        <div className="mb-1 font-semibold text-foreground-lighter">
           At death{' '}
           <span
-            className="font-normal text-foreground/40"
+            className="font-normal text-foreground"
             title="From the last use and the ability's base cooldown. Talents can shorten cooldowns."
           >
             (estimate)
           </span>
         </div>
         {ready.length === 0 && (
-          <div className="text-foreground/50">Nothing was ready.</div>
+          <div className="text-foreground">Nothing was ready.</div>
         )}
         {ready.map((a) => (
           <div key={a.ability}>
             <span className="text-yellow-400">Ready</span>{' '}
             <span className={KIND_STYLE[a.kind]}>{a.ability}</span>
-            <span className="text-foreground/40">
+            <span className="text-foreground">
               {a.usedCount === 0
                 ? ' · not used this pull'
                 : ` · last used ${timeLabel(a.lastUsed ?? 0)}`}
@@ -1020,7 +1020,7 @@ const PullDeskPage = (props: IProps) => {
           </div>
         ))}
         {cooling.map((a) => (
-          <div key={a.ability} className="text-foreground/50">
+          <div key={a.ability} className="text-foreground">
             On cooldown {a.ability} · ready in {mmss(a.readyIn)}
           </div>
         ))}
@@ -1032,7 +1032,7 @@ const PullDeskPage = (props: IProps) => {
     const d = r.defensives;
     if (!d) {
       return (
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-foreground">
           Re-run this report to see defensives, potions and healthstones.
         </p>
       );
@@ -1053,34 +1053,34 @@ const PullDeskPage = (props: IProps) => {
 
     return (
       <div className="text-sm">
-        <div className="border-b border-card mb-2">
+        <div className="border-b border-panel-line mb-2">
           <button
             type="button"
-            className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+            className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
             onClick={() => toggleRow(raidKey)}
           >
             <ChevronRight
               size={14}
-              className={`shrink-0 text-foreground/50 transition-transform ${raidOpen ? 'rotate-90' : ''}`}
+              className={`shrink-0 text-foreground transition-transform ${raidOpen ? 'rotate-90' : ''}`}
             />
             <span className="font-semibold">Raid cooldowns</span>
-            <span className="text-foreground/50">({d.raid.length})</span>
+            <span className="text-foreground">({d.raid.length})</span>
           </button>
           {raidOpen && (
             <div className="mb-2 pl-[22px] flex flex-wrap gap-1.5">
               {d.raid.length === 0 && (
-                <span className="text-foreground/50">None used.</span>
+                <span className="text-foreground">None used.</span>
               )}
               {d.raid.map((use) => (
                 <span
                   key={`${use.t}-${use.name}-${use.ability}`}
-                  className="rounded bg-card/50 px-2 py-0.5 text-xs"
+                  className="rounded bg-panel-raised px-2 py-0.5 text-xs"
                 >
-                  <span className="font-mono text-foreground/60">
+                  <span className="font-mono text-foreground">
                     {timeLabel(use.t)}
                   </span>{' '}
                   <span className="text-brand-soft">{use.ability}</span>
-                  <span className="text-foreground/50"> · {use.name}</span>
+                  <span className="text-foreground"> · {use.name}</span>
                 </span>
               ))}
             </div>
@@ -1099,15 +1099,15 @@ const PullDeskPage = (props: IProps) => {
             count(player.healthstones, 'healthstone', 'healthstones'),
           ].filter(Boolean);
           return (
-            <div key={player.name} className="border-b border-card">
+            <div key={player.name} className="border-b border-panel-line">
               <button
                 type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
                 onClick={() => toggleRow(key)}
               >
                 <ChevronRight
                   size={14}
-                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                  className={`shrink-0 text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
                   className="font-semibold w-40 truncate"
@@ -1122,23 +1122,23 @@ const PullDeskPage = (props: IProps) => {
                       died {mmss(player.diedAt)}
                     </span>
                   ) : (
-                    <span className="text-foreground/40">alive</span>
+                    <span className="text-foreground">alive</span>
                   )}
                 </span>
                 <span className="flex-1 truncate">
                   {parts.length ? (
                     parts.join(' · ')
                   ) : (
-                    <span className="text-foreground/40">
+                    <span className="text-foreground">
                       no defensives or consumables
                     </span>
                   )}
                 </span>
               </button>
               {open && (
-                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
                   {player.uses.length === 0 && (
-                    <div className="py-1 pl-[22px] text-foreground/50">
+                    <div className="py-1 pl-[22px] text-foreground">
                       Nothing tracked this pull.
                     </div>
                   )}
@@ -1147,13 +1147,13 @@ const PullDeskPage = (props: IProps) => {
                       key={`${use.t}-${use.ability}`}
                       className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
                     >
-                      <span className="w-40 font-mono text-foreground/60">
+                      <span className="w-40 font-mono text-foreground">
                         {timeLabel(use.t)}
                       </span>
                       <span className="w-56 truncate">
                         {use.ability}
                         {use.target && (
-                          <span className="text-foreground/50">
+                          <span className="text-foreground">
                             {' '}
                             on {use.target}
                           </span>
@@ -1174,7 +1174,7 @@ const PullDeskPage = (props: IProps) => {
             </div>
           );
         })}
-        <p className="mt-2 text-xs text-foreground/40">
+        <p className="mt-2 text-xs text-foreground">
           Tracked by ability name: personal and external defensives, raid
           cooldowns, health potions and healthstones
           {d.warlockInRaid
@@ -1415,7 +1415,7 @@ const PullDeskPage = (props: IProps) => {
     const { plan } = r;
     if (!plan.parsed) {
       return (
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-foreground">
           No cooldown note for this boss yet. Paste wowutils&apos; Copy all
           output into Boss settings to check every assignment.
         </p>
@@ -1435,14 +1435,14 @@ const PullDeskPage = (props: IProps) => {
           <span className="text-red-400">{summary.missed} missed</span>
           {summary.dead > 0 && ` · ${summary.dead} dead before their timing`}
           {plan.phaseSkipped > 0 && (
-            <span className="text-foreground/50">
+            <span className="text-foreground">
               {' '}
               · {lines(plan.phaseSkipped)} timed by phase, not checked yet
             </span>
           )}
         </p>
         {!!plan.missingNames?.length && (
-          <p className="text-xs text-foreground/50 mb-2">
+          <p className="text-xs text-foreground mb-2">
             Not in this pull, so not checked: {plan.missingNames.join(', ')}
           </p>
         )}
@@ -1498,15 +1498,15 @@ const PullDeskPage = (props: IProps) => {
           const open = openRows.includes(key);
           const clean = player.missed === 0 && player.off === 0;
           return (
-            <div key={player.name} className="border-b border-card">
+            <div key={player.name} className="border-b border-panel-line">
               <button
                 type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
                 onClick={() => toggleRow(key)}
               >
                 <ChevronRight
                   size={14}
-                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                  className={`shrink-0 text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
                   className="font-semibold w-40 truncate"
@@ -1531,25 +1531,25 @@ const PullDeskPage = (props: IProps) => {
                     </span>
                   )}
                   {player.dead > 0 && (
-                    <span className="text-foreground/50">
+                    <span className="text-foreground">
                       {(!clean || player.ontime > 0) && ' · '}
                       {player.dead} skipped (dead)
                     </span>
                   )}
                 </span>
-                <span className="text-xs text-foreground/50">
+                <span className="text-xs text-foreground">
                   {player.items.length}{' '}
                   {player.items.length === 1 ? 'assignment' : 'assignments'}
                 </span>
               </button>
               {open && (
-                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
                   {player.items.map((item) => (
                     <div
                       key={`${item.t}-${item.spellId}`}
                       className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
                     >
-                      <span className="w-40 font-mono text-foreground/60">
+                      <span className="w-40 font-mono text-foreground">
                         {mmss(item.t)}
                       </span>
                       <span className="w-56 truncate">{renderSpell(item)}</span>
@@ -1608,7 +1608,7 @@ const PullDeskPage = (props: IProps) => {
             className={
               item.status === 'late' || item.status === 'early'
                 ? 'text-yellow-400'
-                : 'text-foreground/50'
+                : 'text-foreground'
             }
           >
             {' '}
@@ -1629,7 +1629,7 @@ const PullDeskPage = (props: IProps) => {
   ) => {
     if (!times) {
       return (
-        <span className="flex-1 text-xs text-foreground/40">
+        <span className="flex-1 text-xs text-foreground">
           Re-run the report to see when each hit landed
         </span>
       );
@@ -1648,12 +1648,12 @@ const PullDeskPage = (props: IProps) => {
                 ? `Watch ${name} from ${mmss(Math.max(0, hit.t - HIT_LEAD_SECONDS))}: ${hitsLabel(hit.hits)}${hit.end ? ` over ${Math.round(hit.end - hit.t)} s` : ''}, ${compact(hit.damage)} damage`
                 : `No recording from ${name} for this pull`
             }
-            className="inline-flex items-center gap-x-1 rounded border border-card px-1.5 py-0.5 text-xs tabular-nums enabled:hover:border-brand enabled:hover:text-foreground-lighter disabled:opacity-50"
+            className="inline-flex items-center gap-x-1 rounded border border-panel-line px-1.5 py-0.5 text-xs tabular-nums enabled:hover:border-brand enabled:hover:text-foreground-lighter disabled:opacity-50"
           >
             {video && <Play size={10} />}
             {mmss(hit.t)}
             {hit.hits > 1 && (
-              <span className="text-foreground/50">×{hit.hits}</span>
+              <span className="text-foreground">×{hit.hits}</span>
             )}
           </button>
         ))}
@@ -1664,7 +1664,7 @@ const PullDeskPage = (props: IProps) => {
   const renderAvoidable = (r: Report) => {
     if (!r.avoidable.length) {
       return (
-        <p className="text-sm text-foreground/60">
+        <p className="text-sm text-foreground">
           No hits from this boss&apos;s avoidable spells. Add spell IDs in Boss
           settings.
         </p>
@@ -1693,15 +1693,15 @@ const PullDeskPage = (props: IProps) => {
           const open = openRows.includes(key);
           const spells = spellsOf(row);
           return (
-            <div key={row.name} className="border-b border-card">
+            <div key={row.name} className="border-b border-panel-line">
               <button
                 type="button"
-                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-card/40 rounded-sm"
+                className="w-full flex items-center gap-x-2 py-1.5 text-left hover:bg-panel-raised rounded-sm"
                 onClick={() => toggleRow(key)}
               >
                 <ChevronRight
                   size={14}
-                  className={`shrink-0 text-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`}
+                  className={`shrink-0 text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
                 />
                 <span
                   className="font-semibold w-40 truncate"
@@ -1711,27 +1711,27 @@ const PullDeskPage = (props: IProps) => {
                   {row.name}
                 </span>
                 <span className="w-24">{hitsLabel(row.hits)}</span>
-                <span className="w-32 text-foreground/50">
+                <span className="w-32 text-foreground">
                   {compact(row.damage)} damage
                 </span>
-                <span className="flex-1 truncate text-xs text-foreground/50">
+                <span className="flex-1 truncate text-xs text-foreground">
                   {spells
                     .map((spell) => spell.spellName || `Spell ${spell.spellId}`)
                     .join(', ')}
                 </span>
               </button>
               {open && (
-                <div className="mb-1.5 py-0.5 bg-card/30 rounded-sm">
+                <div className="mb-1.5 py-0.5 bg-panel-deep rounded-sm">
                   {spells.map((spell) => (
                     <div
                       key={spell.spellId}
                       className="flex items-center gap-x-2 py-1 pl-[22px] pr-2"
                     >
-                      <span className="w-40 truncate text-foreground/80">
+                      <span className="w-40 truncate text-foreground-lighter">
                         {spell.spellName || `Spell ${spell.spellId}`}
                       </span>
                       <span className="w-24">{hitsLabel(spell.hits)}</span>
-                      <span className="w-32 text-foreground/50">
+                      <span className="w-32 text-foreground">
                         {spell.damage !== null
                           ? `${compact(spell.damage)} damage`
                           : ''}
@@ -1783,7 +1783,7 @@ const PullDeskPage = (props: IProps) => {
       {label}
       {badge && (
         <span
-          className={`text-xs font-normal ${alert ? 'text-red-400' : 'text-foreground/70'}`}
+          className={`text-xs font-normal ${alert ? 'text-red-400' : 'text-foreground'}`}
         >
           {badge}
         </span>
@@ -2250,7 +2250,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
     .filter((value) => Number.isInteger(value) && value > 0);
 
   if (!settings) {
-    return <p className="text-foreground/60">{message || 'Loading…'}</p>;
+    return <p className="text-foreground">{message || 'Loading…'}</p>;
   }
 
   return (
@@ -2264,7 +2264,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
 
       <section className="flex flex-col gap-y-2">
         <h3 className="font-display text-lg font-bold">Cooldown note</h3>
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-foreground">
           Paste wowutils&apos; Copy all output (the same note you Send in NSRT),
           or an MRT-style note. Every line with a time, a spell and a tagged
           raider is checked against what they cast. Text reminders and lines
@@ -2280,7 +2280,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
           spellCheck={false}
         />
         {lastParse && lastParse.parsed > 0 && (
-          <p className="text-xs text-foreground/60">
+          <p className="text-xs text-foreground">
             On the open pull this note gave {lastParse.parsed} checkable
             assignments
             {lastParse.unmatched > 0 &&
@@ -2303,7 +2303,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
 
       <section className="flex flex-col gap-y-2">
         <h3 className="font-display text-lg font-bold">Avoidable spells</h3>
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-foreground">
           Spell IDs that should never hit anyone, separated by commas. Find them
           on Wowhead or in the death recaps.
         </p>
@@ -2314,7 +2314,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
           placeholder="1241932, 1243866"
         />
         {settings.avoidable.length > 0 && (
-          <p className="text-xs text-foreground/60">
+          <p className="text-xs text-foreground">
             {settings.avoidable
               .map((spell) => spell.name || `Spell ${spell.id}`)
               .join(', ')}
@@ -2338,7 +2338,7 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
 
       <section className="flex flex-col gap-y-2">
         <h3 className="font-display text-lg font-bold">Discord channel</h3>
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-foreground">
           Channel ID for this boss&apos;s pull reports (right-click the channel
           in Discord with Developer Mode on, then Copy Channel ID). Empty uses
           the server default

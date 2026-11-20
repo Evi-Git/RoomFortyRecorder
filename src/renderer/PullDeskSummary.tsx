@@ -2,6 +2,13 @@ import { dateTime, timeOfDay } from 'renderer/clock';
 import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
 import { BRAND } from 'renderer/brand';
+import { classColor } from './logs/format';
+import { Segmented } from './logs/Segmented';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from './components/States/States';
 import { Ability, AbilityScope } from './AbilityCard';
 import ConsumablesPanel, { PrepSummary } from './Consumables';
 import { usePermissions } from './usePermissions';
@@ -41,6 +48,8 @@ type Cause = { name: string; count: number; spellId?: number | null };
 type Raider = {
   name: string;
   role: string;
+  /** Present on servers from 1.9.151; without it the name stays plain. */
+  specId?: number;
   pulls: number;
   deaths: number;
   earlyDeaths: number;
@@ -151,6 +160,7 @@ type Progression = {
   trend: {
     name: string;
     role: string;
+    specId?: number;
     nights: Record<
       string,
       { pulls: number; earlyDeaths: number; rate: number }
@@ -200,11 +210,24 @@ const shortNight = (night: string) =>
     day: 'numeric',
   });
 
-const ROLE_STYLE: Record<string, string> = {
-  tank: 'text-sky-300',
-  healer: 'text-green-300',
-  dps: '',
-};
+/** A raider's readable class colour; plain text when the class isn't known. */
+const nameStyle = (specId?: number): React.CSSProperties | undefined =>
+  specId ? { color: classColor(specId) } : undefined;
+
+const specsOf = (raiders: Raider[]) =>
+  Object.fromEntries(
+    raiders.filter((r) => r.specId).map((r) => [r.name, r.specId as number]),
+  );
+
+/** A left-out raider: muted and struck through (never faded with opacity). */
+const OUT_NAME = 'text-foreground line-through';
+
+const ROLE_ITEMS = [
+  { key: 'all', label: 'Everyone' },
+  { key: 'tank', label: 'Tanks' },
+  { key: 'healer', label: 'Healers' },
+  { key: 'dps', label: 'DPS' },
+];
 
 const bossKey = (encounterId: number, difficultyId: number) =>
   `${encounterId}:${difficultyId}`;
@@ -231,7 +254,7 @@ const Panel = ({
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <section className="rounded-md border border-card bg-background/40 p-3">
+  <section className="rounded-lg border border-panel-line bg-panel p-4">
     <div className="flex items-center gap-x-2 mb-2">
       <h3 className="font-display text-base text-foreground-lighter">
         {title}
@@ -373,13 +396,22 @@ const RaiderTable = ({
       return (sort.desc ? -order : order) || a.name.localeCompare(b.name);
     });
 
+  // Plan columns say nothing when no cooldown note was checked: hide them.
+  const hasPlan = raiders.some((r) => r.planChecked > 0);
+  const columns = RAIDER_COLUMNS.filter(
+    (col) => hasPlan || (col.key !== 'planMissed' && col.key !== 'planOff'),
+  );
+
   const header = (col: (typeof RAIDER_COLUMNS)[number]) => {
     const active = sort.key === col.key;
     return (
       <th
         key={col.key}
         title={col.title}
-        className={`px-2 py-1 font-normal whitespace-nowrap ${
+        aria-sort={
+          active ? (sort.desc ? 'descending' : 'ascending') : undefined
+        }
+        className={`sticky top-0 bg-panel px-2 py-1.5 font-medium whitespace-nowrap ${
           col.key === 'name' ? 'text-left' : 'text-right'
         }`}
       >
@@ -405,12 +437,8 @@ const RaiderTable = ({
 
   const cell = (value: number, warn = false) => (
     <td
-      className={`px-2 py-1 text-right tabular-nums ${
-        value === 0
-          ? 'text-foreground/50'
-          : warn
-            ? 'text-foreground-lighter'
-            : ''
+      className={`px-2 py-1.5 text-right tabular-nums ${
+        value === 0 || !warn ? 'text-foreground' : 'text-foreground-lighter'
       }`}
     >
       {value}
@@ -425,89 +453,93 @@ const RaiderTable = ({
 
   return (
     <div>
-      <div className="flex gap-x-1 mb-2">
-        {['all', 'tank', 'healer', 'dps'].map((r) => (
-          <Button
-            key={r}
-            size="xs"
-            variant={role === r ? 'default' : 'ghost'}
-            onClick={() => setRole(r)}
-          >
-            {r === 'all'
-              ? 'Everyone'
-              : r === 'dps'
-                ? 'DPS'
-                : `${r[0].toUpperCase()}${r.slice(1)}s`}
-          </Button>
-        ))}
+      <div className="mb-3">
+        <Segmented
+          label="Show raiders by role"
+          items={ROLE_ITEMS}
+          value={role}
+          onChange={setRole}
+        />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="text-xs text-foreground border-b border-card">
-            <tr>{RAIDER_COLUMNS.map(header)}</tr>
+          <thead className="text-[13px] text-foreground border-b border-panel-line">
+            <tr>
+              {onToggle && (
+                <th
+                  className="sticky top-0 bg-panel px-2 py-1.5 text-left font-medium whitespace-nowrap"
+                  title="Switch a raider off to leave them out of every widget"
+                >
+                  Counted
+                </th>
+              )}
+              {columns.map(header)}
+            </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr
                 key={r.name}
-                className={`border-b border-card/40 hover:bg-card/30 ${
-                  out(r) ? 'opacity-40' : ''
-                }`}
+                className="border-b border-panel-line last:border-b-0 hover:bg-panel-raised"
               >
+                {onToggle && (
+                  <td className="px-2 py-1.5">
+                    <MiniSwitch
+                      checked={!out(r)}
+                      onChange={() => onToggle(r.name)}
+                      label={
+                        out(r)
+                          ? `Include ${r.name}`
+                          : `Leave ${r.name} out of every widget`
+                      }
+                    />
+                  </td>
+                )}
                 <td
-                  className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
+                  className={`px-2 py-1.5 whitespace-nowrap font-medium ${out(r) ? OUT_NAME : ''}`}
+                  style={out(r) ? undefined : nameStyle(r.specId)}
+                  title={r.role || undefined}
                 >
-                  {onToggle ? (
-                    <span className="inline-flex items-center gap-x-2">
-                      <MiniSwitch
-                        checked={!out(r)}
-                        onChange={() => onToggle(r.name)}
-                        label={
-                          out(r)
-                            ? `Include ${r.name}`
-                            : `Leave ${r.name} out of every widget`
-                        }
-                      />
-                      {r.name}
-                    </span>
-                  ) : (
-                    r.name
-                  )}
+                  {r.name}
                 </td>
                 {cell(r.pulls)}
                 <td
-                  className={`px-2 py-1 text-right tabular-nums ${
+                  className={`px-2 py-1.5 text-right tabular-nums ${
                     r.earlyDeaths
                       ? 'text-foreground-lighter'
-                      : 'text-foreground/50'
+                      : 'text-foreground'
                   }`}
                   title={causesTitle(r) || undefined}
                 >
                   {r.earlyDeaths}
                 </td>
-                <td className="px-2 py-1 text-right tabular-nums">
+                <td className="px-2 py-1.5 text-right tabular-nums text-foreground">
                   {r.pulls ? (r.earlyDeaths / r.pulls).toFixed(2) : '–'}
                 </td>
                 {cell(r.firstDeaths, true)}
-                <td
-                  className={`px-2 py-1 text-right tabular-nums ${
-                    r.planMissed ? 'text-red-400' : 'text-foreground/50'
-                  }`}
-                  title={
-                    r.planChecked
-                      ? `${r.planChecked} plan casts checked`
-                      : 'No plan casts'
-                  }
-                >
-                  {r.planChecked ? r.planMissed : '–'}
-                </td>
-                <td
-                  className={`px-2 py-1 text-right tabular-nums ${
-                    r.planOff ? 'text-yellow-400' : 'text-foreground/50'
-                  }`}
-                >
-                  {r.planChecked ? r.planOff : '–'}
-                </td>
+                {hasPlan && (
+                  <>
+                    <td
+                      className={`px-2 py-1.5 text-right tabular-nums ${
+                        r.planMissed ? 'text-red-400' : 'text-foreground'
+                      }`}
+                      title={
+                        r.planChecked
+                          ? `${r.planChecked} plan casts checked`
+                          : 'No plan casts'
+                      }
+                    >
+                      {r.planChecked ? r.planMissed : '–'}
+                    </td>
+                    <td
+                      className={`px-2 py-1.5 text-right tabular-nums ${
+                        r.planOff ? 'text-yellow-400' : 'text-foreground'
+                      }`}
+                    >
+                      {r.planChecked ? r.planOff : '–'}
+                    </td>
+                  </>
+                )}
                 {cell(r.avoidableHits, true)}
                 {cell(r.defensives)}
                 {cell(r.potions)}
@@ -584,8 +616,11 @@ const Bar = ({
 export const AvoidablePanel = ({
   rows,
   leftOut,
+  specs,
 }: {
   rows: AvoidableRow[] | undefined;
+  /** Raider name -> spec id, for class colours (when the server sends it). */
+  specs?: Record<string, number>;
   // Raiders left out everywhere (Progression filters): not listed at all.
   leftOut?: Set<string>;
 }) => {
@@ -622,8 +657,12 @@ export const AvoidablePanel = ({
   const numberCell = (value: number, muted: boolean, red = false) => (
     <td
       className={`px-2 py-1 text-right tabular-nums ${
-        red && value ? 'text-red-400' : value ? '' : 'text-foreground/50'
-      } ${muted ? 'opacity-40' : ''}`}
+        red && value
+          ? 'text-red-400'
+          : value && !muted
+            ? 'text-foreground-lighter'
+            : 'text-foreground'
+      }`}
     >
       {value}
     </td>
@@ -646,13 +685,11 @@ export const AvoidablePanel = ({
       return (
         <tr
           key={`${row.name}:${r.name}`}
-          className="border-b border-card/20 text-xs"
+          className="border-b border-panel-line text-[13px]"
         >
           <td className="pl-6 pr-2 py-0.5">
             <label
-              className={`inline-flex items-center gap-x-2 cursor-pointer ${
-                off ? 'opacity-40' : ''
-              }`}
+              className="inline-flex items-center gap-x-2 cursor-pointer"
               title={
                 off
                   ? 'Left out of this ability’s totals. Click to include.'
@@ -668,10 +705,15 @@ export const AvoidablePanel = ({
                     : `Leave ${r.name} out of ${row.name}`
                 }
               />
-              <span className="text-foreground-lighter">{r.name}</span>
+              <span
+                className={off ? OUT_NAME : 'font-medium'}
+                style={off ? undefined : nameStyle(specs?.[r.name])}
+              >
+                {r.name}
+              </span>
             </label>
           </td>
-          <td className={`px-2 py-0.5 ${off ? 'opacity-40' : ''}`}>
+          <td className="px-2 py-0.5">
             <span className="flex items-center gap-x-2">
               <Bar value={r.damage} max={top} height={8} muted />
               <span
@@ -684,11 +726,7 @@ export const AvoidablePanel = ({
           </td>
           {numberCell(r.hits, off)}
           <td />
-          <td
-            className={`px-2 py-0.5 text-right tabular-nums text-foreground ${
-              off ? 'opacity-40' : ''
-            }`}
-          >
+          <td className="px-2 py-0.5 text-right tabular-nums text-foreground">
             {r.pulls?.length ?? ''}
           </td>
           {numberCell(r.deaths, off, true)}
@@ -721,27 +759,27 @@ export const AvoidablePanel = ({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-xs text-foreground border-b border-card">
+            <thead className="text-[13px] text-foreground border-b border-panel-line">
               <tr>
-                <th className="px-2 py-1 font-normal text-left">Ability</th>
-                <th className="px-2 py-1 font-normal text-left w-[34%]">
+                <th className="px-2 py-1.5 font-medium text-left">Ability</th>
+                <th className="px-2 py-1.5 font-medium text-left w-[34%]">
                   Damage taken
                 </th>
-                <th className="px-2 py-1 font-normal text-right">Hits</th>
+                <th className="px-2 py-1.5 font-medium text-right">Hits</th>
                 <th
-                  className="px-2 py-1 font-normal text-right"
+                  className="px-2 py-1.5 font-medium text-right"
                   title="Raiders it hit at least once"
                 >
                   Raiders hit
                 </th>
                 <th
-                  className="px-2 py-1 font-normal text-right"
+                  className="px-2 py-1.5 font-medium text-right"
                   title="Pulls it hit someone in"
                 >
                   Pulls
                 </th>
                 <th
-                  className="px-2 py-1 font-normal text-right"
+                  className="px-2 py-1.5 font-medium text-right"
                   title="Raiders it killed"
                 >
                   Deaths
@@ -755,7 +793,7 @@ export const AvoidablePanel = ({
                 return (
                   <React.Fragment key={row.name}>
                     <tr
-                      className="border-b border-card/40 hover:bg-card/30 cursor-pointer"
+                      className="border-b border-panel-line hover:bg-panel-raised cursor-pointer"
                       onClick={() => setOpen(expanded ? null : row.name)}
                     >
                       <td className="px-2 py-1 whitespace-nowrap">
@@ -892,6 +930,7 @@ const BossNightCard = ({
           key={`${boss.encounterId}:${boss.difficultyId}`}
           rows={boss.avoidable}
           leftOut={leftOut}
+          specs={specsOf(boss.raiders)}
         />
 
         {boss.consumables !== undefined && (
@@ -918,13 +957,13 @@ const BossNightCard = ({
         >
           {showPulls ? (
             <table className="w-full text-sm">
-              <thead className="text-xs text-foreground border-b border-card">
+              <thead className="text-[13px] text-foreground border-b border-panel-line">
                 <tr>
-                  <th className="px-2 py-1 text-left font-normal">Pull</th>
-                  <th className="px-2 py-1 text-left font-normal">Result</th>
-                  <th className="px-2 py-1 text-right font-normal">Length</th>
-                  <th className="px-2 py-1 text-right font-normal">Deaths</th>
-                  <th className="px-2 py-1 text-left font-normal">Cause</th>
+                  <th className="px-2 py-1.5 text-left font-medium">Pull</th>
+                  <th className="px-2 py-1.5 text-left font-medium">Result</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Length</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Deaths</th>
+                  <th className="px-2 py-1.5 text-left font-medium">Cause</th>
                   <th aria-label="Open" />
                 </tr>
               </thead>
@@ -934,7 +973,7 @@ const BossNightCard = ({
                   .map((p) => (
                     <tr
                       key={p.id}
-                      className="border-b border-card/40 hover:bg-card/30"
+                      className="border-b border-panel-line hover:bg-panel-raised"
                     >
                       <td className="px-2 py-1 tabular-nums">
                         {isReset(p) ? 'Reset' : p.pullNumber}
@@ -960,7 +999,7 @@ const BossNightCard = ({
                       <td className="px-2 py-1 text-right">
                         {p.source === 'wcl' ? (
                           <span
-                            className="text-xs text-foreground/50"
+                            className="text-xs text-foreground"
                             title="Imported from Warcraft Logs: no app report to open"
                           >
                             WCL
@@ -1022,6 +1061,7 @@ export const NightSummaryView = ({
   // Which boss's widgets to show; empty = the one pulled most that night.
   const [bossChoice, setBossChoice] = React.useState('');
   const [error, setError] = React.useState('');
+  const [reloadTick, setReloadTick] = React.useState(0);
   // The night the shown bosses belong to; differs while a new one loads.
   const [loadedNight, setLoadedNight] = React.useState('');
   const loading = night !== loadedNight;
@@ -1062,7 +1102,7 @@ export const NightSummaryView = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadTick]);
 
   // Left-out raiders' deaths don't count as why a pull ended (the server
   // works the causes out again; the widgets stay up meanwhile).
@@ -1089,15 +1129,25 @@ export const NightSummaryView = ({
     };
   }, [night, leftOutKey]);
 
-  if (error && !nights) return <p className="text-sm text-red-400">{error}</p>;
-  if (!nights)
-    return <p className="text-sm text-foreground">Loading nights…</p>;
+  if (error && !nights) {
+    return (
+      <ErrorState
+        what="Couldn't load the nights"
+        error={error}
+        onRetry={() => {
+          setError('');
+          setReloadTick((t) => t + 1);
+        }}
+      />
+    );
+  }
+  if (!nights) return <LoadingState label="Loading nights…" />;
   if (!nights.length) {
     return (
-      <p className="text-sm text-foreground">
+      <EmptyState>
         No pulls yet. Once raiders have &quot;Send my Logs&quot; on, each raid
         night shows up here.
-      </p>
+      </EmptyState>
     );
   }
 
@@ -1141,7 +1191,7 @@ export const NightSummaryView = ({
           Night: {totalPulls} {totalPulls === 1 ? 'pull' : 'pulls'} ·{' '}
           {totalKills} {totalKills === 1 ? 'kill' : 'kills'}
         </span>
-        {error && <span className="text-sm text-red-400">{error}</span>}
+        {error && <ErrorState compact error={error} />}
       </div>
       {leftOutList.length > 0 && (
         <div className="flex items-center gap-x-2 flex-wrap gap-y-1 text-xs text-foreground">
@@ -1149,7 +1199,7 @@ export const NightSummaryView = ({
           {leftOutList.map((name) => (
             <span
               key={name}
-              className="inline-flex items-center gap-x-1.5 rounded border border-card px-1.5 py-0.5 text-foreground-lighter"
+              className="inline-flex items-center gap-x-1.5 rounded border border-panel-line px-1.5 py-0.5 text-foreground-lighter"
             >
               <MiniSwitch
                 checked={false}
@@ -1181,7 +1231,7 @@ export const NightSummaryView = ({
             onToggle={toggleRaider}
           />
         )}
-        {!bosses && <p className="text-sm text-foreground">Loading…</p>}
+        {!bosses && <LoadingState label="Loading this night…" />}
       </div>
     </div>
   );
@@ -1453,7 +1503,7 @@ const ProgressionChart = ({
 
       {hover !== null && (hovered || compare) && (
         <div
-          className="pointer-events-none absolute top-6 z-10 rounded-md border border-card bg-background px-2 py-1.5 text-xs shadow-lg whitespace-nowrap"
+          className="pointer-events-none absolute top-6 z-10 rounded-md border border-panel-line bg-panel-deep px-2 py-1.5 text-xs shadow-lg whitespace-nowrap"
           style={{
             left: `${tipLeft}%`,
             transform:
@@ -1499,7 +1549,7 @@ const ProgressionChart = ({
             </div>
           )}
           {hovered && (
-            <div className="text-foreground/70 mt-0.5">
+            <div className="text-foreground mt-0.5">
               {hovered.source === 'wcl'
                 ? 'From Warcraft Logs'
                 : 'Click to open'}
@@ -1589,32 +1639,30 @@ const RaiderTrend = ({
 
   return (
     <div>
-      <div className="flex gap-x-1 mb-2">
-        {['all', 'tank', 'healer', 'dps'].map((r) => (
-          <Button
-            key={r}
-            size="xs"
-            variant={role === r ? 'default' : 'ghost'}
-            onClick={() => setRole(r)}
-          >
-            {r === 'all'
-              ? 'Everyone'
-              : r === 'dps'
-                ? 'DPS'
-                : `${r[0].toUpperCase()}${r.slice(1)}s`}
-          </Button>
-        ))}
+      <div className="mb-3">
+        <Segmented
+          label="Show raiders by role"
+          items={ROLE_ITEMS}
+          value={role}
+          onChange={setRole}
+        />
       </div>
       <div className="overflow-x-auto">
         <table className="text-sm border-separate border-spacing-[2px]">
-          <thead className="text-xs text-foreground">
+          <thead className="text-[13px] text-foreground">
             <tr>
-              <th className="px-2 py-1 text-left font-normal">Raider</th>
-              <th className="px-2 py-1 text-right font-normal">All nights</th>
+              <th
+                className="px-2 py-1.5 text-left font-medium"
+                title="Switch a raider off to leave them out of every widget"
+              >
+                Counted
+              </th>
+              <th className="px-2 py-1.5 text-left font-medium">Raider</th>
+              <th className="px-2 py-1.5 text-right font-medium">All nights</th>
               {nights.map((n) => (
                 <th
                   key={n}
-                  className="px-2 py-1 text-right font-normal whitespace-nowrap"
+                  className="px-2 py-1.5 text-right font-medium whitespace-nowrap"
                 >
                   {shortNight(n)}
                 </th>
@@ -1623,25 +1671,24 @@ const RaiderTrend = ({
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr
-                key={r.name}
-                className={leftOut.has(r.name) ? 'opacity-40' : ''}
-              >
+              <tr key={r.name}>
+                <td className="px-2 py-1.5">
+                  <MiniSwitch
+                    checked={!leftOut.has(r.name)}
+                    onChange={() => onToggle(r.name)}
+                    label={
+                      leftOut.has(r.name)
+                        ? `Include ${r.name}`
+                        : `Leave ${r.name} out of every widget`
+                    }
+                  />
+                </td>
                 <td
-                  className={`px-2 py-1 whitespace-nowrap ${ROLE_STYLE[r.role] ?? ''}`}
+                  className={`px-2 py-1.5 whitespace-nowrap font-medium ${leftOut.has(r.name) ? OUT_NAME : ''}`}
+                  style={leftOut.has(r.name) ? undefined : nameStyle(r.specId)}
+                  title={r.role || undefined}
                 >
-                  <span className="inline-flex items-center gap-x-2">
-                    <MiniSwitch
-                      checked={!leftOut.has(r.name)}
-                      onChange={() => onToggle(r.name)}
-                      label={
-                        leftOut.has(r.name)
-                          ? `Include ${r.name}`
-                          : `Leave ${r.name} out of every widget`
-                      }
-                    />
-                    {r.name}
-                  </span>
+                  {r.name}
                 </td>
                 <td className="px-2 py-1 text-right tabular-nums text-foreground-lighter">
                   {r.overall.toFixed(2)}
@@ -1652,7 +1699,7 @@ const RaiderTrend = ({
                     return (
                       <td
                         key={n}
-                        className="px-2 py-1 text-right text-foreground/40"
+                        className="px-2 py-1 text-right text-foreground"
                       >
                         –
                       </td>
@@ -1669,7 +1716,7 @@ const RaiderTrend = ({
                           : undefined,
                         color: v.rate
                           ? 'hsl(var(--foreground-lighter))'
-                          : 'hsl(var(--foreground) / 0.5)',
+                          : 'hsl(var(--foreground))',
                       }}
                       title={`${v.earlyDeaths} early ${
                         v.earlyDeaths === 1 ? 'death' : 'deaths'
@@ -1725,13 +1772,19 @@ const CauseTrend = ({
   return (
     <div className="overflow-x-auto">
       <table className="text-sm border-separate border-spacing-[2px]">
-        <thead className="text-xs text-foreground">
+        <thead className="text-[13px] text-foreground">
           <tr>
-            <th className="px-2 py-1 text-left font-normal">Cause</th>
+            <th
+              className="px-2 py-1.5 text-left font-medium"
+              title="Switch a cause off to leave the pulls it ended out of every widget"
+            >
+              Counted
+            </th>
+            <th className="px-2 py-1.5 text-left font-medium">Cause</th>
             {nights.map((n) => (
               <th
                 key={n.night}
-                className="px-2 py-1 text-right font-normal whitespace-nowrap"
+                className="px-2 py-1.5 text-right font-medium whitespace-nowrap"
               >
                 {shortNight(n.night)}
               </th>
@@ -1741,15 +1794,15 @@ const CauseTrend = ({
         <tbody>
           {top.map((name) => (
             <tr key={name}>
+              <td className="px-2 py-1">
+                <MiniSwitch
+                  checked
+                  onChange={() => onToggle(name)}
+                  label={`Leave out pulls ended by ${name}`}
+                />
+              </td>
               <td className="px-2 py-1 whitespace-nowrap max-w-[300px] truncate">
-                <span className="inline-flex items-center gap-x-2">
-                  <MiniSwitch
-                    checked
-                    onChange={() => onToggle(name)}
-                    label={`Leave out pulls ended by ${name}`}
-                  />
-                  <Ability name={name} />
-                </span>
+                <Ability name={name} />
               </td>
               {nights.map((n) => {
                 const count = n.causes.find((c) => c.name === name)?.count ?? 0;
@@ -1765,7 +1818,7 @@ const CauseTrend = ({
                         : undefined,
                       color: count
                         ? 'hsl(var(--foreground-lighter))'
-                        : 'hsl(var(--foreground) / 0.4)',
+                        : 'hsl(var(--foreground))',
                     }}
                     title={`${count} of ${n.pulls} pulls (${share}%)`}
                   >
@@ -1782,14 +1835,14 @@ const CauseTrend = ({
           {excluded.map((name) => (
             <div
               key={name}
-              className="flex items-center gap-x-2 text-sm opacity-50 px-2"
+              className="flex items-center gap-x-2 text-sm text-foreground px-2"
             >
               <MiniSwitch
                 checked={false}
                 onChange={() => onToggle(name)}
                 label={`Include pulls ended by ${name}`}
               />
-              <span>{name}</span>
+              <span className="line-through">{name}</span>
               <span className="text-xs text-foreground">
                 left out ({pullsOf(name)}{' '}
                 {pullsOf(name) === 1 ? 'pull' : 'pulls'})
@@ -1901,6 +1954,7 @@ export const ProgressionView = ({
   );
   const [data, setData] = React.useState<Progression | null>(null);
   const [error, setError] = React.useState('');
+  const [reloadTick, setReloadTick] = React.useState(0);
   const [loadedChoice, setLoadedChoice] = React.useState('');
   const loading = choice !== loadedChoice;
   const [asTable, setAsTable] = React.useState(false);
@@ -1993,7 +2047,7 @@ export const ProgressionView = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadTick]);
 
   React.useEffect(() => {
     if (!choice) return undefined;
@@ -2067,12 +2121,20 @@ export const ProgressionView = ({
   const toggleRaider = (name: string) =>
     updateFilter((f) => ({ ...f, raiders: toggleIn(f.raiders, name) }));
 
-  if (error && !options) return <p className="text-sm text-red-400">{error}</p>;
-  if (!options)
-    return <p className="text-sm text-foreground">Loading bosses…</p>;
-  if (!options.length) {
-    return <p className="text-sm text-foreground">No pulls yet.</p>;
+  if (error && !options) {
+    return (
+      <ErrorState
+        what="Couldn't load the bosses"
+        error={error}
+        onRetry={() => {
+          setError('');
+          setReloadTick((t) => t + 1);
+        }}
+      />
+    );
   }
+  if (!options) return <LoadingState label="Loading bosses…" />;
+  if (!options.length) return <EmptyState>No pulls yet.</EmptyState>;
 
   const wipes = data ? data.pulls - data.kills : 0;
 
@@ -2106,7 +2168,7 @@ export const ProgressionView = ({
         <label className="flex items-center gap-x-2 text-sm">
           Boss
           <select
-            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+            className="bg-panel-deep text-foreground-lighter rounded px-2 py-1 text-sm border border-panel-line"
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
           >
@@ -2170,11 +2232,11 @@ export const ProgressionView = ({
             </Button>
           </span>
         )}
-        {error && <span className="text-sm text-red-400">{error}</span>}
+        {error && <ErrorState compact error={error} />}
       </div>
 
       {editingList && allOptions && shownList && (
-        <div className="rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-1.5 max-w-[560px]">
+        <div className="rounded-lg border border-panel-line bg-panel p-4 flex flex-col gap-y-1.5 max-w-[560px]">
           <p className="text-xs text-foreground m-0">
             Every Mythic boss is always listed. Tick the lower-difficulty bosses
             to list too.
@@ -2208,11 +2270,11 @@ export const ProgressionView = ({
       )}
 
       {!data && phaseInfo?.empty && !loading && (
-        <p className="text-sm text-foreground max-w-[720px]">
+        <EmptyState>
           {reclear
             ? 'No reclears yet: every pull on this boss so far is progression (up to and including the first kill).'
             : 'No progression pulls for this boss.'}
-        </p>
+        </EmptyState>
       )}
 
       {data && (
@@ -2261,7 +2323,7 @@ export const ProgressionView = ({
                 <>
                   {watchedGuilds.length > 0 && !asTable && compareMode && (
                     <select
-                      className="h-8 bg-card text-foreground-lighter rounded-md px-2 text-xs border border-background"
+                      className="h-8 bg-panel-deep text-foreground-lighter rounded-md px-2 text-xs border border-panel-line"
                       value={compareKey}
                       onChange={(e) => setCompareKey(e.target.value)}
                       aria-label="Compare with a watched guild"
@@ -2289,15 +2351,15 @@ export const ProgressionView = ({
               {asTable ? (
                 <div className="max-h-[300px] overflow-y-auto">
                   <table className="w-full text-sm">
-                    <thead className="text-xs text-foreground border-b border-card sticky top-0 bg-background-higher">
+                    <thead className="text-[13px] text-foreground border-b border-panel-line sticky top-0 bg-panel">
                       <tr>
-                        <th className="px-2 py-1 text-left font-normal">
+                        <th className="px-2 py-1.5 text-left font-medium">
                           Pull
                         </th>
-                        <th className="px-2 py-1 text-left font-normal">
+                        <th className="px-2 py-1.5 text-left font-medium">
                           Night
                         </th>
-                        <th className="px-2 py-1 text-right font-normal">
+                        <th className="px-2 py-1.5 text-right font-medium">
                           Boss health
                         </th>
                         <th aria-label="Open" />
@@ -2305,7 +2367,7 @@ export const ProgressionView = ({
                     </thead>
                     <tbody>
                       {data.series.map((p) => (
-                        <tr key={p.id} className="border-b border-card/40">
+                        <tr key={p.id} className="border-b border-panel-line">
                           <td className="px-2 py-1 tabular-nums">{p.n}</td>
                           <td className="px-2 py-1">{nightLabel(p.night)}</td>
                           <td className="px-2 py-1 text-right tabular-nums">
@@ -2318,7 +2380,7 @@ export const ProgressionView = ({
                           <td className="px-2 py-1 text-right">
                             {p.source === 'wcl' ? (
                               <span
-                                className="text-xs text-foreground/50"
+                                className="text-xs text-foreground"
                                 title="Imported from Warcraft Logs: no app report to open"
                               >
                                 WCL
@@ -2392,34 +2454,37 @@ export const ProgressionView = ({
                 <Panel title="Night by night">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="text-xs text-foreground border-b border-card">
+                      <thead className="text-[13px] text-foreground border-b border-panel-line">
                         <tr>
-                          <th className="px-2 py-1 text-left font-normal">
+                          <th className="px-2 py-1.5 text-left font-medium">
                             Night
                           </th>
-                          <th className="px-2 py-1 text-right font-normal">
+                          <th className="px-2 py-1.5 text-right font-medium">
                             Pulls
                           </th>
-                          <th className="px-2 py-1 text-right font-normal">
+                          <th className="px-2 py-1.5 text-right font-medium">
                             Kills
                           </th>
-                          <th className="px-2 py-1 text-right font-normal">
+                          <th className="px-2 py-1.5 text-right font-medium">
                             Best
                           </th>
-                          <th className="px-2 py-1 text-right font-normal">
+                          <th className="px-2 py-1.5 text-right font-medium">
                             Median wipe
                           </th>
-                          <th className="px-2 py-1 text-right font-normal">
+                          <th className="px-2 py-1.5 text-right font-medium">
                             In combat
                           </th>
-                          <th className="px-2 py-1 text-left font-normal">
+                          <th className="px-2 py-1.5 text-left font-medium">
                             Top cause
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         {[...data.nights].reverse().map((n) => (
-                          <tr key={n.night} className="border-b border-card/40">
+                          <tr
+                            key={n.night}
+                            className="border-b border-panel-line"
+                          >
                             <td className="px-2 py-1 whitespace-nowrap">
                               {nightLabel(n.night)}
                             </td>
@@ -2428,9 +2493,7 @@ export const ProgressionView = ({
                             </td>
                             <td
                               className={`px-2 py-1 text-right tabular-nums ${
-                                n.kills
-                                  ? 'text-green-400'
-                                  : 'text-foreground/50'
+                                n.kills ? 'text-green-400' : 'text-foreground'
                               }`}
                             >
                               {n.kills}
@@ -2483,6 +2546,7 @@ export const ProgressionView = ({
                   key={`${data.encounterId}:${data.difficultyId}`}
                   rows={data.avoidable}
                   leftOut={leftOut}
+                  specs={specsOf(data.raiders)}
                 />
 
                 {data.consumables !== undefined && (
@@ -2631,13 +2695,13 @@ const TierImport = ({ onImported }: { onImported: () => void }) => {
   };
 
   const field =
-    'h-8 rounded-md bg-card px-2 text-sm text-foreground-lighter border border-background';
+    'h-8 rounded-md bg-panel-deep px-2 text-sm text-foreground-lighter border border-panel-line';
   const pickedReports = (zones ?? [])
     .filter((z) => picked.includes(z.zoneId))
     .reduce((n, z) => n + z.codes.length, 0);
 
   return (
-    <div className="flex flex-col gap-y-2 border-t border-card pt-3 mt-1">
+    <div className="flex flex-col gap-y-2 border-t border-panel-line pt-3 mt-1">
       <h4 className="text-sm font-semibold text-foreground-lighter">
         Import a whole tier
       </h4>
@@ -2741,7 +2805,7 @@ const TierImport = ({ onImported }: { onImported: () => void }) => {
       )}
       {job && (job.running || job.finishedAt) && (
         <div className="flex flex-col gap-y-1">
-          <div className="h-1.5 rounded bg-card overflow-hidden max-w-[420px]">
+          <div className="h-1.5 rounded bg-panel-line overflow-hidden max-w-[420px]">
             <div
               className="h-1.5 bg-brand"
               style={{
@@ -2812,7 +2876,7 @@ export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
   }
 
   return (
-    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+    <div className="w-full rounded-lg border border-panel-line bg-panel p-4 flex flex-col gap-y-2">
       <div className="flex items-center">
         <h3 className="font-display text-base text-foreground-lighter">
           Import pulls from Warcraft Logs
@@ -2834,7 +2898,7 @@ export const ImportFromLogs = ({ onImported }: { onImported: () => void }) => {
         stay empty for imported pulls.
       </p>
       <textarea
-        className="w-full min-h-[72px] rounded-md bg-card px-2 py-1.5 text-sm text-foreground-lighter border border-background"
+        className="w-full min-h-[72px] rounded-md bg-panel-deep px-2 py-1.5 text-sm text-foreground-lighter border border-panel-line"
         placeholder="https://www.warcraftlogs.com/reports/..."
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -3031,7 +3095,7 @@ export const UploadFromLog = ({
   }
 
   return (
-    <div className="w-full rounded-md border border-card bg-background/40 p-3 flex flex-col gap-y-2">
+    <div className="w-full rounded-lg border border-panel-line bg-panel p-4 flex flex-col gap-y-2">
       <div className="flex items-center">
         <h3 className="font-display text-base text-foreground-lighter">
           Upload pulls from your combat log
@@ -3069,7 +3133,7 @@ export const UploadFromLog = ({
       {files && files.length > 0 && (
         <div className="flex items-center gap-x-2 flex-wrap">
           <select
-            className="h-9 bg-card text-foreground-lighter rounded-md px-2 text-sm border border-background"
+            className="h-9 bg-panel-deep text-foreground-lighter rounded-md px-2 text-sm border border-panel-line"
             value={file}
             onChange={(e) => {
               setFile(e.target.value);
@@ -3110,7 +3174,7 @@ export const UploadFromLog = ({
             return (
               <label
                 key={key(b)}
-                className={`flex items-center gap-x-2 text-sm ${ok ? '' : 'opacity-50'}`}
+                className={`flex items-center gap-x-2 text-sm ${ok ? '' : 'text-foreground'}`}
               >
                 <input
                   type="checkbox"
