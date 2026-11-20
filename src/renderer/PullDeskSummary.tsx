@@ -657,7 +657,7 @@ export const AvoidablePanel = ({
   const numberCell = (value: number, muted: boolean, red = false) => (
     <td
       className={`px-2 py-1 text-right tabular-nums ${
-        red && value
+        red && value && !muted
           ? 'text-red-400'
           : value && !muted
             ? 'text-foreground-lighter'
@@ -3172,10 +3172,7 @@ export const UploadFromLog = ({
           {bosses.map((b) => {
             const ok = isTracked(b.difficultyId);
             return (
-              <label
-                key={key(b)}
-                className={`flex items-center gap-x-2 text-sm ${ok ? '' : 'text-foreground'}`}
-              >
+              <label key={key(b)} className="flex items-center gap-x-2 text-sm">
                 <input
                   type="checkbox"
                   className="accent-brand"
@@ -3189,9 +3186,14 @@ export const UploadFromLog = ({
                     )
                   }
                 />
-                <span className="text-foreground-lighter">
+                <span
+                  className={ok ? 'text-foreground-lighter' : 'text-foreground'}
+                >
                   {b.encounterName}
                 </span>
+                {!ok && (
+                  <span className="text-xs text-foreground">(not tracked)</span>
+                )}
                 <span className="text-foreground">
                   {difficultyName(b.difficultyId)} · {b.pulls}{' '}
                   {b.pulls === 1 ? 'pull' : 'pulls'}

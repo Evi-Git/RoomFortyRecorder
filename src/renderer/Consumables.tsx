@@ -1,5 +1,6 @@
 import React from 'react';
 import { getSpecClass, getWoWClassColor } from './rendererutils';
+import { PANEL_LINE } from './brand';
 
 /**
  * [RoomFortyRecorder] Consumables & buffs: what raiders had at each pull
@@ -194,7 +195,7 @@ const GearStrip = ({
                 ? 'rgba(92,196,138,0.35)'
                 : item.state === 'bad'
                   ? 'rgba(229,115,95,0.4)'
-                  : '#2A2521',
+                  : PANEL_LINE,
           }}
         >
           <span className="text-[13px] font-semibold text-foreground-lighter">

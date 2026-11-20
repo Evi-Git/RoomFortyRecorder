@@ -5,4 +5,6 @@
  * in step with --brand and --brand-soft in App.css.
  */
 export const BRAND = '#cca85c';
+/** Same as the `panel-line` Tailwind token, for inline styles. */
+export const PANEL_LINE = '#2A2521';
 export const BRAND_SOFT = '#debf7c';

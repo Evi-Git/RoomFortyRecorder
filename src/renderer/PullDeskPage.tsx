@@ -1091,7 +1091,7 @@ const PullDeskPage = (props: IProps) => {
               <span className="text-foreground">({d.raid.length})</span>
             </button>
             {raidOpen && (
-              <div className="mb-3 flex flex-wrap gap-1.5 pl-[46px] pr-3">
+              <div className="mb-3 flex flex-wrap gap-1.5 pl-[34px] pr-3">
                 {d.raid.length === 0 && (
                   <span className="text-foreground">None used.</span>
                 )}
@@ -1177,7 +1177,7 @@ const PullDeskPage = (props: IProps) => {
                     {player.uses.map((use) => (
                       <div
                         key={`${use.t}-${use.ability}`}
-                        className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
+                        className="flex items-center gap-x-2 py-1 pl-[34px] pr-2"
                       >
                         <span className="w-40 font-mono text-foreground">
                           {timeLabel(use.t)}
@@ -1588,7 +1588,7 @@ const PullDeskPage = (props: IProps) => {
                   {player.items.map((item) => (
                     <div
                       key={`${item.t}-${item.spellId}`}
-                      className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
+                      className="flex items-center gap-x-2 py-1 pl-[34px] pr-2"
                     >
                       <span className="w-40 font-mono text-foreground">
                         {mmss(item.t)}
@@ -1775,7 +1775,7 @@ const PullDeskPage = (props: IProps) => {
                   {spells.map((spell) => (
                     <div
                       key={spell.spellId}
-                      className="flex items-center gap-x-2 py-1 pl-[46px] pr-2"
+                      className="flex items-center gap-x-2 py-1 pl-[34px] pr-2"
                     >
                       <span className="w-40 truncate text-foreground-lighter">
                         {spell.spellName || `Spell ${spell.spellId}`}
