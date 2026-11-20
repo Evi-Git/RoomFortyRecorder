@@ -12,7 +12,7 @@ import {
   formatDuration,
   formatDurationLong,
   grouped,
-  percentValue,
+  bossPercent,
 } from './format';
 import React from 'react';
 import { ChevronDown, ChevronUp, Crown, Table2, LineChart } from 'lucide-react';
@@ -871,9 +871,9 @@ const BossNightCard = ({
           <Stat label="Kills" value={boss.kills} />
           <Stat
             label="Best"
-            value={boss.kills ? 'Kill' : percentValue(boss.bestPercent)}
+            value={boss.kills ? 'Kill' : bossPercent(boss.bestPercent)}
           />
-          <Stat label="Median wipe" value={percentValue(boss.medianPercent)} />
+          <Stat label="Median wipe" value={bossPercent(boss.medianPercent)} />
           <Stat
             label="Time in combat"
             value={formatDurationLong(boss.combatSeconds)}
@@ -962,7 +962,7 @@ const BossNightCard = ({
                           <span className="text-green-400">Kill</span>
                         ) : (
                           <span className="tabular-nums">
-                            {percentValue(p.bossPercent)}
+                            {bossPercent(p.bossPercent)}
                           </span>
                         )}
                       </td>
@@ -1494,7 +1494,7 @@ const ProgressionChart = ({
           {hovered ? (
             <>
               <div className="font-semibold text-sm text-foreground-lighter">
-                {hovered.kill ? 'Kill' : percentValue(hovered.percent)}
+                {hovered.kill ? 'Kill' : bossPercent(hovered.percent)}
               </div>
               <div className="text-foreground">
                 Pull {hovered.n} · {nightLabel(hovered.night)}
@@ -1510,7 +1510,7 @@ const ProgressionChart = ({
                 style={{ background: BRAND }}
               />
               <span className="text-foreground-lighter">
-                {percentValue(bestAt[hover])}
+                {bossPercent(bestAt[hover])}
               </span>
               {compare ? 'Room Forty best' : 'best so far'}
             </div>
@@ -1524,7 +1524,7 @@ const ProgressionChart = ({
               <span className="text-foreground-lighter">
                 {compareBest[hover] === 0
                   ? 'Killed'
-                  : percentValue(compareBest[hover])}
+                  : bossPercent(compareBest[hover])}
               </span>
               {compare.name} best
             </div>
@@ -2284,9 +2284,7 @@ export const ProgressionView = ({
                   value={
                     data.firstKill
                       ? `Pull ${data.firstKill.pull} · ${shortNight(data.firstKill.night)}`
-                      : percentValue(
-                          Number.isFinite(bestWipe) ? bestWipe : null,
-                        )
+                      : bossPercent(Number.isFinite(bestWipe) ? bestWipe : null)
                   }
                 />
               )}
@@ -2357,7 +2355,7 @@ export const ProgressionView = ({
                             {p.kill ? (
                               <span className="text-green-400">Kill</span>
                             ) : (
-                              percentValue(p.percent)
+                              bossPercent(p.percent)
                             )}
                           </td>
                           <td className="px-2 py-1 text-right">
@@ -2482,10 +2480,10 @@ export const ProgressionView = ({
                               {n.kills}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
-                              {n.kills ? 'Kill' : percentValue(n.bestPercent)}
+                              {n.kills ? 'Kill' : bossPercent(n.bestPercent)}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
-                              {percentValue(n.medianPercent)}
+                              {bossPercent(n.medianPercent)}
                             </td>
                             <td className="px-2 py-1 text-right tabular-nums">
                               {formatDurationLong(n.combatSeconds)}

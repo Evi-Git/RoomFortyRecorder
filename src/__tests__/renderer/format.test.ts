@@ -1,4 +1,5 @@
 import {
+  bossPercent,
   compact,
   fileSize,
   formatDuration,
@@ -52,6 +53,9 @@ describe('exact numbers and percentages', () => {
     expect(percentValue(12.34)).toBe('12.3%');
     expect(percentValue(null)).toBe('–');
     expect(percentValue(undefined)).toBe('–');
+    expect(bossPercent(12.4)).toBe('12%');
+    expect(bossPercent(69.6)).toBe('70%');
+    expect(bossPercent(null)).toBe('–');
     expect(percentSigned(3.21)).toBe('+3.2%');
     expect(percentSigned(-1)).toBe('-1.0%');
     expect(pct(1, 4)).toBe('25.00%');

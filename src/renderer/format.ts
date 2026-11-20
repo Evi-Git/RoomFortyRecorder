@@ -31,6 +31,10 @@ export const ratioPercent = (fraction: number, digits = 1) =>
 export const percentValue = (value: number | null | undefined, digits = 1) =>
   value === null || value === undefined ? '–' : `${value.toFixed(digits)}%`;
 
+/** Boss health left, as a whole number: "12%"; a dash when unknown. ("Kill" is the caller's.) */
+export const bossPercent = (value: number | null | undefined) =>
+  value === null || value === undefined ? '–' : `${Math.round(value)}%`;
+
 /** `part` of `whole` as a percentage; a dash when there is no whole. */
 export const pct = (part: number, whole: number, digits = 2) =>
   whole > 0 ? `${((part / whole) * 100).toFixed(digits)}%` : '–';
