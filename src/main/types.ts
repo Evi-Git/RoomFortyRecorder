@@ -828,5 +828,5 @@ export type PullUploadState = {
   /** Retry number, while `retrying`. */
   attempt?: number;
   /** The full combat log, once the report is in. */
-  full?: 'sending' | 'sent' | 'failed' | 'none';
+  full?: 'sending' | 'sent' | 'failed' | 'refused' | 'later' | 'none';
 };

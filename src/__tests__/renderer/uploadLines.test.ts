@@ -69,6 +69,10 @@ test('the full log sub-state is told honestly', () => {
   const failed = describeUpload({ ...base, full: 'failed' });
   expect(failed.tone).toBe('warn');
   expect(failed.text).toContain("full log wasn't sent");
+  expect(describeUpload({ ...base, full: 'later' }).text).toContain(
+    'automatic check',
+  );
+  expect(describeUpload({ ...base, full: 'refused' }).tone).toBe('warn');
   expect(describeUpload({ ...base, full: 'sent' }).text).toBe(
     describeUpload({ ...base, full: 'none' }).text,
   );

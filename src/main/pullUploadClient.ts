@@ -53,11 +53,15 @@ export const sendWithRetry = <T>(
   options: {
     onRetry?: (info: RetryInfo) => void;
     maxElapsedMs?: number;
+    classify?: RetryOptions['classify'];
+    shouldStop?: () => boolean;
   } = {},
 ): Promise<T> => {
   const retry: RetryOptions = {
     sleep,
     maxElapsedMs: options.maxElapsedMs,
+    classify: options.classify,
+    shouldStop: options.shouldStop,
     onAuth: async () => {
       await client.waitForSignIn(30_000);
       return client.pullDeskReady();

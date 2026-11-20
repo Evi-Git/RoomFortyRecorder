@@ -38,10 +38,44 @@ export const classify = (error: unknown): FailureClass => {
   return 'fatal';
 };
 
+const isTimeout = (error: unknown): boolean => {
+  const e = (error ?? {}) as { code?: unknown; message?: unknown };
+  return (
+    e.code === 'ECONNABORTED' ||
+    e.code === 'ETIMEDOUT' ||
+    /timeout/i.test(String(e.message ?? ''))
+  );
+};
+
+/** A request that timed out may still have reached the server. */
+export { isTimeout };
+
+/**
+ * The report PUT is not repeated after a timeout or a plain 500: the server
+ * may have stored the log and be analysing it, and a second copy would run a
+ * second analysis and a second Discord post. Only failures where nothing
+ * reached the server (no answer before the connection dropped, 429, 502, 503,
+ * 504) are retried; a 401 still waits for the sign-in.
+ */
+export const classifyReportPut = (error: unknown): FailureClass => {
+  const kind = classify(error);
+  if (kind !== 'retry') return kind;
+  const status = (error as ErrorLike | undefined)?.response?.status;
+  if (typeof status === 'number') {
+    return [429, 502, 503, 504].includes(status) ? 'retry' : 'fatal';
+  }
+  return isTimeout(error) ? 'fatal' : 'retry';
+};
+
+/** Whether giving up on this error should leave the pull waiting for later. */
+export const isRetryable = (error: unknown): boolean =>
+  classify(error) === 'retry';
+
 /** Wait before retry number `attempt` (1 is the first retry). */
 export const RETRY_DELAYS_MS = [5_000, 15_000, 45_000, 120_000, 300_000];
 
-/** Milliseconds to wait, or null once the retries are used up (~7 min). */
+/** Milliseconds to wait, or null once the retries are used up (5+15+45+120+300 s of waiting, plus the time each
+ * attempt itself takes). */
 export const nextDelay = (attempt: number): number | null => {
   const i = Math.floor(attempt) - 1;
   if (!Number.isFinite(i) || i < 0) return RETRY_DELAYS_MS[0];
@@ -64,9 +98,33 @@ export type RetryOptions = {
    * usable again. If not, the 401 is thrown.
    */
   onAuth?: () => Promise<boolean>;
+  /** Which errors to retry; the default is `classify`. */
+  classify?: (error: unknown) => FailureClass;
+  /** Checked during waits: true throws the last error (the app is busy). */
+  shouldStop?: () => boolean;
   /** Stop retrying if the next wait would pass this many ms since the start. */
   maxElapsedMs?: number;
   now?: () => number;
+};
+
+/** Sleep in short slices so `shouldStop` is noticed within a few seconds. */
+export const sleepUnlessStopped = async (
+  ms: number,
+  sleep: (ms: number) => Promise<void>,
+  shouldStop?: () => boolean,
+  slice = 5_000,
+) => {
+  if (!shouldStop) {
+    await sleep(ms);
+    return;
+  }
+  let left = ms;
+  while (left > 0 && !shouldStop()) {
+    const step = Math.min(slice, left);
+
+    await sleep(step);
+    left -= step;
+  }
 };
 
 /** Run `fn`, retrying what `classify` calls retryable, within the schedule. */
@@ -80,7 +138,7 @@ export const withRetry = async <T>(
     try {
       return await fn();
     } catch (error) {
-      const kind = classify(error);
+      const kind = (options.classify ?? classify)(error);
       if (kind === 'fatal') throw error;
       const delayMs = kind === 'auth' ? 0 : nextDelay(attempt);
       if (delayMs === null || (kind === 'auth' && attempt > 2)) throw error;
@@ -94,7 +152,8 @@ export const withRetry = async <T>(
       if (kind === 'auth') {
         if (!options.onAuth || !(await options.onAuth())) throw error;
       } else {
-        await options.sleep(delayMs);
+        await sleepUnlessStopped(delayMs, options.sleep, options.shouldStop);
+        if (options.shouldStop?.()) throw error;
       }
     }
   }
@@ -129,19 +188,53 @@ export const enqueue = <T>(
   return { queue: kept, dropped };
 };
 
-/** The oldest pull still worth sending, and what is left behind it. */
+/** Drop the pulls too old to be worth sending. */
+export const prune = <T>(
+  queue: readonly QueueEntry<T>[],
+  now: number,
+): { queue: QueueEntry<T>[]; dropped: QueueEntry<T>[] } => ({
+  queue: queue.filter((e) => now - e.at <= QUEUE_MAX_AGE_MS),
+  dropped: queue.filter((e) => now - e.at > QUEUE_MAX_AGE_MS),
+});
+
+/**
+ * The oldest pull still worth sending, and what is left behind it. Pulls in
+ * `skip` (already tried in this pass) are left in the queue, so a pull that
+ * fails again and is put back is not retried in a tight loop.
+ */
 export const takeNext = <T>(
   queue: readonly QueueEntry<T>[],
   now: number,
+  skip: ReadonlySet<T> = new Set(),
 ): {
   next: QueueEntry<T> | null;
   queue: QueueEntry<T>[];
   dropped: QueueEntry<T>[];
 } => {
-  const sorted = [...queue].sort((a, b) => a.at - b.at);
-  const dropped = sorted.filter((e) => now - e.at > QUEUE_MAX_AGE_MS);
-  const fresh = sorted.filter((e) => now - e.at <= QUEUE_MAX_AGE_MS);
-  return { next: fresh[0] ?? null, queue: fresh.slice(1), dropped };
+  const { queue: fresh, dropped } = prune(queue, now);
+  fresh.sort((a, b) => a.at - b.at);
+  const i = fresh.findIndex((e) => !skip.has(e.item));
+  if (i < 0) return { next: null, queue: fresh, dropped };
+  const [next] = fresh.splice(i, 1);
+  return { next, queue: fresh, dropped };
+};
+
+/** The automatic backfill gives up on a file after this many rechecks. */
+export const MAX_FILE_RECHECKS = 3;
+
+/**
+ * Rechecks of one saved log file, kept in the backfill's "done" map as
+ * "<file key>|<n>" so a changed file starts again. Returns the new value to
+ * store and whether to stop rechecking this file.
+ */
+export const recordRecheck = (
+  stored: string | undefined,
+  fileKey: string,
+  max = MAX_FILE_RECHECKS,
+): { value: string; giveUp: boolean } => {
+  const [key, n] = (stored ?? '').split('|');
+  const tries = (key === fileKey ? Number(n) || 0 : 0) + 1;
+  return { value: `${fileKey}|${tries}`, giveUp: tries >= max };
 };
 
 /**

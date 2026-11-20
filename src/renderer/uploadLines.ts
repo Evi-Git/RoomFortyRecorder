@@ -35,6 +35,18 @@ export const describeUpload = (u: PullUploadState): UploadLine => {
           text: `${when}: your log was used. The full log wasn't sent; it's tried again automatically later.`,
         };
       }
+      if (u.full === 'refused') {
+        return {
+          tone: 'warn',
+          text: `${when}: your log was used. The server didn't accept the full log.`,
+        };
+      }
+      if (u.full === 'later') {
+        return {
+          tone: 'good',
+          text: `${when}: your log was used. The full log will be sent by the automatic check.`,
+        };
+      }
       if (u.full === 'sending') {
         return {
           tone: 'good',

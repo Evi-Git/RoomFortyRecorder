@@ -1,5 +1,10 @@
 import {
   classify,
+  classifyReportPut,
+  isRetryable,
+  prune,
+  recordRecheck,
+  sleepUnlessStopped,
   enqueue,
   mayShowStatus,
   nextDelay,
@@ -235,5 +240,126 @@ describe('mayShowStatus', () => {
     expect(mayShowStatus({ startedAt: 10 }, { startedAt: 10 })).toBe(true);
     expect(mayShowStatus({ startedAt: 10 }, { startedAt: 20 })).toBe(true);
     expect(mayShowStatus({ startedAt: 20 }, { startedAt: 10 })).toBe(false);
+  });
+});
+
+describe('classifyReportPut', () => {
+  it('does not repeat after a timeout or a plain 500', () => {
+    expect(
+      classifyReportPut({ isAxiosError: true, code: 'ECONNABORTED' }),
+    ).toBe('fatal');
+    expect(classifyReportPut({ code: 'ETIMEDOUT' })).toBe('fatal');
+    expect(classifyReportPut(http(500))).toBe('fatal');
+    expect(classifyReportPut(http(408))).toBe('fatal');
+  });
+
+  it('retries what never reached the server', () => {
+    expect(classifyReportPut({ code: 'ECONNREFUSED' })).toBe('retry');
+    expect(classifyReportPut({ code: 'ECONNRESET' })).toBe('retry');
+    expect(classifyReportPut({ code: NOT_READY_CODE })).toBe('retry');
+    [429, 502, 503, 504].forEach((s) =>
+      expect(classifyReportPut(http(s))).toBe('retry'),
+    );
+    expect(classifyReportPut(http(401))).toBe('auth');
+    expect(classifyReportPut(http(413))).toBe('fatal');
+  });
+
+  it('is used by withRetry through the classify option', async () => {
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          throw { code: 'ECONNABORTED', isAxiosError: true };
+        },
+        { sleep: async () => {}, classify: classifyReportPut },
+      ),
+    ).rejects.toBeDefined();
+    expect(calls).toBe(1);
+  });
+});
+
+describe('isRetryable', () => {
+  it('is true only for retry-class errors', () => {
+    expect(isRetryable(http(503))).toBe(true);
+    expect(isRetryable(http(413))).toBe(false);
+    expect(isRetryable(http(401))).toBe(false);
+  });
+});
+
+describe('stopping during waits', () => {
+  it('sleeps in slices and stops when asked', async () => {
+    const slept: number[] = [];
+    let stop = false;
+    await sleepUnlessStopped(
+      20_000,
+      async (ms) => {
+        slept.push(ms);
+        if (slept.length === 2) stop = true;
+      },
+      () => stop,
+    );
+    expect(slept).toEqual([5000, 5000]);
+  });
+
+  it('withRetry throws the last error when told to stop', async () => {
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          throw http(503);
+        },
+        { sleep: async () => {}, shouldStop: () => true },
+      ),
+    ).rejects.toEqual(http(503));
+    expect(calls).toBe(1);
+  });
+});
+
+describe('requeueing', () => {
+  const NOW = 10_000_000_000;
+  const e = (item: string, minsAgo: number) => ({
+    at: NOW - minsAgo * 60_000,
+    item,
+  });
+
+  it('skips pulls already tried in this pass', () => {
+    const q = [e('A', 30), e('B', 10)];
+    const first = takeNext(q, NOW);
+    expect(first.next?.item).toBe('A');
+    // A fails again and goes back with its original time.
+    const back = enqueue(first.queue, first.next!, NOW).queue;
+    const second = takeNext(back, NOW, new Set(['A']));
+    expect(second.next?.item).toBe('B');
+    const third = takeNext(second.queue, NOW, new Set(['A', 'B']));
+    expect(third.next).toBeNull();
+    expect(third.queue.map((x) => x.item)).toEqual(['A']);
+  });
+
+  it('a requeued pull still expires', () => {
+    const old = e('A', QUEUE_MAX_AGE_MS / 60_000 + 1);
+    expect(prune([old, e('B', 1)], NOW).dropped).toEqual([old]);
+    expect(enqueue([], old, NOW).queue).toEqual([]);
+  });
+});
+
+describe('recordRecheck', () => {
+  it('counts rechecks per file key and gives up at 3', () => {
+    const a = recordRecheck(undefined, '5:100:1');
+    expect(a).toEqual({ value: '5:100:1|1', giveUp: false });
+    const b = recordRecheck(a.value, '5:100:1');
+    expect(b.giveUp).toBe(false);
+    expect(recordRecheck(b.value, '5:100:1')).toEqual({
+      value: '5:100:1|3',
+      giveUp: true,
+    });
+  });
+
+  it('starts again when the file changed', () => {
+    expect(recordRecheck('5:100:1|2', '5:200:2')).toEqual({
+      value: '5:200:2|1',
+      giveUp: false,
+    });
   });
 });

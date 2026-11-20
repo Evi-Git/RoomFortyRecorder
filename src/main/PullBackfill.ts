@@ -10,13 +10,24 @@ import PullLogCapture, {
 import { leadingFields } from 'parsing/PullLogFilter';
 import CloudClient from 'storage/CloudClient';
 import { sendWithRetry } from './pullUploadClient';
+import {
+  isRetryable,
+  MAX_FILE_RECHECKS,
+  recordRecheck,
+} from './pullUploadRetry';
 
-export type FullLogResult = 'sent' | 'failed' | 'none';
+// 'failed': gave up on a problem that may pass (worth another try later).
+// 'refused': the server said no (4xx); sending it again won't help.
+export type FullLogResult = 'sent' | 'failed' | 'refused' | 'none';
+
+// Retries of one full log stop after this long (each try can take 10 min).
+const FULL_LOG_RETRY_MS = 15 * 60 * 1000;
 
 /**
  * Sends every line of the pull (gzipped) for the Logs page, retrying network
- * trouble and 5xx on the pull upload schedule. 'none' when the pull has no
- * full log (it got too big); 'failed' when every try failed.
+ * trouble and 5xx on the pull upload schedule, for up to about 15 minutes.
+ * 'none' when the pull has no full log (it got too big). `shouldStop` (a raid
+ * pull started) ends the waits between tries by throwing Paused.
  */
 export const uploadFullLog = async (
   client: CloudClient,
@@ -24,6 +35,7 @@ export const uploadFullLog = async (
   pull: CapturedPull,
   // Lets the caller count the request as in flight (see PullDesk).
   track: <T>(request: () => Promise<T>) => Promise<T> = (request) => request(),
+  shouldStop?: () => boolean,
 ): Promise<FullLogResult> => {
   const full = await pull.full;
   if (!full) return 'none';
@@ -32,20 +44,25 @@ export const uploadFullLog = async (
     `${(full.length / 1e6).toFixed(1)} MB gzipped`,
   );
   try {
-    await sendWithRetry(client, `Full log ${pullId}`, () =>
-      track(() =>
-        client.pullDeskRequest(
-          'put',
-          `/pulls/${encodeURIComponent(pullId)}/full`,
-          full,
-          { contentType: 'application/gzip', timeout: 600000 },
+    await sendWithRetry(
+      client,
+      `Full log ${pullId}`,
+      () =>
+        track(() =>
+          client.pullDeskRequest(
+            'put',
+            `/pulls/${encodeURIComponent(pullId)}/full`,
+            full,
+            { contentType: 'application/gzip', timeout: 600000 },
+          ),
         ),
-      ),
+      { maxElapsedMs: FULL_LOG_RETRY_MS, shouldStop },
     );
     return 'sent';
   } catch (error) {
+    if (shouldStop?.() && isRetryable(error)) throw new Error('Paused');
     console.warn('[PullBackfill] Full log upload failed', String(error));
-    return 'failed';
+    return isRetryable(error) ? 'failed' : 'refused';
   }
 };
 
@@ -269,7 +286,12 @@ export default class PullBackfill {
       capture.onLine(line);
       while (queue.length) {
         // One pull at a time, so memory stays at one pull's log.
-        await this.send(client, queue.shift() as CapturedPull, hints);
+        await this.send(
+          client,
+          queue.shift() as CapturedPull,
+          hints,
+          shouldStop,
+        );
       }
     }
   }
@@ -278,6 +300,7 @@ export default class PullBackfill {
     client: CloudClient,
     pull: CapturedPull,
     hints: BossPercentHint[],
+    shouldStop: () => boolean,
   ) {
     this.status.found += 1;
     const hint = hints
@@ -322,12 +345,21 @@ export default class PullBackfill {
         body,
         { contentType: 'application/gzip', timeout: 180000 },
       );
-      const full = await uploadFullLog(client, claim.pullId, pull);
+      const full = await uploadFullLog(
+        client,
+        claim.pullId,
+        pull,
+        undefined,
+        shouldStop,
+      );
       this.status.uploaded += 1;
-      // The report is in, but the full log isn't: count it as failed so the
-      // automatic check looks at this file again instead of marking it done.
+      // The report is in, but the full log isn't and may still go: count it as
+      // failed so the automatic check looks at this file again (a few times)
+      // instead of marking it done. A refusal (4xx) won't change: done.
       if (full === 'failed') this.status.failed += 1;
     } catch (error) {
+      // A raid pull started during a retry wait: stop the whole run.
+      if ((error as Error)?.message === 'Paused') throw error;
       console.warn('[PullBackfill] Pull failed', String(error));
       this.status.failed += 1;
     }
@@ -482,8 +514,23 @@ export default class PullBackfill {
           }
         }
         // Checked; look again only if the file changes (or a pull failed).
+        if (!complete) {
+          // Give up on a file after a few rechecks, so a log the server
+          // keeps failing on isn't sent every half hour for a week.
+          const again = recordRecheck(done[`${f.name}#tries`], doneKey(f));
+          if (again.giveUp) {
+            console.warn(
+              `[PullBackfill] ${f.name}: still failing after ${MAX_FILE_RECHECKS} checks, leaving it`,
+            );
+            complete = true;
+          } else {
+            done[`${f.name}#tries`] = again.value;
+            await this.writeDone(done);
+          }
+        }
         if (complete) {
           done[f.name] = doneKey(f);
+          delete done[`${f.name}#tries`];
           await this.writeDone(done);
         }
       }
