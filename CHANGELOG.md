@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.148] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Changed
+- **Resets no longer count as pulls.** Pulls under 10 seconds are resets: the guild server no longer numbers them or counts them in pulls, Night summary, Progression, Trends, "Why pulls ended", consumables or the top-guild comparison (that one updates on its next daily crawl). The first real pull is #1, and older nights are renumbered automatically.
+- With "Show resets" on, resets show as "Reset" instead of a pull number, in the right order, and the Night summary pull table hides them unless the switch is on. A boss pulled only as resets is left out of the boss strip unless the switch is on.
+- **"Why pulls ended" shows one row per ability:** "Venom Roar" and "Venom Roar (raid-wide)" are now one row, with how many of those pulls were raid-wide. Saved filters that excluded the "(raid-wide)" row are converted.
+- Resets are never posted to Discord.
+- A 10–19 second wipe with no deaths now counts as a pull ("Wipe with no player deaths") instead of "Reset".
+
 ## [1.9.147] - Unreleased
 ### Fixed
 - **Queries, Deaths:** the ready-made Deaths query now counts only raiders' deaths, like the Deaths tab (it was counting enemy deaths too). New filter fields `source.raider` and `target.raider` (true or false) are in the "?" help.
