@@ -912,12 +912,58 @@ export const scenes = [
     },
   },
 
+  {
+    name: 'admin-view-as-open',
+    shows: 'Admin: the "view as role" select open (shared select)',
+    steps: async (t) => {
+      await t.nav('Admin');
+      await t.settle(800);
+      await t.page.getByRole('combobox', { name: 'Role to view as' }).click();
+      await t.settle(400);
+    },
+  },
+  {
+    name: 'admin-locked-checkbox',
+    shows: 'Admin: a locked checkbox (Everyone has the permission) hovered: the tooltip says why',
+    steps: async (t) => {
+      await t.nav('Admin');
+      await t.settle(800);
+      const first = t.page.locator('tbody tr').nth(1);
+      const boxes = first.locator('input[type=checkbox]');
+      const n = await boxes.count();
+      await t.page.locator('thead th').last().waitFor();
+      if (n > 2) {
+        // See Analysis already has Everyone ticked, so the role boxes are locked.
+        await boxes.nth(1).hover();
+      }
+      await t.settle(900);
+    },
+  },
+  {
+    name: 'admin-fail',
+    shows: 'Admin: the guild server did not answer (ErrorState with Try again)',
+    init: { answers: { 'pullDesk:permissions': { ok: false, error: 'connect ECONNREFUSED' } } },
+    steps: async (t) => {
+      await t.nav('Admin');
+      await t.settle(1000);
+    },
+  },
+
   // ---- Dialogs and notices -------------------------------------------------
   {
     name: 'bug-report-dialog',
     shows: 'Bug report dialog',
     steps: async (t) => {
       await t.page.locator('svg.lucide-bug').locator('xpath=..').click();
+      await t.settle();
+    },
+  },
+  {
+    name: 'bug-report-typed',
+    shows: 'Bug report dialog with some text typed (Send enabled)',
+    steps: async (t) => {
+      await t.page.locator('svg.lucide-bug').locator('xpath=..').click();
+      await t.page.getByRole('textbox', { name: 'What went wrong' }).fill('The meters page freezes when I switch nights.');
       await t.settle();
     },
   },

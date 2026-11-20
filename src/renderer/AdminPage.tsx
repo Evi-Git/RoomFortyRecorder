@@ -466,199 +466,205 @@ const AdminPage = () => {
             )}
           </Card>
 
-          <Card
-            title="Permissions by Discord role"
-            aside={
-              <>
-                {unusedRoles.length > 0 && (
-                  <SimpleSelect
-                    className="h-8 w-48 text-xs"
-                    aria-label="Add a role column"
-                    value=""
-                    placeholder="Add a role column…"
-                    onChange={addColumn}
-                    options={unusedRoles.map((r) => ({
-                      value: r.name.toLowerCase(),
-                      label: r.name,
-                    }))}
-                  />
-                )}
-                {!columns.includes(EVERYONE) && (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => addColumn(EVERYONE)}
-                  >
-                    + Everyone
-                  </Button>
-                )}
-              </>
-            }
-          >
-            {!table && !error && <LoadingState label="Loading permissions…" />}
-            {table?.roleError && (
-              <p className="m-0 text-xs text-warning">
-                Couldn&apos;t load the Discord roles ({table.roleError}); role
-                names show as saved.
-              </p>
-            )}
-            {table && (
-              <div className={TABLE_BOX}>
-                <table className="text-sm border-collapse w-full">
-                  <thead>
-                    <tr>
-                      <th className={`${TH} text-left min-w-[260px]`}>
-                        Permission
-                      </th>
-                      <th className={`${TH} text-center`}>You</th>
-                      {columns.map((role) => (
-                        <th key={role} className={`${TH} text-center`}>
-                          <span className="inline-flex items-center gap-x-1.5">
-                            {role !== EVERYONE && (
-                              <span
-                                className="w-2 h-2 rounded-full"
-                                style={{
-                                  background: roleColor(
-                                    roleByName.get(role)?.color ?? 0,
-                                  ),
-                                }}
-                              />
-                            )}
-                            <span className="text-foreground-lighter">
-                              {label(role)}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label={`Hide ${label(role)}`}
-                              title="Hide this column (its permissions stay)"
-                              onClick={() => removeColumn(role)}
-                              className="rounded-sm text-foreground hover:text-foreground-lighter focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                            >
-                              <X size={12} />
-                            </button>
-                          </span>
+          {(table || !error) && (
+            <Card
+              title="Permissions by Discord role"
+              aside={
+                <>
+                  {unusedRoles.length > 0 && (
+                    <SimpleSelect
+                      className="h-8 w-48 text-xs"
+                      aria-label="Add a role column"
+                      value=""
+                      placeholder="Add a role column…"
+                      onChange={addColumn}
+                      options={unusedRoles.map((r) => ({
+                        value: r.name.toLowerCase(),
+                        label: r.name,
+                      }))}
+                    />
+                  )}
+                  {!columns.includes(EVERYONE) && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => addColumn(EVERYONE)}
+                    >
+                      + Everyone
+                    </Button>
+                  )}
+                </>
+              }
+            >
+              {!table && !error && (
+                <LoadingState label="Loading permissions…" />
+              )}
+              {table?.roleError && (
+                <ErrorState
+                  error={table.roleError}
+                  what="Couldn't load the Discord roles (names show as saved)"
+                  onRetry={() => setTick((t) => t + 1)}
+                  compact
+                />
+              )}
+              {table && (
+                <div className={TABLE_BOX}>
+                  <table className="text-sm border-collapse w-full">
+                    <thead>
+                      <tr>
+                        <th className={`${TH} text-left min-w-[260px]`}>
+                          Permission
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groups.map((group) => (
-                      <React.Fragment key={group}>
-                        <tr className="border-t border-panel-line bg-panel">
-                          <td
-                            colSpan={columns.length + 2}
-                            className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-brand"
-                          >
-                            {group}
-                          </td>
-                        </tr>
-                        {table.capabilities
-                          .filter((c) => c.group === group)
-                          .map((cap) => {
-                            const list = grants[cap.key] ?? [];
-                            const everyone = list.includes(EVERYONE);
-                            return (
-                              <tr key={cap.key} className={ROW}>
-                                <td className="px-3 py-1.5">
-                                  <div className="text-foreground-lighter">
-                                    {cap.label}
-                                  </div>
-                                  <div className="text-[11px] text-foreground">
-                                    {cap.help}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-1.5 text-center">
-                                  <Tooltip
-                                    content="You always have every permission"
-                                    side="top"
-                                  >
-                                    <span className="inline-flex">
-                                      <Check
-                                        size={14}
-                                        aria-label="You always have this"
-                                        className="text-foreground"
-                                      />
-                                    </span>
-                                  </Tooltip>
-                                </td>
-                                {columns.map((role) => {
-                                  const direct = list.includes(role);
-                                  const implied = !direct && everyone;
-                                  const box = (
-                                    <input
-                                      type="checkbox"
-                                      aria-label={`${cap.label}: ${label(role)}`}
-                                      checked={direct || implied}
-                                      disabled={implied}
-                                      onChange={() => toggle(cap.key, role)}
-                                      className="w-4 h-4 accent-[hsl(var(--brand))] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                                    />
-                                  );
-                                  return (
-                                    <td
-                                      key={role}
-                                      className="px-3 py-1.5 text-center"
+                        <th className={`${TH} text-center`}>You</th>
+                        {columns.map((role) => (
+                          <th key={role} className={`${TH} text-center`}>
+                            <span className="inline-flex items-center gap-x-1.5">
+                              {role !== EVERYONE && (
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{
+                                    background: roleColor(
+                                      roleByName.get(role)?.color ?? 0,
+                                    ),
+                                  }}
+                                />
+                              )}
+                              <span className="text-foreground-lighter">
+                                {label(role)}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`Hide ${label(role)}`}
+                                title="Hide this column (its permissions stay)"
+                                onClick={() => removeColumn(role)}
+                                className="rounded-sm text-foreground hover:text-foreground-lighter focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groups.map((group) => (
+                        <React.Fragment key={group}>
+                          <tr className="border-t border-panel-line bg-panel">
+                            <td
+                              colSpan={columns.length + 2}
+                              className="px-3 pt-3 pb-1 text-xs uppercase tracking-wide text-brand"
+                            >
+                              {group}
+                            </td>
+                          </tr>
+                          {table.capabilities
+                            .filter((c) => c.group === group)
+                            .map((cap) => {
+                              const list = grants[cap.key] ?? [];
+                              const everyone = list.includes(EVERYONE);
+                              return (
+                                <tr key={cap.key} className={ROW}>
+                                  <td className="px-3 py-1.5">
+                                    <div className="text-foreground-lighter">
+                                      {cap.label}
+                                    </div>
+                                    <div className="text-[11px] text-foreground">
+                                      {cap.help}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    <Tooltip
+                                      content="You always have every permission"
+                                      side="top"
                                     >
-                                      {implied ? (
-                                        <Tooltip
-                                          content="Locked: Everyone has this already, so every role does. Untick it under Everyone to change it."
-                                          side="top"
-                                          maxWidth={240}
-                                        >
-                                          <span className="inline-flex">
-                                            {box}
-                                          </span>
-                                        </Tooltip>
-                                      ) : (
-                                        box
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className="flex items-center gap-x-2 flex-wrap">
-              <Button size="sm" disabled={!dirty || busy} onClick={save}>
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!dirty || busy}
-                onClick={() => setTick((t) => t + 1)}
-              >
-                Discard changes
-              </Button>
-              {table?.customized && (
+                                      <span className="inline-flex">
+                                        <Check
+                                          size={14}
+                                          aria-label="You always have this"
+                                          className="text-foreground"
+                                        />
+                                      </span>
+                                    </Tooltip>
+                                  </td>
+                                  {columns.map((role) => {
+                                    const direct = list.includes(role);
+                                    const implied = !direct && everyone;
+                                    const box = (
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`${cap.label}: ${label(role)}`}
+                                        checked={direct || implied}
+                                        disabled={implied}
+                                        onChange={() => toggle(cap.key, role)}
+                                        className="w-4 h-4 accent-[hsl(var(--brand))] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                      />
+                                    );
+                                    return (
+                                      <td
+                                        key={role}
+                                        className="px-3 py-1.5 text-center"
+                                      >
+                                        {implied ? (
+                                          <Tooltip
+                                            content="Locked: Everyone has this already, so every role does. Untick it under Everyone to change it."
+                                            side="top"
+                                            maxWidth={240}
+                                          >
+                                            <span className="inline-flex">
+                                              {box}
+                                            </span>
+                                          </Tooltip>
+                                        ) : (
+                                          box
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="flex items-center gap-x-2 flex-wrap">
+                <Button size="sm" disabled={!dirty || busy} onClick={save}>
+                  Save
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={busy}
-                  onClick={reset}
+                  disabled={!dirty || busy}
+                  onClick={() => setTick((t) => t + 1)}
                 >
-                  <RotateCcw size={14} className="mr-1" /> Reset to .env
-                  defaults
+                  Discard changes
                 </Button>
-              )}
-              <span className="text-xs text-foreground ml-auto">
-                {table?.updatedAt
-                  ? `Last saved ${dateTime(table.updatedAt)} by ${table.updatedBy}`
-                  : 'Using the defaults from the server .env'}
-              </span>
-            </div>
-            <p className="text-xs text-foreground m-0">
-              Someone with several roles gets everything any of them allows. Who
-              can sign in at all is still set by
-              GUILD_CLOUD_DISCORD_ALLOWED_ROLES on the server.
-            </p>
-          </Card>
+                {table?.customized && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={reset}
+                  >
+                    <RotateCcw size={14} className="mr-1" /> Reset to .env
+                    defaults
+                  </Button>
+                )}
+                <span className="text-xs text-foreground ml-auto">
+                  {table?.updatedAt
+                    ? `Last saved ${dateTime(table.updatedAt)} by ${table.updatedBy}`
+                    : 'Using the defaults from the server .env'}
+                </span>
+              </div>
+              <p className="text-xs text-foreground m-0">
+                Someone with several roles gets everything any of them allows.
+                Who can sign in at all is still set by
+                GUILD_CLOUD_DISCORD_ALLOWED_ROLES on the server.
+              </p>
+            </Card>
+          )}
 
           <MembersCard />
         </div>
