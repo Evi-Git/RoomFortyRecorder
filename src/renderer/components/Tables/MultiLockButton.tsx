@@ -6,6 +6,7 @@ import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
 import { FolderLocked } from 'renderer/icons/FolderLocked';
 import { FolderUnlocked } from 'renderer/icons/FolderUnlocked';
+import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
 
 type MultiLockButtonProps = {
   language: Language;
@@ -25,10 +26,11 @@ const MultiLockButton = (props: MultiLockButtonProps) => {
   const tooltip =
     getLocalePhrase(language, Phrase.OpenLockDialog) + ` (${locked}/${total})`;
 
-  const icon = [parent, ...parent.multiPov].some((rv) => rv.isProtected) ? (
-    <FolderLocked size={20} />
+  const anyLocked = [parent, ...parent.multiPov].some((rv) => rv.isProtected);
+  const icon = anyLocked ? (
+    <FolderLocked size={ROW_ICON_SIZE + 2} />
   ) : (
-    <FolderUnlocked size={20} />
+    <FolderUnlocked size={ROW_ICON_SIZE + 2} />
   );
 
   return (
@@ -37,6 +39,7 @@ const MultiLockButton = (props: MultiLockButtonProps) => {
         <Button
           variant="ghost"
           size="xs"
+          className={rowButtonClass(anyLocked)}
           onClick={(event) => {
             stopPropagation(event);
             setLockDialogVideoTargetId(parent.uniqueId);

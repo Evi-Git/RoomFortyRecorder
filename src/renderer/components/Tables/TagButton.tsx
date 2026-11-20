@@ -8,6 +8,7 @@ import { Dispatch, SetStateAction } from 'react';
 import { MessageSquare, MessageSquareMore } from 'lucide-react';
 import { FolderMessageSquareMore } from 'renderer/icons/FolderMessageSquareMore';
 import { FolderMessageSquare } from 'renderer/icons/FolderMessageSquare';
+import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
 
 type TagButtonProps = {
   language: Language;
@@ -31,6 +32,7 @@ const TagButton = (props: TagButtonProps) => {
           <Button
             variant="ghost"
             size="xs"
+            className={rowButtonClass()}
             onClick={(event) => {
               stopPropagation(event);
               setTagDialogVideoTargetId(video.uniqueId);
@@ -38,9 +40,9 @@ const TagButton = (props: TagButtonProps) => {
             }}
           >
             {foundTag ? (
-              <FolderMessageSquareMore size={18} />
+              <FolderMessageSquareMore size={ROW_ICON_SIZE} />
             ) : (
-              <FolderMessageSquare size={18} />
+              <FolderMessageSquare size={ROW_ICON_SIZE} />
             )}
           </Button>
         </div>
@@ -50,7 +52,7 @@ const TagButton = (props: TagButtonProps) => {
 
   const noPermission = !cloudStatus.write && group.some((v) => v.cloud);
   let tag = '';
-  let icon = <MessageSquare size={18} />;
+  let icon = <MessageSquare size={ROW_ICON_SIZE} />;
 
   let tooltip = noPermission
     ? getLocalePhrase(language, Phrase.GuildNoPermission)
@@ -58,7 +60,7 @@ const TagButton = (props: TagButtonProps) => {
 
   if (foundTag) {
     tag = foundTag;
-    icon = <MessageSquareMore size={18} />;
+    icon = <MessageSquareMore size={ROW_ICON_SIZE} />;
 
     if (tag.length > 50) {
       tooltip = `${tag.slice(0, 50)}...`;
@@ -73,6 +75,7 @@ const TagButton = (props: TagButtonProps) => {
         <Button
           variant="ghost"
           size="xs"
+          className={rowButtonClass()}
           disabled={noPermission}
           onClick={(event) => {
             stopPropagation(event);

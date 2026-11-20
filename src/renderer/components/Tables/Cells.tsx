@@ -7,7 +7,7 @@ import {
 } from 'main/types';
 import {
   getVideoResultText,
-  getResultColor,
+  raidResultToPercent,
   getFormattedDuration,
   dateToHumanReadable,
   stopPropagation,
@@ -35,6 +35,7 @@ import {
   MessageSquare,
   MessageSquareMore,
 } from 'lucide-react';
+import * as React from 'react';
 import { Dispatch, SetStateAction } from 'react';
 import { dungeonAffixesById } from 'main/constants';
 import wcrIcon from '../../../../assets/icon/small-icon.png';
@@ -45,6 +46,12 @@ import SaveIcon from '@mui/icons-material/Save';
 import CloudIcon from '@mui/icons-material/Cloud';
 import MultiTagButton from './MultiTagButton';
 import { BRAND } from 'renderer/brand';
+import BossBar from '../BossBar/BossBar';
+import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
+
+/** The shape shared by every result pill (kill, timed, depleted...). */
+const PILL =
+  'inline-flex h-[22px] items-center rounded-full border px-2 text-xs font-semibold whitespace-nowrap';
 
 export const populateResultCell = (
   info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
@@ -52,12 +59,64 @@ export const populateResultCell = (
 ) => {
   const video = info.getValue() as RendererVideo;
   const resultText = getVideoResultText(video, language);
-  const resultColor = getResultColor(video);
+
+  if (isRaidUtil(video)) {
+    if (video.result) {
+      return (
+        <span className={`${PILL} border-green-400/50 text-green-400`}>
+          {resultText}
+        </span>
+      );
+    }
+
+    const bossPercent = raidResultToPercent(video);
+
+    if (typeof bossPercent === 'number') {
+      // A wipe: how far the boss got, as a bar and the number.
+      return (
+        <span className="inline-flex items-center gap-x-2 text-[13px] tabular-nums text-foreground-lighter">
+          <BossBar bossPercent={bossPercent} kill={false} className="w-12" />
+          {resultText}
+        </span>
+      );
+    }
+
+    return <span className="text-[13px] text-foreground">{resultText}</span>;
+  }
+
+  if (isMythicPlusUtil(video)) {
+    if (!video.result) {
+      // Abandoned.
+      return (
+        <span className={`${PILL} border-panel-line text-foreground`}>
+          {resultText}
+        </span>
+      );
+    }
+
+    if (video.upgradeLevel !== undefined && video.upgradeLevel < 1) {
+      // Finished, but over the time limit.
+      return (
+        <span className={`${PILL} border-warning-border text-warning`}>
+          {resultText}
+        </span>
+      );
+    }
+
+    return (
+      <span className={`${PILL} border-green-400/50 text-green-400`}>
+        {resultText}
+      </span>
+    );
+  }
 
   return (
     <span
-      className="text-white font-sans font-semibold text-sm text-shadow-instance text-center"
-      style={{ color: resultColor }}
+      className={
+        video.result
+          ? `${PILL} border-green-400/50 text-green-400`
+          : `${PILL} border-panel-line text-foreground`
+      }
     >
       {resultText}
     </span>
@@ -75,14 +134,20 @@ export const populateEncounterNameCell = (
   info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const encounter = info.getValue() as string;
-  return <div className="truncate">{encounter}</div>;
+  return (
+    <div className="truncate font-medium text-foreground-lighter">
+      {encounter}
+    </div>
+  );
 };
 
 export const populateMapCell = (
   info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const map = info.getValue() as string;
-  return <div className="truncate">{map}</div>;
+  return (
+    <div className="truncate font-medium text-foreground-lighter">{map}</div>
+  );
 };
 
 export const populateDateCell = (
@@ -108,9 +173,14 @@ export const populateActivityCell = (
     activity = video.zoneName;
   }
 
-  return <div className="truncate">{activity}</div>;
+  return (
+    <div className="truncate font-medium text-foreground-lighter">
+      {activity}
+    </div>
+  );
 };
 
+/** The protect column: just the lock, brass when protected. */
 export const populateDetailsCell = (
   ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
   language: Language,
@@ -118,13 +188,12 @@ export const populateDetailsCell = (
   setVideoState: Dispatch<SetStateAction<RendererVideo[]>>,
   setDialog: Dispatch<SetStateAction<DialogType>>,
   setLockDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
-  setTagDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
 ) => {
   const video = ctx.row.original;
   const group = [video, ...video.multiPov];
 
   return (
-    <Box className="inline-flex">
+    <div className="flex items-center">
       {group.length > 1 ? (
         <MultiLockButton
           language={language}
@@ -140,7 +209,27 @@ export const populateDetailsCell = (
           setVideoState={setVideoState}
         />
       )}
+    </div>
+  );
+};
 
+/**
+ * The actions at the end of a row: the tag, then whatever the category adds
+ * (the kill video creator on raids, the source recording on clips).
+ */
+export const populateActionsCell = (
+  ctx: CellContext<typeof stockFeatures, RendererVideo, unknown>,
+  language: Language,
+  cloudStatus: CloudStatus,
+  setDialog: Dispatch<SetStateAction<DialogType>>,
+  setTagDialogVideoTargetId: Dispatch<SetStateAction<string | null>>,
+  extra?: React.ReactNode,
+) => {
+  const video = ctx.row.original;
+  const group = [video, ...video.multiPov];
+
+  return (
+    <div className="flex items-center justify-end">
       {group.length > 1 ? (
         <MultiTagButton
           language={language}
@@ -157,7 +246,8 @@ export const populateDetailsCell = (
           setTagDialogVideoTargetId={setTagDialogVideoTargetId}
         />
       )}
-    </Box>
+      {extra}
+    </div>
   );
 };
 
@@ -181,20 +271,19 @@ export const populateSourceCell = (
   };
 
   return (
-    <Box className="inline-flex">
-      <Tooltip content={tooltip}>
-        <div>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={goToSource}
-            disabled={disabled}
-          >
-            <ExternalLink size={18} />
-          </Button>
-        </div>
-      </Tooltip>
-    </Box>
+    <Tooltip content={tooltip}>
+      <div>
+        <Button
+          variant="ghost"
+          size="xs"
+          className={rowButtonClass()}
+          onClick={goToSource}
+          disabled={disabled}
+        >
+          <ExternalLink size={ROW_ICON_SIZE} />
+        </Button>
+      </div>
+    </Tooltip>
   );
 };
 
@@ -224,11 +313,12 @@ export const populateKillVideoCell = (
   }
 
   return (
-    <Box className="inline-flex">
-      <Tooltip content={tooltip}>
+    <Tooltip content={tooltip}>
+      <div>
         <Button
           variant="ghost"
           size="xs"
+          className={rowButtonClass()}
           disabled={disabled}
           onClick={(event) => {
             stopPropagation(event);
@@ -236,10 +326,10 @@ export const populateKillVideoCell = (
             setDialog(DialogType.KILL);
           }}
         >
-          <Clapperboard size={18} />
+          <Clapperboard size={ROW_ICON_SIZE} />
         </Button>
-      </Tooltip>
-    </Box>
+      </div>
+    </Tooltip>
   );
 };
 
@@ -247,7 +337,9 @@ export const populateLevelCell = (
   info: CellContext<typeof stockFeatures, RendererVideo, unknown>,
 ) => {
   const video = info.getValue() as RendererVideo;
-  return `+${video.keystoneLevel || video.level || 0}`;
+  return (
+    <span className="font-medium text-foreground-lighter">{`+${video.keystoneLevel || video.level || 0}`}</span>
+  );
 };
 
 export const populateAffixesCell = (
@@ -303,7 +395,7 @@ export const populateViewpointCell = (
   if (!player || !player._specID) {
     // We don't have enough to render a spec icon and name so
     // just return the viewpoint count.
-    return <div>{count}</div>;
+    return <div className="text-foreground">{count}</div>;
   }
 
   const playerClass = getPlayerClass(first);
@@ -318,43 +410,33 @@ export const populateViewpointCell = (
     specIcon = wcrIcon;
   }
 
-  const renderSpecAndName = () => {
-    return (
-      <>
-        <Box
-          key={player._GUID}
-          component="img"
-          src={specIcon}
-          className="bg-background-higher"
-          sx={{
-            display: 'flex',
-            height: '25px',
-            width: '25px',
-            border: '1px solid black',
-            borderRadius: '15%',
-            boxSizing: 'border-box',
-            objectFit: 'cover',
-          }}
-        />
-        <div
-          className="font-sans font-semibold text-md text-shadow-instance mx-1 truncate"
-          style={{ color: playerClassColor }}
-        >
-          {playerName}
-        </div>
-      </>
-    );
-  };
-
-  const renderRemainingCount = () => {
-    if (count > 1) return <div>{`+${count - 1}`}</div>;
-    return <></>;
-  };
-
   return (
-    <div className="flex truncate">
-      {renderSpecAndName()}
-      {renderRemainingCount()}
+    <div className="flex min-w-0 items-center gap-x-2">
+      <Box
+        key={player._GUID}
+        component="img"
+        src={specIcon}
+        className="bg-panel-deep shrink-0"
+        sx={{
+          display: 'flex',
+          height: '22px',
+          width: '22px',
+          border: '1px solid',
+          borderColor: 'hsl(var(--border))',
+          borderRadius: '15%',
+          boxSizing: 'border-box',
+          objectFit: 'cover',
+        }}
+      />
+      <div
+        className="min-w-0 truncate text-sm font-medium"
+        style={{ color: playerClassColor }}
+      >
+        {playerName}
+      </div>
+      {count > 1 && (
+        <div className="shrink-0 text-[13px] text-foreground">{`+${count - 1}`}</div>
+      )}
     </div>
   );
 };

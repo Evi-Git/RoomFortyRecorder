@@ -27,7 +27,10 @@ import {
   ArrowRightToLine,
   Cloud,
 } from 'lucide-react';
-import { getLocalePhrase } from 'localisation/translations';
+import {
+  getLocaleCategoryLabel,
+  getLocalePhrase,
+} from 'localisation/translations';
 import { VideoCategory } from '../types/VideoCategory';
 import SearchBar from './SearchBar';
 import VideoMarkerToggles from './VideoMarkerToggles';
@@ -41,7 +44,6 @@ import {
   lockVideos,
   povDiskFirstNameSort,
 } from './rendererutils';
-import Separator from './components/Separator/Separator';
 import { Button } from './components/Button/Button';
 import VideoSelectionTable from './components/Tables/VideoSelectionTable';
 import DeleteDialog from './DeleteDialog';
@@ -50,7 +52,6 @@ import VideoFilter from './VideoFilter';
 import { Resizable, ResizeCallback } from 're-resizable';
 import { Direction } from 're-resizable/lib/resizer';
 import VideoPlayer, { VideoPlayerRef } from './VideoPlayer';
-import Label from './components/Label/Label';
 import ViewpointSelection from './components/Viewpoints/ViewpointSelection';
 import useVideoSelectionTable from './components/Tables/useVideoSelectionTable';
 import { Tooltip } from './components/Tooltip/Tooltip';
@@ -64,6 +65,8 @@ import ConfirmChatNamePrompt from './ConfirmChatNamePrompt';
 import LockDialog from './LockDialog';
 import TagDialog from './TagDialog';
 import KillVideoDialog from './KillVideoDialog';
+import { PageHeader } from './components/PageHeader/PageHeader';
+import { EmptyState } from './components/States/States';
 
 interface IProps {
   category: VideoCategory;
@@ -77,17 +80,21 @@ interface IProps {
 
 const DEFAULT_PLAYER_HEIGHT = 500;
 
+/** A 36 px icon button in the header's selection actions. */
+const ACTION_BUTTON =
+  'h-9 w-9 p-0 rounded-lg border border-panel-line bg-panel text-foreground hover:bg-panel-raised hover:text-foreground-lighter';
+
 /**
  * How tall the player shows, and the most it can be dragged to. The height
  * the user chose stays in `playerHeightRef`; a short window only limits what
  * shows, so the player grows back when the window does. An untouched player
- * (the default) also leaves room for the toolbar and a few table rows.
+ * (the default) also leaves room for the header, the filter bar and a few table rows.
  */
 const playerHeights = (chosen: number, windowHeight: number) => {
   const max = Math.max(280, windowHeight - 96);
   const shown =
     chosen === DEFAULT_PLAYER_HEIGHT
-      ? Math.min(chosen, Math.max(280, windowHeight - 322))
+      ? Math.min(chosen, Math.max(280, windowHeight - 392))
       : Math.min(chosen, max);
   return { shown, max };
 };
@@ -361,7 +368,7 @@ const CategoryPage = (props: IProps) => {
     return (
       // [RoomFortyRecorder] Narrower on smaller windows so the player and
       // its controls keep their room (the page used to overflow).
-      <div className="w-[clamp(320px,32vw,500px)] shrink-0 h-full bg-background-higher flex flex-col mx-2 gap-y-2">
+      <div className="w-[clamp(320px,32vw,500px)] shrink-0 h-full bg-panel flex flex-col mx-2 gap-y-2">
         <div className="flex items-start">
           <Button
             onClick={() =>
@@ -454,18 +461,19 @@ const CategoryPage = (props: IProps) => {
           bottom: {
             width: '50%',
             left: '25%',
-            height: '10px',
-            bottom: '-10px',
+            height: '18px',
+            bottom: '-18px',
+            alignItems: 'center',
             position: 'absolute',
             display: 'flex',
             justifyContent: 'center',
           },
         }}
         handleComponent={{
-          bottom: <GripHorizontal />,
+          bottom: <GripHorizontal className="text-foreground" size={18} />,
         }}
       >
-        <div className="flex h-full w-full min-w-0">
+        <div className="flex h-full w-full min-w-0 overflow-hidden rounded-lg border border-panel-line bg-panel">
           <div className="flex-1 min-w-0 h-full">
             <VideoPlayer
               ref={videoPlayerRef}
@@ -551,7 +559,7 @@ const CategoryPage = (props: IProps) => {
         (!del && !lock && toLock.some((v) => v.cloud)); // Some in the selection are locked cloud videos no delete permission.
 
       const disabled = noPermission || toLock.length < 1;
-      const icon = lock ? <LockKeyhole size={18} /> : <LockOpen size={18} />;
+      const icon = lock ? <LockKeyhole size={16} /> : <LockOpen size={16} />;
 
       let tooltip = '';
 
@@ -567,11 +575,11 @@ const CategoryPage = (props: IProps) => {
         <Tooltip content={tooltip}>
           <div>
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
               disabled={disabled}
               onClick={() => lockVideos(toLock, lock, setVideoState)}
-              className="border border-background"
+              className={ACTION_BUTTON}
             >
               {icon}
             </Button>
@@ -613,12 +621,12 @@ const CategoryPage = (props: IProps) => {
               appState={appState}
             >
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 disabled={disabled}
-                className="border border-background"
+                className={ACTION_BUTTON}
               >
-                <Trash size={18} />
+                <Trash size={16} />
               </Button>
             </DeleteDialog>
           </div>
@@ -654,9 +662,9 @@ const CategoryPage = (props: IProps) => {
       }
 
       const icon = upload ? (
-        <CloudUpload size={18} />
+        <CloudUpload size={16} />
       ) : (
-        <CloudDownload size={18} />
+        <CloudDownload size={16} />
       );
 
       return (
@@ -669,10 +677,10 @@ const CategoryPage = (props: IProps) => {
               upload={upload}
             >
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 disabled={disabled}
-                className="border border-background"
+                className={ACTION_BUTTON}
               >
                 {icon}
               </Button>
@@ -682,32 +690,38 @@ const CategoryPage = (props: IProps) => {
       );
     };
 
-    const renderSelectionLabel = () => {
-      const { language } = appState;
-      let text = getLocalePhrase(language, Phrase.Selection);
+    // [RoomFortyRecorder] Design A: the selection actions sit in the page
+    // header, the filters in one row under the player.
+    const actions = (
+      <div
+        role="group"
+        aria-label={getLocalePhrase(language, Phrase.Selection)}
+        className="flex items-center gap-x-1.5"
+      >
+        {selectedRows.length > 1 && (
+          <span className="mr-1 text-[13px] text-foreground">
+            {selectedRows.length} selected
+          </span>
+        )}
+        {config.cloudUpload && renderBulkTransferButton(true)}
+        {config.cloudStorage && renderBulkTransferButton(false)}
+        {renderBulkLockButton()}
+        {renderBulkDeleteButton()}
+      </div>
+    );
 
-      if (selectedRows.length > 1) {
-        text += ` (${selectedRows.length})`;
-      }
-
-      if (!config.cloudStorage || (write && del)) {
-        // Cloud storage if off, or we have full permission. No need
-        // to render the disk only switch.
-        return <Label>{text}</Label>;
-      }
-
-      return <Label>{text}</Label>;
-    };
-
-    return (
+    const content = (
       <>
-        <div className="w-full flex flex-wrap justify-evenly items-center gap-x-2 gap-y-2 px-4 py-2">
-          <MultiPovPlaybackToggles
-            appState={appState}
-            setAppState={setAppState}
-            allowMultiPlayer={allowMultiPlayer}
-            opts={multiPlayerOpts}
-          />
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2.5">
+          <div className="min-w-[260px] flex-1">
+            <SearchBar
+              key={category}
+              appState={appState}
+              setAppState={setAppState}
+              filteredState={filteredState}
+            />
+          </div>
+          <DateRangePicker appState={appState} setAppState={setAppState} />
           {!isClips && (
             <VideoMarkerToggles
               category={category}
@@ -716,43 +730,19 @@ const CategoryPage = (props: IProps) => {
               appState={appState}
             />
           )}
-
-          <div className="flex flex-grow gap-x-2 min-w-[300px]">
-            <div className="flex-grow min-w-[120px]">
-              <SearchBar
-                key={category}
-                appState={appState}
-                setAppState={setAppState}
-                filteredState={filteredState}
-              />
-            </div>
-            <div>
-              <Label>{getLocalePhrase(language, Phrase.DateFilter)}</Label>
-              <DateRangePicker appState={appState} setAppState={setAppState} />
-            </div>
-            <div>
-              <Label>
-                {getLocalePhrase(language, Phrase.StorageFilterLabel)}
-              </Label>
-              <StorageFilterToggle
-                categoryState={categoryState}
-                appState={appState}
-                setAppState={setAppState}
-              />
-            </div>
-          </div>
-
-          <div>
-            {renderSelectionLabel()}
-            <div className="flex gap-x-1 mr-2 py-[1px]">
-              {config.cloudUpload && renderBulkTransferButton(true)}
-              {config.cloudStorage && renderBulkTransferButton(false)}
-              {renderBulkLockButton()}
-              {renderBulkDeleteButton()}
-            </div>
-          </div>
+          <StorageFilterToggle
+            categoryState={categoryState}
+            appState={appState}
+            setAppState={setAppState}
+          />
+          <MultiPovPlaybackToggles
+            appState={appState}
+            setAppState={setAppState}
+            allowMultiPlayer={allowMultiPlayer}
+            opts={multiPlayerOpts}
+          />
         </div>
-        <div className="w-full h-full overflow-hidden">
+        <div className="min-h-0 w-full flex-1 overflow-hidden">
           <LockDialog
             open={dialog === DialogType.LOCK}
             onOpenChange={setLockDialog}
@@ -788,50 +778,59 @@ const CategoryPage = (props: IProps) => {
         </div>
       </>
     );
+
+    return { actions, content };
   };
 
-  const openSetupInstructions = () => {
-    window.electron.ipcRenderer.sendMessage('openURL', [
-      'https://www.warcraftrecorder.com/setup',
-    ]);
+  const categoryLabel = getLocaleCategoryLabel(language, category);
+
+  /** "7 recordings · 18 of 50 GB on this PC" under the page title. */
+  const renderSubtitle = (shown: number, total: number) => {
+    const noun = isClips ? 'clip' : 'recording';
+    const plural = (n: number) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+    const count =
+      shown === total ? plural(total) : `${shown} of ${plural(total)}`;
+    const { usage, limit } = appState.diskStatus;
+    const usedGB = Math.round(usage / 1024 ** 3);
+    const limitGB = Math.round(limit / 1024 ** 3);
+    const disk =
+      limitGB === 0
+        ? `${usedGB} GB used on this PC`
+        : `${usedGB} of ${limitGB} GB on this PC`;
+    return `${count} · ${disk}`;
   };
 
-  const renderFirstTimeUserPrompt = () => {
-    return (
-      <div className="flex items-center justify-center flex-col w-1/2 h-1/2 text-center font-sans text-foreground gap-y-6">
-        <h1 className="text-xl font-bold">
-          {getLocalePhrase(language, Phrase.NoVideosSaved)}
-        </h1>
-        <Separator className="my-2" />
-        <h2 className="text-foreground font-sans text-lg">
-          {getLocalePhrase(language, Phrase.FirstTimeHere)}
-        </h2>
-        <Button onClick={openSetupInstructions}>
-          {getLocalePhrase(language, Phrase.SetupInstructions)}
-        </Button>
-      </div>
-    );
-  };
-
-  const renderFirstTimeClipPrompt = () => {
-    return (
-      <div className="flex items-center justify-center flex-col w-1/2 h-1/2 text-center font-sans text-foreground gap-y-6">
-        <h1 className="text-xl font-bold">
-          {getLocalePhrase(language, Phrase.NoClipsSaved)}
-        </h1>
-        <Separator className="my-2" />
-        <h2 className="text-foreground font-sans text-lg">
-          {getLocalePhrase(language, Phrase.ClipsDisplayedHere)}
-        </h2>
-      </div>
-    );
+  const emptyMessage = () => {
+    switch (category) {
+      case VideoCategory.Clips:
+        return 'No clips yet. Clip a moment from any recording and it appears here.';
+      case VideoCategory.MythicPlus:
+        return 'No Mythic+ recordings yet. They appear here after your next key.';
+      case VideoCategory.Manual:
+        return 'No manual recordings yet. Press your manual recording hotkey (Settings) to start one.';
+      default:
+        return 'No raid recordings yet. They appear here after your next pull.';
+    }
   };
 
   const renderVideoPage = () => {
+    const { actions, content } = getVideoSelection();
+
     return (
-      <div className="flex flex-col h-full w-full min-w-0 bg-background-higher pt-[32px]">
-        {getVideoPlayer()}
-        {getVideoSelection()}
+      <div className="flex h-full w-full min-w-0 flex-col bg-walnut pt-[32px] text-foreground-lighter">
+        <PageHeader
+          title={categoryLabel}
+          subtitle={renderSubtitle(
+            filteredState.length,
+            correlatedState.length,
+          )}
+          actions={actions}
+          className="px-7 pt-5"
+        />
+        <div className="flex min-h-0 flex-1 flex-col gap-[18px] px-7 pb-5 pt-[18px]">
+          {getVideoPlayer()}
+          {content}
+        </div>
       </div>
     );
   };
@@ -841,9 +840,17 @@ const CategoryPage = (props: IProps) => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full bg-background-higher pt-[32px]">
-      {isClips && renderFirstTimeClipPrompt()}
-      {!isClips && renderFirstTimeUserPrompt()}
+    <div className="flex h-full w-full flex-col bg-walnut pt-[32px] text-foreground-lighter">
+      <PageHeader
+        title={categoryLabel}
+        subtitle={renderSubtitle(0, 0)}
+        className="px-7 pt-5"
+      />
+      <div className="px-7 pt-[18px]">
+        <div className="flex justify-center rounded-lg border border-panel-line bg-panel px-6 py-12 text-center">
+          <EmptyState>{emptyMessage()}</EmptyState>
+        </div>
+      </div>
     </div>
   );
 };
