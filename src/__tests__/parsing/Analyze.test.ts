@@ -8,6 +8,8 @@ import {
   starterLayout,
 } from '../../renderer/logs/analyze';
 import { SPEC_PRESETS } from '../../renderer/logs/specPresets';
+import { PRIMARY_POWER } from '../../renderer/logs/primaryPower';
+import { POWER_NAMES } from '../../renderer/logs/store';
 
 /** [RoomFortyRecorder] Logs → Analyze widgets on a small made-up pull. */
 
@@ -23,7 +25,7 @@ const src = `${ME},"Azraelus-Zul'jin-US",0x514,0x80000000`;
 const adv = `${ME},0000000000000000,821644,1061676,780,3657,2970,783,0,44147,0,220235,260000,0,1842.76,-22.54,2669,1.2127,334`;
 const none = '0000000000000000,nil,0x80000000,0x80000000';
 
-const pull = () => {
+const pull = (specId = 1473, extra: string[] = []) => {
   const lines: string[] = [];
   const combat = fs
     .readFileSync(
@@ -35,7 +37,7 @@ const pull = () => {
     .split('  ')[1]
     .split(',');
   combat[1] = ME;
-  combat[25] = '1468';
+  combat[25] = String(specId);
   lines.push(`${stamp(0)}ENCOUNTER_START,3513,"Kith'ix",16,22,3095`);
   lines.push(`${stamp(0)}${combat.join(',')}`);
   const cast = (t: number, id: number, name: string) =>
@@ -72,6 +74,7 @@ const pull = () => {
   lines.push(
     `${stamp(31)}SPELL_ENERGIZE,${src},${src},369297,"Essence Burst",0x8,${adv},0,1,19,5`,
   );
+  lines.push(...extra);
   lines.push(`${stamp(120)}ENCOUNTER_END,3513,"Kith'ix",16,22,1,120000`);
   const b = new StoreBuilder();
   lines.forEach((l) => b.feed(l));
@@ -204,5 +207,59 @@ describe('Analyze widgets', () => {
       expect(Number(spec)).toBeGreaterThan(0);
     });
     expect(Object.keys(SPEC_PRESETS).length).toBeGreaterThanOrEqual(39);
+  });
+
+  describe('resource lost at the cap', () => {
+    const energize = (t: number, power: number, gained: number, lost: number) =>
+      `${stamp(t)}SPELL_ENERGIZE,${src},${src},1,"Gain",0x8,${adv},${gained},${lost},${power},5`;
+    const run = (specId: number, extra: string[]) => {
+      const r = runWidget(pull(specId, extra), ME, {
+        id: 'w',
+        kind: 'resourceWaste',
+      });
+      if (r.kind !== 'resourceWaste') throw new Error(r.kind);
+      return r;
+    };
+
+    test('a Shadow Priest sees Insanity, not the Mana they waste more of', () => {
+      const extra = [
+        energize(10, 0, 500, 900), // Mana, 900 lost
+        energize(11, 13, 20, 3), // Insanity, 3 lost
+      ];
+      const shadow = run(258, extra);
+      expect([shadow.power, shadow.wasted, shadow.gained]).toEqual([13, 3, 23]);
+      // The most wasted is still listed under "Also".
+      expect(shadow.byPower[0][0]).toBe(0);
+      // A spec we don't know keeps the old pick (the most wasted).
+      expect(run(99999, extra).power).toBe(0);
+    });
+
+    test('shows 0 for the main resource when it never wasted, not another', () => {
+      const r = run(258, [energize(10, 0, 500, 900), energize(11, 13, 20, 0)]);
+      expect([r.power, r.wasted]).toEqual([13, 0]);
+      const none = run(258, [energize(10, 0, 500, 900)]);
+      expect([none.power, none.wasted, none.gained]).toEqual([13, 0, 0]);
+    });
+
+    test('a widget that names a resource keeps it', () => {
+      const r = runWidget(pull(258, [energize(10, 0, 5, 9)]), ME, {
+        id: 'w',
+        kind: 'resourceWaste',
+        power: 0,
+      });
+      if (r.kind !== 'resourceWaste') throw new Error(r.kind);
+      expect(r.power).toBe(0);
+    });
+
+    test('every spec has a main resource the log knows', () => {
+      Object.keys(SPEC_PRESETS).forEach((spec) => {
+        expect(POWER_NAMES[PRIMARY_POWER[Number(spec)]]).toBeDefined();
+      });
+      expect(Object.keys(PRIMARY_POWER).length).toBe(
+        Object.keys(SPEC_PRESETS).length,
+      );
+      // Devourer (1480) and Augmentation (1473).
+      expect([PRIMARY_POWER[1480], PRIMARY_POWER[1473]]).toEqual([17, 19]);
+    });
   });
 });

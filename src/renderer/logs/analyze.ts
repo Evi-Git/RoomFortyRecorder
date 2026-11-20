@@ -17,6 +17,7 @@
 import { DEFAULT_FILTERS, makeCtx, meterRows, unionLength } from './query';
 import { F, K, PullStore, Spell } from './store';
 import { SPEC_PRESETS } from './specPresets';
+import { PRIMARY_POWER } from './primaryPower';
 
 export type SpellRef = { name: string; id?: number };
 
@@ -50,7 +51,7 @@ export type WidgetSpec = {
   goodSpells?: SpellRef[];
   /** count */
   what?: 'casts' | 'hits' | 'dispels' | 'interrupts';
-  /** resourceWaste: power type (see POWER_NAMES); the most wasted if unset. */
+  /** resourceWaste: power type (see POWER_NAMES); the spec's main resource if unset. */
   power?: number;
   /** breakdown */
   metric?: 'healing' | 'damage';
@@ -437,8 +438,14 @@ export const runWidget = (
       const byPower = [...by.entries()]
         .map(([p, [w]]) => [p, w] as [number, number])
         .sort((a, b) => b[1] - a[1]);
-      const power = spec.power ?? byPower[0]?.[0];
-      if (power === undefined)
+      // The widget's own pick, else the spec's main resource (0 if it never
+      // gained any: no switching to whichever resource wasted most), else
+      // the most wasted for a spec we don't know.
+      const power =
+        spec.power ??
+        PRIMARY_POWER[store.units[unit].specId] ??
+        byPower[0]?.[0];
+      if (power === undefined || !by.size)
         return { kind: 'empty', reason: 'No resource gains in this pull.' };
       const [wasted, gained] = by.get(power) ?? [0, 0];
       return { kind: 'resourceWaste', power, wasted, gained, byPower };
