@@ -75,7 +75,11 @@ export const populateResultCell = (
       // A wipe: how far the boss got, as a bar and the number.
       return (
         <span className="inline-flex items-center gap-x-2 text-[13px] tabular-nums text-foreground-lighter">
-          <BossBar bossPercent={bossPercent} kill={false} className="w-12" />
+          <BossBar
+            bossPercent={bossPercent}
+            kill={false}
+            className="w-12 bg-foreground/30"
+          />
           {resultText}
         </span>
       );
@@ -85,6 +89,9 @@ export const populateResultCell = (
   }
 
   if (isMythicPlusUtil(video)) {
+    // Finished but no keystone upgrade recorded: nothing to say.
+    if (!resultText) return null;
+
     if (!video.result) {
       // Abandoned.
       return (

@@ -40,7 +40,11 @@ const MultiPovPlaybackToggles = (props: IProps) => {
       tall
       label="Player mode"
       value={multiPlayerMode ? 'multi' : 'single'}
-      onChange={(key) => onValueChange(key === 'multi' ? 'true' : 'false')}
+      onChange={(key) => {
+        // Clicking the active option does nothing.
+        if ((key === 'multi') === multiPlayerMode) return;
+        onValueChange(key === 'multi' ? 'true' : 'false');
+      }}
       items={[
         {
           key: 'single',

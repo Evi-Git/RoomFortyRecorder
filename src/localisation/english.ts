@@ -374,7 +374,7 @@ const ENGLISH: Translations = {
   [Phrase.UpdateAvailableInstallButtonText]: 'Install Now',
   [Phrase.UpdateAvailableRemindButtonText]: 'Remind Me Later',
   [Phrase.Saving]: 'Saving...',
-  [Phrase.StartTyping]: 'Search boss, player or note',
+  [Phrase.StartTyping]: 'Search boss or player',
   [Phrase.ToggleDrawingMode]: 'Toggle drawing mode',
   [Phrase.StarSelected]: 'Lock',
   [Phrase.UnstarSelected]: 'Unlock',

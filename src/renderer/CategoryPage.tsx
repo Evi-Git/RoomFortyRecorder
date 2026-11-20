@@ -91,10 +91,10 @@ const ACTION_BUTTON =
  * (the default) also leaves room for the header, the filter bar and a few table rows.
  */
 const playerHeights = (chosen: number, windowHeight: number) => {
-  const max = Math.max(280, windowHeight - 96);
+  const max = Math.max(280, windowHeight - 245);
   const shown =
     chosen === DEFAULT_PLAYER_HEIGHT
-      ? Math.min(chosen, Math.max(280, windowHeight - 392))
+      ? Math.min(chosen, Math.max(280, windowHeight - 345))
       : Math.min(chosen, max);
   return { shown, max };
 };
@@ -721,7 +721,7 @@ const CategoryPage = (props: IProps) => {
     const content = (
       <>
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2.5">
-          <div className="min-w-[260px] flex-1">
+          <div className="relative z-30 min-w-[260px] flex-1">
             <SearchBar
               key={category}
               appState={appState}
@@ -783,6 +783,15 @@ const CategoryPage = (props: IProps) => {
 
     return { actions, content };
   };
+
+  /**
+   * Counts as the side menu badge does: every viewpoint, but a recording
+   * that exists on disk and in the cloud only once.
+   */
+  const countVideos = (rows: RendererVideo[]) =>
+    new Set(
+      rows.flatMap((rv) => [rv, ...rv.multiPov]).map((rv) => rv.videoName),
+    ).size;
 
   const categoryLabel = getLocaleCategoryLabel(language, category);
 

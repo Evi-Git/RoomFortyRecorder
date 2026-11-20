@@ -2,7 +2,7 @@ import { getLocalePhrase } from 'localisation/translations';
 import { Phrase, Language } from 'localisation/phrases';
 import { AppState } from 'main/types';
 import { Dispatch, SetStateAction, useCallback } from 'react';
-import { CalendarDays, ChevronDown } from 'lucide-react';
+import { CalendarDays, ChevronDown, X } from 'lucide-react';
 import Datepicker, { DateValueType } from 'react-tailwindcss-datepicker';
 
 interface IProps {
@@ -15,8 +15,9 @@ const DateRangePicker = (props: IProps) => {
   const { dateRangeFilter } = appState;
 
   // [RoomFortyRecorder] "Nov 17 – Nov 19", with the year only when a date
-  // isn't this year (as clock.ts's shortDate does). The picker parses what
-  // it shows, so typing "Nov 17 – Nov 19" works too.
+  // isn't this year (as clock.ts's shortDate does). The input is read-only:
+  // typed text would be parsed by the library without a year (to 2001), so
+  // dates change through the calendar and its shortcuts.
   const thisYear = new Date().getFullYear();
   const otherYear = [dateRangeFilter?.startDate, dateRangeFilter?.endDate].some(
     (d) => d && new Date(d).getFullYear() !== thisYear,
@@ -102,13 +103,22 @@ const DateRangePicker = (props: IProps) => {
         )}
         displayFormat={format}
         placeholder="Any date"
+        readOnly
         showShortcuts
         showFooter
         primaryColor="red"
         containerClassName="relative tailwind-datepicker" // See App.css for tailwind overrides. This library doesn't expose much.
         inputClassName="relative transition-all duration-300 h-9 pl-9 pr-9 w-full border border-panel-line bg-panel text-foreground-lighter placeholder:text-foreground rounded-lg text-sm placeholder:text-sm focus:outline-none focus:border-brand/60"
         toggleClassName="absolute right-0 h-full px-3 text-foreground focus:outline-none"
-        toggleIcon={() => <ChevronDown size={15} />}
+        toggleIcon={(empty) =>
+          empty ? (
+            <ChevronDown size={15} />
+          ) : (
+            <span title="Clear dates" role="img" aria-label="Clear dates">
+              <X size={15} />
+            </span>
+          )
+        }
         i18n={i18n}
         configs={configs}
       />

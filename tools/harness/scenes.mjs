@@ -148,6 +148,34 @@ export const scenes = [
     },
   },
   {
+    name: 'rec-search-dropdown',
+    shows: 'Raids with the search suggestions open: the list sits above the sticky table header',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      await t.page.getByRole('combobox', { name: 'Search boss or player' }).click();
+      await t.page.keyboard.type('k');
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'smallest-tall-player',
+    shows: 'Raids: player dragged tall at 1440x900, then the window shrunk to 1024x640 (filter row and table stay on screen)',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      const grip = t.page.locator('svg.lucide-grip-horizontal').first();
+      const box = await grip.boundingBox();
+      await t.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await t.page.mouse.down();
+      await t.page.mouse.move(box.x + box.width / 2, box.y + 250, { steps: 10 });
+      await t.page.mouse.up();
+      await t.settle(500);
+      await t.page.setViewportSize({ width: 1024, height: 640 });
+      await t.settle(1200);
+    },
+  },
+  {
     name: 'rec-date-picker',
     shows: 'The date filter open (Nov-style range, "Any date" when empty)',
     continue: true,

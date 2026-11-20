@@ -292,7 +292,7 @@ const SearchBar = (props: IProps) => {
           className={classNames.input}
           style={{ width: inputWidth }}
           {...inputProps}
-          aria-label="Search boss, player or note"
+          aria-label="Search boss or player"
           onKeyDown={onKeyDown}
         />
       </div>
