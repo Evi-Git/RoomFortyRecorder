@@ -110,7 +110,7 @@ const open = async (scene) => {
     else log.console.push(text.slice(0, 300));
   });
   await page.goto(url);
-  await page.locator('div.shrink-0[class*="border-card/60"]').first().waitFor({ timeout: 30000 });
+  await page.locator('[data-sidebar]').first().waitFor({ timeout: 30000 });
   await page.waitForTimeout(600);
 };
 

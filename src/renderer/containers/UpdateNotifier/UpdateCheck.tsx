@@ -70,9 +70,9 @@ const UpdateCheck: React.FC<IProps> = ({ versionLabel, version }) => {
   };
 
   return (
-    <div className="w-full mt-1 flex flex-col items-center font-sans text-[11px]">
+    <div className="w-full mt-1 flex flex-col items-center font-sans text-xs">
       {!!version && (
-        <div className="text-foreground font-bold opacity-75">
+        <div className="text-foreground">
           {versionLabel} {version}
         </div>
       )}
@@ -82,7 +82,7 @@ const UpdateCheck: React.FC<IProps> = ({ versionLabel, version }) => {
         disabled={busy}
         className={cn(
           'mt-0.5 flex items-center gap-x-1 rounded px-1.5 py-0.5 transition-colors',
-          'text-foreground/70 hover:text-brand disabled:cursor-default disabled:hover:text-foreground/70',
+          'text-foreground hover:text-brand disabled:cursor-default disabled:hover:text-foreground',
           {
             'text-brand font-semibold': ready,
             'text-red-400 hover:text-red-300': status.state === 'error',

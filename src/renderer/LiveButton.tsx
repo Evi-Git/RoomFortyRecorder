@@ -63,7 +63,7 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
         <Button
           variant={live ? 'destructive' : 'outline'}
           size="icon"
-          className={`h-9 w-9 ${connecting ? 'animate-pulse' : ''}`}
+          className={`h-10 w-10 ${connecting ? 'animate-pulse' : ''}`}
           disabled={busy}
           onClick={toggle}
         >
@@ -80,7 +80,7 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           <Button
             variant={live ? 'destructive' : 'outline'}
             size="sm"
-            className={`flex-1 justify-center gap-x-2 text-sm text-foreground-lighter ${live ? '' : 'border-brand/45 bg-brand/[0.08] hover:bg-brand/15'} ${connecting ? 'animate-pulse' : ''}`}
+            className={`h-10 flex-1 justify-center gap-x-2 text-sm text-foreground-lighter ${live ? '' : 'border-brand/60 bg-transparent hover:bg-brand/10'} ${connecting ? 'animate-pulse' : ''}`}
             disabled={busy}
             onClick={toggle}
           >
@@ -98,7 +98,7 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           <Button
             variant="ghost"
             size="icon"
-            className="shrink-0 h-9 w-9 text-foreground"
+            className="shrink-0 h-10 w-10 text-foreground"
             title="Go live quality (resolution, frame rate, bitrate)"
           >
             <Settings2 size={16} />

@@ -10,6 +10,8 @@ type MenuItemProps = {
   disabled?: boolean;
   /** Shown on hover when the sidebar is an icon strip. */
   label?: string;
+  /** Icon strip only: a small dot for what a badge says (live, new). */
+  railDot?: 'live' | 'brand';
 };
 
 const Root = ({
@@ -18,21 +20,22 @@ const Root = ({
   children,
   disabled = false,
   label,
+  railDot,
 }: PropsWithChildren<MenuItemProps>) => {
   const { currentValue, onValueChange } = useMenuContext();
   const rail = useContext(SidebarRailContext);
   const active = currentValue === value && !disabled;
-  // [RoomFortyRecorder] Brass sidebar: compact rows; the selected one gets
-  // a brass tint, a brass bar at its left edge and brass text and icon.
+  // [RoomFortyRecorder] Design A: 36 px rows; the selected one gets the
+  // raised panel, main-colour text, a brass icon and a 3 px brass bar at
+  // the left edge. Icons are muted otherwise.
   return (
     <div
       className={cn(
-        'group relative w-full flex flex-row bg-transparent rounded-md px-3 py-2 items-center transition-colors',
-        'text-foreground-lighter/80 text-sm font-sans',
+        'group relative w-full flex flex-row bg-transparent rounded-md px-3 h-9 items-center transition-colors cursor-pointer',
+        'text-foreground-lighter text-sm font-sans focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand',
         {
-          'hover:bg-card/50 hover:text-foreground-lighter':
-            !active && !disabled,
-          'bg-brand/15 text-brand font-semibold': active,
+          'hover:bg-panel-raised/60': !active && !disabled,
+          'bg-panel-raised font-medium': active,
           'opacity-50 cursor-not-allowed': disabled,
           // Icon strip: only the icon shows (text is sized away).
           'justify-center px-0 text-[0px] [&_*]:text-[0px] [&_button]:hidden [&_span]:!w-auto [&_.ml-auto]:hidden':
@@ -60,7 +63,17 @@ const Root = ({
       {active && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-brand"
+          className="absolute left-0 top-2 bottom-2 w-[3px] rounded bg-brand"
+        />
+      )}
+      {rail && railDot && (
+        <i
+          aria-hidden="true"
+          data-rail-dot={railDot}
+          className={cn(
+            'absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-panel',
+            railDot === 'live' ? 'bg-green-400' : 'bg-brand',
+          )}
         />
       )}
       {children}
@@ -70,7 +83,7 @@ const Root = ({
 
 const Icon = ({ children }: { children: ReactNode }) => {
   return (
-    <div className="mr-3 group-data-[rail=true]:mr-0 w-[18px] h-[18px] shrink-0 flex items-center justify-center opacity-70 group-data-[active=true]:opacity-100 group-data-[active=true]:text-brand">
+    <div className="mr-3 group-data-[rail=true]:mr-0 w-4 h-4 shrink-0 flex items-center justify-center text-foreground group-data-[active=true]:text-brand">
       {children}
     </div>
   );
@@ -80,11 +93,11 @@ type MenuBadgeProps = {
   value?: number;
 };
 
-// A count (videos in a category): a quiet pill, so brass is left for
-// what's new.
+// A count (videos in a category): quiet 12 px text, right-aligned, so brass
+// is left for what's new.
 const MenuBadge = ({ value }: MenuBadgeProps) => {
   return value ? (
-    <span className="ml-auto rounded-full bg-panel-line px-2 text-[11px] leading-[18px] font-semibold tabular-nums text-foreground">
+    <span className="ml-auto text-xs tabular-nums text-foreground">
       {value <= 99999 ? value : '99999+'}
     </span>
   ) : null;
