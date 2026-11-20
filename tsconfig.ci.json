@@ -1,0 +1,28 @@
+{
+  // Type check for Linux CI and local Linux checks: `npx tsc --noEmit -p tsconfig.ci.json`.
+  //
+  // `npm ci --ignore-scripts` doesn't install the native Windows modules
+  // (noobs, uiohook-napi), so this config points them at typings we can read
+  // on Linux. The Windows build keeps using tsconfig.json and the real
+  // packages. Everything else is the same program as tsconfig.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": "./src",
+    "paths": {
+      // noobs: our patched typings (native/noobs/index.d.ts) are exactly what
+      // .erb/scripts/patch-noobs.js installs over the package.
+      "noobs": ["../native/noobs/index.d.ts"],
+      "uiohook-napi": ["./types/ci/uiohook-napi.d.ts"],
+      // Deep type-only import that the package's "exports" map doesn't list
+      // (resolves fine under tsconfig.json's classic "node" resolution).
+      "@excalidraw/excalidraw/dist/types/*": [
+        "../node_modules/@excalidraw/excalidraw/dist/types/*"
+      ]
+    }
+  }
+}
