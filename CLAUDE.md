@@ -104,6 +104,17 @@ run with worker agents.
 
 ## UI conventions
 
+- Design system for A (tokens with usage notes, brand book, component
+  cards): the claude.ai artifact "Room Forty Toolkit: design system (A,
+  Brass & Walnut)", https://claude.ai/artifact/N1NMs7m5eF4ZX2uAg3kYDh.
+  Read its README before restyling a page.
+- Text colours: `text-foreground-lighter` is the main text (#E6DED1);
+  `text-foreground` is the **muted** one (#958C83, 5.2:1 on `panel`) for
+  labels and help lines. Don't fade either with opacity. Error text on dark
+  surfaces: `text-error-text` (not `text-error`, which is 2:1).
+- Settings rows: `components/SettingsCard/SettingsCard.tsx`
+  (`SettingsSection`, `SettingRow`, `useScopedIds` for ids that stay unique
+  when two tabs are mounted).
 - Colours: Tailwind tokens, not hex. `walnut` (page), `panel`,
   `panel-deep`, `panel-raised`, `panel-line` (surfaces and their lines),
   `brand` (brass). Literal colours for charts/MUI live in `renderer/brand.ts`.
