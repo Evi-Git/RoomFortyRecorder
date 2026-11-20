@@ -629,7 +629,10 @@ const SideMenu = (props: IProps) => {
               </Button>
             </DiagnosticsDialog>
             <TestButton recorderStatus={recorderStatus} appState={appState} />
-            <BugButton appState={appState} />
+            <BugButton
+              appState={appState}
+              setPreviewEnabled={setPreviewEnabled}
+            />
             <Tooltip
               content={rail ? 'Show the sidebar' : 'Fold the sidebar'}
               side="top"

@@ -4,8 +4,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  dialogPanelClass,
+  dialogTitleClass,
 } from './components/Dialog/Dialog';
 import { Button } from './components/Button/Button';
+import { settingsButtonClass } from './components/SettingsCard/SettingsCard';
 import { Dispatch, ReactNode, SetStateAction, useState } from 'react';
 import { AppState } from 'main/types';
 import { ClipboardCopy, ExternalLink, FileText, Package } from 'lucide-react';
@@ -76,6 +79,7 @@ const DiagnosticsDialog = (props: IProps) => {
         type="button"
         onClick={openLogPath}
         variant="outline"
+        className={settingsButtonClass}
       >
         <FileText size={20} className="mr-2" />
         {getLocalePhrase(language, Phrase.DiagnosticsOpenLogButton)}
@@ -109,6 +113,7 @@ const DiagnosticsDialog = (props: IProps) => {
         type="button"
         onClick={createDiagsBundle}
         variant={zipping ? 'outline' : 'default'}
+        className={zipping ? settingsButtonClass : undefined}
         disabled={zipping}
       >
         {zipping ? (
@@ -154,9 +159,9 @@ const DiagnosticsDialog = (props: IProps) => {
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className={dialogPanelClass}>
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className={dialogTitleClass}>
             {getLocalePhrase(language, Phrase.Diagnostics)}
           </DialogTitle>
         </DialogHeader>
@@ -175,6 +180,7 @@ const DiagnosticsDialog = (props: IProps) => {
             id="copy-log-lines-button"
             type="button"
             variant="outline"
+            className={settingsButtonClass}
             onClick={() => void copyLogLines()}
           >
             <ClipboardCopy size={20} className="mr-2" />

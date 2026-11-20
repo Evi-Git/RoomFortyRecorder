@@ -35,7 +35,7 @@ import { ToastAction } from './components/Toast/Toast';
 import { failureToastText, nextTally, Tally } from './uploadToast';
 import { Button } from './components/Button/Button';
 import { ErrorBoundary } from 'react-error-boundary';
-import { RotateCcw } from 'lucide-react';
+import { ArrowBigUpDash, RotateCcw } from 'lucide-react';
 import { VideoCategory } from 'types/VideoCategory';
 import { Phrase } from 'localisation/phrases';
 import _ from 'lodash';
@@ -343,13 +343,30 @@ const WarcraftRecorder = () => {
       Phrase.UpdateAvailableRemindButtonText,
     );
 
+    // [RoomFortyRecorder] Looks like the "guild server needs an update"
+    // card (ServerVersionNotice): icon, title, muted body, Install / Later.
+    // Install only sends the same IPC as the sidebar button, so the "Quit
+    // when it's done" check in the main process still applies.
     const updateToast = toast({
-      title,
-      description,
+      title: (
+        <div className="flex gap-x-3">
+          <ArrowBigUpDash size={18} className="mt-0.5 shrink-0 text-brand" />
+          <div className="flex min-w-0 flex-col gap-y-1">
+            <span className="font-semibold text-foreground-lighter">
+              {title}
+            </span>
+            <span className="text-xs font-normal text-foreground">
+              {description}
+            </span>
+          </div>
+        </div>
+      ),
+      className: 'rounded-lg border-brand/50 border-l p-3 pr-8 gap-y-3',
       duration: 60000,
       action: (
-        <div className="flex gap-2">
+        <div className="flex gap-2 pl-[30px]">
           <Button
+            size="sm"
             onClick={() => {
               updateToast.dismiss();
               ipc.sendMessage('doAppUpdate', []);
@@ -357,7 +374,11 @@ const WarcraftRecorder = () => {
           >
             {installButtonText}
           </Button>
-          <Button variant="secondary" onClick={() => updateToast.dismiss()}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => updateToast.dismiss()}
+          >
             {remindButtonText}
           </Button>
         </div>

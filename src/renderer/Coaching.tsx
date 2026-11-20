@@ -428,7 +428,10 @@ export const PersonalChannelsDialog = ({
             value={adding}
             placeholder="Add a raider…"
             onChange={setAdding}
-            options={unmapped.map((m) => ({ value: m.discordId, label: m.name }))}
+            options={unmapped.map((m) => ({
+              value: m.discordId,
+              label: m.name,
+            }))}
           />
           <Button
             size="sm"

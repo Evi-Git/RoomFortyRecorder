@@ -64,7 +64,8 @@ export function SimpleSelect({
   // A value that isn't in the list shows the placeholder, as a native select
   // shows its first option.
   const known = all.some((o) => o.value === value);
-  const current = known && (value !== '' || hasEmptyOption) ? toItem(value) : '';
+  const current =
+    known && (value !== '' || hasEmptyOption) ? toItem(value) : '';
 
   const item = (o: SelectOption) => (
     <SelectItem key={o.value} value={toItem(o.value)} disabled={o.disabled}>
@@ -81,7 +82,11 @@ export function SimpleSelect({
       <SelectTrigger
         id={id}
         aria-label={ariaLabel}
-        className={cn(settingsFieldClass, 'w-auto min-w-[8rem] gap-x-2', className)}
+        className={cn(
+          settingsFieldClass,
+          'w-auto min-w-[8rem] gap-x-2',
+          className,
+        )}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>

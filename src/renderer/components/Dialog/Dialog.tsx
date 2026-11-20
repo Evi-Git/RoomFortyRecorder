@@ -4,6 +4,15 @@ import { X } from 'lucide-react';
 
 import { cn } from '../utils';
 
+/**
+ * [RoomFortyRecorder] Design A dialog: pass `dialogPanelClass` to
+ * `DialogContent` and `dialogTitleClass` to `DialogTitle` (panel surface, panel
+ * line border, serif title).
+ */
+export const dialogPanelClass = 'border-panel-line bg-panel';
+export const dialogTitleClass =
+  'font-display text-xl font-bold leading-tight tracking-normal';
+
 const Dialog = DialogPrimitive.Root;
 
 const DialogTrigger = DialogPrimitive.Trigger;
