@@ -84,10 +84,13 @@ const RecorderPreview = (props: {
   useEffect(() => {
     // On component mount, get the source dimensions from the backend
     // to initialize the draggable boxes.
+    // eslint-disable-next-line react-hooks/immutability -- handler is declared later in the component; moving it is not behaviour-neutral
     configureDraggableBoxes();
 
+    // eslint-disable-next-line react-hooks/immutability -- handler is declared later in the component; moving it is not behaviour-neutral
     configurePreview();
     showPreview();
+    // eslint-disable-next-line react-hooks/immutability -- handler is declared later in the component; moving it is not behaviour-neutral
     setupResizeObserver();
 
     // The preview box can move without resizing (sidebar folds, window
@@ -103,6 +106,7 @@ const RecorderPreview = (props: {
       window.removeEventListener('resize', onWindowResize);
       cancelAnimationFrame(frame);
       // Disconnect the resize observer.
+      // eslint-disable-next-line react-hooks/immutability -- handler is declared later in the component; moving it is not behaviour-neutral
       cleanupResizeObserver();
 
       // Disable the preview, we're tabbing away. This means it's switched

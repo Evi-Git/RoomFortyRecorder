@@ -388,6 +388,7 @@ const AudioSourceControls = (props: IProps) => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
     setLocalReleaseDelay(config.pushToTalkReleaseDelay);
   }, [config.pushToTalkReleaseDelay]);
 
