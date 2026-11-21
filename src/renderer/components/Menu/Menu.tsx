@@ -92,6 +92,7 @@ export const Menu = ({
   // the fact that the two sections of content and settings are two different menus
   // so when one gets selected, the other needs to be cleared
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
     setCurrentValue(initialValue || undefined);
   }, [initialValue]);
 

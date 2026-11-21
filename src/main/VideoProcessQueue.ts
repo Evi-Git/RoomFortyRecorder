@@ -289,7 +289,7 @@ export default class VideoProcessQueue {
       .on('idle', () => { this.videoQueueEmpty() });
 
     queue.pool
-      .on('start', (item: KillVideoQueueItem) => { this.startedProcessingKillVideo(item) })
+      .on('start', () => { this.startedProcessingKillVideo() })
       .on('finish', (_: unknown, item: KillVideoQueueItem) => { this.finishProcessingKillVideo(item) });
     /* eslint-enable prettier/prettier */
 
@@ -720,7 +720,7 @@ export default class VideoProcessQueue {
   /**
    * Actions on starting the processing of a kill video.
    */
-  private startedProcessingKillVideo(_item: KillVideoQueueItem) {
+  private startedProcessingKillVideo() {
     console.info('[VideoProcessQueue] Now processing kill video');
 
     const status: KillVideoStatus = {

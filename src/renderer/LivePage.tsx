@@ -261,6 +261,7 @@ const LivePage: React.FC = () => {
           setStatus('connecting');
           setMessage('Connection dropped, reconnecting…');
           setTimeout(() => {
+            // eslint-disable-next-line react-hooks/immutability -- handler is declared later in the component; moving it is not behaviour-neutral
             if (attempt === attemptRef.current) watch(name, true);
           }, 1500);
           return;
@@ -327,6 +328,7 @@ const LivePage: React.FC = () => {
     const live = list.streams.some((s) => s.name === watching);
     if (!live && status === 'playing') {
       attemptRef.current += 1;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
       closePeer();
       setStatus('error');
       setMessage(`${watching} stopped streaming.`);

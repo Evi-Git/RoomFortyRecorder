@@ -50,13 +50,17 @@ The main conversation model (Fable when available, otherwise Opus) is the
 ## Checks
 
 - Server: `cd guild-cloud-server && node --test`
-- App: `npx jest src/__tests__/parsing`, `npx eslint --fix <files>`,
-  `node node_modules/typescript/bin/tsc --noEmit -p .` (ignore the existing
-  errors in ConfigService.ts, LiveStreamer.ts and uiohook).
+- App: `npx jest src/__tests__/parsing`,
+  `npx tsc --noEmit -p tsconfig.ci.json` (must be 0 errors; the CI config
+  stubs the native Windows modules `noobs` and `uiohook-napi`, see
+  `src/types/ci/`), `npx eslint src --ext .ts,.tsx --max-warnings 12` (must be
+  0 errors; the warning count may only go down, then lower the number here and
+  in `tests.yml`). `npx eslint --fix <files>` for formatting. A lint disable
+  needs a one-line reason (`-- why`).
 - Don't run Prettier over `guild-cloud-server/*.mjs` (they aren't formatted
   with it).
-- CI: `.github/workflows/tests.yml` runs the app suites that work on Linux
-  (parsing, renderer, main, cloud) and the server tests on every PR;
+- CI: `.github/workflows/tests.yml` runs tsc, eslint, the app suites that work on
+  Linux (parsing, renderer, main, cloud) and the server tests on every PR;
   `node.js.yml` builds on Windows. Both must pass before merging.
 
 ## Releasing

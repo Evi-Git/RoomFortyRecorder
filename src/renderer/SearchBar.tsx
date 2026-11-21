@@ -64,6 +64,7 @@ const SearchBar = (props: IProps) => {
       .map((t) => t.getAsTag())
       .filter((t) => !videoFilterTags.map((i) => i.value).includes(t.value));
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
     setSuggestions(s);
   }, [filteredState, videoFilterTags, language]);
 
