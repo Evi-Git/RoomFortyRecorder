@@ -32,6 +32,7 @@ import NightPicker from './logs/NightPicker';
 import BossStrip from './logs/BossStrip';
 import { Button } from './components/Button/Button';
 import { isReset, useShowResets, withoutEmptyBosses } from './resets';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 import {
   guildKey,
   loadWatcher,
@@ -2148,20 +2149,15 @@ export const ProgressionView = ({
       <div className="flex items-center gap-x-3 flex-wrap">
         <label className="flex items-center gap-x-2 text-sm">
           Boss
-          <select
-            className="bg-panel-deep text-foreground-lighter rounded px-2 py-1 text-sm border border-panel-line"
+          <SimpleSelect
+            className="h-8 text-sm"
             value={choice}
-            onChange={(e) => setChoice(e.target.value)}
-          >
-            {options.map((b) => (
-              <option
-                key={bossKey(b.encounterId, b.difficultyId)}
-                value={bossKey(b.encounterId, b.difficultyId)}
-              >
-                {b.encounterName} · {difficultyName(b.difficultyId)}
-              </option>
-            ))}
-          </select>
+            onChange={setChoice}
+            options={options.map((b) => ({
+              value: bossKey(b.encounterId, b.difficultyId),
+              label: `${b.encounterName} · ${difficultyName(b.difficultyId)}`,
+            }))}
+          />
         </label>
         {canEdit && allOptions && (
           <Button
@@ -2303,19 +2299,19 @@ export const ProgressionView = ({
               aside={
                 <>
                   {watchedGuilds.length > 0 && !asTable && compareMode && (
-                    <select
-                      className="h-8 bg-panel-deep text-foreground-lighter rounded-md px-2 text-xs border border-panel-line"
+                    <SimpleSelect
+                      className="h-8 text-xs"
                       value={compareKey}
-                      onChange={(e) => setCompareKey(e.target.value)}
+                      onChange={setCompareKey}
                       aria-label="Compare with a watched guild"
-                    >
-                      <option value="">Compare with…</option>
-                      {watchedGuilds.map((g) => (
-                        <option key={guildKey(g)} value={guildKey(g)}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: 'Compare with…' },
+                        ...watchedGuilds.map((g) => ({
+                          value: guildKey(g),
+                          label: g.name,
+                        })),
+                      ]}
+                    />
                   )}
                   <Button
                     size="xs"
@@ -2701,30 +2697,25 @@ const TierImport = ({ onImported }: { onImported: () => void }) => {
             onChange={(e) => setGuild({ ...guild, realm: e.target.value })}
             placeholder="Realm"
           />
-          <select
+          <SimpleSelect
             aria-label="Region"
-            className={field}
+            className="w-24"
             value={guild.region}
-            onChange={(e) => setGuild({ ...guild, region: e.target.value })}
-          >
-            {['us', 'eu', 'kr', 'tw'].map((r) => (
-              <option key={r} value={r}>
-                {r.toUpperCase()}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setGuild({ ...guild, region: v })}
+            options={['us', 'eu', 'kr', 'tw'].map((r) => ({
+              value: r,
+              label: r.toUpperCase(),
+            }))}
+          />
+          <SimpleSelect
             aria-label="How far back"
-            className={field}
-            value={months}
-            onChange={(e) => setMonths(Number(e.target.value))}
-          >
-            {[2, 4, 6, 12].map((m) => (
-              <option key={m} value={m}>
-                Last {m} months
-              </option>
-            ))}
-          </select>
+            value={String(months)}
+            onChange={(v) => setMonths(Number(v))}
+            options={[2, 4, 6, 12].map((m) => ({
+              value: String(m),
+              label: `Last ${m} months`,
+            }))}
+          />
           <Button
             size="sm"
             variant="outline"
@@ -3102,22 +3093,20 @@ export const UploadFromLog = ({
       )}
       {files && files.length > 0 && (
         <div className="flex items-center gap-x-2 flex-wrap">
-          <select
-            className="h-9 bg-panel-deep text-foreground-lighter rounded-md px-2 text-sm border border-panel-line"
+          <SimpleSelect
+            aria-label="Combat log file"
+            className="max-w-full"
             value={file}
-            onChange={(e) => {
-              setFile(e.target.value);
+            onChange={(v) => {
+              setFile(v);
               setBosses(null);
               setStatus(null);
             }}
-          >
-            {files.map((f) => (
-              <option key={f.name} value={f.name}>
-                {`${weekdayShort(f.modified)} ${dateTime(f.modified)}`} ·{' '}
-                {fileSize(f.size)} · {f.name}
-              </option>
-            ))}
-          </select>
+            options={files.map((f) => ({
+              value: f.name,
+              label: `${weekdayShort(f.modified)} ${dateTime(f.modified)} · ${fileSize(f.size)} · ${f.name}`,
+            }))}
+          />
           <Button
             size="sm"
             variant="outline"

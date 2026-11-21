@@ -85,7 +85,7 @@ const LocaleSettings = (props: IProps) => {
     >
       <SettingRow
         label={getLocalePhrase(language, Phrase.LanguageLabel)}
-        help="Pages from Warcraft Recorder are translated. Room Forty pages are English."
+        help="Pages that come from the original recorder are translated. Room Forty pages are English."
         htmlFor={sid('language')}
       >
         <Select value={String(config.language)} onValueChange={setLanguage}>

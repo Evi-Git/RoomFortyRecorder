@@ -13,8 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  dialogPanelClass,
-  dialogTitleClass,
 } from './components/Dialog/Dialog';
 import {
   EmptyState,
@@ -243,11 +241,9 @@ const MembersCard = () => {
         open={target !== null}
         onOpenChange={(open) => !open && !busy && setTarget(null)}
       >
-        <DialogContent className={dialogPanelClass}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle
-              className={dialogTitleClass}
-            >{`Sign out ${target?.userName ?? ''}?`}</DialogTitle>
+            <DialogTitle>{`Sign out ${target?.userName ?? ''}?`}</DialogTitle>
             <DialogDescription>
               They&apos;re signed out of the Toolkit on every PC right away.
               They can sign in again if they still have a Room Forty role, so to
@@ -256,7 +252,7 @@ const MembersCard = () => {
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">Cancel</Button>
+              <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button variant="destructive" onClick={signOut} disabled={busy}>
               Sign out

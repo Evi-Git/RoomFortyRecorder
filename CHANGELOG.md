@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.155] - Unreleased
+### Changed
+- **One look for every dialog:** Delete, Protect, Tag, Kill video, Character filter, Go live quality, Coaching and the rest share the walnut panel, serif title and outline Cancel/Close buttons.
+- **The last drop-downs** on the Logs, Dashboard and Consumables pages look and behave like the ones in Settings.
+- **The fonts ship with the app,** so the Toolkit looks the same offline and no longer contacts Google Fonts at start-up.
+- Status messages and help lines say "Room Forty Toolkit"; the Patreon text and the warcraftrecorder.com link are gone, and the chat-name note explains that your chat name comes from Discord.
+- The Add character filter dialog explains the realm format in plain text instead of an (i) icon.
+- Under the hood: about 950 lines of unused styles and 12 unused files removed.
+
 ## [1.9.154] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Fixed

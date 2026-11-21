@@ -3,6 +3,7 @@ import { classColor } from './logs/format';
 import { shortNight } from 'renderer/clock';
 import { compact, formatDurationRounded } from './format';
 import { nightHeading, nightKind } from './trendsLabel';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 
 /**
  * [RoomFortyRecorder] Logs → Trends: the raid's and each raider's DPS, HPS,
@@ -347,23 +348,18 @@ export const LogsTrends = () => {
       <div className="flex items-center gap-x-3 flex-wrap">
         <label className="flex items-center gap-x-2 text-sm">
           Boss
-          <select
-            className="bg-card text-foreground-lighter rounded px-2 py-1 text-sm border border-background"
+          <SimpleSelect
+            className="h-8 text-sm"
             value={boss}
-            onChange={(e) => {
-              setBoss(e.target.value);
+            onChange={(v) => {
+              setBoss(v);
               setLines([]);
             }}
-          >
-            {bosses.map((b) => (
-              <option
-                key={`${b.encounterId}:${b.difficultyId}`}
-                value={`${b.encounterId}:${b.difficultyId}`}
-              >
-                {b.encounterName} ({DIFF[b.difficultyId] ?? b.difficultyId})
-              </option>
-            ))}
-          </select>
+            options={bosses.map((b) => ({
+              value: `${b.encounterId}:${b.difficultyId}`,
+              label: `${b.encounterName} (${DIFF[b.difficultyId] ?? b.difficultyId})`,
+            }))}
+          />
         </label>
         <div className="flex rounded-md border border-card overflow-hidden">
           {KINDS.map((k) => (

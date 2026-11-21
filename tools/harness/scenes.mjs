@@ -968,6 +968,29 @@ export const scenes = [
     },
   },
   {
+    name: 'delete-dialog',
+    shows: 'Delete dialog for a selected raid recording (panel surface, serif title, outline Cancel, destructive Delete)',
+    steps: async (t) => {
+      await t.nav('Raids');
+      await t.text("Ula'tek");
+      await t.page.locator('tr', { hasText: "Ula'tek" }).first().click();
+      await t.settle(400);
+      await t.page.locator('svg.lucide-trash').locator('xpath=..').first().click();
+      await t.settle();
+    },
+  },
+  {
+    name: 'character-filter-dialog',
+    shows: 'Add character filter dialog (Settings > Cloud): help line instead of the (i) icon',
+    steps: async (t) => {
+      await t.nav('General');
+      await t.page.getByRole('tab', { name: 'Cloud', exact: true }).click();
+      await t.settle();
+      await t.page.getByRole('button', { name: /Add character/i }).first().click();
+      await t.settle();
+    },
+  },
+  {
     name: 'diagnostics-dialog',
     shows: 'Diagnostics (log files) dialog',
     steps: async (t) => {

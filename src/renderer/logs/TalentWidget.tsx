@@ -3,6 +3,7 @@
 'use no memo';
 
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { Ctx } from './query';
 import { classColor } from './format';
 import { GameIcon } from '../AbilityCard';
@@ -314,22 +315,18 @@ const TalentWidget = ({ ctx }: { ctx: Ctx }) => {
         <h4 className="m-0 text-sm font-semibold text-foreground-lighter">
           Talents
         </h4>
-        <select
-          className="h-7 px-2 rounded-md border border-background bg-card text-xs text-foreground-lighter"
+        <SimpleSelect
+          className="h-7 text-xs"
           value={raider.guid}
-          onChange={(e) => setPick(e.target.value)}
+          onChange={setPick}
           aria-label="Raider"
-        >
-          {raiders.map((r) => (
-            <option
-              key={r.guid}
-              value={r.guid}
-              style={{ color: classColor(r.specId) }}
-            >
-              {r.name}
-            </option>
-          ))}
-        </select>
+          options={raiders.map((r) => ({
+            value: r.guid,
+            label: (
+              <span style={{ color: classColor(r.specId) }}>{r.name}</span>
+            ),
+          }))}
+        />
         {current?.layout && (
           <button
             type="button"

@@ -1,4 +1,5 @@
 import React from 'react';
+import { SimpleSelect } from '../components/Select/SimpleSelect';
 import { Eye } from 'lucide-react';
 import { Ctx } from './query';
 import {
@@ -102,8 +103,6 @@ const Recap = ({
     .filter((r) => r.dt >= -seconds && kinds.has(r.kind))
     .reverse();
   const ready = death.available.filter((a) => a.status === 'ready');
-  const field =
-    'bg-card text-foreground-lighter rounded px-2 h-7 text-xs border border-background';
   return (
     <Box
       title={
@@ -201,18 +200,16 @@ const Recap = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap text-xs">
-          <select
-            className={field}
-            value={seconds}
-            onChange={(e) => setSeconds(Number(e.target.value))}
+          <SimpleSelect
+            className="h-7 text-xs"
+            value={String(seconds)}
+            onChange={(v) => setSeconds(Number(v))}
             aria-label="Seconds before the death"
-          >
-            {[5, 10, 20, 30].map((s) => (
-              <option key={s} value={s}>
-                Last {s} s
-              </option>
-            ))}
-          </select>
+            options={[5, 10, 20, 30].map((s) => ({
+              value: String(s),
+              label: `Last ${s} s`,
+            }))}
+          />
           {(Object.keys(SHOW_LABEL) as Show[]).map((k) => (
             <label
               key={k}

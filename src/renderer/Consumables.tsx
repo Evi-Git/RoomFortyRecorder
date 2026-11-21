@@ -1,6 +1,7 @@
 import React from 'react';
 import { getSpecClass, getWoWClassColor } from './rendererutils';
 import { PANEL_LINE } from './brand';
+import { SimpleSelect } from './components/Select/SimpleSelect';
 
 /**
  * [RoomFortyRecorder] Consumables & buffs: what raiders had at each pull
@@ -652,19 +653,16 @@ const ConsumablesPanel = ({
         >
           Show
         </label>
-        <select
+        <SimpleSelect
           id={`consumables-${scope}`}
           value={who}
-          onChange={(e) => setWho(e.target.value)}
-          className="h-8 rounded-md border border-panel-line bg-panel-deep px-2 text-sm"
-        >
-          <option value="">Whole raid</option>
-          {names.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
+          onChange={setWho}
+          className="h-8 text-sm"
+          options={[
+            { value: '', label: 'Whole raid' },
+            ...names.map((n) => ({ value: n, label: n })),
+          ]}
+        />
       </div>
       {raider && <RaiderView r={raider} single={Boolean(prep)} />}
       {!raider && prep && <PullOverview prep={prep} data={data} />}

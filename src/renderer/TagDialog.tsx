@@ -377,7 +377,7 @@ export default function TagDialog(props: IProps) {
         {renderTextArea()}
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="ghost">
+            <Button variant="outline">
               {getLocalePhrase(language, Phrase.Close)}
             </Button>
           </DialogClose>

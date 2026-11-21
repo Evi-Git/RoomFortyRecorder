@@ -100,7 +100,7 @@ const LiveSettingsDialog = ({ children }: IProps) => {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-foreground/60">
+            <p className="text-xs text-foreground">
               Only ever scaled down. If your recording is smaller, it streams at
               the recording size.
             </p>
@@ -121,7 +121,7 @@ const LiveSettingsDialog = ({ children }: IProps) => {
                 </SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-foreground/60">
+            <p className="text-xs text-foreground">
               To change the recording frame rate itself, use Scene settings.
             </p>
           </div>
@@ -144,7 +144,7 @@ const LiveSettingsDialog = ({ children }: IProps) => {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-foreground/60">
+            <p className="text-xs text-foreground">
               Suggested for these settings: about {mbps(suggested)}. Your upload
               speed needs comfortable headroom above this.
               {bitrate < suggested * 0.7 &&

@@ -78,7 +78,7 @@ const savedPage = () => {
   }
 };
 
-const WarcraftRecorder = () => {
+const RoomFortyToolkit = () => {
   const [config, setConfig] = useSettings();
   const [error, setError] = useState<string>('');
   const [micStatus, setMicStatus] = useState<MicStatus>(MicStatus.NONE);
@@ -710,7 +710,7 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<WarcraftRecorder />} />
+        <Route path="/" element={<RoomFortyToolkit />} />
       </Routes>
     </Router>
   );
