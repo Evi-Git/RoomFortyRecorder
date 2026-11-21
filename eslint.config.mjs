@@ -7,6 +7,8 @@ import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended'
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
+  // Third-party typings copied verbatim (see the file's header).
+  { ignores: ['src/types/ci/uiohook-napi.d.ts'] },
   { files: ['**/*.{js,mjs,cjs,ts,jsx,tsx}'] },
   { languageOptions: { globals: globals.browser } },
   pluginJs.configs.recommended,

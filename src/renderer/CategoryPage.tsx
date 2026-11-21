@@ -784,15 +784,6 @@ const CategoryPage = (props: IProps) => {
     return { actions, content };
   };
 
-  /**
-   * Counts as the side menu badge does: every viewpoint, but a recording
-   * that exists on disk and in the cloud only once.
-   */
-  const countVideos = (rows: RendererVideo[]) =>
-    new Set(
-      rows.flatMap((rv) => [rv, ...rv.multiPov]).map((rv) => rv.videoName),
-    ).size;
-
   const categoryLabel = getLocaleCategoryLabel(language, category);
 
   /** "7 recordings · 18 of 50 GB on this PC" under the page title. */

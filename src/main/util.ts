@@ -186,7 +186,9 @@ const readTimelineFile = async (
 const convertKoreanVideoCategory = (
   metadata: Metadata | CloudSignedMetadata,
 ) => {
-  const raw = metadata as any;
+  // Legacy data from old versions: the category may be a Korean string, which
+  // is not in the VideoCategory type.
+  const raw = metadata as { category?: string; parentCategory?: string };
 
   if (raw.category === '쐐기+') {
     raw.category = VideoCategory.MythicPlus;
@@ -431,7 +433,7 @@ const getAvailableDisplays = (): OurDisplayType[] => {
 
 const deferredPromiseHelper = <T>() => {
   let resolveHelper!: (value: T | PromiseLike<T>) => void;
-  let rejectHelper!: (reason?: any) => void;
+  let rejectHelper!: (reason?: unknown) => void;
 
   const promise = new Promise<T>((resolve, reject) => {
     resolveHelper = resolve;
@@ -919,6 +921,7 @@ const markForVideoForDelete = async (videoPath: string) => {
  * videos from cloud to disk.
  */
 const rendererVideoToMetadata = (video: RendererVideo) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deletes required RendererVideo fields to get back to a Metadata object, which TypeScript won't allow on the real type
   const data = video as any;
   delete data.videoSource;
   delete data.videoName;
@@ -939,6 +942,7 @@ const cloudSignedMetadataToRendererVideo = (metadata: CloudSignedMetadata) => {
   const uniqueId = `${metadata.videoName}-cloud`;
 
   // We don't want the signed properties themselves.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- signedVideoKey is required on CloudSignedMetadata, so TypeScript won't allow deleting it
   const mutable: any = metadata;
   delete mutable.signedVideoKey;
 

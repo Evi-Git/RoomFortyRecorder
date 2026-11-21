@@ -53,6 +53,7 @@ const LiveSettingsDialog = ({ children }: IProps) => {
 
   React.useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reloads the saved settings each time the dialog opens
     setResolution(getConfigValue<string>('liveResolution') || '1080');
     setFps(getConfigValue<string>('liveFps') || 'full');
     setBitrate(getConfigValue<number>('liveBitrate') || 7000);

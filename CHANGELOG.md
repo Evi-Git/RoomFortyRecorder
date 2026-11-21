@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.156] - Unreleased
+### Changed
+- Under the hood only, nothing you'd notice: every change to the app is now type-checked and linted automatically before it can be merged, so mistakes are caught before they reach a release. A few loose types were tightened and some unused code was removed along the way.
+
 ## [1.9.155] - Unreleased
 ### Changed
 - **One look for every dialog:** Delete, Protect, Tag, Kill video, Character filter, Go live quality, Coaching and the rest share the walnut panel, serif title and outline Cancel/Close buttons.

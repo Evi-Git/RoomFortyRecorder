@@ -261,6 +261,7 @@ const LivePage: React.FC = () => {
           setStatus('connecting');
           setMessage('Connection dropped, reconnecting…');
           setTimeout(() => {
+            // eslint-disable-next-line react-hooks/immutability -- the retry calls watch from inside its own useCallback; the binding is set before the 1.5 s timer fires
             if (attempt === attemptRef.current) watch(name, true);
           }, 1500);
           return;
@@ -327,6 +328,7 @@ const LivePage: React.FC = () => {
     const live = list.streams.some((s) => s.name === watching);
     if (!live && status === 'playing') {
       attemptRef.current += 1;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tears down the peer when the polled stream list shows the streamer went offline
       closePeer();
       setStatus('error');
       setMessage(`${watching} stopped streaming.`);

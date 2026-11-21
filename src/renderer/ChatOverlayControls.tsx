@@ -68,6 +68,7 @@ const ChatOverlayControls = (props: IProps) => {
   }, [initCropSliders]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- false positive: initCropSliders sets state only after an awaited IPC call
     initCropSliders();
     initialRender.current = false;
   }, []);

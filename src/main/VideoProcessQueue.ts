@@ -61,6 +61,13 @@ ffmpegPathAbs = fixPathWhenPackaged(ffmpegPathAbs);
 ffmpeg.setFfmpegPath(ffmpegPathAbs);
 
 /**
+ * The part of an `atomic-queue` queue we use (the package ships no types).
+ */
+interface WritableQueue<T> {
+  write(item: T): void;
+}
+
+/**
  * A queue for cutting videos to size.
  */
 export default class VideoProcessQueue {
@@ -80,25 +87,25 @@ export default class VideoProcessQueue {
   /**
    * Atomic queue object for queueing cutting of videos.
    */
-  private videoQueue: any;
+  private videoQueue: WritableQueue<VideoQueueItem>;
 
   /**
    * Atomic queue object for queuing upload of videos, seperated from the
    * video queue as this can take a long time and we don't want to block further
    * video cuts behind uploads.
    */
-  private uploadQueue: any;
+  private uploadQueue: WritableQueue<UploadQueueItem>;
 
   /**
    * Atomic queue object for queuing download of videos.
    */
-  private downloadQueue: any;
+  private downloadQueue: WritableQueue<RendererVideo>;
 
   /**
    * The kill video queue re-encoder a video from multiple perspectives into a
    * single video file. This is naturally computationally expensive.
    */
-  private killVideoQueue: any;
+  private killVideoQueue: WritableQueue<KillVideoQueueItem>;
 
   /**
    * Config service handle.
@@ -282,7 +289,7 @@ export default class VideoProcessQueue {
       .on('idle', () => { this.videoQueueEmpty() });
 
     queue.pool
-      .on('start', (item: KillVideoQueueItem) => { this.startedProcessingKillVideo(item) })
+      .on('start', () => { this.startedProcessingKillVideo() })
       .on('finish', (_: unknown, item: KillVideoQueueItem) => { this.finishProcessingKillVideo(item) });
     /* eslint-enable prettier/prettier */
 
@@ -713,7 +720,7 @@ export default class VideoProcessQueue {
   /**
    * Actions on starting the processing of a kill video.
    */
-  private startedProcessingKillVideo(item: KillVideoQueueItem) {
+  private startedProcessingKillVideo() {
     console.info('[VideoProcessQueue] Now processing kill video');
 
     const status: KillVideoStatus = {

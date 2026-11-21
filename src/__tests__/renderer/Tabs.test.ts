@@ -78,9 +78,7 @@ describe('tabs', () => {
     expect(result.current.api.activeId).toBe(watch);
     expect(result.current.activeTab.progress.current).toBe(100);
     expect(result.current.activeTab.rev).toBe(1);
-    expect(result.current.appState.selectedVideos[0].videoName).toBe(
-      'Kithix',
-    );
+    expect(result.current.appState.selectedVideos[0].videoName).toBe('Kithix');
   });
 
   test('singleton pages have one tab; closing returns to the opener', () => {

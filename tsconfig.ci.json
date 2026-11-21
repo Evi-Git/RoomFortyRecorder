@@ -1,0 +1,34 @@
+{
+  // The project's type check (CI and local):
+  //   node node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json
+  // Not `npx tsc`: the deprecated `tsc` package owns node_modules/.bin/tsc.
+  //
+  // Differences from tsconfig.json, and why:
+  // - `npm ci --ignore-scripts` doesn't install the native Windows modules
+  //   (noobs, uiohook-napi), so `paths` points them at their real typings.
+  // - `module`/`moduleResolution` are esnext/bundler: tsconfig.json's
+  //   classic "node" resolution can't follow some packages' `exports` maps
+  //   (electron-store's `conf`, `react-router/dom`), so `tsc -p .` reports
+  //   errors that aren't real. The build itself never type-checks (ts-loader
+  //   runs with transpileOnly); this config is the only type check.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "baseUrl": "./src",
+    "paths": {
+      // noobs: our patched typings (native/noobs/index.d.ts) are exactly what
+      // .erb/scripts/patch-noobs.js installs over the package.
+      "noobs": ["../native/noobs/index.d.ts"],
+      "uiohook-napi": ["./types/ci/uiohook-napi.d.ts"],
+      // Deep type-only import that the package's "exports" map doesn't list
+      // (resolves fine under tsconfig.json's classic "node" resolution).
+      "@excalidraw/excalidraw/dist/types/*": [
+        "../node_modules/@excalidraw/excalidraw/dist/types/*"
+      ]
+    }
+  }
+}
