@@ -30,9 +30,10 @@ jobs:
       run: npm ci --ignore-scripts
 
     # tsconfig.ci.json stands in for the native Windows modules (noobs,
-    # uiohook-napi) that --ignore-scripts doesn't install.
+    # uiohook-napi) that --ignore-scripts doesn't install. Not `npx tsc`: the
+    # deprecated `tsc` package in dependencies owns node_modules/.bin/tsc.
     - name: Type check
-      run: npx tsc --noEmit -p tsconfig.ci.json
+      run: node node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json
 
     # Warnings are capped so they can't grow; lower the number when you fix some.
     - name: Lint
