@@ -70,8 +70,6 @@ enum Phrase {
   CloudUploadClassicDescription,
   CloudUploadRateLimitDescription,
   CloudUploadRateLimitMbpsDescription,
-  CloudAccountNameDescription,
-  CloudAccountPasswordDescription,
   CloudGuildNameDescription,
   CloudUpload2v2Description,
   CloudUpload3v3Description,

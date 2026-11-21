@@ -1096,7 +1096,7 @@ const AnalyzeView = ({
     <div className="flex flex-wrap gap-4">
       <div className="flex-[999_1_640px] min-w-0 flex flex-col gap-y-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <label className="flex items-center gap-x-2 px-2.5 py-1.5 rounded-lg border border-card bg-panel text-[13px]">
+          <label className="flex items-center gap-x-2 text-[13px]">
             Raider
             <SimpleSelect
               className="h-7 text-[13px] font-semibold"
