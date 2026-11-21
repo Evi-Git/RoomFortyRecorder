@@ -207,7 +207,7 @@ export default function TagDialog(props: IProps) {
     }
 
     if (data.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- preselects the first row when the data changes
       setRowSelection({ [data[0].uniqueId]: true });
       setInnerTag(data[0]?.tag ?? '');
     }

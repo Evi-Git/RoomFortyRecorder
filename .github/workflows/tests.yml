@@ -27,8 +27,12 @@ jobs:
         cache: 'npm'
 
     - name: Install deps (no native builds)
+      id: install
       run: npm ci --ignore-scripts
 
+    # The checks below run even when an earlier one fails, so one PR run
+    # reports every problem (but not after a failed install).
+    #
     # tsconfig.ci.json stands in for the native Windows modules (noobs,
     # uiohook-napi) that --ignore-scripts doesn't install. Not `npx tsc`: the
     # deprecated `tsc` package in dependencies owns node_modules/.bin/tsc.
@@ -37,11 +41,14 @@ jobs:
 
     # Warnings are capped so they can't grow; lower the number when you fix some.
     - name: Lint
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       run: npx eslint src --ext .ts,.tsx --max-warnings 12
 
     - name: App tests (parsing, renderer, main, cloud)
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       run: npx jest src/__tests__/parsing src/__tests__/renderer src/__tests__/main src/__tests__/cloud
 
     - name: Guild server tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       working-directory: guild-cloud-server
       run: node --test

@@ -1,10 +1,16 @@
 {
-  // Type check for Linux CI and local Linux checks: `npx tsc --noEmit -p tsconfig.ci.json`.
+  // The project's type check (CI and local):
+  //   node node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json
+  // Not `npx tsc`: the deprecated `tsc` package owns node_modules/.bin/tsc.
   //
-  // `npm ci --ignore-scripts` doesn't install the native Windows modules
-  // (noobs, uiohook-napi), so this config points them at typings we can read
-  // on Linux. The Windows build keeps using tsconfig.json and the real
-  // packages. Everything else is the same program as tsconfig.json.
+  // Differences from tsconfig.json, and why:
+  // - `npm ci --ignore-scripts` doesn't install the native Windows modules
+  //   (noobs, uiohook-napi), so `paths` points them at their real typings.
+  // - `module`/`moduleResolution` are esnext/bundler: tsconfig.json's
+  //   classic "node" resolution can't follow some packages' `exports` maps
+  //   (electron-store's `conf`, `react-router/dom`), so `tsc -p .` reports
+  //   errors that aren't real. The build itself never type-checks (ts-loader
+  //   runs with transpileOnly); this config is the only type check.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,

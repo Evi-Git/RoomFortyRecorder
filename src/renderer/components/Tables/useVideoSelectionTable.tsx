@@ -516,7 +516,7 @@ const useVideoSelectionTable = (
       if (group.length > 0) {
         // No sorting here. The uniqueId must match the parent video which
         // the row represents to be marked as selected in the table.
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs state from props/external state on purpose; changing it would alter render timing
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- preselects the first row when the data changes
         setRowSelection({ [group[0].uniqueId]: true });
         return;
       }
