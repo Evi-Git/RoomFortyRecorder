@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.157] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Changed
+- **One Warcraft Logs connection for the guild server.** Recruiting, the top-guild watcher, Top logs and the pull desk now share one sign-in and one count of the hour's Warcraft Logs points, instead of four that couldn't see each other's spend.
+- The background crawls (recruiting, watcher, Top logs) pause at 85% of the hour's points, and the pull desk (imports, Compare, spell icons) can use up to 95%, so a click on Compare or an import still works while a crawl is waiting for the hour to reset.
+- A crawl waiting for the hour to reset now stops within a second when you press Stop.
+- A whole-tier import counts as a background job too (85%), so it can't use up the room left for clicks.
+
 ## [1.9.156] - Unreleased
 ### Changed
 - Under the hood only, nothing you'd notice: every change to the app is now type-checked and linted automatically before it can be merged, so mistakes are caught before they reach a release. A few loose types were tightened and some unused code was removed along the way.

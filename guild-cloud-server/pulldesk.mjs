@@ -24,7 +24,7 @@ import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCau
 import { isReset, numberPulls } from './pulldesk-resets.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
-import { createWclClient } from './recruit-clients.mjs';
+import { wclHandle } from './recruit-clients.mjs';
 import { createSeason, seasonBosses } from './season.mjs';
 import { createTopLogs } from './toplogs.mjs';
 import { createWclCompare } from './pulldesk-wcl-compare.mjs';
@@ -238,13 +238,21 @@ export const createPullDesk = (options) => {
     Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
-  // Warcraft Logs, for importing pulls the app didn't capture.
-  const wcl = options.wcl ||
-    createWclClient({
+  // Warcraft Logs, for importing pulls the app didn't capture. Someone is
+  // usually waiting on these (imports, Compare, icons), so this handle may
+  // spend up to 95% of the hour; the background crawls stop at 85%.
+  const wcl = wclHandle(
+    options.wcl,
+    {
       clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
       clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
       baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-    });
+    },
+    { budgetShare: 0.95 },
+  );
+  // Bulk work nobody waits on (a whole-tier import, extras and meters for
+  // imported pulls) stops at 85% like the crawls, leaving the rest for clicks.
+  const bulkWcl = wcl.forConsumer ? wcl.forConsumer({ budgetShare: 0.85 }) : wcl;
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
   // Warcraft Logs is a last source for spell icons.
@@ -392,7 +400,7 @@ export const createPullDesk = (options) => {
   // Top logs: Warcraft Logs' top 25 per spec and the Time trial tracks.
   const topLogs =
     options.topLogs ||
-    createTopLogs({ storage: options.storage, env, json, fail, readBody, season, isOfficer: (req) => canEdit(req) });
+    createTopLogs({ storage: options.storage, env, json, fail, readBody, season, wcl, isOfficer: (req) => canEdit(req) });
   if (!options.noTimers) topLogs.start();
 
   const summaryOf = (pull) => ({
@@ -546,7 +554,7 @@ export const createPullDesk = (options) => {
     return json(res, 200, { missing });
   };
 
-  const importReports = async (codes) => {
+  const importReports = async (codes, client = wcl) => {
     if (!wcl.configured) {
       throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
     }
@@ -561,7 +569,7 @@ export const createPullDesk = (options) => {
       let fetched;
       try {
         // eslint-disable-next-line no-await-in-loop
-        fetched = await fetchReportPulls(wcl, code, gameDifficulties);
+        fetched = await fetchReportPulls(client, code, gameDifficulties);
       } catch (error) {
         results.push({ code, error: error.message });
         continue;
@@ -699,7 +707,7 @@ export const createPullDesk = (options) => {
       for (let i = 0; i < codes.length; i += 5) {
         try {
           // eslint-disable-next-line no-await-in-loop
-          const results = await importReports(codes.slice(i, i + 5));
+          const results = await importReports(codes.slice(i, i + 5), bulkWcl);
           results.forEach((r) => {
             if (r.error) tierJob.errors.push(`${r.code}: ${r.error}`);
             tierJob.added += (r.added || 0) + (r.filled || 0);
@@ -858,7 +866,7 @@ export const createPullDesk = (options) => {
       let extras;
       try {
         // eslint-disable-next-line no-await-in-loop
-        extras = await fetchReportExtras(wcl, code, items.map((i) => i.report.wclFight), {
+        extras = await fetchReportExtras(bulkWcl, code, items.map((i) => i.report.wclFight), {
           abilityIds: avoid.map((a) => a.id),
           abilityNames: avoid.map((a) => a.name).filter(Boolean),
           potionNames: index.settings.combatPotions,
@@ -873,7 +881,7 @@ export const createPullDesk = (options) => {
       if (needMeters.length) {
         try {
           // eslint-disable-next-line no-await-in-loop
-          meters = await fetchFightMeters(wcl, code, needMeters);
+          meters = await fetchFightMeters(bulkWcl, code, needMeters);
         } catch (error) {
           console.warn(`[pulldesk] Warcraft Logs meters for ${code} failed`, error.message);
         }

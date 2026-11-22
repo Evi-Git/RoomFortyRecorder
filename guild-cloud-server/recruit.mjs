@@ -16,7 +16,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createWclClient } from './recruit-clients.mjs';
+import { wclHandle } from './recruit-clients.mjs';
 import { createRecruitCrawler } from './recruit-crawl.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -41,18 +41,21 @@ export const parseCookies = (header = '') =>
  * @param {(discordId: string) => Promise<string[]|null>} options.memberRoleNames
  * @param {object} options.env
  */
-export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken, memberRoleNames, env, canUser = null }) => {
+export const createRecruit = ({ storage, readBody, json, fail, sessionFromToken, memberRoleNames, env, canUser = null, wcl: givenWcl = null }) => {
   const roles = String(env.GUILD_CLOUD_RECRUIT_ROLES ?? 'Officer')
     .split(',')
     .map((r) => r.trim().toLowerCase())
     .filter(Boolean);
 
-  const wcl = createWclClient({
-    clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
-    clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
-    baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-    log: (m) => crawler && crawler.status && crawler.status.log.push(`${new Date().toISOString().slice(11, 19)} ${m}`),
-  });
+  const wcl = wclHandle(
+    givenWcl,
+    {
+      clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
+      clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
+      baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
+    },
+    { log: (m) => crawler && crawler.status && crawler.status.log.push(`${new Date().toISOString().slice(11, 19)} ${m}`) },
+  );
   const crawler = createRecruitCrawler({
     storage,
     wcl,
