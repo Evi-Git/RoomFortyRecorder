@@ -59,6 +59,26 @@ test('owner can do everything; view as a role answers as that role only', async 
   assert.equal(me.body.can.analysisView, true);
 });
 
+test('Edit Analysis needs See Analysis too (1.9.159)', async () => {
+  const { perms, call } = await setup();
+  // Officers may edit, trials may only see; then trials lose See Analysis
+  // while keeping Edit: they can do neither.
+  const saved = await call('99999', 'PUT', [], {
+    grants: { analysisView: ['officer', 'trial'], analysisEdit: ['officer', 'trial'] },
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(await perms.can(req('3'), 'analysisEdit'), true);
+  await call('99999', 'PUT', [], { grants: { analysisView: ['officer'], analysisEdit: ['officer', 'trial'] } });
+  assert.equal(await perms.can(req('3'), 'analysisEdit'), false);
+  assert.equal(await perms.canUser('3', 'analysisEdit'), false);
+  assert.equal(await perms.can(req('1'), 'analysisEdit'), true);
+  // "View as" trial answers the same; the owner themselves keeps everything.
+  assert.equal(await perms.can(req('99999', 'trial'), 'analysisEdit'), false);
+  assert.equal(await perms.can(req('99999'), 'analysisEdit'), true);
+  const me = await call('3', 'GET', ['me']);
+  assert.equal(me.body.can.analysisEdit, false);
+});
+
 test('only the owner reads and saves the table; saved grants apply', async () => {
   const { perms, call, storage } = await setup();
   assert.equal((await call('1', 'GET', [])).status, 403);

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.159] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Changed
+- **Edit Analysis now also needs See Analysis.** A role that's ticked for Edit but not See on the Admin page can't change boss settings, the avoidable list, imports or Re-run any more, instead of editing pages it can't see. Owners keep everything.
+- **Flagged moments follow the Admin table.** Seeing them needs See Analysis or Watch live streams (they show on the Dashboard and on Watch live), and making one needs Watch live streams. Before, anyone signed in could read every flag and its note.
+- **The top-guild watcher needs See Analysis,** like the rest of the Progression view: both seeing its results and, for officers, changing its guilds or running a crawl.
+- **The storage clean-up the app asks for after an upload runs at most once a minute.** The server already cleans up after every upload by itself, so nothing changes in practice; a misbehaving app can no longer make it list the whole recordings bucket over and over.
+- The guild server unzips pull logs without pausing other requests (and only once per upload), and its log notes any pull whose analysis takes more than a second.
+
 ## [1.9.158] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed

@@ -24,10 +24,17 @@ test('the table has no duplicate method + path and only known access kinds', () 
     seen.add(id);
     assert.ok(/^[A-Z]+$/.test(route.method), `${id}: method`);
     assert.ok(route.path.startsWith('/'), `${id}: path starts with /`);
-    assert.ok(
-      ACCESS_KINDS.includes(route.access) || CAPABILITY_KEYS.includes(route.access),
-      `${id}: unknown access '${route.access}'`,
-    );
+    if (Array.isArray(route.access)) {
+      // Any one of several capabilities: each must exist, and the 403 needs its own words.
+      assert.ok(route.access.length > 1, `${id}: a list of one capability should be a plain key`);
+      for (const key of route.access) assert.ok(CAPABILITY_KEYS.includes(key), `${id}: unknown capability '${key}'`);
+      assert.ok(route.denied, `${id}: a list of capabilities needs a denied message`);
+    } else {
+      assert.ok(
+        ACCESS_KINDS.includes(route.access) || CAPABILITY_KEYS.includes(route.access),
+        `${id}: unknown access '${route.access}'`,
+      );
+    }
     if (route.access === 'other') assert.ok(route.note, `${id}: an 'other' route needs a note`);
     if (route.denied) assert.ok(!['public', 'adminSecret', 'member', 'other'].includes(route.access), `${id}: denied without a gate`);
     const stars = route.path.split('/').filter((s) => s === '*');
@@ -460,6 +467,47 @@ test('the gate: owners, "view as", and the admin secret', { timeout: 120000 }, a
     assert.equal(denied.body.error, 'Your Discord role cannot see Analysis');
     assert.equal((await call('GET', `${PD}/season`, { who: owner })).status, 200);
     assert.equal((await call('GET', `${PD}/season`, asRaider)).status, 403);
+
+    // 1.9.159: the watcher follows See Analysis like the rest of Analysis.
+    const watcher = await call('GET', `${PD}/watcher`, { who: bob });
+    assert.equal(watcher.status, 403);
+    assert.equal(watcher.body.error, 'Your Discord role cannot see Analysis');
+
+    // Flagged moments: Watch live or See Analysis is enough to read them,
+    // making one needs Watch live, and with neither they're shut.
+    const flagBody = { at: Date.now(), streamer: 'Evi', note: 'swirl' };
+    const liveOnly = await call('PUT', `${G}/permissions`, { who: owner, body: { grants: { analysisView: [], liveWatch: ['raider'] } } });
+    assert.equal(liveOnly.status, 200);
+    assert.equal((await call('GET', `${PD}/coach/flags`, { who: bob })).status, 200, 'Watch live alone reads flags');
+    assert.equal((await call('POST', `${PD}/coach/flags`, { who: bob, body: flagBody })).status, 200);
+    const shut = await call('PUT', `${G}/permissions`, { who: owner, body: { grants: { analysisView: [], liveWatch: [] } } });
+    assert.equal(shut.status, 200);
+    const noFlags = await call('GET', `${PD}/coach/flags`, { who: bob });
+    assert.equal(noFlags.status, 403);
+    assert.equal(noFlags.body.error, 'Your Discord role cannot see flagged moments');
+    const noFlagging = await call('POST', `${PD}/coach/flags`, { who: bob, body: flagBody });
+    assert.equal(noFlagging.status, 403);
+    assert.equal(noFlagging.body.error, 'Your Discord role cannot flag moments');
+    const viewOnly = await call('PUT', `${G}/permissions`, { who: owner, body: { grants: { analysisView: ['@everyone'], liveWatch: [] } } });
+    assert.equal(viewOnly.status, 200);
+    assert.equal((await call('GET', `${PD}/coach/flags`, { who: bob })).status, 200, 'See Analysis alone reads flags');
+    assert.equal((await call('POST', `${PD}/coach/flags`, { who: bob, body: flagBody })).status, 403);
+
+    // Edit Analysis without See Analysis edits nothing.
+    const blind = await call('PUT', `${G}/permissions`, {
+      who: owner,
+      body: { grants: { analysisView: [], analysisEdit: ['@everyone'] } },
+    });
+    assert.equal(blind.status, 200);
+    const blindEdit = await call('PUT', `${PD}/progression-list`, { who: bob, body: { shown: [] } });
+    assert.equal(blindEdit.status, 403);
+    assert.equal(blindEdit.body.error, 'Your Discord role cannot edit the pull desk');
+    const both = await call('PUT', `${G}/permissions`, {
+      who: owner,
+      body: { grants: { analysisView: ['@everyone'], analysisEdit: ['@everyone'] } },
+    });
+    assert.equal(both.status, 200);
+    assert.notEqual((await call('PUT', `${PD}/progression-list`, { who: bob, body: { shown: [] } })).status, 403);
 
     // The admin secret: right one in, the rest of the route behaves as before.
     const admin = { headers: { 'x-admin-secret': ADMIN } };

@@ -299,6 +299,10 @@ export const createCoach = ({
     }
 
     if (first === 'flags' && !second && req.method === 'GET') {
+      // Shown on the Dashboard and on Watch live: either is enough.
+      if (can && !(await can(req, 'analysisView')) && !(await can(req, 'liveWatch'))) {
+        return fail(res, 403, 'Your Discord role cannot see flagged moments');
+      }
       const days = Math.min(120, Math.max(1, Number(url?.searchParams.get('days')) || 7));
       const since = Date.now() - days * 86400000;
       return json(res, 200, {
@@ -307,6 +311,8 @@ export const createCoach = ({
     }
 
     if (first === 'flags' && !second && req.method === 'POST') {
+      // Flags are made while watching someone live.
+      if (can && !(await can(req, 'liveWatch'))) return fail(res, 403, 'Your Discord role cannot flag moments');
       const body = await readBody(req, 16 * 1024);
       const at = Number(body?.at);
       if (!Number.isFinite(at) || Math.abs(Date.now() - at) > 6 * 3600000) {

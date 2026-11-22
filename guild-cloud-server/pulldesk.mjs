@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import zlib from 'node:zlib';
 import { analyzePull, formatTime, METERS_LINE_PREFIX, parseNote } from './pulldesk-analyze.mjs';
 import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCause } from './pulldesk-summary.mjs';
@@ -44,6 +45,13 @@ const KNOWN_AURAS = new Set(RAID_BUFFS.flatMap((b) => b.ids));
 
 const MAX_LOG_BYTES = 40 * 1024 * 1024; // gzipped upload
 const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
+// Unzipped on libuv's thread pool, so other requests aren't held up while a
+// log unzips (gunzipSync blocked the whole server for ~70 ms per pull).
+const gunzipAsync = promisify(zlib.gunzip);
+// Analyses at least this long are logged (a re-run of every pull would
+// otherwise write a line per pull).
+const SLOW_ANALYSIS_MS = 1000;
+const gunzipLog = async (gz) => (await gunzipAsync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES })).toString('utf8');
 // A pull's full combat log (every line, gzipped) for the app's Logs page.
 const MAX_FULL_BYTES = 150 * 1024 * 1024;
 // Meters the app works out (src/parsing/PullMeters.ts): 3 counts every hit
@@ -726,15 +734,27 @@ export const createPullDesk = (options) => {
 
   // ---- Analysis -------------------------------------------------------------
 
-  const runAnalysis = async (pull) => {
-    const gz = await fsp.readFile(logFile(pull.id));
-    const text = zlib.gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES }).toString('utf8');
+  // `unzipped`: the log's text when the caller already has it (an upload),
+  // so it isn't unzipped a second time.
+  const runAnalysis = async (pull, unzipped = null) => {
+    const startedAt = performance.now();
+    const text = unzipped ?? (await gunzipLog(await fsp.readFile(logFile(pull.id))));
+    const unzipMs = performance.now() - startedAt;
     const settings = bossSettings(pull.encounterId);
+    // analyzePull runs on the main thread (~0.3-0.4 s for a 5-minute Mythic
+    // pull, Nov 2026). Slow ones are logged so they show up in the server
+    // log; move it to a worker thread if these grow past ~2 s.
     const report = analyzePull(text, {
       note: settings.note,
       avoidable: settings.avoidable,
       combatPotions: index.settings.combatPotions,
     });
+    const analyzeMs = performance.now() - startedAt - unzipMs;
+    if (analyzeMs >= SLOW_ANALYSIS_MS) {
+      console.log(
+        `[pulldesk] Slow analysis: ${pull.id} took ${Math.round(analyzeMs)} ms (unzip ${Math.round(unzipMs)} ms, ${(text.length / 1e6).toFixed(0)}M characters)`,
+      );
+    }
 
     // Name what raiders had at the pull (food, flask, runes...): aura names
     // and tooltips from Wowhead, cached on the server for good.
@@ -1362,7 +1382,7 @@ export const createPullDesk = (options) => {
     // Validate before storing: it must gunzip and contain an encounter.
     let text;
     try {
-      text = zlib.gunzipSync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES }).toString('utf8');
+      text = await gunzipLog(gz);
     } catch {
       return fail(res, 400, 'Upload is not a gzipped log');
     }
@@ -1393,7 +1413,7 @@ export const createPullDesk = (options) => {
       await persist();
 
       try {
-        report = await runAnalysis(pull);
+        report = await runAnalysis(pull, text);
       } catch (error) {
         console.error('[pulldesk] Analysis failed', pull.id, error);
         pull.status = 'failed';
