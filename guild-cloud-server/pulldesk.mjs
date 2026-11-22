@@ -250,6 +250,9 @@ export const createPullDesk = (options) => {
     },
     { budgetShare: 0.95 },
   );
+  // Bulk work nobody waits on (a whole-tier import, extras and meters for
+  // imported pulls) stops at 85% like the crawls, leaving the rest for clicks.
+  const bulkWcl = wcl.forConsumer ? wcl.forConsumer({ budgetShare: 0.85 }) : wcl;
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
   // Warcraft Logs is a last source for spell icons.
@@ -551,7 +554,7 @@ export const createPullDesk = (options) => {
     return json(res, 200, { missing });
   };
 
-  const importReports = async (codes) => {
+  const importReports = async (codes, client = wcl) => {
     if (!wcl.configured) {
       throw Object.assign(new Error('Set GUILD_CLOUD_WCL_CLIENT_ID and GUILD_CLOUD_WCL_CLIENT_SECRET in the server .env (same as recruiting).'), { status: 400 });
     }
@@ -566,7 +569,7 @@ export const createPullDesk = (options) => {
       let fetched;
       try {
         // eslint-disable-next-line no-await-in-loop
-        fetched = await fetchReportPulls(wcl, code, gameDifficulties);
+        fetched = await fetchReportPulls(client, code, gameDifficulties);
       } catch (error) {
         results.push({ code, error: error.message });
         continue;
@@ -704,7 +707,7 @@ export const createPullDesk = (options) => {
       for (let i = 0; i < codes.length; i += 5) {
         try {
           // eslint-disable-next-line no-await-in-loop
-          const results = await importReports(codes.slice(i, i + 5));
+          const results = await importReports(codes.slice(i, i + 5), bulkWcl);
           results.forEach((r) => {
             if (r.error) tierJob.errors.push(`${r.code}: ${r.error}`);
             tierJob.added += (r.added || 0) + (r.filled || 0);
@@ -863,7 +866,7 @@ export const createPullDesk = (options) => {
       let extras;
       try {
         // eslint-disable-next-line no-await-in-loop
-        extras = await fetchReportExtras(wcl, code, items.map((i) => i.report.wclFight), {
+        extras = await fetchReportExtras(bulkWcl, code, items.map((i) => i.report.wclFight), {
           abilityIds: avoid.map((a) => a.id),
           abilityNames: avoid.map((a) => a.name).filter(Boolean),
           potionNames: index.settings.combatPotions,
@@ -878,7 +881,7 @@ export const createPullDesk = (options) => {
       if (needMeters.length) {
         try {
           // eslint-disable-next-line no-await-in-loop
-          meters = await fetchFightMeters(wcl, code, needMeters);
+          meters = await fetchFightMeters(bulkWcl, code, needMeters);
         } catch (error) {
           console.warn(`[pulldesk] Warcraft Logs meters for ${code} failed`, error.message);
         }

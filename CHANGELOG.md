@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **One Warcraft Logs connection for the guild server.** Recruiting, the top-guild watcher, Top logs and the pull desk now share one sign-in and one count of the hour's Warcraft Logs points, instead of four that couldn't see each other's spend.
 - The background crawls (recruiting, watcher, Top logs) pause at 85% of the hour's points, and the pull desk (imports, Compare, spell icons) can use up to 95%, so a click on Compare or an import still works while a crawl is waiting for the hour to reset.
-- Stop on a crawl takes effect within a second, even while it's waiting for the hour to reset.
+- A crawl waiting for the hour to reset now stops within a second when you press Stop.
+- A whole-tier import counts as a background job too (85%), so it can't use up the room left for clicks.
 
 ## [1.9.156] - Unreleased
 ### Changed

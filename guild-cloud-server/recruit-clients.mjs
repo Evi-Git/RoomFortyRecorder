@@ -25,7 +25,7 @@ export const createWclClient = ({
   let tokenExpires = 0;
   let tokenRequest = null;
   // The hour's spend as Warcraft Logs last reported it, shared by every handle.
-  const shared = { limitPerHour: null, spentThisHour: 0, resetAt: 0, queries: 0 };
+  const shared = { limitPerHour: null, spentThisHour: 0, resetAt: 0 };
   const configured = Boolean(clientId && clientSecret);
 
   const fetchToken = async () => {
@@ -59,6 +59,8 @@ export const createWclClient = ({
   };
 
   const resetInSeconds = () => Math.max(0, Math.round((shared.resetAt - Date.now()) / 1000));
+  // Past the reset, last hour's spend no longer counts.
+  const spentNow = () => (shared.resetAt && Date.now() >= shared.resetAt ? 0 : shared.spentThisHour);
 
   /**
    * A handle for one feature. `log` gets its pause and retry lines;
@@ -73,7 +75,7 @@ export const createWclClient = ({
       {},
       {
         limitPerHour: { enumerable: true, get: () => shared.limitPerHour },
-        spentThisHour: { enumerable: true, get: () => shared.spentThisHour },
+        spentThisHour: { enumerable: true, get: spentNow },
         resetIn: { enumerable: true, get: resetInSeconds },
         queries: { enumerable: true, get: () => own.queries },
         spentByUs: { enumerable: true, get: () => own.spentByUs },
@@ -82,7 +84,7 @@ export const createWclClient = ({
 
     const waitForBudget = async () => {
       if (!shared.limitPerHour) return;
-      if (shared.spentThisHour < shared.limitPerHour * share) return;
+      if (spentNow() < shared.limitPerHour * share) return;
       const waitS = Math.max(5, resetInSeconds() + 5);
       say(`Used ${Math.round(shared.spentThisHour)} of ${shared.limitPerHour} points this hour; pausing ${Math.round(waitS / 60)} min.`);
       const until = Date.now() + waitS * 1000;
@@ -91,8 +93,7 @@ export const createWclClient = ({
         // eslint-disable-next-line no-await-in-loop
         await sleep(Math.min(1000, until - Date.now()));
       }
-      // The hour has reset; the next answer brings the real number.
-      if (Date.now() >= shared.resetAt) shared.spentThisHour = 0;
+      // The hour has reset (spentNow says 0); the next answer brings the real number.
     };
 
     /** Run a GraphQL query. Returns `data`. */
@@ -138,7 +139,7 @@ export const createWclClient = ({
         }
         const rate = body.data?.rateLimitData;
         if (rate) {
-          const before = shared.spentThisHour;
+          const before = spentNow();
           shared.limitPerHour = rate.limitPerHour;
           shared.spentThisHour = rate.pointsSpentThisHour;
           shared.resetAt = Date.now() + (Number(rate.pointsResetIn) || 0) * 1000;
@@ -147,7 +148,6 @@ export const createWclClient = ({
           if (rate.pointsSpentThisHour >= before) own.spentByUs += rate.pointsSpentThisHour - before;
         }
         own.queries += 1;
-        shared.queries += 1;
         if (body.errors?.length && !body.data) {
           throw new Error(`Warcraft Logs query error: ${body.errors.map((e) => e.message).join('; ')}`);
         }

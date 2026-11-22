@@ -105,3 +105,20 @@ test('wclHandle: a handle of the given client, the given fake as is, or a client
   assert.equal(own.configured, false);
   assert.equal(typeof own.forConsumer, 'function');
 });
+
+test('after the hour resets, last hour\'s spend no longer pauses anyone', async () => {
+  let spent = 950;
+  const fake = fakeWcl({ spent: () => spent, resetIn: 0.05 }); // resets 50 ms after each answer
+  const logs = [];
+  const client = createWclClient({ clientId: 'a', clientSecret: 'b', fetchImpl: fake.fetchImpl, log: (m) => logs.push(m) });
+  const crawl = client.forConsumer();
+  await crawl.query('{ a }');
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(crawl.usage.spentThisHour, 0);
+  spent = 10;
+  const started = Date.now();
+  await crawl.query('{ b }');
+  assert.ok(Date.now() - started < 1000, 'no wait');
+  assert.deepEqual(logs, []);
+  assert.equal(crawl.usage.spentThisHour, 10);
+});
