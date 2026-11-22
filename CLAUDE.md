@@ -55,8 +55,8 @@ The main conversation model (Fable when available, otherwise Opus) is the
   that table before any handler runs and answers 404 `Unknown API route` for
   anything not in it, so a new route needs a table entry (and an example in
   the app call-site list in `routes.test.mjs` if the app calls it). The
-  handlers keep their own checks too. `analysisEdit` only counts together
-  with `analysisView` (`IMPLIES` in `permissions.mjs`).
+  handlers keep their own checks too. `analysisEdit` and `watcherManage`
+  only count together with `analysisView` (`IMPLIES` in `permissions.mjs`).
 
 ## Checks
 

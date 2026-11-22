@@ -584,26 +584,32 @@ test('a file that will not delete keeps its reservation and goes on the next run
   }
 });
 
-test('the housekeeper route runs at most once a minute and answers with the last result', async () => {
-  const { call, stop, objects, bucketFile } = await start({
-    bucket: { 'evi.mp4': { size: 1000 }, 'old.mp4': { size: 1000 }, 'bob.mp4': { size: 1000 } },
+test('the housekeeper route runs at most once per gap and answers with the last result', async () => {
+  const { call, stop, library, objects, bucketFile } = await start({
+    bucket: { 'abandoned.mp4': { size: 1000 }, failDeletes: ['abandoned.mp4'] },
+    state: { uploadReservations: { 'abandoned.mp4': expiredFor(BOB, 'Bob') } },
+    // A short gap instead of a minute.
+    env: { GUILD_CLOUD_HOUSEKEEPER_GAP_MS: '1500' },
   });
   try {
+    // First run: the abandoned upload won't delete, so it stays for the next run.
     const first = await call(bob, 'POST', '/housekeeper');
     assert.equal(first.status, 200);
-    assert.equal(first.body.bytes, 3000);
-
-    // An abandoned upload turns up; a second call within the minute doesn't
-    // list the bucket again, so it stays (and the answer is the last one).
-    fs.writeFileSync(bucketFile, JSON.stringify({ ...objects(), 'abandoned.mp4': { size: 500 } }));
-    const second = await call(bob, 'POST', '/housekeeper');
-    assert.equal(second.status, 200);
-    assert.equal(second.body.bytes, 3000);
     assert.ok('abandoned.mp4' in objects());
 
-    // Several calls at once all get an answer.
+    // Deletes work again. Within the gap the route doesn't run (and answers
+    // with the last result); a run now would delete the file.
+    fs.writeFileSync(bucketFile, JSON.stringify({ 'abandoned.mp4': objects()['abandoned.mp4'] }));
     const together = await Promise.all([1, 2, 3].map(() => call(bob, 'POST', '/housekeeper')));
     assert.deepEqual(together.map((r) => r.status), [200, 200, 200]);
+    assert.deepEqual(together.map((r) => r.body.bytes), [first.body.bytes, first.body.bytes, first.body.bytes]);
+    assert.ok('abandoned.mp4' in objects(), 'no run within the gap');
+
+    // After the gap it runs again.
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    assert.equal((await call(bob, 'POST', '/housekeeper')).status, 200);
+    assert.equal('abandoned.mp4' in objects(), false);
+    assert.deepEqual(library().uploadReservations, {});
   } finally {
     stop();
   }

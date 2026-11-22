@@ -117,7 +117,7 @@ export const capabilities = (env = {}) => {
 };
 
 /** A capability that only works together with these others. */
-export const IMPLIES = { analysisEdit: ['analysisView'] };
+export const IMPLIES = { analysisEdit: ['analysisView'], watcherManage: ['analysisView'] };
 
 const cleanRole = (role) => String(role ?? '').trim().toLowerCase().slice(0, 100);
 
@@ -194,8 +194,9 @@ export const createPermissions = ({
   const allowed = (key, roles, owner) => {
     if (!capKeys.has(key)) return false;
     if (owner) return true;
-    // Editing Analysis without seeing it would be editing blind (and the
-    // Admin table could be set up that way by mistake): it needs both.
+    // Editing Analysis (or the watcher, which lives in Progression) without
+    // seeing it would be editing blind, and the Admin table could be set up
+    // that way by mistake: it needs both.
     if ((IMPLIES[key] || []).some((needed) => !granted(needed, roles))) return false;
     return granted(key, roles);
   };

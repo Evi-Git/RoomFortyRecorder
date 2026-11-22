@@ -1208,7 +1208,10 @@ const housekeep = async () => {
 // at most once a minute (one at a time) and otherwise answers with the last
 // result: a member, or a looping app, can't make it list the bucket on
 // every call. GUILD_CLOUD_HOUSEKEEPER_GAP_MS exists only for tests.
-const HOUSEKEEPER_GAP_MS = Number.parseInt(process.env.GUILD_CLOUD_HOUSEKEEPER_GAP_MS ?? '60000', 10);
+const HOUSEKEEPER_GAP_MS = (() => {
+  const ms = Number.parseInt(process.env.GUILD_CLOUD_HOUSEKEEPER_GAP_MS ?? '', 10);
+  return Number.isFinite(ms) && ms >= 0 ? ms : 60000;
+})();
 const housekeeperRoute = { at: 0, bytes: null, running: null };
 const housekeepFromRoute = async () => {
   if (housekeeperRoute.running) return housekeeperRoute.running;

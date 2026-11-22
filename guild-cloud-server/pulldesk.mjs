@@ -48,6 +48,9 @@ const MAX_LOG_TEXT_BYTES = 400 * 1024 * 1024; // after gunzip
 // Unzipped on libuv's thread pool, so other requests aren't held up while a
 // log unzips (gunzipSync blocked the whole server for ~70 ms per pull).
 const gunzipAsync = promisify(zlib.gunzip);
+// Analyses at least this long are logged (a re-run of every pull would
+// otherwise write a line per pull).
+const SLOW_ANALYSIS_MS = 1000;
 const gunzipLog = async (gz) => (await gunzipAsync(gz, { maxOutputLength: MAX_LOG_TEXT_BYTES })).toString('utf8');
 // A pull's full combat log (every line, gzipped) for the app's Logs page.
 const MAX_FULL_BYTES = 150 * 1024 * 1024;
@@ -731,24 +734,27 @@ export const createPullDesk = (options) => {
 
   // ---- Analysis -------------------------------------------------------------
 
-  const runAnalysis = async (pull) => {
-    const gz = await fsp.readFile(logFile(pull.id));
+  // `unzipped`: the log's text when the caller already has it (an upload),
+  // so it isn't unzipped a second time.
+  const runAnalysis = async (pull, unzipped = null) => {
     const startedAt = performance.now();
-    const text = await gunzipLog(gz);
+    const text = unzipped ?? (await gunzipLog(await fsp.readFile(logFile(pull.id))));
     const unzipMs = performance.now() - startedAt;
     const settings = bossSettings(pull.encounterId);
     // analyzePull runs on the main thread (~0.3-0.4 s for a 5-minute Mythic
-    // pull, Nov 2026). The time is logged so a slow one shows up in the
-    // server log; move it to a worker thread if these grow past ~2 s.
+    // pull, Nov 2026). Slow ones are logged so they show up in the server
+    // log; move it to a worker thread if these grow past ~2 s.
     const report = analyzePull(text, {
       note: settings.note,
       avoidable: settings.avoidable,
       combatPotions: index.settings.combatPotions,
     });
     const analyzeMs = performance.now() - startedAt - unzipMs;
-    console.log(
-      `[pulldesk] Analysed ${pull.id} in ${Math.round(analyzeMs)} ms (unzip ${Math.round(unzipMs)} ms, ${Math.round(text.length / 1e6)} MB)`,
-    );
+    if (analyzeMs >= SLOW_ANALYSIS_MS) {
+      console.log(
+        `[pulldesk] Slow analysis: ${pull.id} took ${Math.round(analyzeMs)} ms (unzip ${Math.round(unzipMs)} ms, ${(text.length / 1e6).toFixed(0)}M characters)`,
+      );
+    }
 
     // Name what raiders had at the pull (food, flask, runes...): aura names
     // and tooltips from Wowhead, cached on the server for good.
@@ -1407,7 +1413,7 @@ export const createPullDesk = (options) => {
       await persist();
 
       try {
-        report = await runAnalysis(pull);
+        report = await runAnalysis(pull, text);
       } catch (error) {
         console.error('[pulldesk] Analysis failed', pull.id, error);
         pull.status = 'failed';
