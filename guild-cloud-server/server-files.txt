@@ -33,3 +33,4 @@ pull-upload-access.mjs
 server-log.mjs
 health.mjs
 pulldesk-resets.mjs
+routes.mjs
