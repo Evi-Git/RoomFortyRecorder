@@ -19,6 +19,7 @@ import { createCoach } from './coach.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
 import { createPermissions } from './permissions.mjs';
+import { matchRoute, deniedMessage } from './routes.mjs';
 import { createBugReport } from './bug-report.mjs';
 import {
   logUnhandledRejections,
@@ -1340,11 +1341,68 @@ const recruit = createRecruit({
   canUser: permissions.canUser,
 });
 
+// The access gate for /api (routes.mjs): a route that isn't listed can't be
+// reached, and the access rule runs before any handler. The handlers keep
+// their own checks too. Answers the request itself and returns false when
+// the request may not go on. `authorized` runs here, once per request.
+const gateApi = async (req, res, parts) => {
+  if (parts[1] === 'admin' && !ADMIN_SECRET) {
+    fail(res, 404, 'Admin API is not configured');
+    return false;
+  }
+  const match = matchRoute(req.method, parts);
+  if (!match) {
+    fail(res, 404, 'Unknown API route');
+    return false;
+  }
+  if (match.methodNotAllowed) {
+    fail(res, 405, 'Method not allowed');
+    return false;
+  }
+
+  const { route } = match;
+  switch (route.access) {
+    case 'public':
+      return true;
+    case 'adminSecret': {
+      const provided = req.headers['x-admin-secret'] || '';
+      if (!constantTimeEqual(String(provided), ADMIN_SECRET)) {
+        fail(res, 401, 'Invalid admin secret');
+        return false;
+      }
+      return true;
+    }
+    case 'member':
+      return authorized(req, res);
+    case 'owner':
+    case 'ownerAlways': {
+      if (!(await authorized(req, res))) return false;
+      const viewingAs = route.access === 'owner' && req.headers['x-view-as-role'];
+      if (permissions.isOwner(req.cloudUserId) && !viewingAs) return true;
+      fail(res, 403, deniedMessage(route));
+      return false;
+    }
+    case 'other':
+      // Served before handleApi; reaching it here means a route is mislisted.
+      fail(res, 404, 'Unknown API route');
+      return false;
+    default: {
+      // A capability key. One that permissions doesn't know is refused.
+      if (!(await authorized(req, res))) return false;
+      if (await permissions.can(req, route.access)) return true;
+      fail(res, 403, deniedMessage(route));
+      return false;
+    }
+  }
+};
+
 const handleApi = async (req, res, url, parts) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, withCors());
     return res.end();
   }
+
+  if (!(await gateApi(req, res, parts))) return undefined;
 
   if (
     parts[1] === 'auth' &&
@@ -1462,7 +1520,9 @@ const handleApi = async (req, res, url, parts) => {
     return fail(res, 404, 'Unknown admin route');
   }
 
-  if (!(await authorized(req, res))) return;
+  // The gate signed this request in; a route listed as 'public' that reaches
+  // here has no session and must not go on.
+  if (!req.cloudUserId) return fail(res, 401, 'Discord sign-in required');
 
   // Own recordings and messages are always allowed; the officer capability
   // is only looked up (Discord) when one isn't, and once per request.
