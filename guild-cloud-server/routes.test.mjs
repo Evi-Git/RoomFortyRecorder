@@ -271,7 +271,7 @@ const freePort = () =>
     });
   });
 
-const startServer = async () => {
+const startServer = async ({ countFile } = {}) => {
   const port = await freePort();
   const fixtureFile = path.join(os.tmpdir(), `rf-discord-routes-${port}.json`);
   fs.writeFileSync(
@@ -291,7 +291,12 @@ const startServer = async () => {
   );
   const child = spawn(
     process.execPath,
-    ['--import', path.join(harness, 'aws-stub.mjs'), '--import', path.join(harness, 'discord-stub.mjs'), path.join(dir, 'server.mjs')],
+    [
+      '--import', path.join(harness, 'aws-stub.mjs'),
+      '--import', path.join(harness, 'discord-stub.mjs'),
+      ...(countFile ? ['--import', countFile] : []),
+      path.join(dir, 'server.mjs'),
+    ],
     {
       env: {
         PATH: process.env.PATH,
@@ -308,6 +313,7 @@ const startServer = async () => {
         GUILD_CLOUD_ADMIN_SECRET: ADMIN,
         GUILD_CLOUD_GUILD: GUILD,
         GUILD_CLOUD_OWNER_IDS: OWNER,
+        ...(countFile ? { RF_COUNT_FILE: `${countFile}.count` } : {}),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -348,9 +354,19 @@ const startServer = async () => {
   return { call, stop };
 };
 
-// The route's path with dummy values in the params.
+// The route's path with dummy values in the params: numbers where the
+// handler parses a number, a date where it wants one.
 const fill = (route) =>
-  route.path.replace(':guild', encodeURIComponent(GUILD)).replace(/:\w+/g, 'dummy1');
+  route.path
+    .replace(':guild', encodeURIComponent(GUILD))
+    .replace(/(journal\/(?:boss|spell|talents|raw)|bosses|summary\/boss|analyze-presets)\/:\w+/, '$1/2900')
+    .replace('/chat/:id', '/chat/7')
+    .replace(':date', '2026-11-18')
+    .replace(':key', 'bob.mp4')
+    .replace(/:\w+/g, 'dummy1');
+
+// A handler's own "no such route" answer (the gate's 404 is the same text).
+const noSuchRoute = (r) => /^Unknown .* route$|^Unknown summary$/.test(r.body?.error || '');
 
 const gated = ROUTES.filter((r) => r.access !== 'other');
 const owner = [OWNER, 'Owner'];
@@ -372,7 +388,7 @@ test('the gate: signed out, no grants, unknown paths and wrong methods, for ever
       // Signed out.
       const out = await call(route.method, url);
       if (route.access === 'public') {
-        assert.ok(!unknownRoute(out) && out.status !== 405, `${label} (signed out) reaches its handler`);
+        assert.ok(!noSuchRoute(out) && out.status !== 405, `${label} (signed out) reaches its handler`);
       } else if (route.access === 'adminSecret') {
         assert.equal(out.status, 401, `${label} (no secret)`);
         assert.equal(out.body?.error, 'Invalid admin secret', `${label} (no secret)`);
@@ -390,7 +406,7 @@ test('the gate: signed out, no grants, unknown paths and wrong methods, for ever
         assert.equal(member.status, 403, `${label} (member with no grants) -> ${member.status} ${JSON.stringify(member.body)}`);
         assert.equal(member.body?.error, deniedMessage(route), `${label} message`);
       } else if (route.access === 'member') {
-        assert.ok(member.status !== 401 && member.status !== 405 && !unknownRoute(member), `${label} (member) reaches its handler: ${member.status}`);
+        assert.ok(member.status !== 401 && member.status !== 405 && !noSuchRoute(member), `${label} (member) reaches its handler: ${member.status} ${JSON.stringify(member.body)}`);
       }
     }
 
@@ -454,5 +470,79 @@ test('the gate: owners, "view as", and the admin secret', { timeout: 120000 }, a
     assert.equal((await call('POST', '/api/admin/revoke', admin)).status, 400);
   } finally {
     stop();
+  }
+});
+
+// Someone who has every capability (the owner) gets past the gate on every
+// route, and every route reaches a handler that serves it.
+const GRANTED_SKIPS = {
+  'POST /api/guild/:guild/pulldesk/wcl/fights': 'calls Warcraft Logs for real',
+  'POST /api/guild/:guild/pulldesk/wcl/table': 'calls Warcraft Logs for real',
+  'POST /api/guild/:guild/pulldesk/import/tier': 'starts a Warcraft Logs import',
+  'POST /api/guild/:guild/pulldesk/import/guild/scan': 'calls Warcraft Logs for real',
+  'POST /api/admin/orphans/delete': 'deletes R2 objects',
+  'POST /api/admin/revoke-all': 'signs every session out, ending the test',
+  'POST /api/auth/discord/exchange': 'has no session to grant (public)',
+};
+
+test('the gate: a caller with every capability reaches a handler on every route', { timeout: 240000 }, async () => {
+  const { call, stop } = await startServer();
+  try {
+    for (const route of gated) {
+      const label = `${route.method} ${route.path}`;
+      if (GRANTED_SKIPS[label]) continue;
+      const url = fill(route);
+      const adminOnly = route.access === 'adminSecret';
+      const r = await call(route.method, url, adminOnly ? { headers: { 'x-admin-secret': ADMIN } } : { who: owner });
+      const detail = `${label} -> ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`;
+      assert.ok(![401, 403, 405].includes(r.status), detail);
+      assert.ok(!noSuchRoute(r), detail);
+    }
+  } finally {
+    stop();
+  }
+});
+
+// `authorized` (the token check, then the Discord role lookup) runs once per
+// request, in the gate. The role lookup is cached for 5 minutes, so a second
+// call would not show there; the token check HMACs the token on every call,
+// so this counts HMACs through a preload that wraps crypto.createHmac.
+test('the gate: the session is checked once per request', { timeout: 60000 }, async () => {
+  const countFile = path.join(os.tmpdir(), `rf-hmac-count-${process.pid}.mjs`);
+  fs.writeFileSync(
+    countFile,
+    `import crypto from 'node:crypto';
+import fs from 'node:fs';
+const real = crypto.createHmac;
+crypto.createHmac = (...args) => { if (process.env.RF_COUNT_FILE) fs.appendFileSync(process.env.RF_COUNT_FILE, 'x'); return real.apply(crypto, args); };
+`,
+  );
+  const counter = `${countFile}.count`;
+  fs.writeFileSync(counter, '');
+  const { call, stop } = await startServer({ countFile });
+  const counted = async (method, url, options) => {
+    const before = fs.readFileSync(counter, 'utf8').length;
+    const r = await call(method, url, options);
+    return { r, checks: fs.readFileSync(counter, 'utf8').length - before };
+  };
+  try {
+    const cases = [
+      ['member', 'GET', `${G}/usage`, { who: bob }, 200],
+      ['capability', 'GET', `${PD}/season`, { who: bob }, 200],
+      ['owner', 'GET', `${PD}/import/guild`, { who: owner }, 200],
+      ['owner always', 'GET', `${G}/permissions`, { who: owner }, 200],
+      ['refused (403)', 'PUT', `${PD}/settings`, { who: bob }, 403],
+      ['signed out', 'GET', `${G}/usage`, {}, 401],
+    ];
+    for (const [name, method, url, options, status] of cases) {
+      const { r, checks } = await counted(method, url, options);
+      assert.equal(r.status, status, name);
+      // A request with a token is checked exactly once; one without has none to check.
+      assert.equal(checks, options.who ? 1 : 0, `${name}: token checks`);
+    }
+  } finally {
+    stop();
+    fs.rmSync(countFile, { force: true });
+    fs.rmSync(counter, { force: true });
   }
 });
