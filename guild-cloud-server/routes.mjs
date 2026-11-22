@@ -13,6 +13,8 @@
 //   'ownerAlways'  an owner, even while viewing as a role (permissions.mjs)
 //   <capability>   a key from permissions.mjs capabilities(); the person
 //                  needs that capability
+//   [<cap>, ...]   a list of capability keys: any one of them is enough
+//                  (needs a `denied` message of its own)
 //   'other'        not gated: served before handleApi, or by a module that
 //                  does its own check. Listed for documentation, with a note.
 //
@@ -38,7 +40,8 @@ export const DENIED = {
 export const DEFAULT_DENIED = 'Your Discord role cannot do that';
 
 /** The 403 message for a route the person may not use. */
-export const deniedMessage = (route) => route.denied || DENIED[route.access] || DEFAULT_DENIED;
+export const deniedMessage = (route) =>
+  route.denied || (typeof route.access === 'string' && DENIED[route.access]) || DEFAULT_DENIED;
 
 export const ROUTES = [
   { method: 'GET', path: '/health', access: 'other', note: 'Local health check (health.mjs). Handled in requestHandler, not by the gate.' },
@@ -140,15 +143,15 @@ export const ROUTES = [
   { method: 'PUT', path: '/api/guild/:guild/pulldesk/bosses/:id/avoidable-toggle', access: 'analysisEdit' },
   { method: 'PUT', path: '/api/guild/:guild/pulldesk/bosses/:id/journal', access: 'analysisEdit' },
   { method: 'PUT', path: '/api/guild/:guild/pulldesk/bosses/:id/killed-before', access: 'analysisEdit' },
-  { method: 'GET', path: '/api/guild/:guild/pulldesk/watcher', access: 'member', note: 'Everyone signed in reads it; the handler tells the app whether they are an officer.' },
+  { method: 'GET', path: '/api/guild/:guild/pulldesk/watcher', access: 'analysisView', note: 'The handler tells the app whether they are an officer.' },
   { method: 'PUT', path: '/api/guild/:guild/pulldesk/watcher/settings', access: 'watcherManage' },
   { method: 'POST', path: '/api/guild/:guild/pulldesk/watcher/crawl', access: 'watcherManage' },
   { method: 'POST', path: '/api/guild/:guild/pulldesk/watcher/stop', access: 'watcherManage' },
   { method: 'GET', path: '/api/guild/:guild/pulldesk/coach/config', access: 'member' },
   { method: 'PUT', path: '/api/guild/:guild/pulldesk/coach/mapping', access: 'clipChannels' },
   { method: 'POST', path: '/api/guild/:guild/pulldesk/coach/send', access: 'member', note: 'clipSendAny, or clipSendOwn plus the raider\'s own mapped channel (checked in the handler).' },
-  { method: 'GET', path: '/api/guild/:guild/pulldesk/coach/flags', access: 'member' },
-  { method: 'POST', path: '/api/guild/:guild/pulldesk/coach/flags', access: 'member' },
+  { method: 'GET', path: '/api/guild/:guild/pulldesk/coach/flags', access: ['analysisView', 'liveWatch'], denied: 'Your Discord role cannot see flagged moments', note: 'Shown on the Dashboard and on Watch live.' },
+  { method: 'POST', path: '/api/guild/:guild/pulldesk/coach/flags', access: 'liveWatch', denied: 'Your Discord role cannot flag moments', note: 'Flags are made on Watch live.' },
   { method: 'PATCH', path: '/api/guild/:guild/pulldesk/coach/flags/:id', access: 'member', note: 'Own flag, or flagsModerate (checked in the handler).' },
   { method: 'DELETE', path: '/api/guild/:guild/pulldesk/coach/flags/:id', access: 'member', note: 'Own flag, or flagsModerate (checked in the handler).' },
 ];

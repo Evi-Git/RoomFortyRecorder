@@ -1203,6 +1203,30 @@ const housekeep = async () => {
   return usage;
 };
 
+// The app asks for a run after every upload, but the server already runs
+// one after each registration and before each upload. So the route runs it
+// at most once a minute (one at a time) and otherwise answers with the last
+// result: a member, or a looping app, can't make it list the bucket on
+// every call. GUILD_CLOUD_HOUSEKEEPER_GAP_MS exists only for tests.
+const HOUSEKEEPER_GAP_MS = Number.parseInt(process.env.GUILD_CLOUD_HOUSEKEEPER_GAP_MS ?? '60000', 10);
+const housekeeperRoute = { at: 0, bytes: null, running: null };
+const housekeepFromRoute = async () => {
+  if (housekeeperRoute.running) return housekeeperRoute.running;
+  if (housekeeperRoute.bytes !== null && Date.now() - housekeeperRoute.at < HOUSEKEEPER_GAP_MS) {
+    return housekeeperRoute.bytes;
+  }
+  housekeeperRoute.running = housekeep()
+    .then((bytes) => {
+      housekeeperRoute.at = Date.now();
+      housekeeperRoute.bytes = bytes;
+      return bytes;
+    })
+    .finally(() => {
+      housekeeperRoute.running = null;
+    });
+  return housekeeperRoute.running;
+};
+
 // Remove timeline files whose video is gone (deleted, evicted or missing).
 const pruneTimelines = async () => {
   let files;
@@ -1387,9 +1411,13 @@ const gateApi = async (req, res, parts) => {
       fail(res, 404, 'Unknown API route');
       return false;
     default: {
-      // A capability key. One that permissions doesn't know is refused.
+      // A capability key, or a list of them (any one is enough). One that
+      // permissions doesn't know is refused.
       if (!(await authorized(req, res))) return false;
-      if (await permissions.can(req, route.access)) return true;
+      const keys = Array.isArray(route.access) ? route.access : [route.access];
+      for (const key of keys) {
+        if (await permissions.can(req, key)) return true;
+      }
       fail(res, 403, deniedMessage(route));
       return false;
     }
@@ -1814,7 +1842,7 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   if (parts[3] === 'housekeeper' && req.method === 'POST') {
-    return json(res, 200, { bytes: await housekeep() });
+    return json(res, 200, { bytes: await housekeepFromRoute() });
   }
 
   if (parts[3] === 'bulk' && parts[4] === 'delete' && req.method === 'POST') {

@@ -300,6 +300,7 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
   const handle = async (req, res, rest) => {
     const [first] = rest;
     if (!first && req.method === 'GET') {
+      if (can && !(await can(req, 'analysisView'))) return fail(res, 403, 'Your Discord role cannot see Analysis');
       const results = await readJson(file('results.json'), { guilds: [] });
       return json(res, 200, {
         settings: await getSettings(),
