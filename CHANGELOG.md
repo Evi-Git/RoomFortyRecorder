@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.158] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Changed
+- **Every guild server route now has a declared access rule.** The server checks one list of its routes, and who may use each one, before it runs any request. A route that isn't on the list can't be reached, and the tests check every route's rule in one place.
+- The checks inside each route are all still there as a second layer, so nothing the app does today changes.
+- Requests the app never makes get a clear answer: an unknown path gets "Unknown API route" and a wrong method gets "Method not allowed". The M+ timer lookup no longer makes the app recheck its sign-in at the start of every key.
+
 ## [1.9.157] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed
