@@ -46,6 +46,13 @@ The main conversation model (Fable when available, otherwise Opus) is the
   `icon-pack.mjs` (BLP/TGA -> PNG), `server-files.txt` (what the server
   updater installs).
 - `docs/` PullDesk.md, GuildCloudServer.md, RELEASING.md.
+- Server API routes: every `/api` route is listed in
+  `guild-cloud-server/routes.mjs` with the access it needs (`public`,
+  `adminSecret`, `member`, `owner`, or a capability key). `handleApi` checks
+  that table before any handler runs and answers 404 `Unknown API route` for
+  anything not in it, so a new route needs a table entry (and an example in
+  the app call-site list in `routes.test.mjs` if the app calls it). The
+  handlers keep their own checks too.
 
 ## Checks
 
