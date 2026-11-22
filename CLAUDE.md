@@ -48,7 +48,9 @@ The main conversation model (Fable when available, otherwise Opus) is the
 - `docs/` PullDesk.md, GuildCloudServer.md, RELEASING.md.
 - Server API routes: every `/api` route is listed in
   `guild-cloud-server/routes.mjs` with the access it needs (`public`,
-  `adminSecret`, `member`, `owner`, or a capability key). `handleApi` checks
+  `adminSecret`, `member`, `owner`, `ownerAlways`, or a capability key; `ownerAlways`
+  is the owner even while viewing as a role, for the permissions routes: the
+  Admin page ignores view-as so the owner can switch back). `handleApi` checks
   that table before any handler runs and answers 404 `Unknown API route` for
   anything not in it, so a new route needs a table entry (and an example in
   the app call-site list in `routes.test.mjs` if the app calls it). The
