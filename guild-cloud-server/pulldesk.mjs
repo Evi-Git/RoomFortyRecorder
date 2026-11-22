@@ -24,7 +24,7 @@ import { abilityStats, listNights, summarizeNight, summarizeProgression, wipeCau
 import { isReset, numberPulls } from './pulldesk-resets.mjs';
 import { createJournal, journalAbilities, norm } from './journal.mjs';
 import { fetchFightMeters, fetchReportExtras, fetchReportPulls, reportCode } from './pulldesk-import.mjs';
-import { createWclClient } from './recruit-clients.mjs';
+import { wclHandle } from './recruit-clients.mjs';
 import { createSeason, seasonBosses } from './season.mjs';
 import { createTopLogs } from './toplogs.mjs';
 import { createWclCompare } from './pulldesk-wcl-compare.mjs';
@@ -238,13 +238,18 @@ export const createPullDesk = (options) => {
     Boolean(pull?.hasLog && pull.appMeters && (pull.metersV || 2) >= METERS_VERSION && pull.hasFull);
   const logFile = (id) => path.join(dir, 'logs', `${id}.log.gz`);
 
-  // Warcraft Logs, for importing pulls the app didn't capture.
-  const wcl = options.wcl ||
-    createWclClient({
+  // Warcraft Logs, for importing pulls the app didn't capture. Someone is
+  // usually waiting on these (imports, Compare, icons), so this handle may
+  // spend up to 95% of the hour; the background crawls stop at 85%.
+  const wcl = wclHandle(
+    options.wcl,
+    {
       clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
       clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
       baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-    });
+    },
+    { budgetShare: 0.95 },
+  );
 
   // Blizzard's Encounter Journal, for the Journal view and ability cards.
   // Warcraft Logs is a last source for spell icons.
@@ -392,7 +397,7 @@ export const createPullDesk = (options) => {
   // Top logs: Warcraft Logs' top 25 per spec and the Time trial tracks.
   const topLogs =
     options.topLogs ||
-    createTopLogs({ storage: options.storage, env, json, fail, readBody, season, isOfficer: (req) => canEdit(req) });
+    createTopLogs({ storage: options.storage, env, json, fail, readBody, season, wcl, isOfficer: (req) => canEdit(req) });
   if (!options.noTimers) topLogs.start();
 
   const summaryOf = (pull) => ({

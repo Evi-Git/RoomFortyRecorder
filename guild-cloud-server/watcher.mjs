@@ -16,7 +16,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createWclClient } from './recruit-clients.mjs';
+import { wclHandle } from './recruit-clients.mjs';
 import { RESET_SECONDS } from './pulldesk-resets.mjs';
 import { serverSlug } from './recruit-analyze.mjs';
 import { writeJsonSafe } from './safe-json.mjs';
@@ -96,7 +96,7 @@ export const buildProgress = (reports, encounterNames) => {
   return bosses;
 };
 
-export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, env, fetchImpl, can = null }) => {
+export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, env, fetchImpl, can = null, wcl: givenWcl = null }) => {
   const dir = path.join(storage, 'watcher');
   const file = (name) => path.join(dir, name);
   const officerRoles = String(env.GUILD_CLOUD_COACH_OFFICER_ROLES ?? 'Officer')
@@ -110,13 +110,16 @@ export const createWatcher = ({ storage, readBody, json, fail, memberRoleNames, 
     if (status.log.length > 300) status.log.splice(0, status.log.length - 300);
   };
 
-  const wcl = createWclClient({
-    clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
-    clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
-    baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-    log,
-    ...(fetchImpl ? { fetchImpl } : {}),
-  });
+  const wcl = wclHandle(
+    givenWcl,
+    {
+      clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
+      clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
+      baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
+      ...(fetchImpl ? { fetchImpl } : {}),
+    },
+    { log },
+  );
 
   const readJson = async (name, fallback) => {
     try {

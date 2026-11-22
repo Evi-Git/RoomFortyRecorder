@@ -31,7 +31,7 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createWclClient } from './recruit-clients.mjs';
+import { wclHandle } from './recruit-clients.mjs';
 import { writeJsonSafe } from './safe-json.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -260,15 +260,16 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
     if (status.log.length > 200) status.log.splice(0, status.log.length - 200);
   };
 
-  const wcl =
-    givenWcl ||
-    createWclClient({
+  const wcl = wclHandle(
+    givenWcl,
+    {
       clientId: env.GUILD_CLOUD_WCL_CLIENT_ID || '',
       clientSecret: env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
       baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
-      log,
       ...(fetchImpl ? { fetchImpl } : {}),
-    });
+    },
+    { log },
+  );
 
   // ---- Storage -------------------------------------------------------------
   const readJson = async (file, fallback) => {

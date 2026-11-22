@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPullDesk } from './pulldesk.mjs';
+import { createWclClient } from './recruit-clients.mjs';
 import { createCoach } from './coach.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createRecruit, SESSION_COOKIE } from './recruit.mjs';
@@ -1260,8 +1261,18 @@ const metadataFor = (video) => ({
   signedVideoKey: signedDownloadUrl(GUILD, video.videoKey),
 });
 
+// One Warcraft Logs client for the whole server: one sign-in and one view of
+// the hour's points. Each feature below takes its own handle from it.
+const wcl = createWclClient({
+  clientId: process.env.GUILD_CLOUD_WCL_CLIENT_ID || '',
+  clientSecret: process.env.GUILD_CLOUD_WCL_CLIENT_SECRET || '',
+  baseUrl: process.env.GUILD_CLOUD_WCL_URL || undefined,
+  log: (message) => console.log(`[wcl] ${message}`),
+});
+
 // Pull desk: per-pull wipe reports from raiders' combat logs. See pulldesk.mjs.
 const pullDesk = createPullDesk({
+  wcl,
   storage: STORAGE,
   readBody,
   json,
@@ -1306,6 +1317,7 @@ const coach = createCoach({
 
 // [RoomFortyRecorder] Top-guild watcher for the Progression view.
 const watcher = createWatcher({
+  wcl,
   storage: STORAGE,
   readBody,
   json,
@@ -1317,6 +1329,7 @@ const watcher = createWatcher({
 
 // [RoomFortyRecorder] Officer-only recruiting page (/recruit).
 const recruit = createRecruit({
+  wcl,
   storage: STORAGE,
   readBody,
   json,
