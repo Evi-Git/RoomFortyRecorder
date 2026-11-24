@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.162] - Unreleased
+App only; no guild server update needed.
+### Added
+- **Cancel for Discord sign-in.** While the app waits for Discord, a Cancel button sits next to "Waiting for Discord..." (in Cloud settings and on the status card), so a lost browser tab no longer leaves sign-in stuck for 5 minutes. Pressing Sign in again also starts over.
+### Changed
+- **Sign-in failures say what went wrong.** Instead of one "sign-in failed" message, the app and the browser tab now say which it was: cancelled in Discord, not in the Room Forty Discord, no Room Forty role yet, guild server unreachable, too many attempts, timed out, and so on. The browser tab waits until the app has finished signing in, so "Signed in as …" means it really worked.
+### Security
+- **The sign-in's return address on this PC now needs a one-time secret.** A web page that guessed the port could otherwise have handed the app someone else's sign-in. Requests without the secret are ignored and don't end the sign-in, and only Discord's own sign-in page is opened in the browser.
+
 ## [1.9.161] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Added

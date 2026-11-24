@@ -604,6 +604,10 @@ ipcMain.handle('signInWithDiscord', async () => {
   return client.signInWithDiscord((url) => openExternalChecked(url));
 });
 
+ipcMain.handle('cancelDiscordSignIn', () => {
+  CloudClient.getInstance().cancelDiscordSignIn();
+});
+
 ipcMain.handle('signOutDiscord', async () => {
   await CloudClient.getInstance().signOutDiscord();
 });

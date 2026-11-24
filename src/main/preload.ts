@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import { ObsProperty, SceneItemPosition, SourceDimensions } from 'noobs';
-import { AudioSourceType, RendererVideo, SceneItem } from './types';
+import {
+  AudioSourceType,
+  DiscordSignInResult,
+  RendererVideo,
+  SceneItem,
+} from './types';
 import { TChatMessageWithId } from 'types/api';
 
 export type Channels =
@@ -57,6 +62,7 @@ export type Channels =
   | 'reconfigureOverlay'
   | 'reconfigureCloud'
   | 'signInWithDiscord'
+  | 'cancelDiscordSignIn'
   | 'signOutDiscord'
   | 'getSensibleEncoderDefault'
   | 'liveStreamToggle'
@@ -227,8 +233,12 @@ contextBridge.exposeInMainWorld('electron', {
       return ipcRenderer.invoke('getSensibleEncoderDefault');
     },
 
-    signInWithDiscord(): Promise<{ userName: string; guildName: string }> {
+    signInWithDiscord(): Promise<DiscordSignInResult> {
       return ipcRenderer.invoke('signInWithDiscord');
+    },
+
+    cancelDiscordSignIn(): Promise<void> {
+      return ipcRenderer.invoke('cancelDiscordSignIn');
     },
 
     signOutDiscord(): Promise<void> {

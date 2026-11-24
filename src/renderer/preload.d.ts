@@ -2,6 +2,7 @@ import ElectronStore from 'electron-store';
 import { Channels } from 'main/preload';
 import {
   AudioSourceType,
+  DiscordSignInResult,
   KillVideoSegment,
   RendererVideo,
   SceneItem,
@@ -80,7 +81,8 @@ declare global {
         reconfigureCloud(): void;
 
         getSensibleEncoderDefault(): Promise<string>;
-        signInWithDiscord(): Promise<{ userName: string; guildName: string }>;
+        signInWithDiscord(): Promise<DiscordSignInResult>;
+        cancelDiscordSignIn(): Promise<void>;
         signOutDiscord(): Promise<void>;
         getOrCreateChatCorrelator(video: RendererVideo): Promise<string>;
         getChatMessages(correlator: string): Promise<TChatMessageWithId[]>;

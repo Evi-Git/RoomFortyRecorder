@@ -80,6 +80,7 @@ const CloudSettings = (props: IProps) => {
   const initialRender2 = useRef(true);
   const [discordAuthBusy, setDiscordAuthBusy] = useState(false);
   const [discordAuthError, setDiscordAuthError] = useState('');
+  const [discordSigningIn, setDiscordSigningIn] = useState(false);
 
   useEffect(() => {
     if (initialRender1.current) {
@@ -379,20 +380,24 @@ const CloudSettings = (props: IProps) => {
   const signInWithDiscord = async () => {
     setDiscordAuthError('');
     setDiscordAuthBusy(true);
+    setDiscordSigningIn(true);
     try {
       const result = await ipc.signInWithDiscord();
-      setConfig((prevState) => ({
-        ...prevState,
-        cloudStorage: true,
-        cloudDiscordName: result.userName,
-      }));
+      if (result.ok) {
+        setConfig((prevState) => ({
+          ...prevState,
+          cloudStorage: true,
+          cloudDiscordName: result.userName,
+        }));
+      } else if (result.reason !== 'cancelled') {
+        setDiscordAuthError(result.message);
+      }
     } catch (error) {
       console.error('[CloudSettings] Discord sign-in failed', error);
-      setDiscordAuthError(
-        'Discord sign-in failed. Check the cloud server setup.',
-      );
+      setDiscordAuthError("Discord sign-in didn't finish. Try again.");
     } finally {
       setDiscordAuthBusy(false);
+      setDiscordSigningIn(false);
     }
   };
 
@@ -444,16 +449,27 @@ const CloudSettings = (props: IProps) => {
             Sign out
           </Button>
         ) : (
-          <Button
-            onClick={signInWithDiscord}
-            disabled={discordAuthBusy}
-            className="h-9 rounded-lg"
-          >
-            <LogIn size={16} className="mr-2" />
-            {discordAuthBusy
-              ? 'Waiting for Discord...'
-              : 'Sign in with Discord'}
-          </Button>
+          <div className="flex gap-x-2">
+            <Button
+              onClick={signInWithDiscord}
+              disabled={discordAuthBusy}
+              className="h-9 rounded-lg"
+            >
+              <LogIn size={16} className="mr-2" />
+              {discordSigningIn
+                ? 'Waiting for Discord...'
+                : 'Sign in with Discord'}
+            </Button>
+            {discordSigningIn && (
+              <Button
+                variant="outline"
+                className={settingsButtonClass}
+                onClick={() => ipc.cancelDiscordSignIn()}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         )}
       </SettingRow>
     );

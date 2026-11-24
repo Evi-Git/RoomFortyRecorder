@@ -835,3 +835,12 @@ export type PullUploadState = {
   /** The full combat log, once the report is in. */
   full?: 'sending' | 'sent' | 'failed' | 'refused' | 'later' | 'none';
 };
+
+/**
+ * [RoomFortyRecorder] How "Sign in with Discord" ended (IPC
+ * `signInWithDiscord`). `reason` is a `SignInFailure` from
+ * main/discordSignIn; `cancelled` needs no message on screen.
+ */
+export type DiscordSignInResult =
+  | { ok: true; userName: string; guildName: string }
+  | { ok: false; reason: string; message: string };
