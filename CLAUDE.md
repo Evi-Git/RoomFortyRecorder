@@ -65,8 +65,9 @@ The main conversation model (Fable when available, otherwise Opus) is the
   src/__tests__/main src/__tests__/cloud` (the other suites need native
   Windows modules).
 - Types: `node node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json`,
-  must be 0 errors. Not `npx tsc` (it runs the deprecated `tsc` package,
-  which fails), and not `-p .`: tsconfig.json's resolution can't follow some
+  must be 0 errors (the explicit path still works in a checkout whose
+  node_modules predate removing the deprecated `tsc` package, which owned
+  `.bin/tsc`). Not `-p .`: tsconfig.json's resolution can't follow some
   packages' `exports` maps, so it reports errors that aren't real (editors
   using it show them too). The CI config also points the native Windows
   modules at their real typings: `noobs` at `native/noobs/index.d.ts`,
