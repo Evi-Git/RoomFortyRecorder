@@ -140,14 +140,21 @@ const CloudStatus = ({
 
   useEffect(() => {
     let live = true;
+    // A push that lands first beats the slower first answer.
+    let pushed = false;
     const apply = (list: unknown) => {
       if (live && Array.isArray(list)) setFailures(list as UploadFailure[]);
     };
     ipc
       .invoke('uploadFailureAction', [{ action: 'list' }])
-      .then(apply)
+      .then((list) => {
+        if (!pushed) apply(list);
+      })
       .catch(() => {});
-    const unsubscribe = ipc.on('uploadFailures', apply);
+    const unsubscribe = ipc.on('uploadFailures', (list) => {
+      pushed = true;
+      apply(list);
+    });
     return () => {
       live = false;
       unsubscribe?.();

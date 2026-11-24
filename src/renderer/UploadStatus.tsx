@@ -26,14 +26,17 @@ const UploadStatus = () => {
 
   React.useEffect(() => {
     let live = true;
+    // A push that lands first beats the slower first answer.
+    let pushed = false;
     (
       ipc.invoke('pullDesk', [{ action: 'uploadState' }]) as Promise<
         Response<State>
       >
     )
-      .then((r) => live && r.ok && setState(r.data))
+      .then((r) => live && !pushed && r.ok && setState(r.data))
       .catch(() => {});
     const unsubscribe = ipc.on('pullDeskUploadState', (next) => {
+      pushed = true;
       if (live) setState(next as State);
     });
     return () => {

@@ -20,23 +20,31 @@ const ipc = window.electron.ipcRenderer;
 let current: Permissions | null = null;
 const listeners = new Set<(p: Permissions | null) => void>();
 let inFlight: Promise<void> | null = null;
+// Bumped by every answer that is published, so a refresh that was asked
+// before it (a slow "who am I" after "view as") doesn't overwrite it.
+let published = 0;
 
 const publish = (next: Permissions | null) => {
+  published += 1;
   current = next;
   listeners.forEach((listener) => listener(next));
 };
 
 export const refreshPermissions = () => {
+  const askedAt = published;
   inFlight ??= (
     ipc.invoke('pullDesk', [{ action: 'permissionsMe' }]) as Promise<
       Response<Permissions>
     >
   )
     .then((response) => {
+      if (published !== askedAt) return;
       // An older server (no permissions yet): leave everything visible.
       publish(response.ok ? response.data : null);
     })
-    .catch(() => publish(null))
+    .catch(() => {
+      if (published === askedAt) publish(null);
+    })
     .finally(() => {
       inFlight = null;
     });

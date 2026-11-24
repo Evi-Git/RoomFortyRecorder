@@ -28,15 +28,22 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
+    let live = true;
+    // A push that lands first beats the slower first answer.
+    let pushed = false;
     ipc
       .invoke('liveStreamGetState', [])
-      .then((s) => setState(s as LiveState))
+      .then((s) => live && !pushed && setState(s as LiveState))
       .catch(() => {});
 
-    const unsubscribe = ipc.on('liveStreamState', (s) =>
-      setState(s as LiveState),
-    );
-    return () => unsubscribe?.();
+    const unsubscribe = ipc.on('liveStreamState', (s) => {
+      pushed = true;
+      setState(s as LiveState);
+    });
+    return () => {
+      live = false;
+      unsubscribe?.();
+    };
   }, []);
 
   const toggle = async () => {

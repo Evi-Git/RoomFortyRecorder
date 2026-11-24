@@ -1,5 +1,6 @@
 import {
   avoidableStat,
+  avoidableTotal,
   consumablesStat,
   deathsStat,
   raidDpsStat,
@@ -73,6 +74,23 @@ describe('avoidableStat', () => {
   });
   it('says none for no hits', () => {
     expect(avoidableStat([])).toEqual({ value: '0', note: 'none' });
+  });
+});
+
+describe('avoidableTotal', () => {
+  it('adds up hits, not raiders', () => {
+    const rows = [{ hits: 100 }, { hits: 40 }, { hits: 12 }];
+    expect(avoidableTotal(rows)).toBe(152);
+  });
+  it('is 0 for nobody', () => {
+    expect(avoidableTotal([])).toBe(0);
+  });
+  it('matches the tile', () => {
+    const rows = [
+      { hits: 3, bySpell: { '1': 3 } },
+      { hits: 4, bySpell: { '1': 4 } },
+    ];
+    expect(avoidableStat(rows).value).toBe(String(avoidableTotal(rows)));
   });
 });
 

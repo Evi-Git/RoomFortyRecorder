@@ -19,6 +19,7 @@ import {
   ErrorState,
   LoadingState,
 } from './components/States/States';
+import { missingNeeds } from './admin/capabilityNeeds';
 import {
   refreshPermissions,
   setViewAs,
@@ -611,14 +612,41 @@ const AdminPage = () => {
                                   {columns.map((role) => {
                                     const direct = list.includes(role);
                                     const implied = !direct && everyone;
+                                    // Ticked, but the role lacks what it needs
+                                    // (with the edits made here, saved or not).
+                                    const lacking = direct
+                                      ? missingNeeds(
+                                          cap.key,
+                                          role,
+                                          grants,
+                                          EVERYONE,
+                                        ).map(
+                                          (key) =>
+                                            table.capabilities.find(
+                                              (c) => c.key === key,
+                                            )?.label ?? key,
+                                        )
+                                      : [];
+                                    const needsId =
+                                      `${cap.key}-needs-${role}`.replace(
+                                        /\s+/g,
+                                        '-',
+                                      );
                                     const box = (
                                       <input
                                         type="checkbox"
                                         aria-label={`${cap.label}: ${label(role)}`}
+                                        aria-describedby={
+                                          lacking.length ? needsId : undefined
+                                        }
                                         checked={direct || implied}
                                         disabled={implied}
                                         onChange={() => toggle(cap.key, role)}
-                                        className="w-4 h-4 accent-[hsl(var(--brand))] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                        className={`w-4 h-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+                                          lacking.length
+                                            ? 'accent-[hsl(var(--foreground))]'
+                                            : 'accent-[hsl(var(--brand))]'
+                                        }`}
                                       />
                                     );
                                     return (
@@ -634,6 +662,23 @@ const AdminPage = () => {
                                           >
                                             <span className="inline-flex">
                                               {box}
+                                            </span>
+                                          </Tooltip>
+                                        ) : lacking.length ? (
+                                          <Tooltip
+                                            content={`Needs ${lacking.join(' and ')} to do anything`}
+                                            side="top"
+                                            maxWidth={240}
+                                          >
+                                            <span className="inline-flex">
+                                              {box}
+                                              <span
+                                                id={needsId}
+                                                className="sr-only"
+                                              >
+                                                Needs {lacking.join(' and ')} to
+                                                do anything
+                                              </span>
                                             </span>
                                           </Tooltip>
                                         ) : (

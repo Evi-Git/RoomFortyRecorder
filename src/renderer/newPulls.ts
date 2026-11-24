@@ -48,18 +48,23 @@ export const useNewPulls = (enabled: boolean, onDashboard: boolean) => {
     if (!enabled) return undefined;
     const ipc = window.electron.ipcRenderer;
     let live = true;
+    // The timer and "a pull was sent" can both ask at once: only the newest
+    // answer is used, so an older one never overwrites it.
+    let asked = 0;
     const check = () => {
       if (onDashboardRef.current) {
         markSeen();
         return;
       }
+      asked += 1;
+      const mine = asked;
       (
         ipc.invoke('pullDesk', [{ action: 'list', days: 1 }]) as Promise<
           Response<{ pulls: Summary[] }>
         >
       )
         .then((r) => {
-          if (live && r.ok) setPulls(r.data.pulls);
+          if (live && mine === asked && r.ok) setPulls(r.data.pulls);
         })
         .catch(() => {});
     };

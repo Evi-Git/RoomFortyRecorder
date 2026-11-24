@@ -44,6 +44,7 @@ import BossHealthChart from './dashboard/BossHealthChart';
 import StatTiles from './dashboard/StatTiles';
 import {
   avoidableStat,
+  avoidableTotal,
   consumablesStat,
   deathsStat,
   raidDpsStat,
@@ -1712,8 +1713,15 @@ const PullDeskPage = (props: IProps) => {
         }))
         .sort((a, b) => b.hits - a.hits);
 
+    const hitTotal = avoidableTotal(r.avoidable);
+    const raiderCount = r.avoidable.length;
+
     return (
       <div className={SECTION_CARD}>
+        <p className="m-0 px-3 pt-2 text-xs text-foreground">
+          {hitsLabel(hitTotal)} on {raiderCount}{' '}
+          {raiderCount === 1 ? 'raider' : 'raiders'}
+        </p>
         {columnHeader([
           { label: 'Raider', className: 'w-40' },
           { label: 'Hits', className: 'w-24' },
@@ -2012,7 +2020,7 @@ const PullDeskPage = (props: IProps) => {
                   key: 'avoidable',
                   label: sectionLabel(
                     'Avoidable hits',
-                    String(r.avoidable.length),
+                    String(avoidableTotal(r.avoidable)),
                   ),
                 },
                 { key: 'consumables', label: 'Consumables & buffs' },
@@ -2238,7 +2246,9 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
+    let cancelled = false;
     call<BossSettings>({ action: 'boss', encounterId }).then((response) => {
+      if (cancelled) return;
       if (!response.ok) {
         setMessage(response.error);
         return;
@@ -2248,6 +2258,9 @@ const BossSettingsPanel = (props: BossSettingsProps) => {
       setAvoidable(response.data.avoidable.map((spell) => spell.id).join(', '));
       setChannel(response.data.channelId);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [encounterId]);
 
   const save = async (request: Record<string, unknown>, done: string) => {
