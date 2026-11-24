@@ -34,8 +34,7 @@ jobs:
     # reports every problem (but not after a failed install).
     #
     # tsconfig.ci.json stands in for the native Windows modules (noobs,
-    # uiohook-napi) that --ignore-scripts doesn't install. Not `npx tsc`: the
-    # deprecated `tsc` package in dependencies owns node_modules/.bin/tsc.
+    # uiohook-napi) that --ignore-scripts doesn't install.
     - name: Type check
       run: node node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json
 
