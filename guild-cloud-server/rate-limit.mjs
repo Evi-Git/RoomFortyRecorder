@@ -66,7 +66,9 @@ export const createLimiter = ({ capacity, perSecond, maxKeys = 20000, now = Date
     let bucket = buckets.get(key);
     if (bucket) {
       buckets.delete(key); // re-inserted below, so the Map stays oldest-first
-      bucket.tokens = Math.min(capacity, bucket.tokens + ((at - bucket.at) / 1000) * perSecond);
+      // A clock that steps back (a time resync) must not drain the bucket.
+      const elapsed = Math.max(0, at - bucket.at);
+      bucket.tokens = Math.min(capacity, bucket.tokens + (elapsed / 1000) * perSecond);
       bucket.at = at;
     } else {
       bucket = { tokens: capacity, at };
@@ -123,28 +125,47 @@ export const limitFor = (method, parts) => {
  * The server's limits. check(req, parts) answers `{ ok: true }` or
  * `{ ok: false, retryAfterSec, limit, address }`. `enabled: false` (the
  * GUILD_CLOUD_RATE_LIMIT=off setting) lets everything through. `log` is told
- * once a minute per address and limit while it is being refused.
+ * once a minute per address and limit while it is being refused, and at
+ * most `maxLogsPerMinute` times a minute in all (a flood from many addresses
+ * can't fill the server log).
  */
-export const createRateLimits = ({ enabled = true, limits = LIMITS, now = Date.now, log = () => {} } = {}) => {
+export const createRateLimits = ({
+  enabled = true,
+  limits = LIMITS,
+  now = Date.now,
+  log = () => {},
+  maxLogsPerMinute = 20,
+} = {}) => {
   const limiters = Object.fromEntries(
     Object.entries(limits).map(([name, spec]) => [name, createLimiter({ ...spec, now })]),
   );
   const lastLogged = new Map();
+  let logWindow = { start: -Infinity, lines: 0, dropped: 0 };
+  const logOnce = (key, at, message) => {
+    if (lastLogged.get(key) > at - 60000) return;
+    if (at - logWindow.start >= 60000 || at < logWindow.start) {
+      if (logWindow.dropped > 0) log(`${logWindow.dropped} more refused addresses not logged in the last minute`);
+      logWindow = { start: at, lines: 0, dropped: 0 };
+    }
+    if (logWindow.lines >= maxLogsPerMinute) {
+      logWindow.dropped += 1;
+      return;
+    }
+    logWindow.lines += 1;
+    lastLogged.delete(key);
+    lastLogged.set(key, at);
+    while (lastLogged.size > 1000) lastLogged.delete(lastLogged.keys().next().value);
+    log(message);
+  };
   const check = (req, parts) => {
     if (!enabled) return { ok: true };
     const { address, local } = clientAddress(req);
     if (local) return { ok: true };
     const limit = limitFor(req.method, parts);
-    const result = limiters[limit].take(addressKey(address));
+    const key = addressKey(address);
+    const result = limiters[limit].take(key);
     if (result.ok) return result;
-    const key = `${limit} ${address}`;
-    const at = now();
-    if (!(lastLogged.get(key) > at - 60000)) {
-      lastLogged.delete(key);
-      lastLogged.set(key, at);
-      while (lastLogged.size > 1000) lastLogged.delete(lastLogged.keys().next().value);
-      log(`Too many requests from ${address} (${limit}); refusing for ${result.retryAfterSec} s`);
-    }
+    logOnce(`${limit} ${key}`, now(), `Too many requests from ${address} (${limit}); refusing for ${result.retryAfterSec} s`);
     return { ...result, limit, address };
   };
   return { check };

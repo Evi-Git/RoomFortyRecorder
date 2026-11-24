@@ -2075,7 +2075,7 @@ button.addEventListener('click', async () => {
     count.textContent = String(body.likes);
     try { localStorage.setItem(storageKey, '1'); } catch {}
     markLiked();
-    status.textContent = 'Thanks for the like!';
+    status.textContent = body.counted === false ? 'Already liked from this network today.' : 'Thanks for the like!';
   } catch {
     button.disabled = false;
     status.textContent = 'Could not save your like. Please try again.';
@@ -2123,7 +2123,9 @@ const handleLike = async (req, res, id) => {
   if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
   const { address } = clientAddress(req);
-  const counted = likesSeen.first(`${addressKey(address)}\n${link.id}`);
+  // With the limits off (e.g. behind a proxy that hides addresses) every
+  // visitor may look the same, so only the browser's own memory applies.
+  const counted = !RATE_LIMIT_ON || likesSeen.first(`${addressKey(address)}\n${link.id}`);
   if (counted) {
     if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
     persistLikesSoon();

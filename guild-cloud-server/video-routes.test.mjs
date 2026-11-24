@@ -729,7 +729,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 test('likes count once per address per link and are saved together, not per press', async () => {
   const server = await start({
     state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] },
-    env: { GUILD_CLOUD_LIKE_SAVE_MS: '1500' },
+    env: { GUILD_CLOUD_LIKE_SAVE_MS: '3000' },
   });
   try {
     const like = async (address) => {
@@ -743,7 +743,7 @@ test('likes count once per address per link and are saved together, not per pres
     assert.deepEqual((await like('2001:db8:1:2::99')).body, { likes: 2, counted: false });
     assert.deepEqual((await like('198.51.100.4')).body, { likes: 3, counted: true });
     assert.equal(server.library().links[0].likes, 0); // not written yet
-    await sleep(2500);
+    await sleep(4500);
     assert.equal(server.library().links[0].likes, 3); // one save for the lot
     assert.equal((await fetch(`${server.base}/link/nope/like`, { method: 'POST' })).status, 404);
   } finally {
@@ -786,15 +786,23 @@ test('outside addresses get a 429 past their limit; this PC and other addresses 
     for (let i = 0; i < 20; i++) assert.notEqual((await exchange()).status, 429);
     const tooMany = await exchange();
     assert.equal(tooMany.status, 429);
-    assert.equal(tooMany.headers.get('retry-after'), '3');
+    assert.match(tooMany.headers.get('retry-after'), /^[123]$/); // 3 s for one, less any refill while sending
+    assert.equal(tooMany.headers.get('access-control-allow-origin'), '*');
   } finally {
     await server.stop();
   }
 });
 
-test('GUILD_CLOUD_RATE_LIMIT=off turns the limits off', async () => {
-  const server = await start({ env: { GUILD_CLOUD_RATE_LIMIT: 'off' } });
+test('GUILD_CLOUD_RATE_LIMIT=off turns the limits and the per-address like check off', async () => {
+  const server = await start({
+    env: { GUILD_CLOUD_RATE_LIMIT: 'off' },
+    state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] },
+  });
   try {
+    for (let i = 1; i <= 2; i++) {
+      const res = await fetch(`${server.base}/link/l1/like`, { method: 'POST', headers: from('203.0.113.9') });
+      assert.deepEqual(await res.json(), { likes: i, counted: true });
+    }
     for (let i = 0; i < 130; i++) {
       const res = await fetch(`${server.base}/link/nope`, { headers: from('203.0.113.9') });
       assert.equal(res.status, 404);

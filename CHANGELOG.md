@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.160] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed
-- **The guild server limits how fast one address can call it.** Each internet address gets a generous burst and then a steady rate: sign-in 20 a minute, the share page's Like 10 a minute, share pages and other public pages 120 at once then 2 a second, and the app's own calls 600 at once then 10 a second (enough for the Logs page loading hundreds of spell icons). Past that the server answers "Too many requests" with how long to wait, which the app already retries after. Requests from the server PC itself (MediaMTX, the updater) are never limited, and `GUILD_CLOUD_RATE_LIMIT=off` in the server's `.env` turns the limits off.
-- **A share page's Like counts once per address a day** (as well as once per browser, as before), and likes are saved together a few seconds later instead of rewriting the server's state file on every press.
+- **The guild server limits how fast one address can call it.** Each internet address gets a generous burst and then a steady rate: sign-in 20 a minute, the share page's Like 10 a minute, share pages and other public pages 120 at once then 2 a second, and the app's own calls 600 at once then 10 a second (enough for the Logs page loading hundreds of spell icons). Past that the server answers "Too many requests" with how long to wait: uploads and the sign-in check wait and try again by themselves, other screens show the message, and spell icons fall back to the usual websites. Requests from the server PC itself (MediaMTX, the updater) are never limited, and `GUILD_CLOUD_RATE_LIMIT=off` in the server's `.env` turns the limits off.
+- **A share page's Like counts once per address a day** (as well as once per browser, as before), and likes are saved together a few seconds later instead of rewriting the server's state file on every press. A second like from the same network says so instead of thanking again.
 
 ## [1.9.159] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**

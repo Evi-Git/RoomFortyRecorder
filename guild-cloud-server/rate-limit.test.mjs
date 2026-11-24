@@ -141,3 +141,36 @@ test('createRateLimits: off lets everything through', () => {
   const limits = createRateLimits({ enabled: false, limits: { auth: { capacity: 0, perSecond: 1 }, like: { capacity: 0, perSecond: 1 }, public: { capacity: 0, perSecond: 1 }, api: { capacity: 0, perSecond: 1 } } });
   assert.equal(limits.check(req('203.0.113.9'), ['api']).ok, true);
 });
+
+test('createLimiter: a clock that steps back does not lock anyone out', () => {
+  let at = 10_000_000;
+  const limiter = createLimiter({ capacity: 2, perSecond: 1, now: () => at });
+  assert.equal(limiter.take('a').ok, true);
+  at -= 60 * 60 * 1000; // a time resync moves the clock back an hour
+  assert.equal(limiter.take('a').ok, true); // the one token left
+  const refused = limiter.take('a');
+  assert.equal(refused.ok, false);
+  assert.equal(refused.retryAfterSec, 1);
+  at += 1000;
+  assert.equal(limiter.take('a').ok, true);
+});
+
+test('createRateLimits: one log line per /64, and at most maxLogsPerMinute in all', () => {
+  let at = 0;
+  const logs = [];
+  const one = { capacity: 0, perSecond: 1 };
+  const limits = createRateLimits({
+    limits: { auth: one, like: one, public: one, api: one },
+    now: () => at,
+    log: (m) => logs.push(m),
+    maxLogsPerMinute: 3,
+  });
+  for (let i = 1; i <= 50; i++) limits.check(req('127.0.0.1', `2001:db8:1:2::${i.toString(16)}`), ['link']);
+  assert.equal(logs.length, 1); // one /64, one line
+  for (let i = 1; i <= 50; i++) limits.check(req('127.0.0.1', `198.51.100.${i}`), ['link']);
+  assert.equal(logs.length, 3); // capped
+  at += 60000;
+  limits.check(req('127.0.0.1', '192.0.2.1'), ['link']);
+  assert.match(logs[3], /^48 more refused addresses not logged/);
+  assert.equal(logs.length, 5);
+});

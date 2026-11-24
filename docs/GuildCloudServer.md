@@ -300,12 +300,15 @@ The server limits how fast one internet address can call it
 | The app's `/api` calls | 600 | 10 a second |
 
 Past a limit the answer is `429 Too many requests` with a `Retry-After`
-header; the app waits and tries again. The address is the last entry of
+header. Uploads and the app's sign-in check wait and try again; other screens
+show the message, and spell icons fall back to the public icon sites. The address is the last entry of
 `X-Forwarded-For`, which Caddy writes for every request it passes on (IPv6
 addresses count by their /64). Requests from this PC itself, without that
 header (MediaMTX, the updater), are never limited. The server log notes a
-refused address once a minute. Set `GUILD_CLOUD_RATE_LIMIT=off` in `.env` and
-restart to turn the limits off. The limits assume Caddy runs on this PC as in
+refused address once a minute (20 lines a minute at most). Set
+`GUILD_CLOUD_RATE_LIMIT=off` in `.env` and restart to turn the limits off; that
+also turns off the one-like-per-address check. Likes from the last few seconds
+before a server restart can be lost. The limits assume Caddy runs on this PC as in
 step 4; behind another proxy on another machine every request would look like
 that proxy's address.
 
