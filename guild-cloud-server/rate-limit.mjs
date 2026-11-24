@@ -108,7 +108,10 @@ export const createSeenOnce = ({ ttlMs, maxKeys = 20000, now = Date.now }) => {
 export const LIMITS = {
   auth: { capacity: 20, perSecond: 20 / 60 }, // Discord sign-in and the code exchange
   like: { capacity: 10, perSecond: 10 / 60 }, // the share page's Like button
-  public: { capacity: 120, perSecond: 2 }, // share pages, previews, /health, the recruiting page
+  public: { capacity: 120, perSecond: 2 }, // share pages, /health, the recruiting page
+  // A share link's video redirect and preview: Discord's media proxy plays a
+  // shared clip from a few addresses, possibly one request per range.
+  media: { capacity: 600, perSecond: 10 },
   api: { capacity: 600, perSecond: 10 }, // the app's /api calls
 };
 
@@ -117,6 +120,7 @@ export const limitFor = (method, parts) => {
   if (parts[0] === 'auth') return 'auth';
   if (parts[0] === 'api' && parts[1] === 'auth') return 'auth';
   if (parts[0] === 'link' && parts[2] === 'like' && method === 'POST') return 'like';
+  if (parts[0] === 'link' && (parts[2] === 'video' || parts[2] === 'thumb.jpg')) return 'media';
   if (parts[0] === 'api') return 'api';
   return 'public';
 };
