@@ -1050,6 +1050,50 @@ export const scenes = [
     },
   },
   {
+    name: 'status-signing-in',
+    shows: 'Sidebar card: Sign in again pressed, waiting for Discord, with Cancel',
+    init: {
+      signIn: { state: 'expired', reason: 'Invalid or expired Discord session' },
+    },
+    steps: async (t) => {
+      // Discord never answers: the card stays on "Waiting for Discord".
+      await t.page.evaluate(() =>
+        window.__harness.answer('signInWithDiscord', () => new Promise(() => {})),
+      );
+      await t.page.locator('[data-status="server"]').hover();
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'Sign in again', exact: true }).click();
+      await t.page.getByRole('button', { name: 'Cancel', exact: true }).waitFor();
+      // The card can close as the browser takes focus; look again.
+      await t.page.mouse.move(700, 450);
+      await t.settle(500);
+      await t.page.locator('[data-status="server"]').hover();
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'status-sign-in-failed',
+    shows: 'Sidebar card: sign-in came back with a reason (no Room Forty role)',
+    init: {
+      signIn: { state: 'expired', reason: 'Invalid or expired Discord session' },
+      answers: {
+        signInWithDiscord: {
+          ok: false,
+          reason: 'missingRole',
+          message:
+            'That Discord account has no Room Forty role yet. Ask an officer to give you one.',
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.page.locator('[data-status="server"]').hover();
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'Sign in again', exact: true }).click();
+      await t.page.getByText('no Room Forty role yet').waitFor();
+      await t.settle(300);
+    },
+  },
+  {
     name: 'status-refused',
     shows: 'Sidebar card: signed in but not allowed (role check)',
     init: {

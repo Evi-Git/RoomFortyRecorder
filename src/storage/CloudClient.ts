@@ -1,9 +1,9 @@
 import fs from 'fs';
-import http from 'http';
 import axios, { AxiosRequestConfig } from 'axios';
 import {
   CloudMetadata,
   CloudStatus,
+  DiscordSignInResult,
   SignInState,
   CompleteMultiPartUploadRequestBody,
   CreateMultiPartUploadResponseBody,
@@ -35,7 +35,7 @@ import {
   getSessionToken,
   setSessionToken,
 } from 'main/secretStore';
-import { isSafeExternalUrl } from 'main/externalUrl';
+import { DiscordSignInError, runDiscordSignIn } from 'main/discordSignIn';
 import { startStallWatch } from 'main/stallTimer';
 import { classifyUpload, StallError } from 'main/uploadFailures';
 import { withRetry } from 'main/pullUploadRetry';
@@ -843,87 +843,72 @@ export default class CloudClient implements StorageClient {
     this.refreshStatus();
   }
 
+  /** The sign-in waiting for Discord, if any (Cancel aborts it). */
+  private discordSignIn: AbortController | null = null;
+
   /**
-   * Authenticate the app through the private guild's Discord server.
+   * Authenticate the app through the private guild's Discord server
+   * (main/discordSignIn has the loopback callback). Never throws: the
+   * result says how it ended. Starting again cancels a sign-in still
+   * waiting for Discord.
    */
   public async signInWithDiscord(
     openExternal: (url: string) => void | Promise<void>,
-  ) {
-    const code = await new Promise<string>((resolve, reject) => {
-      let settled = false;
+  ): Promise<DiscordSignInResult> {
+    this.discordSignIn?.abort();
+    const abort = new AbortController();
+    this.discordSignIn = abort;
 
-      const server = http.createServer((req, res) => {
-        const url = new URL(
-          req.url || '/',
-          `http://${req.headers.host || '127.0.0.1'}`,
-        );
-
-        if (url.pathname !== '/callback') {
-          res.writeHead(404).end();
-          return;
-        }
-
-        const callbackCode = url.searchParams.get('code');
-        const error = url.searchParams.get('error');
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(
-          '<!doctype html><title>Room Forty Toolkit</title>' +
-            '<p>Discord sign-in complete. You can close this window.</p>',
-        );
-
-        if (error || !callbackCode) {
-          finish(new Error('Discord sign-in was not completed.'));
-          return;
-        }
-
-        finish(undefined, callbackCode);
-      });
-
-      const finish = (error?: Error, value?: string) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        server.close();
-        if (error) reject(error);
-        else if (value) resolve(value);
-        else reject(new Error('Discord sign-in failed.'));
-      };
-
-      const timer = setTimeout(
-        () => finish(new Error('Discord sign-in timed out.')),
-        5 * 60 * 1000,
-      );
-
-      server.on('error', (error) => finish(error));
-      server.listen(0, '127.0.0.1', async () => {
-        const address = server.address();
-        if (!address || typeof address === 'string') {
-          finish(new Error('Could not start the Discord callback.'));
-          return;
-        }
-
-        const callback = `http://127.0.0.1:${address.port}/callback`;
-        const startUrl = `${CloudClient.website}/auth/discord/start?callback=${encodeURIComponent(callback)}`;
-
-        try {
-          const response = await cloudHttp.get(startUrl, {
+    let session: { userName: string; guildName: string };
+    try {
+      session = await runDiscordSignIn({
+        startUrl: (callback) =>
+          `${CloudClient.website}/auth/discord/start?callback=${encodeURIComponent(callback)}`,
+        getRedirect: async (url) => {
+          const response = await cloudHttp.get(url, {
             maxRedirects: 0,
             validateStatus: (status) => status >= 300 && status < 400,
           });
-          const redirectUrl = response.headers.location;
-          if (typeof redirectUrl !== 'string') {
-            throw new Error('Cloud server did not start Discord sign-in.');
-          }
-          if (!isSafeExternalUrl(redirectUrl)) {
-            throw new Error('Cloud server sent an unsafe sign-in address.');
-          }
-          await openExternal(redirectUrl);
-        } catch (error) {
-          finish(error instanceof Error ? error : new Error(String(error)));
-        }
+          const location = response.headers.location;
+          return typeof location === 'string' ? location : undefined;
+        },
+        openExternal,
+        exchange: (code) => this.exchangeDiscordCode(code),
+        nameOf: (result) => result.userName,
+        signal: abort.signal,
       });
-    });
+    } catch (error) {
+      const failure =
+        error instanceof DiscordSignInError
+          ? error
+          : new DiscordSignInError('serverRefused', String(error));
+      if (failure.code === 'cancelled') {
+        console.info('[CloudClient] Discord sign-in cancelled');
+      } else {
+        console.warn(
+          '[CloudClient] Discord sign-in failed:',
+          failure.code,
+          failure.detail || '',
+        );
+      }
+      return { ok: false, reason: failure.code, message: failure.message };
+    } finally {
+      if (this.discordSignIn === abort) this.discordSignIn = null;
+    }
 
+    console.info('[CloudClient] Signed in with Discord as', session.userName);
+    await this.configure();
+    await this.refreshVideos();
+    return { ok: true, ...session };
+  }
+
+  /** Stop a sign-in that is still waiting for Discord. */
+  public cancelDiscordSignIn() {
+    this.discordSignIn?.abort();
+  }
+
+  /** Trade the one-time login code for a session token and save it. */
+  private async exchangeDiscordCode(code: string) {
     const response = await cloudHttp.post(
       `${CloudClient.api}/auth/discord/exchange`,
       { code },
@@ -935,16 +920,13 @@ export default class CloudClient implements StorageClient {
       typeof userName !== 'string' ||
       typeof guildName !== 'string'
     ) {
-      throw new Error('The cloud server returned an invalid Discord session.');
+      throw new DiscordSignInError('invalidSession');
     }
 
     const cfg = ConfigService.getInstance();
     await setSessionToken(token);
     cfg.set('cloudDiscordName', userName);
     cfg.set('cloudStorage', true);
-
-    await this.configure();
-    await this.refreshVideos();
     return { userName, guildName };
   }
 

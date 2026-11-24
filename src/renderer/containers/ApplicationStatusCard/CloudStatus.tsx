@@ -185,13 +185,17 @@ const CloudStatus = ({
     setSigningIn(true);
     try {
       const result = await ipc.signInWithDiscord();
-      // Same as the Cloud settings tab, so a later settings change doesn't
-      // write back a stale name.
-      setConfig?.((prev) => ({
-        ...prev,
-        cloudStorage: true,
-        cloudDiscordName: result.userName,
-      }));
+      if (result.ok) {
+        // Same as the Cloud settings tab, so a later settings change doesn't
+        // write back a stale name.
+        setConfig?.((prev) => ({
+          ...prev,
+          cloudStorage: true,
+          cloudDiscordName: result.userName,
+        }));
+      } else if (result.reason !== 'cancelled') {
+        setSignInError(result.message);
+      }
     } catch (error) {
       console.error('[CloudStatus] Discord sign-in failed', error);
       setSignInError(getLocalePhrase(language, Phrase.StatusSignInFailed));
@@ -287,18 +291,28 @@ const CloudStatus = ({
           text
         )}
       </p>
-      {signInError && (
-        <p className="text-xs text-error-foreground">{signInError}</p>
-      )}
+      {signInError && <p className="text-xs text-error-text">{signInError}</p>}
       {action && (
-        <Button
-          size="sm"
-          className="w-fit h-7 px-3"
-          disabled={signingIn}
-          onClick={action.run}
-        >
-          {actionLabel}
-        </Button>
+        <div className="flex gap-x-2">
+          <Button
+            size="sm"
+            className="w-fit h-7 px-3"
+            disabled={signingIn}
+            onClick={action.run}
+          >
+            {actionLabel}
+          </Button>
+          {signingIn && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit h-7 px-3"
+              onClick={() => ipc.cancelDiscordSignIn()}
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
       )}
       {server.state === 'behind' && (
         <p className="text-xs text-yellow-400" data-state="behind">
