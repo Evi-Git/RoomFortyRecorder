@@ -1251,7 +1251,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       toast({
         title: 'Sharing stopped',
         description:
-          'The public link no longer works. Anyone who already started the video can finish watching for up to 2 hours.',
+          'The public link no longer works. Someone already watching can usually finish (up to 2 hours), and Discord may keep its copy of a posted clip for a while.',
         duration: 5000,
       });
       return;

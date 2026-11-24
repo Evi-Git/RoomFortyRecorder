@@ -365,7 +365,9 @@ export const createCoach = ({
 
   /**
    * Deletes the preview images whose link is gone (daily clean-up). `keepIds`
-   * is the set of link ids that still exist. Returns how many were removed.
+   * is the set of link ids that still exist. Images under an hour old stay:
+   * a clip sent while the clean-up runs isn't in `keepIds` yet. Returns how
+   * many were removed.
    */
   const removeThumbnails = async (keepIds) => {
     let files;
@@ -377,7 +379,10 @@ export const createCoach = ({
     let removed = 0;
     for (const file of files) {
       if (!file.endsWith('.jpg') || keepIds.has(file.slice(0, -4))) continue;
-      await fsp.unlink(path.join(thumbDir, file)).then(() => (removed += 1), () => {});
+      const full = path.join(thumbDir, file);
+      const stat = await fsp.stat(full).catch(() => null);
+      if (!stat || Date.now() - stat.mtimeMs < 60 * 60 * 1000) continue;
+      await fsp.unlink(full).then(() => (removed += 1), () => {});
     }
     return removed;
   };

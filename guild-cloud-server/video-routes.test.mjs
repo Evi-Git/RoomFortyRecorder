@@ -924,7 +924,13 @@ test('the daily clean-up drops dead links, orphan previews, empty chats and old 
   );
   fs.writeFileSync(path.join(pulldesk, 'logs', 'old1.log.gz'), 'x');
   fs.writeFileSync(path.join(pulldesk, 'logs', 'new1.log.gz'), 'x');
-  for (const id of ['live1', 'dead1', 'orphan1']) fs.writeFileSync(path.join(storage, 'coach-thumbs', `${id}.jpg`), 'x');
+  const thumbs = path.join(storage, 'coach-thumbs');
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  for (const id of ['live1', 'dead1', 'orphan1']) {
+    fs.writeFileSync(path.join(thumbs, `${id}.jpg`), 'x');
+    fs.utimesSync(path.join(thumbs, `${id}.jpg`), twoHoursAgo, twoHoursAgo);
+  }
+  fs.writeFileSync(path.join(thumbs, 'justsent.jpg'), 'x'); // a clip being sent right now
   // `reuse` starts the server on these files as they are.
   fs.writeFileSync(
     path.join(storage, 'state.json'),
@@ -952,9 +958,61 @@ test('the daily clean-up drops dead links, orphan previews, empty chats and old 
     const state = second.library();
     assert.deepEqual(state.links.map((link) => link.id), ['live1']);
     assert.deepEqual(state.chats.map((chat) => chat.correlator), ['full']);
-    assert.deepEqual(fs.readdirSync(path.join(storage, 'coach-thumbs')), ['live1.jpg']);
+    assert.deepEqual(fs.readdirSync(thumbs).sort(), ['justsent.jpg', 'live1.jpg']);
     assert.deepEqual(fs.readdirSync(path.join(pulldesk, 'logs')).sort(), ['new1.log.gz']);
   } finally {
     await second.stop();
+  }
+});
+
+test('links from before 1.9.161: ones with a coaching preview become clips, the rest stay the recording\'s link', async () => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-oldlinks-'));
+  fs.mkdirSync(path.join(storage, 'coach-thumbs'));
+  fs.writeFileSync(path.join(storage, 'coach-thumbs', 'clip1.jpg'), 'x');
+  fs.writeFileSync(
+    path.join(storage, 'state.json'),
+    JSON.stringify({
+      videos: [
+        { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
+        { videoKey: 'bob.mp4', videoName: 'bob', uploadedBy: BOB, uploadedByName: 'Bob' },
+      ],
+      chats: [],
+      links: [
+        { id: 'clip1', guild: GUILD, key: 'evi.mp4', likes: 0 },
+        { id: 'share1', guild: GUILD, key: 'bob.mp4', likes: 4 },
+      ],
+      knownUsers: {},
+      nextMessageId: 1,
+    }),
+  );
+  const server = await start({ reuse: { storage } });
+  try {
+    const kinds = Object.fromEntries(server.library().links.map((link) => [link.id, link.kind]));
+    assert.deepEqual(kinds, { clip1: 'clip', share1: 'video' });
+    const listed = (await server.call(evi, 'GET', '/video')).body;
+    assert.equal(listed.find((v) => v.videoKey === 'evi.mp4').shared, false); // only a clip
+    assert.equal(listed.find((v) => v.videoKey === 'bob.mp4').shared, true);
+    // The link button makes Evi's recording a link of its own, not the clip's.
+    const made = await server.call(evi, 'POST', '/video/evi/link');
+    assert.notEqual(made.body.id, 'clip1');
+    // Stopping Evi's share leaves the clip alone.
+    assert.deepEqual((await server.call(evi, 'DELETE', '/video/evi/link')).body, { removed: 1 });
+    assert.equal((await fetch(`${server.base}/link/clip1/video`, { redirect: 'manual' })).status, 302);
+    // Nothing left to stop: anyone gets removed 0 rather than a refusal.
+    assert.deepEqual((await server.call(bob, 'DELETE', '/video/evi/link')).body, { removed: 0 });
+  } finally {
+    await server.stop();
+  }
+});
+
+test('a share link\'s video redirect skips the R2 check and may be cached a minute', async () => {
+  const server = await start({ state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0, kind: 'video' }] } });
+  try {
+    const res = await fetch(`${server.base}/link/l1/video`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('cache-control'), 'public, max-age=60');
+    assert.equal((await fetch(`${server.base}/link/nope/video`, { redirect: 'manual' })).status, 404);
+  } finally {
+    await server.stop();
   }
 });

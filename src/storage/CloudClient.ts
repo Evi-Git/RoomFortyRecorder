@@ -1793,16 +1793,15 @@ export default class CloudClient implements StorageClient {
       const videoName = args[0];
       const shareable = await this.getShareableLink(videoName);
       clipboard.writeText(shareable);
-      // Shows the Stop sharing button now rather than at the next poll.
-      this.refreshVideos().catch(() => {});
     });
 
     // Answers instead of throwing: an IPC error would bury the server's
     // plain-language refusal in Electron's wrapper text.
     ipcMain.handle('stopSharingLink', async (_event, args) => {
       try {
+        // No refresh here: it would take the player out of fullscreen. The
+        // 30-second poll hides the button.
         await this.stopSharing(args[0]);
-        this.refreshVideos().catch(() => {});
         return { ok: true as const };
       } catch (error) {
         const rsp = axios.isAxiosError(error)

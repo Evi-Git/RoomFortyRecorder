@@ -1443,7 +1443,7 @@ export const createPullDesk = (options) => {
 
     // After responding: Discord and housekeeping don't hold up the app.
     if (postPulls) await discordPost(pull, report);
-    await pruneLogs();
+    await housekeep();
     return undefined;
   };
 
