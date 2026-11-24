@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.163] - Unreleased
+App only; no guild server update needed.
+### Fixed
+- **Go live reconnects by itself.** If the connection to the live server drops, the Go live button now says "Reconnecting…" with which try it's on, and tries again after 2, 5, 10, 15 and then every 30 seconds for up to 5 minutes, checking your sign-in with the guild server before each try. Pressing the button while it's reconnecting stops trying. It doesn't reconnect once WoW has closed. If Go live can't connect at all on the first press, it tries 3 more times before giving up.
+- **Go live says why it stopped.** A sign-in that expired while you were live now says to sign in again instead of "sign-in or name not allowed", a role you no longer have shows the guild server's reason, and when the live server is still holding your last stream after a drop it says to wait a minute. When it gives up, it says how many times it tried.
+
 ## [1.9.162] - Unreleased
 App only; no guild server update needed.
 ### Added

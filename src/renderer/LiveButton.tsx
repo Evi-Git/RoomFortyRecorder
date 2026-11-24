@@ -10,10 +10,12 @@ import LiveSettingsDialog from './LiveSettingsDialog';
  */
 
 type LiveState = {
-  status: 'off' | 'connecting' | 'live' | 'error';
+  status: 'off' | 'connecting' | 'live' | 'reconnecting' | 'error';
   streamName?: string;
   mbps?: number;
   error?: string;
+  /** While reconnecting: what happened and which try is next. */
+  note?: string;
 };
 
 const ipc = window.electron.ipcRenderer;
@@ -45,17 +47,22 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   };
 
   const live = state.status === 'live';
-  const connecting = state.status === 'connecting';
+  const reconnecting = state.status === 'reconnecting';
+  // Waiting on the live server: pulse, and offer Stop.
+  const connecting = state.status === 'connecting' || reconnecting;
 
   let label = 'Go live';
-  if (connecting) label = 'Connecting…';
+  if (state.status === 'connecting') label = 'Connecting…';
+  if (reconnecting) label = 'Reconnecting…';
   if (live)
     label = state.mbps ? `LIVE · ${state.mbps.toFixed(1)} Mbps` : 'LIVE';
 
-  const tooltip =
-    live || connecting
-      ? `Streaming to the guild as "${state.streamName ?? 'you'}". Click to stop.`
-      : 'Stream your POV to the guild. Stops by itself when WoW closes.';
+  let tooltip =
+    'Stream your POV to the guild. Stops by itself when WoW closes.';
+  if (live || state.status === 'connecting')
+    tooltip = `Streaming to the guild as "${state.streamName ?? 'you'}". Click to stop.`;
+  if (reconnecting)
+    tooltip = `${state.note ?? 'Reconnecting…'} Click to stop trying.`;
 
   if (compact) {
     return (
@@ -106,7 +113,14 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
         </LiveSettingsDialog>
       </div>
       {state.status === 'error' && state.error && (
-        <p className="mt-1 text-xs text-red-400 leading-snug">{state.error}</p>
+        <p role="alert" className="mt-1 text-xs text-error-text leading-snug">
+          {state.error}
+        </p>
+      )}
+      {reconnecting && state.note && (
+        <p role="status" className="mt-1 text-xs text-foreground leading-snug">
+          {state.note}
+        </p>
       )}
     </div>
   );

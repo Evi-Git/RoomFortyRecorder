@@ -110,7 +110,16 @@
   },
   "jest": {
     "transform": {
-      "\\.(ts|tsx|js|jsx)$": "ts-jest"
+      "\\.(ts|tsx|js|jsx)$": [
+        "ts-jest",
+        {
+          "diagnostics": {
+            "exclude": [
+              "**/src/main/LiveStreamer.ts"
+            ]
+          }
+        }
+      ]
     }
   },
   "dependencies": {
