@@ -4,10 +4,11 @@
  * WoW poller and network are mocked.
  */
 
+let engineActive = false;
 const engine = {
   StartStream: jest.fn(),
   StopStream: jest.fn(),
-  GetStreamStatus: jest.fn(() => ({ active: false, bytes: 0 })),
+  GetStreamStatus: jest.fn(() => ({ active: engineActive, bytes: 0 })),
   ListVideoEncoders: jest.fn(() => ['obs_x264']),
   GetPreviewInfo: jest.fn(() => ({ canvasWidth: 1920, canvasHeight: 1080 })),
 };
@@ -76,6 +77,7 @@ beforeEach(() => {
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
   wowRunning = true;
+  engineActive = false;
   get.mockResolvedValue(publishOk);
 });
 
@@ -406,3 +408,77 @@ it('a drop followed by a refusal still gets one more try', async () => {
   live.handleSignal(signal('stream-stop', -3));
   expect(live.getState().status).toBe('error');
 });
+
+it('a timed-out try that goes live while the next try asks the server: no second stream', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle(); // try A started
+  jest.advanceTimersByTime(45_000); // A timed out
+  let answer: (value: unknown) => void = () => {};
+  get.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  jest.advanceTimersByTime(5_000);
+  await settle(); // try B is asking the guild server
+  engineActive = true;
+  live.handleSignal(signal('stream-start')); // A made it after all
+  answer(publishOk);
+  await settle();
+  expect(engine.StartStream).toHaveBeenCalledTimes(2); // no StartStream for B
+  expect(live.getState().status).toBe('live');
+});
+
+it('a try that connected just as the time ran out is not stopped', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  engine.StopStream.mockClear();
+  engineActive = true; // connected; its signal is still queued
+  jest.advanceTimersByTime(45_000);
+  expect(engine.StopStream).not.toHaveBeenCalled();
+  live.handleSignal(signal('stream-start'));
+  expect(live.getState().status).toBe('live');
+});
+
+it('Stop also ends a stream the engine still runs after an error', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -6)); // gives up at once
+  expect(live.getState().status).toBe('error');
+  engineActive = true; // somehow still running
+  engine.StopStream.mockClear();
+  live.stop('WoW closed');
+  expect(engine.StopStream).toHaveBeenCalledTimes(1);
+  expect(live.getState().status).toBe('off');
+});
+
+it('Go live right after Stop waits for the old stream to finish stopping', async () => {
+  jest.useRealTimers();
+  const live = fresh();
+  engineActive = true; // the previous stream is still shutting down
+  setTimeout(() => {
+    engineActive = false;
+  }, 300);
+  await live.start();
+  expect(engine.StartStream).toHaveBeenCalledTimes(1);
+  expect(live.getState().status).toBe('connecting');
+});
+
+it('says so when the old stream never finishes stopping', async () => {
+  jest.useRealTimers();
+  const live = fresh();
+  engineActive = true;
+  await live.start();
+  expect(engine.StartStream).not.toHaveBeenCalled();
+  expect(live.getState()).toMatchObject({
+    status: 'error',
+    error: 'The last stream is still stopping. Try again in a moment.',
+  });
+}, 10_000);

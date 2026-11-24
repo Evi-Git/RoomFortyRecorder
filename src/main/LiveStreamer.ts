@@ -47,6 +47,9 @@ export type LiveState = {
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_BITRATE_KBPS = 7000;
 
+/** How long a new start waits for the previous stream to finish stopping. */
+const STOPPING_WAIT_MS = 3000;
+
 export default class LiveStreamer extends EventEmitter {
   private static instance: LiveStreamer;
 
@@ -76,6 +79,8 @@ export default class LiveStreamer extends EventEmitter {
 
   /** StartStream was called and its first signal hasn't arrived yet. */
   private starting = false;
+
+  private startingSince = 0;
 
   private retryTimer?: NodeJS.Timeout;
 
@@ -184,8 +189,22 @@ export default class LiveStreamer extends EventEmitter {
       return;
     }
 
-    if (attempt !== this.attempt || !this.isActive()) {
-      console.info('[LiveStreamer] Stopped while connecting; not starting');
+    if (attempt !== this.attempt || !this.waitingToConnect()) {
+      // Stopped meanwhile, or an earlier try that timed out went live after
+      // all: either way, no second stream.
+      console.info('[LiveStreamer] Not starting: stopped or already live');
+      return;
+    }
+
+    // The previous stream (just stopped, or dropped) may still be shutting
+    // down; the engine refuses a second one until it has.
+    const shutDownBy = Date.now() + STOPPING_WAIT_MS;
+    while (LiveStreamer.engineActive() && Date.now() < shutDownBy) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (attempt !== this.attempt || !this.waitingToConnect()) return;
+    if (LiveStreamer.engineActive()) {
+      this.giveUp('The last stream is still stopping. Try again in a moment.');
       return;
     }
 
@@ -223,12 +242,16 @@ export default class LiveStreamer extends EventEmitter {
       );
       // The result arrives as a "stream-start" or "stream-stop" signal.
       this.starting = true;
+      this.startingSince = Date.now();
       this.clearStartTimer();
       this.startTimer = setTimeout(() => {
         this.startTimer = undefined;
         if (attempt !== this.attempt || !this.starting || !this.isActive()) {
           return;
         }
+        // Connected just now: the start signal is on its way. Stopping it
+        // here would end a stream that works.
+        if (LiveStreamer.engineActive()) return;
         console.warn('[LiveStreamer] No answer from the live server in time');
         this.starting = false;
         try {
@@ -252,7 +275,9 @@ export default class LiveStreamer extends EventEmitter {
   }
 
   public stop(reason: string) {
-    if (!this.isActive()) return;
+    // Also stop a stream the engine still runs while the state says off or
+    // error (a try that went live after Go live gave up).
+    if (!this.isActive() && !LiveStreamer.engineActive()) return;
     this.attempt += 1;
     this.clearTimers();
     console.info('[LiveStreamer] Stopping stream:', reason);
@@ -273,7 +298,11 @@ export default class LiveStreamer extends EventEmitter {
    * the video context can be reset (libobs refuses while an output runs).
    */
   public async stopAndWait(reason: string, timeoutMs = 5000) {
-    if (!this.isActive() && !LiveStreamer.engineActive() && !this.starting) {
+    if (
+      !this.isActive() &&
+      !LiveStreamer.engineActive() &&
+      !this.startPending()
+    ) {
       return;
     }
     this.stop(reason);
@@ -282,7 +311,7 @@ export default class LiveStreamer extends EventEmitter {
     // A start still connecting isn't "active" yet and can't be stopped
     // until its first signal; wait for that too.
     while (
-      (LiveStreamer.engineActive() || this.starting) &&
+      (LiveStreamer.engineActive() || this.startPending()) &&
       Date.now() < deadline
     ) {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -414,11 +443,31 @@ export default class LiveStreamer extends EventEmitter {
     this.clearTimers();
     this.stopStats();
     this.resetTries();
+    if (LiveStreamer.engineActive()) {
+      try {
+        noobs.StopStream();
+      } catch (error) {
+        console.error('[LiveStreamer] StopStream failed', error);
+      }
+    }
     this.setState({
       status: 'error',
       streamName: this.state.streamName,
       error: message,
     });
+  }
+
+  private waitingToConnect() {
+    return (
+      this.state.status === 'connecting' || this.state.status === 'reconnecting'
+    );
+  }
+
+  /** A start that hasn't answered yet (and isn't long dead). */
+  private startPending() {
+    return (
+      this.starting && Date.now() - this.startingSince < CONNECT_TIMEOUT_MS
+    );
   }
 
   private resetTries() {

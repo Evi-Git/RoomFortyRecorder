@@ -80,7 +80,9 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           className={`h-10 w-10 ${connecting ? 'animate-pulse' : ''}`}
           disabled={busy}
           onClick={toggle}
-          aria-label={connecting || live ? `${label}. Stop` : label}
+          aria-label={
+            live ? 'Live. Stop' : connecting ? `${label} Stop` : label
+          }
         >
           <Radio size={16} className={live ? 'animate-pulse' : 'text-brand'} />
         </Button>
