@@ -45,6 +45,7 @@ import {
   release as releaseReservation,
   reserve as reserveUpload,
 } from './upload-reservations.mjs';
+import { addressKey, clientAddress, createRateLimits, createSeenOnce } from './rate-limit.mjs';
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 // [RoomFortyRecorder] Release tag written by update-server.ps1, shown on
@@ -76,6 +77,9 @@ loadEnvFile();
 const HOST = process.env.GUILD_CLOUD_HOST || '127.0.0.1';
 const PORT = Number.parseInt(process.env.GUILD_CLOUD_PORT || '8787', 10);
 const GUILD = process.env.GUILD_CLOUD_GUILD || 'Room Forty';
+// Per-address request limits (rate-limit.mjs); GUILD_CLOUD_RATE_LIMIT=off
+// turns them off.
+const RATE_LIMIT_ON = (process.env.GUILD_CLOUD_RATE_LIMIT || '').trim().toLowerCase() !== 'off';
 const DISCORD_CLIENT_ID = process.env.GUILD_CLOUD_DISCORD_CLIENT_ID || '';
 const DISCORD_CLIENT_SECRET =
   process.env.GUILD_CLOUD_DISCORD_CLIENT_SECRET || '';
@@ -2060,7 +2064,7 @@ const markLiked = () => {
   button.setAttribute('aria-pressed', 'true');
   button.disabled = true;
 };
-// ponytail: browser-local like dedupe; add account/rate limiting if abuse matters.
+// The server counts one like per address a day; this keeps the button pressed.
 try { if (localStorage.getItem(storageKey) === '1') markLiked(); } catch {}
 button.addEventListener('click', async () => {
   button.disabled = true;
@@ -2095,15 +2099,42 @@ const handleLinkVideo = async (req, res, id) => {
   return redirect(res, signedDownloadUrl(link.guild, link.key));
 };
 
-const handleLike = async (res, id) => {
+// One like per address per share link a day (the page also remembers it in
+// the browser). Likes are saved together a few seconds later instead of
+// rewriting state.json on every press; any other save in between carries
+// them too. GUILD_CLOUD_LIKE_SAVE_MS exists only for tests.
+const likesSeen = createSeenOnce({ ttlMs: 24 * 60 * 60 * 1000 });
+const LIKE_SAVE_MS = (() => {
+  const ms = Number.parseInt(process.env.GUILD_CLOUD_LIKE_SAVE_MS ?? '', 10);
+  return Number.isInteger(ms) && ms >= 0 ? ms : 5000;
+})();
+let likeSaveTimer = null;
+const persistLikesSoon = () => {
+  if (likeSaveTimer) return;
+  likeSaveTimer = setTimeout(() => {
+    likeSaveTimer = null;
+    persist();
+  }, LIKE_SAVE_MS);
+};
+
+const handleLike = async (req, res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
   if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
-  if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
-  await persist();
-  return json(res, 200, { likes: link.likes });
+  const { address } = clientAddress(req);
+  const counted = likesSeen.first(`${addressKey(address)}\n${link.id}`);
+  if (counted) {
+    if (linkLikes(link) < Number.MAX_SAFE_INTEGER) link.likes = linkLikes(link) + 1;
+    persistLikesSoon();
+  }
+  return json(res, 200, { likes: linkLikes(link), counted });
 };
+
+const rateLimits = createRateLimits({
+  enabled: RATE_LIMIT_ON,
+  log: (message) => console.warn(`[guild-cloud] ${message}`),
+});
 
 const requestHandler = async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -2116,6 +2147,19 @@ const requestHandler = async (req, res) => {
     throw error;
   }
   res.setHeader('Cache-Control', 'no-store');
+
+  // Per-address limits (rate-limit.mjs). Requests from this PC itself
+  // (MediaMTX, the updater) are never limited.
+  const limited = rateLimits.check(req, parts);
+  if (!limited.ok) {
+    const seconds = limited.retryAfterSec;
+    return json(
+      res,
+      429,
+      { error: `Too many requests. Try again in ${seconds} s.` },
+      withCors({ 'Retry-After': String(seconds) }),
+    );
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, withCors());
@@ -2149,7 +2193,7 @@ const requestHandler = async (req, res) => {
     return undefined;
   }
   if (parts[0] === 'link' && parts[2] === 'like' && req.method === 'POST') {
-    return handleLike(res, parts[1]);
+    return handleLike(req, res, parts[1]);
   }
   if (parts[0] === 'link' && parts.length === 2 && req.method === 'GET') {
     return handleLink(res, parts[1], url.searchParams.get('t'));

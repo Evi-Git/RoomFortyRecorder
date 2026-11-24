@@ -34,3 +34,4 @@ server-log.mjs
 health.mjs
 pulldesk-resets.mjs
 routes.mjs
+rate-limit.mjs

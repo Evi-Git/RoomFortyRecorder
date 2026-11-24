@@ -175,7 +175,7 @@ const start = async ({ bucket, state: extraState, restored = false, env = {}, re
     const res = await fetch(`${base}${route}`);
     return { status: res.status, body: await res.json().catch(() => null) };
   };
-  return { call, get, stop, library, setFixture, objects, storage, bucketFile };
+  return { base, call, get, stop, library, setFixture, objects, storage, bucketFile };
 };
 
 const owner = [OWNER, 'Owner'];
@@ -718,5 +718,88 @@ test('a bad %-escape in the path is a quiet 400, not a logged error', async () =
     assert.doesNotMatch(text, /Request failed|URIError/);
   } finally {
     await stop();
+  }
+});
+
+// ---- 1.9.160: per-address limits and likes (rate-limit.mjs) -------------------
+
+const from = (address) => (address ? { 'X-Forwarded-For': address } : {});
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test('likes count once per address per link and are saved together, not per press', async () => {
+  const server = await start({
+    state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] },
+    env: { GUILD_CLOUD_LIKE_SAVE_MS: '1500' },
+  });
+  try {
+    const like = async (address) => {
+      const res = await fetch(`${server.base}/link/l1/like`, { method: 'POST', headers: from(address) });
+      return { status: res.status, body: await res.json() };
+    };
+    assert.deepEqual(await like('203.0.113.9'), { status: 200, body: { likes: 1, counted: true } });
+    assert.deepEqual(await like('203.0.113.9'), { status: 200, body: { likes: 1, counted: false } });
+    // Same /64 is the same visitor.
+    assert.deepEqual((await like('2001:db8:1:2::1')).body, { likes: 2, counted: true });
+    assert.deepEqual((await like('2001:db8:1:2::99')).body, { likes: 2, counted: false });
+    assert.deepEqual((await like('198.51.100.4')).body, { likes: 3, counted: true });
+    assert.equal(server.library().links[0].likes, 0); // not written yet
+    await sleep(2500);
+    assert.equal(server.library().links[0].likes, 3); // one save for the lot
+    assert.equal((await fetch(`${server.base}/link/nope/like`, { method: 'POST' })).status, 404);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('outside addresses get a 429 past their limit; this PC and other addresses do not', async () => {
+  const server = await start();
+  try {
+    const page = (address) => fetch(`${server.base}/link/nope`, { headers: from(address) });
+    // 120 at once, plus whatever refilled (2 a second) while they were sent.
+    let served = 0;
+    let refused;
+    while (served < 200) {
+      const res = await page('203.0.113.9');
+      if (res.status === 429) {
+        refused = res;
+        break;
+      }
+      assert.equal(res.status, 404);
+      served += 1;
+    }
+    assert.ok(refused && served >= 120, `served ${served}`);
+    assert.equal(refused.headers.get('retry-after'), '1');
+    assert.match((await refused.json()).error, /Too many requests\. Try again in 1 s\./);
+    assert.equal((await page('198.51.100.4')).status, 404); // someone else
+    for (let i = 0; i < 130; i++) assert.equal((await page()).status, 404); // MediaMTX, the updater
+    // The app's own calls have their own, bigger bucket.
+    const api = await fetch(`${server.base}/api/guild/${encodeURIComponent(GUILD)}/video`, { headers: from('203.0.113.9') });
+    assert.equal(api.status, 401);
+
+    // Sign-in: 20 at once.
+    const exchange = () =>
+      fetch(`${server.base}/api/auth/discord/exchange`, {
+        method: 'POST',
+        headers: { ...from('192.0.2.50'), 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+    for (let i = 0; i < 20; i++) assert.notEqual((await exchange()).status, 429);
+    const tooMany = await exchange();
+    assert.equal(tooMany.status, 429);
+    assert.equal(tooMany.headers.get('retry-after'), '3');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('GUILD_CLOUD_RATE_LIMIT=off turns the limits off', async () => {
+  const server = await start({ env: { GUILD_CLOUD_RATE_LIMIT: 'off' } });
+  try {
+    for (let i = 0; i < 130; i++) {
+      const res = await fetch(`${server.base}/link/nope`, { headers: from('203.0.113.9') });
+      assert.equal(res.status, 404);
+    }
+  } finally {
+    await server.stop();
   }
 });
