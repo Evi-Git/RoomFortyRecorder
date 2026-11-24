@@ -282,8 +282,35 @@ The player’s link button is enabled for cloud videos and clips. It copies a
 stable public URL such as `https://roomfortyrecorder.com/link/<id>` to the
 clipboard; the link remains valid while the recording remains in cloud storage.
 Both link types stream the shared recording. Full-video pages accept anonymous
-likes, limited to one per browser profile by browser-local storage. Clip pages
-do not offer likes. Full-video like counts are stored in `state.json`.
+likes, limited to one per browser profile by browser-local storage and to one
+per internet address a day by the server. Clip pages do not offer likes.
+Full-video like counts are stored in `state.json`, saved a few seconds after a
+like rather than on every press.
+
+## Request limits
+
+The server limits how fast one internet address can call it
+(`rate-limit.mjs`). Each limit is a burst, then a steady rate:
+
+| Requests | Burst | Then |
+| --- | --- | --- |
+| Discord sign-in and the code exchange | 20 | 20 a minute |
+| A share page's Like | 10 | 10 a minute |
+| Share pages, previews, `/health`, the recruiting page | 120 | 2 a second |
+| The app's `/api` calls | 600 | 10 a second |
+
+Past a limit the answer is `429 Too many requests` with a `Retry-After`
+header. Uploads and the app's sign-in check wait and try again; other screens
+show the message, and spell icons fall back to the public icon sites. The address is the last entry of
+`X-Forwarded-For`, which Caddy writes for every request it passes on (IPv6
+addresses count by their /64). Requests from this PC itself, without that
+header (MediaMTX, the updater), are never limited. The server log notes a
+refused address once a minute (20 lines a minute at most). Set
+`GUILD_CLOUD_RATE_LIMIT=off` in `.env` and restart to turn the limits off; that
+also turns off the one-like-per-address check. Likes from the last few seconds
+before a server restart can be lost. The limits assume Caddy runs on this PC as in
+step 4; behind another proxy on another machine every request would look like
+that proxy's address.
 
 ## Backups and maintenance
 
