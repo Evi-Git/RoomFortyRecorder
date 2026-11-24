@@ -145,6 +145,7 @@ const APP_CALLS = [
   ['GET', `${G}/video/abc.mp4/timeline`],
   ['GET', `${G}/video/abc.mp4/size`],
   ['POST', `${G}/video/abc.mp4/link`],
+  ['DELETE', `${G}/video/abc.mp4/link`],
   ['POST', `${G}/upload`],
   ['POST', `${G}/bulk/delete`],
   ['POST', `${G}/bulk/protect`],

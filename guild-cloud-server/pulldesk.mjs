@@ -1206,7 +1206,7 @@ export const createPullDesk = (options) => {
   // ---- Housekeeping ------------------------------------------------------------
 
   const pruneLogs = async () => {
-    if (!(logRetentionDays > 0)) return;
+    if (!(logRetentionDays > 0)) return 0;
     const cutoff = Date.now() - logRetentionDays * 24 * 60 * 60 * 1000;
     const old = index.pulls.filter((pull) => pull.createdAt < cutoff && (pull.hasLog || pull.hasFull));
     for (const pull of old) {
@@ -1216,6 +1216,18 @@ export const createPullDesk = (options) => {
       pull.hasFull = false;
     }
     if (old.length > 0) await persist();
+    return old.length;
+  };
+
+  // The daily clean-up (server.mjs) calls this: old logs go even when nobody
+  // has uploaded a pull. One run at a time; persist() is already queued, so
+  // it is safe next to an upload.
+  let housekeeping = null;
+  const housekeep = () => {
+    housekeeping ??= pruneLogs().finally(() => {
+      housekeeping = null;
+    });
+    return housekeeping;
   };
 
   // ---- Routes ----------------------------------------------------------------------
@@ -2138,5 +2150,5 @@ export const createPullDesk = (options) => {
   };
 
   // `idle` resolves once background work (re-analysis) is done; for tests.
-  return { handle, ready, analyze: runAnalysis, idle: () => backgroundQueue };
+  return { handle, ready, housekeep, analyze: runAnalysis, idle: () => backgroundQueue };
 };

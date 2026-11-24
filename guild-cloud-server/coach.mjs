@@ -261,7 +261,7 @@ export const createCoach = ({
       if (!officer && can && !(await can(req, 'clipSendOwn'))) {
         return fail(res, 403, 'Your Discord role cannot send clips');
       }
-      const link = await createShareLink(String(body?.videoName || ''));
+      const link = await createShareLink(String(body?.videoName || ''), req.cloudUserId);
       if (!link) return fail(res, 404, 'That video is not in the guild cloud. Upload it first.');
 
       // The app sends the frame being coached as the link's preview image.
@@ -363,6 +363,25 @@ export const createCoach = ({
     }
   };
 
+  /**
+   * Deletes the preview images whose link is gone (daily clean-up). `keepIds`
+   * is the set of link ids that still exist. Returns how many were removed.
+   */
+  const removeThumbnails = async (keepIds) => {
+    let files;
+    try {
+      files = await fsp.readdir(thumbDir);
+    } catch {
+      return 0; // No previews yet.
+    }
+    let removed = 0;
+    for (const file of files) {
+      if (!file.endsWith('.jpg') || keepIds.has(file.slice(0, -4))) continue;
+      await fsp.unlink(path.join(thumbDir, file)).then(() => (removed += 1), () => {});
+    }
+    return removed;
+  };
+
   // persist is exposed for tests.
-  return { handle, ready, thumbnailPath, persist };
+  return { handle, ready, thumbnailPath, removeThumbnails, persist };
 };
