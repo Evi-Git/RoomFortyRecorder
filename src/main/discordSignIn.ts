@@ -33,7 +33,8 @@ export type SignInFailure =
   | 'expired'
   | 'invalidSession'
   | 'callbackFailed'
-  | 'browserFailed';
+  | 'browserFailed'
+  | 'saveFailed';
 
 const MESSAGES: Record<SignInFailure, string> = {
   cancelled: 'Sign-in cancelled.',
@@ -54,6 +55,7 @@ const MESSAGES: Record<SignInFailure, string> = {
   callbackFailed:
     "Couldn't start sign-in: the app could not open a local address.",
   browserFailed: "Couldn't open your browser for Discord sign-in.",
+  saveFailed: "Couldn't save the sign-in on this PC. Try again.",
 };
 
 export const signInMessage = (code: SignInFailure) => MESSAGES[code];
@@ -102,6 +104,8 @@ export const fromHttpError = (
     return new DiscordSignInError('serverUnreachable', detail);
   }
   if (status === 429) return new DiscordSignInError('tooManyTries', detail);
+  // The server (or Caddy in front of it) is down: same as no answer.
+  if (status >= 500) return new DiscordSignInError('serverUnreachable', detail);
   if (expiredOn401 && status === 401) {
     return new DiscordSignInError('expired', detail);
   }
@@ -272,13 +276,24 @@ export function runDiscordSignIn<T>(
         res.writeHead(404, { Connection: 'close' }).end();
         return;
       }
-      if (
-        settled ||
-        exchanging ||
-        !sameSecret(url.searchParams.get('s'), secret)
-      ) {
-        // Not this sign-in's address (or already used): ignore it, so a stray
-        // or forged request can neither sign in nor end the wait.
+      const ours = sameSecret(url.searchParams.get('s'), secret);
+      if (ours && (settled || exchanging)) {
+        // The user's own tab, reloaded: this sign-in is already done or busy.
+        res.writeHead(409, {
+          'Content-Type': 'text/html; charset=utf-8',
+          Connection: 'close',
+        });
+        res.end(
+          page(
+            'This sign-in was already used',
+            'You can close this tab. Room Forty Toolkit shows how it went.',
+          ),
+        );
+        return;
+      }
+      if (!ours) {
+        // Not this sign-in's address: ignore it, so a stray or forged request
+        // can neither sign in nor end the wait.
         res.writeHead(400, {
           'Content-Type': 'text/html; charset=utf-8',
           Connection: 'close',

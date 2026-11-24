@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.162] - Unreleased
 App only; no guild server update needed.
 ### Added
-- **Cancel for Discord sign-in.** While the app waits for Discord, a Cancel button sits next to "Waiting for Discord..." (in Cloud settings and on the status card), so a lost browser tab no longer leaves sign-in stuck for 5 minutes. Pressing Sign in again also starts over.
+- **Cancel for Discord sign-in.** While the app waits for Discord, a Cancel button sits next to "Waiting for Discord..." (in Cloud settings and on the status card), so a lost browser tab no longer leaves sign-in stuck for 5 minutes. Starting sign-in from the other place (settings or the card) also starts over. Once Discord has answered, Cancel no longer stops the last step (saving the sign-in), which takes a few seconds.
 ### Changed
 - **Sign-in failures say what went wrong.** Instead of one "sign-in failed" message, the app and the browser tab now say which it was: cancelled in Discord, not in the Room Forty Discord, no Room Forty role yet, guild server unreachable, too many attempts, timed out, and so on. The browser tab waits until the app has finished signing in, so "Signed in as …" means it really worked.
 ### Security

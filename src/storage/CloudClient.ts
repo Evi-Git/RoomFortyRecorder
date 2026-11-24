@@ -897,8 +897,18 @@ export default class CloudClient implements StorageClient {
     }
 
     console.info('[CloudClient] Signed in with Discord as', session.userName);
-    await this.configure();
-    await this.refreshVideos();
+    // The session is saved and the browser already says "Signed in": a
+    // hiccup loading the guild now shows on the status card, not as a
+    // failed sign-in.
+    try {
+      await this.configure();
+      await this.refreshVideos();
+    } catch (error) {
+      console.warn(
+        '[CloudClient] Signed in, but loading the guild failed:',
+        String(error),
+      );
+    }
     return { ok: true, ...session };
   }
 
@@ -923,10 +933,15 @@ export default class CloudClient implements StorageClient {
       throw new DiscordSignInError('invalidSession');
     }
 
-    const cfg = ConfigService.getInstance();
-    await setSessionToken(token);
-    cfg.set('cloudDiscordName', userName);
-    cfg.set('cloudStorage', true);
+    try {
+      const cfg = ConfigService.getInstance();
+      await setSessionToken(token);
+      cfg.set('cloudDiscordName', userName);
+      cfg.set('cloudStorage', true);
+    } catch (error) {
+      // Not a network problem: the code is used up, but nothing was saved.
+      throw new DiscordSignInError('saveFailed', String(error));
+    }
     return { userName, guildName };
   }
 
