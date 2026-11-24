@@ -7,7 +7,9 @@ import Poller from 'utils/Poller';
 import { cloudService } from './cloudService';
 import { ESupportedEncoders } from './obsEnums';
 import {
+  CONNECT_TIMEOUT_MS,
   OBS,
+  STABLE_AFTER_MS,
   afterPublishFailure,
   afterStop,
   unreachableMessage,
@@ -38,6 +40,8 @@ export type LiveState = {
   error?: string;
   /** While reconnecting: what happened and which try is next. */
   note?: string;
+  /** While reconnecting: false when the stream never went live this time. */
+  wasLive?: boolean;
 };
 
 const DEFAULT_HEIGHT = 1080;
@@ -65,7 +69,21 @@ export default class LiveStreamer extends EventEmitter {
   /** Whether this Go live has been live at least once. */
   private everLive = false;
 
+  /** The code of the last failure, and how many came in a row before it. */
+  private lastCode?: number;
+
+  private sameCode = 0;
+
+  /** StartStream was called and its first signal hasn't arrived yet. */
+  private starting = false;
+
   private retryTimer?: NodeJS.Timeout;
+
+  /** A try that hasn't connected or failed in time counts as failed. */
+  private startTimer?: NodeJS.Timeout;
+
+  /** Live long enough: the tries and the give-up window start over. */
+  private stableTimer?: NodeJS.Timeout;
 
   private statsTimer?: NodeJS.Timeout;
 
@@ -104,9 +122,8 @@ export default class LiveStreamer extends EventEmitter {
     if (this.isActive()) return;
     this.attempt += 1;
     const attempt = this.attempt;
-    this.clearRetry();
-    this.tries = 0;
-    this.droppedAt = 0;
+    this.clearTimers();
+    this.resetTries();
     this.everLive = false;
 
     if (!Poller.getInstance().isWowRunning()) {
@@ -205,6 +222,26 @@ export default class LiveStreamer extends EventEmitter {
         fpsDivisor,
       );
       // The result arrives as a "stream-start" or "stream-stop" signal.
+      this.starting = true;
+      this.clearStartTimer();
+      this.startTimer = setTimeout(() => {
+        this.startTimer = undefined;
+        if (attempt !== this.attempt || !this.starting || !this.isActive()) {
+          return;
+        }
+        console.warn('[LiveStreamer] No answer from the live server in time');
+        this.starting = false;
+        try {
+          noobs.StopStream();
+        } catch (error) {
+          console.error('[LiveStreamer] StopStream failed', error);
+        }
+        this.stopped(
+          OBS.CONNECT_FAILED,
+          undefined,
+          'The live server didn’t answer in time.',
+        );
+      }, CONNECT_TIMEOUT_MS);
     } catch (error) {
       // The engine refused to start the output at all (no WebRTC plugin, no
       // encoder): trying again won't help.
@@ -217,7 +254,7 @@ export default class LiveStreamer extends EventEmitter {
   public stop(reason: string) {
     if (!this.isActive()) return;
     this.attempt += 1;
-    this.clearRetry();
+    this.clearTimers();
     console.info('[LiveStreamer] Stopping stream:', reason);
 
     try {
@@ -236,11 +273,18 @@ export default class LiveStreamer extends EventEmitter {
    * the video context can be reset (libobs refuses while an output runs).
    */
   public async stopAndWait(reason: string, timeoutMs = 5000) {
-    if (!this.isActive() && !LiveStreamer.engineActive()) return;
+    if (!this.isActive() && !LiveStreamer.engineActive() && !this.starting) {
+      return;
+    }
     this.stop(reason);
     const deadline = Date.now() + timeoutMs;
 
-    while (LiveStreamer.engineActive() && Date.now() < deadline) {
+    // A start still connecting isn't "active" yet and can't be stopped
+    // until its first signal; wait for that too.
+    while (
+      (LiveStreamer.engineActive() || this.starting) &&
+      Date.now() < deadline
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
@@ -250,6 +294,9 @@ export default class LiveStreamer extends EventEmitter {
     console.info('[LiveStreamer] Signal', signal);
 
     if (signal.id === 'stream-start') {
+      this.starting = false;
+      this.clearStartTimer();
+
       // Stopped before the engine confirmed: make sure it really stops.
       if (!this.isActive()) {
         try {
@@ -262,15 +309,26 @@ export default class LiveStreamer extends EventEmitter {
       if (this.tries > 0) {
         console.info(`[LiveStreamer] Back live after ${this.tries} tries`);
       }
-      this.tries = 0;
-      this.droppedAt = 0;
+      // A late start from a try that timed out also counts: no new try.
+      this.clearRetry();
       this.everLive = true;
       this.setState({ status: 'live', streamName: this.state.streamName });
       this.startStats();
+
+      // Only a stream that stays up starts the tries over; one that drops
+      // every few seconds keeps counting toward giving up.
+      this.clearStableTimer();
+      this.stableTimer = setTimeout(() => {
+        this.stableTimer = undefined;
+        if (this.state.status === 'live') this.resetTries();
+      }, STABLE_AFTER_MS);
       return;
     }
 
     if (signal.id === 'stream-stop') {
+      this.starting = false;
+      this.clearStartTimer();
+      this.clearStableTimer();
       this.stopStats();
 
       if (signal.code === 0 || !this.isActive()) {
@@ -297,9 +355,15 @@ export default class LiveStreamer extends EventEmitter {
     }
 
     if (!this.droppedAt) this.droppedAt = Date.now();
+    if (code === this.lastCode) {
+      this.sameCode += 1;
+    } else {
+      this.lastCode = code;
+      this.sameCode = 0;
+    }
     const decision = afterStop({
       code,
-      error,
+      sameCodeTries: this.sameCode,
       tries: this.tries,
       msSinceDrop: Date.now() - this.droppedAt,
       everLive: this.everLive,
@@ -326,6 +390,7 @@ export default class LiveStreamer extends EventEmitter {
       status: 'reconnecting',
       streamName: this.state.streamName,
       note: decision.note,
+      wasLive: this.everLive,
     });
 
     const { attempt } = this;
@@ -346,10 +411,9 @@ export default class LiveStreamer extends EventEmitter {
   }
 
   private giveUp(message: string) {
-    this.clearRetry();
+    this.clearTimers();
     this.stopStats();
-    this.tries = 0;
-    this.droppedAt = 0;
+    this.resetTries();
     this.setState({
       status: 'error',
       streamName: this.state.streamName,
@@ -357,9 +421,32 @@ export default class LiveStreamer extends EventEmitter {
     });
   }
 
+  private resetTries() {
+    this.tries = 0;
+    this.droppedAt = 0;
+    this.lastCode = undefined;
+    this.sameCode = 0;
+  }
+
   private clearRetry() {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
+  }
+
+  private clearStartTimer() {
+    if (this.startTimer) clearTimeout(this.startTimer);
+    this.startTimer = undefined;
+  }
+
+  private clearStableTimer() {
+    if (this.stableTimer) clearTimeout(this.stableTimer);
+    this.stableTimer = undefined;
+  }
+
+  private clearTimers() {
+    this.clearRetry();
+    this.clearStartTimer();
+    this.clearStableTimer();
   }
 
   private setState(next: LiveState) {

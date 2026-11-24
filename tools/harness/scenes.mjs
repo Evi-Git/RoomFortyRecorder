@@ -1102,6 +1102,7 @@ export const scenes = [
           status: 'reconnecting',
           streamName: 'HarnessRaider',
           note: 'Connection dropped. Reconnecting (try 2)…',
+          wasLive: true,
         },
       },
     },

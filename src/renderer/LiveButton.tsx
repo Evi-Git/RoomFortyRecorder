@@ -16,6 +16,8 @@ type LiveState = {
   error?: string;
   /** While reconnecting: what happened and which try is next. */
   note?: string;
+  /** While reconnecting: false when the stream never went live this time. */
+  wasLive?: boolean;
 };
 
 const ipc = window.electron.ipcRenderer;
@@ -53,9 +55,14 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
 
   let label = 'Go live';
   if (state.status === 'connecting') label = 'Connecting…';
-  if (reconnecting) label = 'Reconnecting…';
+  if (reconnecting)
+    label = state.wasLive === false ? 'Connecting…' : 'Reconnecting…';
   if (live)
     label = state.mbps ? `LIVE · ${state.mbps.toFixed(1)} Mbps` : 'LIVE';
+
+  let message = '';
+  if (state.status === 'error') message = state.error ?? '';
+  if (reconnecting) message = state.note ?? '';
 
   let tooltip =
     'Stream your POV to the guild. Stops by itself when WoW closes.';
@@ -73,6 +80,7 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           className={`h-10 w-10 ${connecting ? 'animate-pulse' : ''}`}
           disabled={busy}
           onClick={toggle}
+          aria-label={connecting || live ? `${label}. Stop` : label}
         >
           <Radio size={16} className={live ? 'animate-pulse' : 'text-brand'} />
         </Button>
@@ -112,16 +120,15 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           </Button>
         </LiveSettingsDialog>
       </div>
-      {state.status === 'error' && state.error && (
-        <p role="alert" className="mt-1 text-xs text-error-text leading-snug">
-          {state.error}
-        </p>
-      )}
-      {reconnecting && state.note && (
-        <p role="status" className="mt-1 text-xs text-foreground leading-snug">
-          {state.note}
-        </p>
-      )}
+      {/* Always mounted, so screen readers announce each new line. */}
+      <p
+        aria-live="polite"
+        className={`text-xs leading-snug ${
+          state.status === 'error' ? 'text-error-text' : 'text-foreground'
+        } ${message ? 'mt-1' : ''}`}
+      >
+        {message}
+      </p>
     </div>
   );
 };

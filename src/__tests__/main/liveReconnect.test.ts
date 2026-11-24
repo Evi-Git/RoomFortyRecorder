@@ -9,12 +9,11 @@ import {
   afterPublishFailure,
   afterStop,
   describeStopCode,
-  httpStatusIn,
   retryDelayMs,
   unreachableMessage,
 } from '../../main/liveReconnect';
 
-const live = { tries: 0, msSinceDrop: 0, everLive: true };
+const live = { tries: 0, sameCodeTries: 0, msSinceDrop: 0, everLive: true };
 
 describe('afterStop', () => {
   it('reconnects after a drop, waiting longer each try', () => {
@@ -74,57 +73,58 @@ describe('afterStop', () => {
   );
 
   it('retries a failed first connect only a few times', () => {
-    const first = { tries: 0, msSinceDrop: 0, everLive: false };
-    const d = afterStop({ ...first, code: OBS.CONNECT_FAILED });
-    expect(d).toMatchObject({
+    const first = { ...live, everLive: false };
+    expect(afterStop({ ...first, code: OBS.CONNECT_FAILED })).toMatchObject({
       retry: true,
       note: 'Couldn’t connect yet. Trying again (try 1)…',
     });
-    expect(
-      afterStop({
-        ...first,
-        code: OBS.CONNECT_FAILED,
-        tries: FIRST_CONNECT_TRIES,
-      }).retry,
-    ).toBe(false);
-  });
-
-  it('keeps trying a refusal that is probably the last stream still held', () => {
-    const refused = { code: OBS.INVALID_STREAM, error: 'response code 400' };
-    for (let tries = 0; tries < REFUSED_TRIES; tries += 1) {
-      // Also on a first connect: a crash leaves the old stream behind.
-      expect(
-        afterStop({ ...refused, tries, msSinceDrop: 0, everLive: false }).retry,
-      ).toBe(true);
-    }
-    const d = afterStop({ ...live, ...refused, tries: REFUSED_TRIES });
+    const d = afterStop({
+      ...first,
+      code: OBS.CONNECT_FAILED,
+      tries: FIRST_CONNECT_TRIES,
+    });
     expect(d.retry).toBe(false);
-    if (!d.retry)
-      expect(d.message).toMatch(/still be holding your last stream/);
   });
 
-  it('tries a refused sign-in once more, then says to sign in again', () => {
-    const refused = {
+  it('tries a refusal once more, then explains it', () => {
+    expect(afterStop({ ...live, code: OBS.INVALID_STREAM }).retry).toBe(true);
+    const d = afterStop({
+      ...live,
       code: OBS.INVALID_STREAM,
-      error: 'HTTP endpoint returned response code 401',
-    };
-    expect(afterStop({ ...live, ...refused }).retry).toBe(true);
-    const d = afterStop({ ...live, ...refused, tries: 1 });
+      tries: 1,
+      sameCodeTries: REFUSED_TRIES,
+    });
     expect(d.retry).toBe(false);
-    if (!d.retry) expect(d.message).toMatch(/didn't accept your sign-in/);
+    if (!d.retry) {
+      expect(d.message).toMatch(/guild server accepted your sign-in/);
+    }
+  });
+
+  it('counts a refusal after a drop as the first refusal', () => {
+    // Drop (try 0), then the first reconnect try is refused: one more try.
+    const d = afterStop({
+      ...live,
+      code: OBS.INVALID_STREAM,
+      tries: 1,
+      sameCodeTries: 0,
+    });
+    expect(d.retry).toBe(true);
   });
 
   it('retries an encoder failure once', () => {
     expect(afterStop({ ...live, code: OBS.ENCODE_ERROR }).retry).toBe(true);
-    expect(
-      afterStop({ ...live, code: OBS.ENCODE_ERROR, tries: ENCODER_TRIES })
-        .retry,
-    ).toBe(false);
+    const d = afterStop({
+      ...live,
+      code: OBS.ENCODE_ERROR,
+      tries: 1,
+      sameCodeTries: ENCODER_TRIES,
+    });
+    expect(d.retry).toBe(false);
   });
 });
 
 describe('describeStopCode', () => {
-  it('no longer blames the stream name for every refusal', () => {
+  it('no longer blames the stream name for a refusal', () => {
     expect(describeStopCode(OBS.INVALID_STREAM)).not.toMatch(/name/);
   });
 
@@ -132,16 +132,6 @@ describe('describeStopCode', () => {
     expect(describeStopCode(-42)).toBe(
       'The stream stopped unexpectedly (code -42).',
     );
-  });
-});
-
-describe('httpStatusIn', () => {
-  it('finds the status in OBS error text', () => {
-    expect(
-      httpStatusIn('Connect failed: HTTP endpoint returned response code 401'),
-    ).toBe(401);
-    expect(httpStatusIn('no status here')).toBeUndefined();
-    expect(httpStatusIn(undefined)).toBeUndefined();
   });
 });
 

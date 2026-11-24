@@ -16,14 +16,24 @@ export const GIVE_UP_AFTER_MS = 5 * 60_000;
 export const FIRST_CONNECT_TRIES = 3;
 
 /**
- * MediaMTX turning the stream down (anything but a sign-in refusal) usually
- * means it still holds the raider's last stream after a drop; that clears
- * within about half a minute, so a few spaced tries get past it.
+ * MediaMTX turning the stream down although the guild server just accepted
+ * the sign-in usually means MediaMTX's own check with the guild server
+ * failed (a Discord hiccup in the role check); one more try.
  */
-export const REFUSED_TRIES = 5;
+export const REFUSED_TRIES = 1;
 
 /** The encoder failing can be a passing GPU hiccup; one more try. */
 export const ENCODER_TRIES = 1;
+
+/** A try that hasn't connected or failed by then counts as failed. */
+export const CONNECT_TIMEOUT_MS = 45_000;
+
+/**
+ * Being live this long counts as recovered: only then do the tries and the
+ * give-up window start over, so a stream that drops every few seconds
+ * still gives up.
+ */
+export const STABLE_AFTER_MS = 30_000;
 
 /** OBS_OUTPUT_* stop codes from libobs. */
 export const OBS = {
@@ -41,26 +51,14 @@ export const OBS = {
 export const SIGN_IN_AGAIN =
   'Your Discord sign-in expired. Sign in again in Cloud settings, then go live.';
 
-/** The HTTP status in OBS's WHIP error text ("... response code 401"), if any. */
-export const httpStatusIn = (error?: string): number | undefined => {
-  const match = /\b([45]\d\d)\b/.exec(error ?? '');
-  return match ? Number(match[1]) : undefined;
-};
-
 /** Why the stream stopped, for a raider. */
-export const describeStopCode = (code: number, error?: string): string => {
-  if (code === OBS.INVALID_STREAM) {
-    const status = httpStatusIn(error);
-    if (status === 401 || status === 403) {
-      return "The live server didn't accept your sign-in. Sign in again in Cloud settings, then go live.";
-    }
-    return 'The live server turned the stream down. If you were just live, it may still be holding your last stream: wait a minute, then go live again.';
-  }
-
+export const describeStopCode = (code: number): string => {
   const reasons: Record<number, string> = {
     [OBS.BAD_PATH]: 'The live server address is wrong. Tell an officer.',
     [OBS.CONNECT_FAILED]: 'Couldn’t connect to the live server.',
-    [OBS.ERROR]: 'The live server stopped the stream.',
+    [OBS.INVALID_STREAM]:
+      'The live server turned the stream down although the guild server accepted your sign-in. If it keeps happening, tell an officer.',
+    [OBS.ERROR]: 'The connection to the live server failed.',
     [OBS.DISCONNECTED]: 'The connection to the live server dropped.',
     [OBS.UNSUPPORTED]: 'This PC can’t stream with these Go live settings.',
     [OBS.NO_SPACE]: 'Not enough disk space.',
@@ -72,9 +70,10 @@ export const describeStopCode = (code: number, error?: string): string => {
 
 export type StopContext = {
   code: number;
-  error?: string;
   /** Reconnect tries already made since the drop (0 on the first stop). */
   tries: number;
+  /** Of those, how many ended with this same code just before (0 = first). */
+  sameCodeTries: number;
   /** Time since the stream first dropped (0 on the first stop). */
   msSinceDrop: number;
   /** Whether this stream was live at least once since Go live was pressed. */
@@ -102,8 +101,8 @@ const retrying = (everLive: boolean, tries: number) => {
 
 /** What to do after the engine stopped the stream with a non-zero code. */
 export const afterStop = (ctx: StopContext): StopDecision => {
-  const { code, error, tries, msSinceDrop, everLive } = ctx;
-  const reason = ctx.reason ?? describeStopCode(code, error);
+  const { code, tries, sameCodeTries, msSinceDrop, everLive } = ctx;
+  const reason = ctx.reason ?? describeStopCode(code);
   const giveUp = (): StopDecision => ({
     retry: false,
     message: tries > 0 ? `${reason} ${triesLabel(tries)}` : reason,
@@ -118,24 +117,15 @@ export const afterStop = (ctx: StopContext): StopDecision => {
     return { retry: false, message: reason };
   }
 
-  if (code === OBS.INVALID_STREAM) {
-    const status = httpStatusIn(error);
-    // A refused sign-in is checked again with the guild server before each
-    // try, so one more is enough to tell a hiccup from a real refusal.
-    const limit = status === 401 || status === 403 ? 1 : REFUSED_TRIES;
-    if (tries >= limit) return giveUp();
-  }
-
-  if (code === OBS.ENCODE_ERROR && tries >= ENCODER_TRIES) return giveUp();
-  // A refusal on the first connect is often the last stream still held
-  // after a crash, so it keeps its own (longer) limit above.
-  if (
-    !everLive &&
-    code !== OBS.INVALID_STREAM &&
-    tries >= FIRST_CONNECT_TRIES
-  ) {
+  // These limits count the same failure in a row, so a drop followed by one
+  // refusal still gets its one more try.
+  if (code === OBS.INVALID_STREAM && sameCodeTries >= REFUSED_TRIES) {
     return giveUp();
   }
+  if (code === OBS.ENCODE_ERROR && sameCodeTries >= ENCODER_TRIES) {
+    return giveUp();
+  }
+  if (!everLive && tries >= FIRST_CONNECT_TRIES) return giveUp();
   if (msSinceDrop >= GIVE_UP_AFTER_MS) return giveUp();
 
   return {

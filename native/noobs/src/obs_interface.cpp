@@ -1645,9 +1645,11 @@ void ObsInterface::startStreaming(
   blog(LOG_INFO, "Start streaming to %s with encoder %s (fps divisor %u)", server.c_str(), encoderId.c_str(), fpsDivisor);
 
   if (stream_output && obs_output_active(stream_output)) {
-    blog(LOG_WARNING, "Stream already active, ignoring start");
+    blog(LOG_WARNING, "Stream already active, refusing a second start");
     obs_data_release(encoderSettings);
-    return;
+    // The app expects a signal or an exception for every start; silently
+    // ignoring it left Go live waiting forever.
+    throw std::runtime_error("A stream is already running");
   }
 
   // Throw away anything left from a previous stream.
@@ -1674,6 +1676,13 @@ void ObsInterface::startStreaming(
   }
 
   obs_output_set_service(stream_output, stream_service);
+
+  // libobs reconnects a dropped output by itself by default (20 tries) and
+  // only reports it through "reconnect" signals we don't forward, so the app
+  // would show LIVE at 0 Mbps meanwhile. Turn that off: a drop then arrives
+  // as a "stream-stop" signal and the app reconnects (checking the raider's
+  // sign-in with the guild server first, and showing it).
+  obs_output_set_reconnect_settings(stream_output, 0, 0);
 
   // Let the service force WebRTC-safe settings (no B-frames, repeat headers).
   obs_service_apply_encoder_settings(stream_service, encoderSettings, NULL);

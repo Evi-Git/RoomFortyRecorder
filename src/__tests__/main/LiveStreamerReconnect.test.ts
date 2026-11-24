@@ -111,7 +111,8 @@ it('reconnects after a drop and goes back live', async () => {
   live.handleSignal(signal('stream-start'));
   expect(live.getState().status).toBe('live');
 
-  // A later drop starts counting from try 1 again.
+  // Live for 30 s: a later drop starts counting from try 1 again.
+  jest.advanceTimersByTime(30_000);
   live.handleSignal(signal('stream-stop', -5));
   expect(live.getState().note).toBe(
     'Connection dropped. Reconnecting (try 1)…',
@@ -248,4 +249,160 @@ it('shows the server reason when the first Go live is refused', async () => {
       "The guild server won't let you go live: You no longer have a Room Forty role",
   });
   expect(engine.StartStream).not.toHaveBeenCalled();
+});
+
+it('a stream that drops right after connecting keeps counting', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  live.handleSignal(signal('stream-start'));
+  jest.advanceTimersByTime(3_000); // up for 3 s only
+  live.handleSignal(signal('stream-stop', -5));
+  expect(live.getState().note).toBe(
+    'Connection dropped. Reconnecting (try 2)…',
+  );
+});
+
+it('gives up five minutes after the drop', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  for (let i = 0; i < 30 && live.getState().status === 'reconnecting'; i += 1) {
+    jest.advanceTimersByTime(30_000);
+    await settle();
+    live.handleSignal(signal('stream-stop', -2));
+  }
+  const state = live.getState();
+  expect(state.status).toBe('error');
+  expect(state.error).toMatch(/Gave up after \d+ tries/);
+  const tries = engine.StartStream.mock.calls.length - 1;
+  expect(tries).toBeGreaterThanOrEqual(10);
+  expect(tries).toBeLessThanOrEqual(13);
+});
+
+it('a first Go live that never connects gives up after 3 more tries', async () => {
+  const live = fresh();
+  await live.start();
+  await settle();
+  live.handleSignal(signal('stream-stop', -2));
+  expect(live.getState()).toMatchObject({
+    status: 'reconnecting',
+    wasLive: false,
+  });
+  for (let i = 0; i < 3; i += 1) {
+    jest.advanceTimersByTime(30_000);
+    await settle();
+    live.handleSignal(signal('stream-stop', -2));
+  }
+  expect(live.getState().status).toBe('error');
+  expect(engine.StartStream).toHaveBeenCalledTimes(4);
+});
+
+it('a try with no answer from the live server counts as failed', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  expect(engine.StartStream).toHaveBeenCalledTimes(2);
+
+  jest.advanceTimersByTime(45_000); // no signal at all
+  expect(live.getState()).toMatchObject({
+    status: 'reconnecting',
+    note: 'Connection dropped. Reconnecting (try 2)…',
+  });
+  jest.advanceTimersByTime(5_000);
+  await settle();
+  expect(engine.StartStream).toHaveBeenCalledTimes(3);
+});
+
+it('a late start from a timed-out try cancels the next try', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  jest.advanceTimersByTime(45_000);
+  live.handleSignal(signal('stream-start')); // the old try made it after all
+  expect(live.getState().status).toBe('live');
+  jest.advanceTimersByTime(60_000);
+  await settle();
+  expect(engine.StartStream).toHaveBeenCalledTimes(2);
+});
+
+it('a start that arrives after Stop is stopped', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  live.stop('Stopped by you');
+  engine.StopStream.mockClear();
+  live.handleSignal(signal('stream-start'));
+  expect(engine.StopStream).toHaveBeenCalledTimes(1);
+  expect(live.getState().status).toBe('off');
+});
+
+it('gives up when the engine refuses to start during a reconnect', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  engine.StartStream.mockImplementationOnce(() => {
+    throw new Error('A stream is already running');
+  });
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  expect(live.getState()).toMatchObject({
+    status: 'error',
+    error: 'A stream is already running',
+  });
+});
+
+it('goes off when WoW closes while a try is waiting', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  wowRunning = false;
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  expect(live.getState().status).toBe('off');
+  expect(engine.StartStream).toHaveBeenCalledTimes(1);
+});
+
+it('stopAndWait waits for a start that is still connecting', async () => {
+  const live = fresh();
+  await live.start();
+  await settle();
+  // Connecting: the engine isn't active yet and hasn't answered.
+  let done = false;
+  const waiting = live.stopAndWait('Settings changed', 5_000).then(() => {
+    done = true;
+  });
+  await settle();
+  jest.advanceTimersByTime(300);
+  await settle();
+  expect(done).toBe(false);
+
+  live.handleSignal(signal('stream-start')); // stopped right away
+  jest.advanceTimersByTime(200);
+  await settle();
+  await waiting;
+  expect(done).toBe(true);
+  expect(engine.StopStream).toHaveBeenCalled();
+});
+
+it('a drop followed by a refusal still gets one more try', async () => {
+  const live = fresh();
+  await goLive(live);
+  live.handleSignal(signal('stream-stop', -5));
+  jest.advanceTimersByTime(2_000);
+  await settle();
+  live.handleSignal(signal('stream-stop', -3));
+  expect(live.getState().status).toBe('reconnecting');
+  jest.advanceTimersByTime(5_000);
+  await settle();
+  live.handleSignal(signal('stream-stop', -3));
+  expect(live.getState().status).toBe('error');
 });
