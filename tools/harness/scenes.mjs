@@ -1094,6 +1094,42 @@ export const scenes = [
     },
   },
   {
+    name: 'live-reconnecting',
+    shows: 'Sidebar Go live button after the stream dropped: Reconnecting, with the try number',
+    init: {
+      answers: {
+        liveStreamGetState: {
+          status: 'reconnecting',
+          streamName: 'HarnessRaider',
+          note: 'Connection dropped. Reconnecting (try 2)…',
+          wasLive: true,
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.text('Reconnecting (try 2)');
+      await t.settle(300);
+    },
+  },
+  {
+    name: 'live-gave-up',
+    shows: 'Sidebar Go live button after reconnecting gave up: the reason under the button',
+    init: {
+      answers: {
+        liveStreamGetState: {
+          status: 'error',
+          streamName: 'HarnessRaider',
+          error:
+            'The connection to the live server dropped. Gave up after 12 tries; press Go live to try again.',
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.text('Gave up after 12 tries');
+      await t.settle(300);
+    },
+  },
+  {
     name: 'status-refused',
     shows: 'Sidebar card: signed in but not allowed (role check)',
     init: {

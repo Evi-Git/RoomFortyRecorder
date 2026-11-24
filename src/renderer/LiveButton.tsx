@@ -10,10 +10,14 @@ import LiveSettingsDialog from './LiveSettingsDialog';
  */
 
 type LiveState = {
-  status: 'off' | 'connecting' | 'live' | 'error';
+  status: 'off' | 'connecting' | 'live' | 'reconnecting' | 'error';
   streamName?: string;
   mbps?: number;
   error?: string;
+  /** While reconnecting: what happened and which try is next. */
+  note?: string;
+  /** While reconnecting: false when the stream never went live this time. */
+  wasLive?: boolean;
 };
 
 const ipc = window.electron.ipcRenderer;
@@ -45,17 +49,27 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   };
 
   const live = state.status === 'live';
-  const connecting = state.status === 'connecting';
+  const reconnecting = state.status === 'reconnecting';
+  // Waiting on the live server: pulse, and offer Stop.
+  const connecting = state.status === 'connecting' || reconnecting;
 
   let label = 'Go live';
-  if (connecting) label = 'Connecting…';
+  if (state.status === 'connecting') label = 'Connecting…';
+  if (reconnecting)
+    label = state.wasLive === false ? 'Connecting…' : 'Reconnecting…';
   if (live)
     label = state.mbps ? `LIVE · ${state.mbps.toFixed(1)} Mbps` : 'LIVE';
 
-  const tooltip =
-    live || connecting
-      ? `Streaming to the guild as "${state.streamName ?? 'you'}". Click to stop.`
-      : 'Stream your POV to the guild. Stops by itself when WoW closes.';
+  let message = '';
+  if (state.status === 'error') message = state.error ?? '';
+  if (reconnecting) message = state.note ?? '';
+
+  let tooltip =
+    'Stream your POV to the guild. Stops by itself when WoW closes.';
+  if (live || state.status === 'connecting')
+    tooltip = `Streaming to the guild as "${state.streamName ?? 'you'}". Click to stop.`;
+  if (reconnecting)
+    tooltip = `${state.note ?? 'Reconnecting…'} Click to stop trying.`;
 
   if (compact) {
     return (
@@ -66,6 +80,9 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           className={`h-10 w-10 ${connecting ? 'animate-pulse' : ''}`}
           disabled={busy}
           onClick={toggle}
+          aria-label={
+            live ? 'Live. Stop' : connecting ? `${label} Stop` : label
+          }
         >
           <Radio size={16} className={live ? 'animate-pulse' : 'text-brand'} />
         </Button>
@@ -105,9 +122,15 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           </Button>
         </LiveSettingsDialog>
       </div>
-      {state.status === 'error' && state.error && (
-        <p className="mt-1 text-xs text-red-400 leading-snug">{state.error}</p>
-      )}
+      {/* Always mounted, so screen readers announce each new line. */}
+      <p
+        aria-live="polite"
+        className={`text-xs leading-snug ${
+          state.status === 'error' ? 'text-error-text' : 'text-foreground'
+        } ${message ? 'mt-1' : ''}`}
+      >
+        {message}
+      </p>
     </div>
   );
 };
