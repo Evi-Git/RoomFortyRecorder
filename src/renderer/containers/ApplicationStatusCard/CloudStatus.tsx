@@ -309,7 +309,7 @@ const CloudStatus = ({
               className="w-fit h-7 px-3"
               onClick={() => ipc.cancelDiscordSignIn()}
             >
-              Cancel
+              {phrase(Phrase.Cancel)}
             </Button>
           )}
         </div>

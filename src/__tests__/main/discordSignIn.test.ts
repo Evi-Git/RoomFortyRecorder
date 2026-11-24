@@ -188,27 +188,34 @@ describe('runDiscordSignIn', () => {
 
   it('times out', async () => {
     const run = start({ timeoutMs: 30 });
-    await run.ready;
     await expect(run.promise).rejects.toMatchObject({ code: 'timeout' });
   });
 
-  it('lets a started exchange finish even if Cancel comes meanwhile', async () => {
+  it('lets a started exchange finish even if Cancel comes meanwhile, and a reload says so', async () => {
     const abort = new AbortController();
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => {
       release = r;
     });
+    let started: () => void = () => {};
+    const exchangeStarted = new Promise<void>((r) => {
+      started = r;
+    });
     const run = start({
       signal: abort.signal,
       exchange: async (code) => {
+        started();
         await gate;
         return `slow-${code}`;
       },
     });
     const cb = await run.ready;
     const page = get(withParams(cb, { code: 'c' }));
-    await new Promise((r) => setTimeout(r, 20));
+    await exchangeStarted;
     abort.abort();
+    const reload = await get(withParams(cb, { code: 'c' }));
+    expect(reload.status).toBe(409);
+    expect(reload.body).toContain('already used');
     release();
     await expect(run.promise).resolves.toBe('slow-c');
     expect((await page).body).toContain('Signed in as slow-c');
@@ -283,6 +290,12 @@ describe('helpers', () => {
     expect(fromHttpError(new Error('x')).code).toBe('serverUnreachable');
     expect(fromHttpError({ response: { status: 429 } }).code).toBe(
       'tooManyTries',
+    );
+    expect(fromHttpError({ response: { status: 502 } }).code).toBe(
+      'serverUnreachable',
+    );
+    expect(fromHttpError(new DiscordSignInError('saveFailed'), true).code).toBe(
+      'saveFailed',
     );
     expect(fromHttpError({ response: { status: 401 } }).code).toBe(
       'serverRefused',
