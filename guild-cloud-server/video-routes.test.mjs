@@ -877,6 +877,20 @@ test('share redirects live 2 hours; the app\'s download URLs live a day', async 
   }
 });
 
+test('the share page\'s Discord embed points at the link\'s own /video address', async () => {
+  const server = await start({
+    state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] },
+    env: { GUILD_CLOUD_PUBLIC_URL: 'https://example.test/' },
+  });
+  try {
+    const page = await (await fetch(`${server.base}/link/l1`)).text();
+    assert.match(page, /<meta property="og:video" content="https:\/\/example\.test\/link\/l1\/video">/);
+    assert.equal(page.includes('/download/'), false); // no long-lived signed URL in a page Discord caches
+  } finally {
+    await server.stop();
+  }
+});
+
 test('reading a chat that does not exist does not create it', async () => {
   const server = await start();
   try {

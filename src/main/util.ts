@@ -930,6 +930,7 @@ const rendererVideoToMetadata = (video: RendererVideo) => {
   delete data.cloud;
   delete data.multiPov;
   delete data.uniqueId;
+  delete data.shared; // the server's live share state, not part of the recording
   return data as Metadata;
 };
 

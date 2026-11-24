@@ -2052,14 +2052,21 @@ const handleLink = async (res, id, startAt) => {
   // Discord's link unfurler (and most other chat apps) reads these tags
   // from the raw HTML -- no JS execution -- to decide whether to render an
   // inline playable video instead of a plain link card. It needs the
-  // og:video* trio pointed at a direct, unauthenticated, range-request-
-  // capable video URL, which the Worker already provides.
+  // og:video* trio pointed at an unauthenticated, range-request-capable
+  // video, which the Worker provides (reached through the redirect below).
   //
   // Width/height are a hint for the embed's aspect ratio, not something
   // Discord validates against the actual file -- if your guild mostly
   // records at a different resolution than 1920x1080, update these two
   // values to match, but a mismatch won't break playback.
-  const embedVideoUrl = signedDownloadUrl(link.guild, link.key, SHARE_REDIRECT_TTL_SECONDS);
+  // The embed points at this link's own /video address, which signs a fresh
+  // Worker URL on every fetch: Discord can re-fetch it whenever its media
+  // cache drops the file, for as long as the link is shared, and Stop sharing
+  // ends it. Without GUILD_CLOUD_PUBLIC_URL there's no absolute address to
+  // give, so a signed URL (2 hours) is used instead.
+  const embedVideoUrl = PUBLIC_URL
+    ? `${PUBLIC_URL}/link/${encodeURIComponent(id)}/video`
+    : signedDownloadUrl(link.guild, link.key, SHARE_REDIRECT_TTL_SECONDS);
   const embedWidth = 1920;
   const embedHeight = 1080;
   const canonicalUrl = `${PUBLIC_URL || ''}/link/${encodeURIComponent(id)}`;
