@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.164] - Unreleased
+App only; no guild server update needed.
+### Fixed
+- **A slow answer no longer overwrites a newer one.** Switching boss, difficulty or pull quickly could leave a page showing the previous one when its answer came back last. Boss settings, the Top logs time trial, the new-pulls count, permissions after "view as", the ability card, the video source and encoder lists, and the sidebar's upload, update and Go live status now keep only the newest answer.
+- **Avoidable hits agree.** On the Dashboard report the "Avoidable hits" tab badge counted raiders while the tile counted hits. The badge now shows total hits like the tile, and the section starts with a line such as "152 hits on 8 raiders".
+### Changed
+- **The Admin page greys ticks that do nothing.** "Edit Analysis" and "Manage top-guild watcher" only work together with "See Analysis". A role with one ticked but not See Analysis now shows that tick in grey, with "Needs See Analysis to do anything" when you hover it. Nothing is unticked for you and nothing saved changes.
+
 ## [1.9.163] - Unreleased
 App only; no guild server update needed.
 ### Fixed
