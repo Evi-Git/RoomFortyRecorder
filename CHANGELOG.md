@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.161] - Unreleased
+**Needs the guild server update (`update-server.cmd`).**
+### Added
+- **You can stop sharing a recording.** Once a recording has a public link, a small broken-link button appears next to the link button in the player. It switches the link off for good. Whoever shared it, whoever uploaded the recording, and officers can use it; anyone else is told why not. Pressing the link button again afterwards makes a new link.
+### Changed
+- **A recording has one share link.** Pressing the link button again gives the same link instead of making another one. Clips sent to Discord still get their own link each time.
+- **Download addresses stop working sooner.** The address the app plays a recording from now lasts a day instead of a month, and the address behind a public share link lasts 2 hours, so a stopped share or a removed member loses access quickly. A video that is already playing is not cut off in the middle.
+- **The guild server tidies up after itself.** Once a day it deletes pull logs past their retention time even if nobody uploads a pull, share links to recordings that no longer exist (with their preview pictures), and empty chats. Opening a chat no longer creates an empty one.
+
 ## [1.9.160] - Unreleased
 **Needs the guild server update (`update-server.cmd`).**
 ### Changed

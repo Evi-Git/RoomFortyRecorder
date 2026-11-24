@@ -279,8 +279,25 @@ installation or invitation is required.
 ## Share links and likes
 
 The player’s link button is enabled for cloud videos and clips. It copies a
-stable public URL such as `https://roomfortyrecorder.com/link/<id>` to the
-clipboard; the link remains valid while the recording remains in cloud storage.
+public URL such as `https://roomfortyrecorder.com/link/<id>` to the
+clipboard. A recording has one link: pressing the button again copies the same
+one (clips sent to Discord get their own each time). The link works until
+someone stops sharing or the recording is deleted.
+
+**Stop sharing.** While a recording is shared, the player shows a second
+button that removes its link (`DELETE .../video/<key>/link`). The person who
+shared it, the recording's uploader and anyone with the `videoManage`
+capability may use it; nothing in R2 is deleted. Video listings carry
+`shared: true/false` but never the link id. Links made before 1.9.161 have no
+owner, so only the uploader or an officer can stop those.
+
+**How long addresses last.** The page and its video redirect sign a fresh
+address per visit that lasts 2 hours, so a stopped link is dead within 2 hours
+for anyone already watching. The address the app plays from lasts 1 day (the
+server hands out the same one all day so the player isn't restarted by the
+30-second refresh). The R2 Worker only checks the signature, so these short
+lives are what limit a removed member's or stopped share's reach.
+
 Both link types stream the shared recording. Full-video pages accept anonymous
 likes, limited to one per browser profile by browser-local storage and to one
 per internet address a day by the server. Clip pages do not offer likes.
@@ -331,6 +348,13 @@ that proxy's address.
   videos uploaded after the copy are not in the list and would be deleted.
 - Those copies are on the same disk. Back up the storage folder to a second
   disk or off-site storage as well. Tailscale and Caddy are not backups.
+- **Clean-up.** A minute after start-up and then every 24 hours the server
+  deletes pull logs older than `GUILD_CLOUD_PULLDESK_LOG_DAYS` (even if no
+  pull has been uploaded), share links whose recording is gone with their
+  preview pictures, preview pictures with no link, and chats with no
+  messages. It writes one line to its window with the counts when it removed
+  anything. After `state.json` was restored from a backup it leaves links and
+  previews alone.
 - Server code updates: use the updater below rather than copying files by
   hand.
 - Keep port `8787` closed in the router and keep the `.env` file private.
