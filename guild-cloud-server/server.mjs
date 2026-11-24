@@ -181,13 +181,22 @@ const TOKEN_TTL_SECONDS = 60 * 60;
 const MAX_UPLOAD_BYTES = 5 * 1024 ** 3;
 const SIGN_UPLOAD_SIZE = String(process.env.GUILD_CLOUD_SIGN_UPLOAD_SIZE || 'on').trim().toLowerCase() !== 'off';
 const UPLOAD_TAKEN_MESSAGE = 'Another member is uploading a file with this name.';
-// Download tokens live much longer than a typical API token. The URL is
-// handed to a <video> element and the app polls metadata every 30 seconds;
-// keeping the URL stable across that polling avoids remounting the player
-// and cancelling an in-flight HTTP range mid-scrub. The real access gate is
-// the Discord-authenticated session needed to obtain the key in the first
-// place, so a long-lived download token here doesn't weaken that.
-const DOWNLOAD_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+// Download tokens live longer than a typical API token. The URL is handed to
+// a <video> element and the app polls metadata every 30 seconds; the cache
+// below returns the same URL until 5 minutes before it expires, so the player
+// isn't remounted and an in-flight HTTP range isn't cancelled mid-scrub all
+// day. But it is a day, not a month: the R2 Worker only checks the signature
+// (it can't check revocation without a redeploy), so a short life is what
+// makes a URL from a removed member or a stopped share stop working soon.
+const DOWNLOAD_TOKEN_TTL_SECONDS = 60 * 60 * 24; // 1 day
+// The app's player keeps the URL it was given while a video stays open (later
+// polls don't replace it), so a cached URL is only handed out while it still
+// has this long to live; past that a new one is signed. Nobody gets a URL
+// that dies within 8 hours, and the cached one changes every 16.
+const DOWNLOAD_MIN_LIFE_SECONDS = 60 * 60 * 8;
+// A public share link signs a fresh URL per visit, good for the length of a
+// long recording; "Stop sharing" is then final within this time.
+const SHARE_REDIRECT_TTL_SECONDS = 60 * 60 * 2; // 2 hours
 
 if (
   !DISCORD_CLIENT_ID ||
@@ -626,8 +635,8 @@ const pruneOAuth = () => {
   }
 };
 
-const redirect = (res, target) => {
-  res.writeHead(302, { Location: target });
+const redirect = (res, target, headers = {}) => {
+  res.writeHead(302, { Location: target, ...headers });
   res.end();
 };
 
@@ -1272,25 +1281,34 @@ const parseParts = (pathname) =>
 // ---- Download URLs (served entirely by the Worker + R2) -------------------
 
 const downloadUrlCache = new Map();
-const signedDownloadUrl = (guild, key) => {
-  const cacheKey = `${guild}\0${key}`;
+const signedDownloadUrl = (guild, key, ttlSeconds = DOWNLOAD_TOKEN_TTL_SECONDS) => {
+  const cacheKey = `${guild}\0${key}\0${ttlSeconds}`;
   const now = Math.floor(Date.now() / 1000);
-  const cached = downloadUrlCache.get(cacheKey);
+  // Only the default (the app's player) is kept; share URLs are signed fresh
+  // for each visit so each one gets its full two hours.
+  const cached = ttlSeconds === DOWNLOAD_TOKEN_TTL_SECONDS ? downloadUrlCache.get(cacheKey) : null;
 
   // See DOWNLOAD_TOKEN_TTL_SECONDS above for why this stays stable for a
-  // long time rather than being reissued on every metadata poll.
-  if (cached && cached.expires > now + 5 * 60) return cached.url;
+  // while rather than being reissued on every metadata poll.
+  if (cached && cached.expires > now + DOWNLOAD_MIN_LIFE_SECONDS) return cached.url;
 
-  const expires = now + DOWNLOAD_TOKEN_TTL_SECONDS;
+  const expires = now + ttlSeconds;
   const token = encodeToken({ action: 'download', guild, key, exp: expires });
   const url = `${WORKER_URL}/download/${token}`;
-  downloadUrlCache.set(cacheKey, { expires, url });
+  if (ttlSeconds === DOWNLOAD_TOKEN_TTL_SECONDS) downloadUrlCache.set(cacheKey, { expires, url });
   return url;
 };
+
+// Links from before 1.9.161 have no kind: they were all recording links.
+const linkKind = (link) => link.kind || 'video';
+const videoLinkFor = (key) => state.links.find((link) => link.key === key && linkKind(link) === 'video');
 
 const metadataFor = (video) => ({
   ...video,
   signedVideoKey: signedDownloadUrl(GUILD, video.videoKey),
+  // Whether a public link is live; the link's id is only handed to the app
+  // that asks for it (POST .../link), not to everyone.
+  shared: Boolean(videoLinkFor(video.videoKey)),
 });
 
 // One Warcraft Logs client for the whole server: one sign-in and one view of
@@ -1317,9 +1335,16 @@ const pullDesk = createPullDesk({
 });
 
 // A public /link/<id> page for a video (Discord embeds it as a player).
-const createShareLink = async (guild, video) => {
+// A recording has one 'video' link, so the app's link button hands out the
+// same address every time and "Stop sharing" has one thing to stop. Clips
+// (coaching) are separate links, one per send.
+const createShareLink = async (guild, video, { kind = 'video', createdBy = null } = {}) => {
+  if (kind === 'video') {
+    const existing = videoLinkFor(video.videoKey);
+    if (existing) return { id: existing.id };
+  }
   const id = crypto.randomBytes(9).toString('base64url');
-  state.links.push({ id, guild, key: video.videoKey, likes: 0 });
+  state.links.push({ id, guild, key: video.videoKey, likes: 0, kind, createdBy, createdAt: Date.now() });
   await persist();
   return { id };
 };
@@ -1337,11 +1362,11 @@ const coach = createCoach({
   botToken: DISCORD_BOT_TOKEN,
   discordGuildId: DISCORD_GUILD_ID,
   publicUrl: PUBLIC_URL,
-  createShareLink: async (videoName) => {
+  createShareLink: async (videoName, createdBy = null) => {
     const video = state.videos.find(
       (entry) => entry.videoName === videoName || entry.videoKey === videoName,
     );
-    return video ? createShareLink(GUILD, video) : null;
+    return video ? createShareLink(GUILD, video, { kind: 'clip', createdBy }) : null;
   },
   env: process.env,
   can: permissions.can,
@@ -1785,14 +1810,32 @@ const handleApi = async (req, res, url, parts) => {
   }
 
   if (parts[3] === 'video' && parts[4] && parts[5] === 'link') {
-    if (req.method !== 'POST') return fail(res, 405, 'Method not allowed');
+    if (req.method !== 'POST' && req.method !== 'DELETE') return fail(res, 405, 'Method not allowed');
     const video = state.videos.find(
       (entry) => entry.videoName === parts[4] || entry.videoKey === parts[4],
     );
     if (!video) return fail(res, 404, 'Video not found');
 
-    const { id } = await createShareLink(guild, video);
-    return json(res, 200, { id });
+    if (req.method === 'POST') {
+      const { id } = await createShareLink(guild, video, { createdBy: req.cloudUserId });
+      return json(res, 200, { id });
+    }
+
+    // Stop sharing: the person who shared it, the uploader or an officer.
+    // Nothing in R2 is touched; only the public page and its redirect go.
+    const links = state.links.filter((link) => link.key === video.videoKey && linkKind(link) === 'video');
+    if (links.length === 0) return json(res, 200, { removed: 0 }); // already stopped
+    const mayStop =
+      links.some((link) => link.createdBy && link.createdBy === req.cloudUserId) ||
+      (await mayChangeVideo(video));
+    if (!mayStop) {
+      return fail(res, 403, 'Only the person who shared it, the uploader or an officer can stop sharing');
+    }
+    if (links.length > 0) {
+      state.links = state.links.filter((link) => !links.includes(link));
+      await persist();
+    }
+    return json(res, 200, { removed: links.length });
   }
 
   if (parts[3] === 'upload' && req.method === 'POST') {
@@ -1934,7 +1977,8 @@ const handleApi = async (req, res, url, parts) => {
     }
 
     if (parts.length === 5 && req.method === 'GET') {
-      return json(res, 200, chatFor(parts[4]).messages);
+      // Reading must not create a chat; only posting does.
+      return json(res, 200, state.chats.find((entry) => entry.correlator === parts[4])?.messages ?? []);
     }
 
     if (parts.length === 5 && req.method === 'POST') {
@@ -2014,14 +2058,21 @@ const handleLink = async (res, id, startAt) => {
   // Discord's link unfurler (and most other chat apps) reads these tags
   // from the raw HTML -- no JS execution -- to decide whether to render an
   // inline playable video instead of a plain link card. It needs the
-  // og:video* trio pointed at a direct, unauthenticated, range-request-
-  // capable video URL, which the Worker already provides.
+  // og:video* trio pointed at an unauthenticated, range-request-capable
+  // video, which the Worker provides (reached through the redirect below).
   //
   // Width/height are a hint for the embed's aspect ratio, not something
   // Discord validates against the actual file -- if your guild mostly
   // records at a different resolution than 1920x1080, update these two
   // values to match, but a mismatch won't break playback.
-  const embedVideoUrl = signedDownloadUrl(link.guild, link.key);
+  // The embed points at this link's own /video address, which signs a fresh
+  // Worker URL on every fetch: Discord can re-fetch it whenever its media
+  // cache drops the file, for as long as the link is shared, and Stop sharing
+  // ends it. Without GUILD_CLOUD_PUBLIC_URL there's no absolute address to
+  // give, so a signed URL (2 hours) is used instead.
+  const embedVideoUrl = PUBLIC_URL
+    ? `${PUBLIC_URL}/link/${encodeURIComponent(id)}/video`
+    : signedDownloadUrl(link.guild, link.key, SHARE_REDIRECT_TTL_SECONDS);
   const embedWidth = 1920;
   const embedHeight = 1080;
   const canonicalUrl = `${PUBLIC_URL || ''}/link/${encodeURIComponent(id)}`;
@@ -2094,9 +2145,13 @@ button.addEventListener('click', async () => {
 const handleLinkVideo = async (req, res, id) => {
   const link = findLink(id);
   if (!link) return fail(res, 404, 'Link not found');
-  if (!(await r2Exists(link.key))) return fail(res, 404, 'Video not found');
 
-  return redirect(res, signedDownloadUrl(link.guild, link.key));
+  // No R2 check here: the Worker answers 404 itself when the file is gone,
+  // and Discord's media proxy may come back for every range it plays. A
+  // minute's caching of the redirect spares this PC most of those trips.
+  return redirect(res, signedDownloadUrl(link.guild, link.key, SHARE_REDIRECT_TTL_SECONDS), {
+    'Cache-Control': 'public, max-age=60',
+  });
 };
 
 // One like per address per share link a day (the page also remembers it in
@@ -2207,6 +2262,67 @@ const requestHandler = async (req, res) => {
   return text(res, 404, 'Not found');
 };
 
+// ---- Daily clean-up -----------------------------------------------------------
+// The server's data should stop only growing: old pull logs go even when
+// nobody uploads a pull, share links to deleted recordings and their preview
+// images go, and so do chats nobody wrote in (reading one used to create it).
+// Runs a minute after start-up and then every 24 hours.
+// GUILD_CLOUD_CLEANUP_DELAY_MS (first run, and the gap after it) exists only
+// for tests.
+const CLEANUP_TEST_MS = Number.parseInt(process.env.GUILD_CLOUD_CLEANUP_DELAY_MS ?? '', 10);
+const CLEANUP_TEST = Number.isInteger(CLEANUP_TEST_MS) && CLEANUP_TEST_MS > 0;
+const CLEANUP_DELAY_MS = CLEANUP_TEST ? CLEANUP_TEST_MS : 60 * 1000;
+const CLEANUP_EVERY_MS = CLEANUP_TEST ? CLEANUP_TEST_MS : 24 * 60 * 60 * 1000;
+
+const dailyCleanup = async () => {
+  const logs = await pullDesk.housekeep();
+  let deadLinks = 0;
+  let previews = 0;
+  // A state.json restored from a backup can miss newer videos and links, so
+  // nothing is judged dead until the owner has dealt with that.
+  if (!stateRestoredAt) {
+    const keys = new Set(state.videos.map((video) => video.videoKey));
+    const before = state.links.length;
+    state.links = state.links.filter((link) => keys.has(link.key));
+    deadLinks = before - state.links.length;
+    previews = await coach.removeThumbnails(new Set(state.links.map((link) => link.id)));
+  }
+  const chatsBefore = state.chats.length;
+  state.chats = state.chats.filter((chat) => chat.messages?.length > 0);
+  const chats = chatsBefore - state.chats.length;
+
+  if (deadLinks > 0 || chats > 0) await persist();
+  if (logs + deadLinks + previews + chats > 0) {
+    console.log(
+      `[guild-cloud] Clean-up: ${logs} old pull logs, ${deadLinks} dead share links, ${previews} previews, ${chats} empty chats`,
+    );
+  }
+};
+
+// Links from before 1.9.161 have no kind. Coaching clips sent with a
+// preview frame have coach-thumbs/<id>.jpg, so those become clips: Stop
+// sharing on the recording then doesn't end clips already posted in Discord,
+// and the link button doesn't hand out a clip's link. The rest were made with
+// the link button. Runs once at start-up; later links carry a kind.
+const classifyOldLinks = async () => {
+  let changed = 0;
+  for (const link of state.links) {
+    if (link.kind) continue;
+    link.kind = (await coach.thumbnailPath(link.id)) ? 'clip' : 'video';
+    changed += 1;
+  }
+  if (changed > 0) await persist();
+};
+
+const scheduleCleanup = () => {
+  const run = () => {
+    dailyCleanup()
+      .catch((error) => console.error('[guild-cloud] Clean-up failed', error))
+      .finally(() => setTimeout(run, CLEANUP_EVERY_MS).unref());
+  };
+  setTimeout(run, CLEANUP_DELAY_MS).unref();
+};
+
 const main = async () => {
   if (SECRET_PROBLEM) {
     throw new Error(
@@ -2217,6 +2333,7 @@ const main = async () => {
   if (shortSecret) console.warn(`[guild-cloud] ${shortSecret}`);
   logUnhandledRejections();
   await loadState();
+  await classifyOldLinks();
   await pullDesk.ready();
   const server = http.createServer((req, res) => {
     requestHandler(req, res).catch((error) => {
@@ -2239,6 +2356,7 @@ const main = async () => {
     console.log(`[guild-cloud] Video storage: R2 bucket "${R2_BUCKET}"`);
     console.log(`[guild-cloud] Playback via Worker: ${WORKER_URL || '(not set!)'}`);
     console.log(`[guild-cloud] Guild: ${GUILD}`);
+    scheduleCleanup();
   });
 };
 

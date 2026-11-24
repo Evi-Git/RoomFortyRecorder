@@ -53,6 +53,7 @@ import {
   CloudUpload,
   FolderOpen,
   Link,
+  Link2Off,
   Send,
   Pencil,
   RotateCw,
@@ -1237,6 +1238,57 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   /**
+   * Stop sharing the video: the public link stops working.
+   */
+  const stopSharing = async (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (!cloudVideo) return;
+
+    const result = await ipc.invoke('stopSharingLink', [cloudVideo.videoName]);
+
+    if (result?.ok) {
+      toast({
+        title: 'Sharing stopped',
+        description:
+          'The public link no longer works. Someone already watching can usually finish (up to 2 hours), and Discord may keep its copy of a posted clip for a while.',
+        duration: 5000,
+      });
+      return;
+    }
+
+    toast({
+      title: "Couldn't stop sharing",
+      description: result?.error || undefined,
+      variant: 'destructive',
+      duration: 5000,
+    });
+  };
+
+  /**
+   * Render the stop sharing button, only while the recording is shared.
+   */
+  const renderStopSharingButton = () => {
+    if (!cloudVideo?.shared) return null;
+    const label = 'Stop sharing: the public link stops working';
+
+    return (
+      <Tooltip content={label}>
+        <div>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={stopSharing}
+            aria-label={label}
+          >
+            <Link2Off size={20} color="white" />
+          </Button>
+        </div>
+      </Tooltip>
+    );
+  };
+
+  /**
    * Render the get link button.
    */
   const renderGetLinkButton = () => {
@@ -1505,6 +1557,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           !clipMode &&
           !instantReplay &&
           renderGetLinkButton()}
+        {!multiPlayerMode &&
+          !clipMode &&
+          !instantReplay &&
+          renderStopSharingButton()}
         {!multiPlayerMode &&
           !clipMode &&
           !instantReplay &&

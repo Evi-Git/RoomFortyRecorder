@@ -262,6 +262,8 @@ type CloudMetadata = Metadata & {
  */
 type CloudSignedMetadata = CloudMetadata & {
   signedVideoKey: string;
+  // Whether the recording has a live public link. Missing from older servers.
+  shared?: boolean;
 };
 
 /**
@@ -289,6 +291,9 @@ type RendererVideo = Metadata & {
   isProtected: boolean;
   cloud: boolean;
   multiPov: RendererVideo[];
+
+  // Cloud recordings only: a public share link is live (newer servers).
+  shared?: boolean;
 
   // Used by frontend to uniquely identify a video, as videoName
   // is identical for a disk and cloud viewpoint.

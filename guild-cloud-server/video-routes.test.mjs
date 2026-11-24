@@ -811,3 +811,208 @@ test('GUILD_CLOUD_RATE_LIMIT=off turns the limits and the per-address like check
     await server.stop();
   }
 });
+
+// ---- 1.9.161: share links you can stop, and the daily clean-up --------------
+
+test('one share link per recording; clips are separate; stopping it is for the sharer, uploader or an officer', async () => {
+  const server = await start({
+    state: {
+      links: [{ id: 'clip1', guild: GUILD, key: 'evi.mp4', likes: 0, kind: 'clip', createdBy: BOB }],
+    },
+  });
+  try {
+    const first = await server.call(bob, 'POST', '/video/evi/link');
+    assert.equal(first.status, 200);
+    assert.notEqual(first.body.id, 'clip1'); // a clip link is not the recording's link
+    const again = await server.call(evi, 'POST', '/video/evi.mp4/link');
+    assert.equal(again.body.id, first.body.id); // same recording, same link, whoever asks
+
+    const listed = async (who) =>
+      Object.fromEntries((await server.call(who, 'GET', '/video')).body.map((v) => [v.videoKey, v.shared]));
+    assert.equal((await listed(evi))['evi.mp4'], true);
+    assert.equal((await listed(evi))['bob.mp4'], false);
+
+    // Someone else can't stop it (the sharer was Bob; the uploader is Evi).
+    const other = [NEWBIE, 'Newbie'];
+    let r = await server.call(other, 'DELETE', '/video/evi/link');
+    assert.equal(r.status, 403);
+    assert.match(r.body.error, /Only the person who shared it, the uploader or an officer/);
+    assert.equal((await server.get(`/link/${first.body.id}`)).status, 200);
+
+    // The sharer can (Bob does not own evi.mp4).
+    r = await server.call(bob, 'DELETE', '/video/evi/link');
+    assert.deepEqual(r.body, { removed: 1 });
+    assert.equal((await server.get(`/link/${first.body.id}`)).status, 404);
+    assert.equal((await listed(evi))['evi.mp4'], false);
+    assert.ok(server.library().links.some((link) => link.id === 'clip1')); // the clip stays
+
+    // A new share is a new link; the uploader may stop it, so may an officer.
+    const second = await server.call(bob, 'POST', '/video/evi/link');
+    assert.notEqual(second.body.id, first.body.id);
+    assert.deepEqual((await server.call(evi, 'DELETE', '/video/evi/link')).body, { removed: 1 });
+    await server.call(bob, 'POST', '/video/evi/link');
+    assert.deepEqual((await server.call(officer, 'DELETE', '/video/evi/link')).body, { removed: 1 });
+    assert.deepEqual((await server.call(officer, 'DELETE', '/video/evi/link')).body, { removed: 0 });
+  } finally {
+    await server.stop();
+  }
+});
+
+test('share redirects live 2 hours; the app\'s download URLs live a day', async () => {
+  const server = await start({ state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] } });
+  try {
+    const exp = (url) => {
+      const token = url.split('/download/')[1];
+      return JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString()).exp - Date.now() / 1000;
+    };
+    const redirect = await fetch(`${server.base}/link/l1/video`, { redirect: 'manual' });
+    assert.equal(redirect.status, 302);
+    const shareLife = exp(redirect.headers.get('location'));
+    assert.ok(shareLife > 7100 && shareLife <= 7200, `share ${shareLife}`);
+    const listed = (await server.call(evi, 'GET', '/video')).body.find((v) => v.videoKey === 'evi.mp4');
+    const appLife = exp(listed.signedVideoKey);
+    assert.ok(appLife > 86300 && appLife <= 86400, `app ${appLife}`);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('the share page\'s Discord embed points at the link\'s own /video address', async () => {
+  const server = await start({
+    state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0 }] },
+    env: { GUILD_CLOUD_PUBLIC_URL: 'https://example.test/' },
+  });
+  try {
+    const page = await (await fetch(`${server.base}/link/l1`)).text();
+    assert.match(page, /<meta property="og:video" content="https:\/\/example\.test\/link\/l1\/video">/);
+    assert.equal(page.includes('/download/'), false); // no long-lived signed URL in a page Discord caches
+  } finally {
+    await server.stop();
+  }
+});
+
+test('reading a chat that does not exist does not create it', async () => {
+  const server = await start();
+  try {
+    const before = server.library().chats.length;
+    const r = await server.call(evi, 'GET', '/chat/guild-nothing-here');
+    assert.deepEqual(r.body, []);
+    await server.call(evi, 'POST', '/video/evi/link'); // forces a save of state.json
+    assert.equal(server.library().chats.length, before);
+    // Posting still creates it.
+    await server.call(evi, 'POST', '/chat/guild-new', { message: 'hello' });
+    assert.equal((await server.call(evi, 'GET', '/chat/guild-new')).body.length, 1);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('the daily clean-up drops dead links, orphan previews, empty chats and old pull logs', async () => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-cleanup-'));
+  const pulldesk = path.join(storage, 'pulldesk');
+  fs.mkdirSync(path.join(pulldesk, 'logs'), { recursive: true });
+  fs.mkdirSync(path.join(storage, 'coach-thumbs'));
+  const day = 24 * 60 * 60 * 1000;
+  fs.writeFileSync(
+    path.join(pulldesk, 'index.json'),
+    JSON.stringify({
+      pulls: [
+        { id: 'old1', createdAt: Date.now() - 40 * day, hasLog: true, status: 'ready', postedAt: 1 },
+        { id: 'new1', createdAt: Date.now() - day, hasLog: true, status: 'ready', postedAt: 1 },
+      ],
+    }),
+  );
+  fs.writeFileSync(path.join(pulldesk, 'logs', 'old1.log.gz'), 'x');
+  fs.writeFileSync(path.join(pulldesk, 'logs', 'new1.log.gz'), 'x');
+  const thumbs = path.join(storage, 'coach-thumbs');
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  for (const id of ['live1', 'dead1', 'orphan1']) {
+    fs.writeFileSync(path.join(thumbs, `${id}.jpg`), 'x');
+    fs.utimesSync(path.join(thumbs, `${id}.jpg`), twoHoursAgo, twoHoursAgo);
+  }
+  fs.writeFileSync(path.join(thumbs, 'justsent.jpg'), 'x'); // a clip being sent right now
+  // `reuse` starts the server on these files as they are.
+  fs.writeFileSync(
+    path.join(storage, 'state.json'),
+    JSON.stringify({
+      videos: [{ videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI }],
+      chats: [
+        { correlator: 'empty', messages: [] },
+        { correlator: 'full', messages: [{ id: 1, correlator: 'full', message: 'hi', userName: 'Evi', timestamp: 1 }] },
+      ],
+      links: [
+        { id: 'live1', guild: GUILD, key: 'evi.mp4', likes: 0, kind: 'clip' },
+        { id: 'dead1', guild: GUILD, key: 'gone.mp4', likes: 0 },
+      ],
+      knownUsers: {},
+      nextMessageId: 2,
+    }),
+  );
+  const second = await start({
+    reuse: { storage },
+    env: { GUILD_CLOUD_CLEANUP_DELAY_MS: '200', GUILD_CLOUD_PULLDESK_LOG_DAYS: '30' },
+  });
+  try {
+    const deadline = Date.now() + 10000;
+    while (second.library().links.length > 1 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    const state = second.library();
+    assert.deepEqual(state.links.map((link) => link.id), ['live1']);
+    assert.deepEqual(state.chats.map((chat) => chat.correlator), ['full']);
+    assert.deepEqual(fs.readdirSync(thumbs).sort(), ['justsent.jpg', 'live1.jpg']);
+    assert.deepEqual(fs.readdirSync(path.join(pulldesk, 'logs')).sort(), ['new1.log.gz']);
+  } finally {
+    await second.stop();
+  }
+});
+
+test('links from before 1.9.161: ones with a coaching preview become clips, the rest stay the recording\'s link', async () => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'rf-oldlinks-'));
+  fs.mkdirSync(path.join(storage, 'coach-thumbs'));
+  fs.writeFileSync(path.join(storage, 'coach-thumbs', 'clip1.jpg'), 'x');
+  fs.writeFileSync(
+    path.join(storage, 'state.json'),
+    JSON.stringify({
+      videos: [
+        { videoKey: 'evi.mp4', videoName: 'evi', uploadedBy: EVI, uploadedByName: 'Evi' },
+        { videoKey: 'bob.mp4', videoName: 'bob', uploadedBy: BOB, uploadedByName: 'Bob' },
+      ],
+      chats: [],
+      links: [
+        { id: 'clip1', guild: GUILD, key: 'evi.mp4', likes: 0 },
+        { id: 'share1', guild: GUILD, key: 'bob.mp4', likes: 4 },
+      ],
+      knownUsers: {},
+      nextMessageId: 1,
+    }),
+  );
+  const server = await start({ reuse: { storage } });
+  try {
+    const kinds = Object.fromEntries(server.library().links.map((link) => [link.id, link.kind]));
+    assert.deepEqual(kinds, { clip1: 'clip', share1: 'video' });
+    const listed = (await server.call(evi, 'GET', '/video')).body;
+    assert.equal(listed.find((v) => v.videoKey === 'evi.mp4').shared, false); // only a clip
+    assert.equal(listed.find((v) => v.videoKey === 'bob.mp4').shared, true);
+    // The link button makes Evi's recording a link of its own, not the clip's.
+    const made = await server.call(evi, 'POST', '/video/evi/link');
+    assert.notEqual(made.body.id, 'clip1');
+    // Stopping Evi's share leaves the clip alone.
+    assert.deepEqual((await server.call(evi, 'DELETE', '/video/evi/link')).body, { removed: 1 });
+    assert.equal((await fetch(`${server.base}/link/clip1/video`, { redirect: 'manual' })).status, 302);
+    // Nothing left to stop: anyone gets removed 0 rather than a refusal.
+    assert.deepEqual((await server.call(bob, 'DELETE', '/video/evi/link')).body, { removed: 0 });
+  } finally {
+    await server.stop();
+  }
+});
+
+test('a share link\'s video redirect skips the R2 check and may be cached a minute', async () => {
+  const server = await start({ state: { links: [{ id: 'l1', guild: GUILD, key: 'evi.mp4', likes: 0, kind: 'video' }] } });
+  try {
+    const res = await fetch(`${server.base}/link/l1/video`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get('cache-control'), 'public, max-age=60');
+    assert.equal((await fetch(`${server.base}/link/nope/video`, { redirect: 'manual' })).status, 404);
+  } finally {
+    await server.stop();
+  }
+});

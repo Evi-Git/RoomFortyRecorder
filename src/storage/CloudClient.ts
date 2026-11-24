@@ -1728,6 +1728,25 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
+   * Stop sharing a video: its public link stops working. The server allows
+   * whoever shared it, the uploader or an officer, and says so in plain
+   * language when it refuses, which is passed on.
+   */
+  public async stopSharing(videoName: string) {
+    console.info('[CloudClient] Stopping sharing', videoName);
+
+    const guild = encodeURIComponent(this.guild);
+    const video = encodeURIComponent(videoName);
+    const url = `${CloudClient.api}/guild/${guild}/video/${video}/link`;
+    const headers = { Authorization: this.authHeader };
+
+    await cloudHttp.delete(url, {
+      headers,
+      validateStatus: (s) => this.validateResponseStatus(s),
+    });
+  }
+
+  /**
    * Validate the response status. This is basically just default behaviour plus
    * a check for 401 status codes.
    */
@@ -1774,6 +1793,28 @@ export default class CloudClient implements StorageClient {
       const videoName = args[0];
       const shareable = await this.getShareableLink(videoName);
       clipboard.writeText(shareable);
+    });
+
+    // Answers instead of throwing: an IPC error would bury the server's
+    // plain-language refusal in Electron's wrapper text.
+    ipcMain.handle('stopSharingLink', async (_event, args) => {
+      try {
+        // No refresh here: it would take the player out of fullscreen. The
+        // 30-second poll hides the button.
+        await this.stopSharing(args[0]);
+        return { ok: true as const };
+      } catch (error) {
+        const rsp = axios.isAxiosError(error)
+          ? error.response?.data
+          : undefined;
+        const message =
+          rsp && typeof rsp.error === 'string'
+            ? rsp.error
+            : error instanceof Error
+              ? error.message
+              : '';
+        return { ok: false as const, error: message };
+      }
     });
 
     ipcMain.on('deleteVideosCloud', async (_event, args) => {

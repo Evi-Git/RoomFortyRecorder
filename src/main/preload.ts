@@ -25,6 +25,7 @@ export type Channels =
   | 'deleteVideosCloud'
   | 'writeClipboard'
   | 'getShareableLink'
+  | 'stopSharingLink'
   | 'doAppUpdate'
   | 'checkForUpdates'
   | 'getUpdateStatus'

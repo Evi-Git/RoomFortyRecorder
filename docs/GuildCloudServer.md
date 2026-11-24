@@ -279,8 +279,31 @@ installation or invitation is required.
 ## Share links and likes
 
 The player’s link button is enabled for cloud videos and clips. It copies a
-stable public URL such as `https://roomfortyrecorder.com/link/<id>` to the
-clipboard; the link remains valid while the recording remains in cloud storage.
+public URL such as `https://roomfortyrecorder.com/link/<id>` to the
+clipboard. A recording has one link: pressing the button again copies the same
+one (clips sent to Discord get their own each time). The link works until
+someone stops sharing or the recording is deleted.
+
+**Stop sharing.** While a recording is shared, the player shows a second
+button that removes its link (`DELETE .../video/<key>/link`). The person who
+shared it, the recording's uploader and anyone with the `videoManage`
+capability may use it; nothing in R2 is deleted. Video listings carry
+`shared: true/false` but never the link id. Links made before 1.9.161 have no
+owner, so only the uploader or an officer can stop those; at the first start
+of 1.9.161 the old ones with a coaching preview picture are marked as clip
+links, so stopping a recording's share doesn't end clips already in Discord.
+
+**How long addresses last.** The share page's video and its Discord embed
+go through `/link/<id>/video`, which signs a fresh Worker address (2 hours) on
+each request, so a posted clip keeps playing while the link exists. After Stop
+sharing, someone already watching can usually finish (up to 2 hours), and
+Discord may keep serving its own cached copy of a clip for a while. The
+address the app plays from lasts 1 day; the server hands out the same one
+until it has 8 hours left, so an open recording always has at least 8 hours
+and the player isn't restarted by the 30-second refresh. The R2 Worker only
+checks the signature, so these short lives are what limit a removed member's
+or stopped share's reach.
+
 Both link types stream the shared recording. Full-video pages accept anonymous
 likes, limited to one per browser profile by browser-local storage and to one
 per internet address a day by the server. Clip pages do not offer likes.
@@ -296,7 +319,8 @@ The server limits how fast one internet address can call it
 | --- | --- | --- |
 | Discord sign-in and the code exchange | 20 | 20 a minute |
 | A share page's Like | 10 | 10 a minute |
-| Share pages, previews, `/health`, the recruiting page | 120 | 2 a second |
+| Share pages, `/health`, the recruiting page | 120 | 2 a second |
+| A share link's video and preview picture (Discord plays clips from a few addresses) | 600 | 10 a second |
 | The app's `/api` calls | 600 | 10 a second |
 
 Past a limit the answer is `429 Too many requests` with a `Retry-After`
@@ -331,6 +355,14 @@ that proxy's address.
   videos uploaded after the copy are not in the list and would be deleted.
 - Those copies are on the same disk. Back up the storage folder to a second
   disk or off-site storage as well. Tailscale and Caddy are not backups.
+- **Clean-up.** A minute after start-up and then every 24 hours the server
+  deletes pull logs older than `GUILD_CLOUD_PULLDESK_LOG_DAYS` (even if no
+  pull has been uploaded), share links whose recording is gone with their
+  preview pictures, preview pictures with no link, and chats with no
+  messages. It writes one line to its window with the counts when it removed
+  anything. After `state.json` was restored from a backup it leaves links and
+  previews alone until the server restarts. Preview pictures under an hour
+  old are always kept.
 - Server code updates: use the updater below rather than copying files by
   hand.
 - Keep port `8787` closed in the router and keep the `.env` file private.

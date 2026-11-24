@@ -52,6 +52,8 @@ test('limitFor: sign-in, like, api and everything else', () => {
   assert.equal(limitFor('POST', ['api', 'auth', 'discord', 'exchange']), 'auth');
   assert.equal(limitFor('POST', ['link', 'abc', 'like']), 'like');
   assert.equal(limitFor('GET', ['link', 'abc', 'like']), 'public');
+  assert.equal(limitFor('GET', ['link', 'abc', 'video']), 'media');
+  assert.equal(limitFor('GET', ['link', 'abc', 'thumb.jpg']), 'media');
   assert.equal(limitFor('GET', ['api', 'guild', 'Room Forty', 'pulldesk', 'pulls']), 'api');
   assert.equal(limitFor('GET', ['api', 'recruit', 'state']), 'api');
   assert.equal(limitFor('GET', ['link', 'abc']), 'public');
@@ -113,7 +115,7 @@ test('createRateLimits: local requests pass, outside ones are limited per addres
   let at = 0;
   const logs = [];
   const limits = createRateLimits({
-    limits: { auth: { capacity: 1, perSecond: 1 }, like: { capacity: 1, perSecond: 1 }, public: { capacity: 2, perSecond: 1 }, api: { capacity: 1, perSecond: 1 } },
+    limits: { auth: { capacity: 1, perSecond: 1 }, like: { capacity: 1, perSecond: 1 }, public: { capacity: 2, perSecond: 1 }, media: { capacity: 1, perSecond: 1 }, api: { capacity: 1, perSecond: 1 } },
     now: () => at,
     log: (m) => logs.push(m),
   });
@@ -138,7 +140,7 @@ test('createRateLimits: local requests pass, outside ones are limited per addres
 });
 
 test('createRateLimits: off lets everything through', () => {
-  const limits = createRateLimits({ enabled: false, limits: { auth: { capacity: 0, perSecond: 1 }, like: { capacity: 0, perSecond: 1 }, public: { capacity: 0, perSecond: 1 }, api: { capacity: 0, perSecond: 1 } } });
+  const limits = createRateLimits({ enabled: false, limits: { auth: { capacity: 0, perSecond: 1 }, like: { capacity: 0, perSecond: 1 }, public: { capacity: 0, perSecond: 1 }, media: { capacity: 0, perSecond: 1 }, api: { capacity: 0, perSecond: 1 } } });
   assert.equal(limits.check(req('203.0.113.9'), ['api']).ok, true);
 });
 
@@ -160,7 +162,7 @@ test('createRateLimits: one log line per /64, and at most maxLogsPerMinute in al
   const logs = [];
   const one = { capacity: 0, perSecond: 1 };
   const limits = createRateLimits({
-    limits: { auth: one, like: one, public: one, api: one },
+    limits: { auth: one, like: one, public: one, media: one, api: one },
     now: () => at,
     log: (m) => logs.push(m),
     maxLogsPerMinute: 3,
