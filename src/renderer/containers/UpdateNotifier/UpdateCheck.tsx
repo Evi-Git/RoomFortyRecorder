@@ -37,16 +37,23 @@ const UpdateCheck: React.FC<IProps> = ({ versionLabel, version }) => {
   const [status, setStatus] = React.useState<UpdateStatus>({ state: 'idle' });
 
   React.useEffect(() => {
+    let live = true;
+    // A push that lands first beats the slower first answer.
+    let pushed = false;
     ipc
       .invoke('getUpdateStatus', [])
-      .then((s) => s && setStatus(s as UpdateStatus))
+      .then((s) => live && !pushed && s && setStatus(s as UpdateStatus))
       .catch(() => {});
 
-    const unsubscribe = ipc.on('updateStatus', (s) =>
-      setStatus(s as UpdateStatus),
-    );
+    const unsubscribe = ipc.on('updateStatus', (s) => {
+      pushed = true;
+      setStatus(s as UpdateStatus);
+    });
 
-    return () => unsubscribe?.();
+    return () => {
+      live = false;
+      unsubscribe?.();
+    };
   }, []);
 
   const busy = status.state === 'checking' || status.state === 'downloading';

@@ -940,6 +940,20 @@ export const scenes = [
     },
   },
   {
+    name: 'admin-needs-analysis',
+    shows: 'Admin: See Analysis unticked for Everyone, so Edit Analysis ticks turn grey; one hovered: "Needs See Analysis to do anything"',
+    steps: async (t) => {
+      await t.nav('Admin');
+      await t.settle(800);
+      const view = t.page.locator('tbody tr', { hasText: 'See Analysis' }).first();
+      // Everyone is the first column; its See Analysis tick is what the other roles lean on.
+      await view.locator('input[type=checkbox]').first().uncheck();
+      const edit = t.page.locator('tbody tr', { hasText: 'Edit Analysis' }).first();
+      await edit.locator('input[type=checkbox]:checked:not(:disabled)').first().hover();
+      await t.settle(900);
+    },
+  },
+  {
     name: 'admin-fail',
     shows: 'Admin: the guild server did not answer (ErrorState with Try again)',
     init: { answers: { 'pullDesk:permissions': { ok: false, error: 'connect ECONNREFUSED' } } },

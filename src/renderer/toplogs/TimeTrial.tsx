@@ -157,11 +157,13 @@ const TimeTrial = ({
   };
 
   React.useEffect(() => {
+    let live = true;
     call<{ pulls: OurPull[] }>({
       action: 'topOurs',
       encounterId,
       difficultyId,
     }).then((r) => {
+      if (!live) return;
       if (!r.ok) {
         setPullsError(r.error);
         return;
@@ -170,6 +172,9 @@ const TimeTrial = ({
       setPulls(r.data.pulls);
       setPullId((id) => id || r.data.pulls[0]?.id || '');
     });
+    return () => {
+      live = false;
+    };
   }, [encounterId, difficultyId, pullsTick]);
 
   const pull = pulls?.find((p) => p.id === pullId);

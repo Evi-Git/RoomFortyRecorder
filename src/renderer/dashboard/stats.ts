@@ -47,12 +47,16 @@ type AvoidableRow = {
   spells?: { spellId: number; spellName: string | null; hits: number }[];
 };
 
+/** Every avoidable hit the raiders took (the tile and the tab badge). */
+export const avoidableTotal = (rows: { hits: number }[]) =>
+  rows.reduce((n, row) => n + row.hits, 0);
+
 /** Hits taken from avoidable spells, and the spell that landed most. */
 export const avoidableStat = (
   rows: AvoidableRow[],
   spellNames: Record<string, string | null> = {},
 ): Stat => {
-  const total = rows.reduce((n, row) => n + row.hits, 0);
+  const total = avoidableTotal(rows);
   if (!total) return { value: '0', note: 'none' };
 
   const bySpell = new Map<string, { name: string; hits: number }>();
