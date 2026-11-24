@@ -27,6 +27,10 @@ const capture = (file: string, enabled = true) => {
   return pulls;
 };
 
+// These read real pull logs of several MB; the gzip test took over 5 s on a
+// slow CI runner once (about 2 s locally).
+jest.setTimeout(30_000);
+
 test('leadingFields honours quotes', () => {
   const line =
     '4/30/2026 20:05:17.7771  ENCOUNTER_START,3182,"Belo\'ren, Child of Al\'ar",16,20,2913';

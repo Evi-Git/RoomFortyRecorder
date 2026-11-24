@@ -202,9 +202,14 @@ test('routes: rankings on demand, casts fetched for each row, then a trial with 
     ['Nextwar', 'queued'],
   ]);
   assert.equal(first.body.pending, 2);
-  await new Promise((done) => setTimeout(done, 50));
-
-  const second = await ask('rankings', { encounterId: 3129, difficulty: 16, specId: 71 });
+  // The casts are fetched in the background: ask again until they're in (a
+  // fixed 50 ms wait failed now and then on a slow CI runner).
+  let second;
+  for (let i = 0; i < 100; i += 1) {
+    await new Promise((done) => setTimeout(done, 20));
+    second = await ask('rankings', { encounterId: 3129, difficulty: 16, specId: 71 });
+    if (second.body.pending === 0) break;
+  }
   assert.equal(second.body.pending, 0);
   assert.deepEqual(second.body.rows[0].casts, [
     [1.5, 107574],
