@@ -1793,6 +1793,8 @@ export default class CloudClient implements StorageClient {
       const videoName = args[0];
       const shareable = await this.getShareableLink(videoName);
       clipboard.writeText(shareable);
+      // Shows the Stop sharing button now rather than at the next poll.
+      this.refreshVideos().catch(() => {});
     });
 
     // Answers instead of throwing: an IPC error would bury the server's
