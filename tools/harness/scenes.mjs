@@ -941,7 +941,7 @@ export const scenes = [
   },
   {
     name: 'admin-needs-analysis',
-    shows: 'Admin: See Analysis unticked for Everyone, so Edit Analysis ticks turn grey; one hovered: "Needs See Analysis to do anything"',
+    shows: 'Admin: See Analysis unticked for Everyone, so Edit Analysis ticks turn grey with a hint icon; one hint hovered',
     steps: async (t) => {
       await t.nav('Admin');
       await t.settle(800);
@@ -949,7 +949,14 @@ export const scenes = [
       // Everyone is the first column; its See Analysis tick is what the other roles lean on.
       await view.locator('input[type=checkbox]').first().uncheck();
       const edit = t.page.locator('tbody tr', { hasText: 'Edit Analysis' }).first();
-      await edit.locator('input[type=checkbox]:checked:not(:disabled)').first().hover();
+      // Keyboard: Space on a grey tick keeps focus on it (the cell isn't rebuilt).
+      const box = edit.locator('input[type=checkbox]:checked:not(:disabled)').first();
+      await box.focus();
+      await t.page.keyboard.press('Space');
+      await t.page.keyboard.press('Space');
+      const focused = await t.page.evaluate(() => document.activeElement?.tagName);
+      if (focused !== 'INPUT') throw new Error(`Focus left the tick (${focused})`);
+      await edit.locator('svg.lucide-circle-alert').first().hover();
       await t.settle(900);
     },
   },

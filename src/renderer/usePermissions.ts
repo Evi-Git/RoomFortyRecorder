@@ -52,11 +52,17 @@ export const refreshPermissions = () => {
 };
 
 /** Switch "view as role" (owner only); null goes back to yourself. */
+let viewAsSeq = 0;
+
 export const setViewAs = async (role: string | null) => {
+  // Two switches in a row (e.g. a role, then "back to yourself"): only the
+  // last one's answer is shown.
+  viewAsSeq += 1;
+  const mine = viewAsSeq;
   const response = (await ipc.invoke('pullDesk', [
     { action: 'setViewAs', role },
   ])) as Response<Permissions>;
-  if (response.ok) publish(response.data);
+  if (response.ok && mine === viewAsSeq) publish(response.data);
   return response;
 };
 

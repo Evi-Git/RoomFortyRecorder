@@ -180,11 +180,16 @@ test('only the owner lists members and signs one out', async () => {
 test("the app's Admin grid shows the same needs as IMPLIES", async () => {
   const file = new URL('../src/renderer/admin/capabilityNeeds.ts', import.meta.url);
   const text = await fsp.readFile(file, 'utf8');
-  const body = text.match(/CAPABILITY_NEEDS[^=]*=\s*\{([^}]*)\}/)?.[1];
+  // Comments out first, so a commented-out entry can't count.
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const body = code.match(/CAPABILITY_NEEDS[^=]*=\s*\{([^}]*)\}/)?.[1];
   assert.ok(body, 'CAPABILITY_NEEDS object not found');
   const needs = {};
-  for (const [, key, list] of body.matchAll(/^\s*(\w+):\s*\[([^\]]*)\],?\s*$/gm)) {
-    needs[key] = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  for (const line of body.split('\n').filter((l) => l.trim())) {
+    // Every line must be one `key: ['needed', ...],` pair, so nothing slips past.
+    const match = line.match(/^\s*(\w+):\s*\[((?:\s*'\w+',?)*)\s*\],?\s*$/);
+    assert.ok(match, `Unexpected line in CAPABILITY_NEEDS: ${line.trim()}`);
+    needs[match[1]] = [...match[2].matchAll(/'(\w+)'/g)].map((m) => m[1]);
   }
   assert.deepEqual(needs, IMPLIES);
 });

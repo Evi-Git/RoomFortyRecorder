@@ -271,8 +271,10 @@ const AbilityName = (props: Props) => {
       difficultyId,
       name: abilityName(name),
     });
-    if (response.ok) cache.set(key, response.data);
+    // A newer ask (or clearAbilityCards after a change) wins: an older
+    // answer neither shows nor goes back into the cache.
     if (mine !== loadSeq.current) return;
+    if (response.ok) cache.set(key, response.data);
     if (!response.ok) {
       setError(response.error);
       return;

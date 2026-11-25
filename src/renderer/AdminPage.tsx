@@ -1,6 +1,6 @@
 import { dateTime } from 'renderer/clock';
 import React from 'react';
-import { Check, Eye, RotateCcw, X } from 'lucide-react';
+import { Check, CircleAlert, Eye, RotateCcw, X } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import { SimpleSelect } from './components/Select/SimpleSelect';
@@ -266,6 +266,8 @@ const MembersCard = () => {
 };
 
 const AdminPage = () => {
+  // Prefix for the ids of the grid's "needs" hints (unique per page).
+  const hintIds = React.useId();
   const permissions = usePermissions();
   const [table, setTable] = React.useState<Table | null>(null);
   const [grants, setGrants] = React.useState<Record<string, string[]>>({});
@@ -609,7 +611,7 @@ const AdminPage = () => {
                                       </span>
                                     </Tooltip>
                                   </td>
-                                  {columns.map((role) => {
+                                  {columns.map((role, roleIndex) => {
                                     const direct = list.includes(role);
                                     const implied = !direct && everyone;
                                     // Ticked, but the role lacks what it needs
@@ -627,11 +629,8 @@ const AdminPage = () => {
                                             )?.label ?? key,
                                         )
                                       : [];
-                                    const needsId =
-                                      `${cap.key}-needs-${role}`.replace(
-                                        /\s+/g,
-                                        '-',
-                                      );
+                                    const needsId = `${hintIds}-${cap.key}-${roleIndex}`;
+                                    const needsText = `Only works for members who also have ${lacking.join(' and ')}, from this role or another.`;
                                     const box = (
                                       <input
                                         type="checkbox"
@@ -664,25 +663,31 @@ const AdminPage = () => {
                                               {box}
                                             </span>
                                           </Tooltip>
-                                        ) : lacking.length ? (
-                                          <Tooltip
-                                            content={`Needs ${lacking.join(' and ')} to do anything`}
-                                            side="top"
-                                            maxWidth={240}
-                                          >
-                                            <span className="inline-flex">
-                                              {box}
-                                              <span
-                                                id={needsId}
-                                                className="sr-only"
-                                              >
-                                                Needs {lacking.join(' and ')} to
-                                                do anything
-                                              </span>
-                                            </span>
-                                          </Tooltip>
                                         ) : (
-                                          box
+                                          // One shape whether or not the hint
+                                          // shows, so ticking a box never
+                                          // re-creates it (keyboard focus
+                                          // stays put).
+                                          <span className="relative inline-flex">
+                                            {box}
+                                            {lacking.length > 0 && (
+                                              <Tooltip
+                                                content={needsText}
+                                                side="top"
+                                                maxWidth={240}
+                                              >
+                                                <span className="absolute left-full top-1/2 ml-1 inline-flex -translate-y-1/2 text-foreground">
+                                                  <CircleAlert
+                                                    size={12}
+                                                    aria-hidden
+                                                  />
+                                                </span>
+                                              </Tooltip>
+                                            )}
+                                            <span id={needsId} hidden>
+                                              {lacking.length ? needsText : ''}
+                                            </span>
+                                          </span>
                                         )}
                                       </td>
                                     );
