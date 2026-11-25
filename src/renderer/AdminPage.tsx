@@ -1,6 +1,6 @@
 import { dateTime } from 'renderer/clock';
 import React from 'react';
-import { Check, Eye, RotateCcw, X } from 'lucide-react';
+import { Check, CircleAlert, Eye, RotateCcw, X } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import { SimpleSelect } from './components/Select/SimpleSelect';
@@ -19,6 +19,7 @@ import {
   ErrorState,
   LoadingState,
 } from './components/States/States';
+import { missingNeeds } from './admin/capabilityNeeds';
 import {
   refreshPermissions,
   setViewAs,
@@ -265,6 +266,8 @@ const MembersCard = () => {
 };
 
 const AdminPage = () => {
+  // Prefix for the ids of the grid's "needs" hints (unique per page).
+  const hintIds = React.useId();
   const permissions = usePermissions();
   const [table, setTable] = React.useState<Table | null>(null);
   const [grants, setGrants] = React.useState<Record<string, string[]>>({});
@@ -608,17 +611,41 @@ const AdminPage = () => {
                                       </span>
                                     </Tooltip>
                                   </td>
-                                  {columns.map((role) => {
+                                  {columns.map((role, roleIndex) => {
                                     const direct = list.includes(role);
                                     const implied = !direct && everyone;
+                                    // Ticked, but the role lacks what it needs
+                                    // (with the edits made here, saved or not).
+                                    const lacking = direct
+                                      ? missingNeeds(
+                                          cap.key,
+                                          role,
+                                          grants,
+                                          EVERYONE,
+                                        ).map(
+                                          (key) =>
+                                            table.capabilities.find(
+                                              (c) => c.key === key,
+                                            )?.label ?? key,
+                                        )
+                                      : [];
+                                    const needsId = `${hintIds}-${cap.key}-${roleIndex}`;
+                                    const needsText = `Only works for members who also have ${lacking.join(' and ')}, from this role or another.`;
                                     const box = (
                                       <input
                                         type="checkbox"
                                         aria-label={`${cap.label}: ${label(role)}`}
+                                        aria-describedby={
+                                          lacking.length ? needsId : undefined
+                                        }
                                         checked={direct || implied}
                                         disabled={implied}
                                         onChange={() => toggle(cap.key, role)}
-                                        className="w-4 h-4 accent-[hsl(var(--brand))] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                        className={`w-4 h-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+                                          lacking.length
+                                            ? 'accent-[hsl(var(--foreground))]'
+                                            : 'accent-[hsl(var(--brand))]'
+                                        }`}
                                       />
                                     );
                                     return (
@@ -637,7 +664,30 @@ const AdminPage = () => {
                                             </span>
                                           </Tooltip>
                                         ) : (
-                                          box
+                                          // One shape whether or not the hint
+                                          // shows, so ticking a box never
+                                          // re-creates it (keyboard focus
+                                          // stays put).
+                                          <span className="relative inline-flex">
+                                            {box}
+                                            {lacking.length > 0 && (
+                                              <Tooltip
+                                                content={needsText}
+                                                side="top"
+                                                maxWidth={240}
+                                              >
+                                                <span className="absolute left-full top-1/2 ml-1 inline-flex -translate-y-1/2 text-foreground">
+                                                  <CircleAlert
+                                                    size={12}
+                                                    aria-hidden
+                                                  />
+                                                </span>
+                                              </Tooltip>
+                                            )}
+                                            <span id={needsId} hidden>
+                                              {lacking.length ? needsText : ''}
+                                            </span>
+                                          </span>
                                         )}
                                       </td>
                                     );

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
-import { createPermissions, EVERYONE } from './permissions.mjs';
+import { createPermissions, EVERYONE, IMPLIES } from './permissions.mjs';
 
 const ROLES = { '1': ['officer'], '2': ['raider'], '3': ['trial'], '9': ['evi', 'officer'] };
 
@@ -175,4 +175,21 @@ test('only the owner lists members and signs one out', async () => {
   assert.equal(r.status, 400);
   assert.equal(r.body.error, "The owner can't be signed out here.");
   assert.deepEqual(signedOut, ['2']);
+});
+
+test("the app's Admin grid shows the same needs as IMPLIES", async () => {
+  const file = new URL('../src/renderer/admin/capabilityNeeds.ts', import.meta.url);
+  const text = await fsp.readFile(file, 'utf8');
+  // Comments out first, so a commented-out entry can't count.
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const body = code.match(/CAPABILITY_NEEDS[^=]*=\s*\{([^}]*)\}/)?.[1];
+  assert.ok(body, 'CAPABILITY_NEEDS object not found');
+  const needs = {};
+  for (const line of body.split('\n').filter((l) => l.trim())) {
+    // Every line must be one `key: ['needed', ...],` pair, so nothing slips past.
+    const match = line.match(/^\s*(\w+):\s*\[((?:\s*'\w+',?)*)\s*\],?\s*$/);
+    assert.ok(match, `Unexpected line in CAPABILITY_NEEDS: ${line.trim()}`);
+    needs[match[1]] = [...match[2].matchAll(/'(\w+)'/g)].map((m) => m[1]);
+  }
+  assert.deepEqual(needs, IMPLIES);
 });

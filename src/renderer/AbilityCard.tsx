@@ -239,18 +239,26 @@ const AbilityName = (props: Props) => {
     undefined,
   );
 
-  React.useEffect(
-    () => () => {
+  // Which ask for the card is the newest.
+  const loadSeq = React.useRef(0);
+
+  React.useEffect(() => {
+    const seq = loadSeq;
+    return () => {
       clearTimeout(showTimer.current);
       clearTimeout(hideTimer.current);
-    },
-    [],
-  );
+      // Nothing lands after the card is gone.
+      seq.current += 1;
+    };
+  }, []);
 
   if (!spellId) return <span className={className}>{name}</span>;
 
   const load = async () => {
     const key = keyOf(spellId, encounterId, difficultyId);
+    // Only the newest ask may show (the spell can change while one is out).
+    loadSeq.current += 1;
+    const mine = loadSeq.current;
     const hit = cache.get(key);
     if (hit) {
       setData(hit);
@@ -263,11 +271,14 @@ const AbilityName = (props: Props) => {
       difficultyId,
       name: abilityName(name),
     });
+    // A newer ask (or clearAbilityCards after a change) wins: an older
+    // answer neither shows nor goes back into the cache.
+    if (mine !== loadSeq.current) return;
+    if (response.ok) cache.set(key, response.data);
     if (!response.ok) {
       setError(response.error);
       return;
     }
-    cache.set(key, response.data);
     setData(response.data);
   };
 

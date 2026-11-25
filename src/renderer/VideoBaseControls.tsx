@@ -76,8 +76,14 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     useState<boolean>(true);
 
   useEffect(() => {
+    let cancelled = false;
+    const stop = () => {
+      cancelled = true;
+    };
+
     const getAvailableEncoders = async () => {
       const allEncoders = await ipc.invoke('getEncoders', []);
+      if (cancelled) return;
 
       const availableEncoders = allEncoders
         .filter((s: string) => encoderFilter(s, highRes))
@@ -89,7 +95,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
 
     const getHardwareAccel = async () => {
       const value = await ipc.getHardwareAcceleration();
-      setHardwareAcceleration(value);
+      if (!cancelled) setHardwareAcceleration(value);
     };
 
     getAvailableEncoders();
@@ -99,7 +105,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     // initial render then just return here.
     if (initialRender.current) {
       initialRender.current = false;
-      return;
+      return stop;
     }
 
     setConfigValues({
@@ -110,6 +116,7 @@ const VideoBaseControls: FC<IProps> = (props: IProps) => {
     });
 
     ipc.reconfigureBase();
+    return stop;
   }, [
     config.obsOutputResolution,
     config.obsFPS,

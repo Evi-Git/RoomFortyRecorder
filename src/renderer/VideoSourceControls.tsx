@@ -24,9 +24,14 @@ const VideoSourceControls = (props: IProps) => {
   const initialRender = useRef(true);
 
   useEffect(() => {
+    let cancelled = false;
+    const stop = () => {
+      cancelled = true;
+    };
+
     const getDisplays = async () => {
       const allDisplays = await ipc.invoke('getAllDisplays', []);
-      setDisplays(allDisplays);
+      if (!cancelled) setDisplays(allDisplays);
     };
 
     getDisplays();
@@ -35,7 +40,7 @@ const VideoSourceControls = (props: IProps) => {
     // initial render then just return here.
     if (initialRender.current) {
       initialRender.current = false;
-      return;
+      return stop;
     }
 
     setConfigValues({
@@ -46,6 +51,7 @@ const VideoSourceControls = (props: IProps) => {
     });
 
     ipc.reconfigureVideo();
+    return stop;
   }, [
     config.monitorIndex,
     config.obsCaptureMode,
