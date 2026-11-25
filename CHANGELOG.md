@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.165] - Unreleased
+App only; no guild server update needed.
+### Changed
+- **Russian and Greek text uses the app's own fonts.** The Toolkit's fonts (Inter for text, Source Serif 4 for headings) now include Cyrillic and Greek, so Russian character and guild names, and the Russian translation, no longer fall back to a different system font. The extra letters only load when such text is on screen, so nothing changes for English pages.
+
 ## [1.9.164] - Unreleased
 App only; no guild server update needed.
 ### Fixed
