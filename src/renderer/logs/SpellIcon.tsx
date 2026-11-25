@@ -6,6 +6,7 @@
 import React from 'react';
 import FloatingCard, { Anchor, anchorOf } from './Floating';
 import { GameIcon } from '../AbilityCard';
+import { focusFromPointer } from '../a11y';
 
 /**
  * [RoomFortyRecorder] Logs page spell icons with a hover tooltip (name,
@@ -215,9 +216,18 @@ const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
     const host = el?.closest<HTMLElement>(
       'button, a[href], [role="button"], [tabindex]:not([tabindex="-1"])',
     );
-    if (!el || !host || host.querySelectorAll('[data-spell-icon]').length !== 1)
+    if (
+      !el ||
+      !host ||
+      host.hasAttribute('data-own-focus-card') ||
+      host.querySelectorAll('[data-spell-icon]').length !== 1
+    )
       return undefined;
-    const on = () => setAt(anchorOf(el));
+    // Only for keyboard focus: a click also focuses the row, and the card
+    // would then stay after the mouse has left.
+    const on = () => {
+      if (!focusFromPointer()) setAt(anchorOf(el));
+    };
     const off = () => setAt(null);
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setAt(null);

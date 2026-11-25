@@ -5,6 +5,38 @@ import type { KeyboardEvent } from 'react';
  * (a table row, or an element with buttons inside it).
  */
 
+/**
+ * Whether the user is on the mouse or the keyboard. A click also focuses
+ * rows, tabs and buttons, so without this, Space after an ordinary click
+ * would press the clicked thing again instead of playing the video. Set on
+ * any pointer press, cleared when Tab moves focus.
+ */
+let pointerLast = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener(
+    'pointerdown',
+    () => {
+      pointerLast = true;
+    },
+    true,
+  );
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Tab') pointerLast = false;
+    },
+    true,
+  );
+}
+
+/** True when focus last moved by a click rather than by Tab. */
+export const focusFromPointer = () => pointerLast;
+
+/** For tests: pretend the last input was the pointer (true) or Tab (false). */
+export const setFocusFromPointer = (value: boolean) => {
+  pointerLast = value;
+};
+
 /** Focus ring for a control that has room around it (matches the chevrons). */
 export const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60';
@@ -14,8 +46,9 @@ export const FOCUS_RING_INSET =
   'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand/60';
 
 /**
- * True when this key press should activate the element: Enter or Space that
- * went to the element itself (a button inside it keeps its own keys). It also
+ * True when this key press should activate the element: Enter, or Space
+ * after keyboard navigation, that went to the element itself (a button
+ * inside it keeps its own keys). It also
  * stops Space from scrolling the page. Use it directly in an onKeyDown that
  * touches a ref (the React Compiler won't let a ref-reading handler be passed
  * through a function during render); otherwise use activateOnKey.
@@ -23,6 +56,8 @@ export const FOCUS_RING_INSET =
 export const isActivation = (event: KeyboardEvent<HTMLElement>): boolean => {
   if (event.target !== event.currentTarget) return false;
   if (event.key !== 'Enter' && event.key !== ' ') return false;
+  // After a click, Space keeps its usual meaning (play/pause the video).
+  if (event.key === ' ' && pointerLast) return false;
   event.preventDefault();
   return true;
 };

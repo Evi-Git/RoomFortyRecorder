@@ -1,4 +1,4 @@
-import { FOCUS_RING_INSET } from '../a11y';
+import { FOCUS_RING_INSET, focusFromPointer } from '../a11y';
 import React from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -520,9 +520,12 @@ const Drill = ({
                 // Keyboard: the row takes focus and shows the same card;
                 // Escape closes it.
                 tabIndex={meter === 'prevented' && !a.split ? undefined : 0}
+                // The row shows its own card; a spell icon in it doesn't add one.
+                data-own-focus-card=""
                 onFocus={(e) => {
-                  // Only the row itself, not a button inside it.
-                  if (e.target === e.currentTarget)
+                  // Only the row itself, not a button inside it, and only for
+                  // the keyboard (hover already shows it for the mouse).
+                  if (e.target === e.currentTarget && !focusFromPointer())
                     showCard(e.currentTarget, a, child, group);
                 }}
                 onBlur={(e) => {

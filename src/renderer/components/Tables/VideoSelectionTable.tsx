@@ -69,6 +69,8 @@ const VideoSelectionTable = (props: IProps) => {
     .getHeaderGroups()[0]
     .headers.reduce((sum, h) => sum + (h.column.columnDef.minSize ?? 0), 0);
   const selectedRowRef = React.useRef<HTMLTableRowElement>(null);
+  // The arrow keys moved the selection while a row had focus: focus follows.
+  const focusFollows = React.useRef(false);
   const hasScrolledToSelection = React.useRef(false);
 
   /**
@@ -197,6 +199,13 @@ const VideoSelectionTable = (props: IProps) => {
         const nextRow = sortedRows[nextIndex];
 
         if (nextRow) {
+          focusFollows.current =
+            document.activeElement instanceof HTMLTableRowElement &&
+            Boolean(
+              selectedRowRef.current?.parentElement?.contains(
+                document.activeElement,
+              ),
+            );
           onRowClick(event, nextRow);
         }
 
@@ -259,6 +268,14 @@ const VideoSelectionTable = (props: IProps) => {
 
     return () => window.cancelAnimationFrame(animationFrame);
   }, [pageIndex, pageSize, table]);
+
+  // After the arrow keys moved the selection from a focused row, move focus
+  // to the newly selected row so Enter and Tab carry on from there.
+  useEffect(() => {
+    if (!focusFollows.current) return;
+    focusFollows.current = false;
+    selectedRowRef.current?.focus({ preventScroll: true });
+  });
 
   /**
    * Render an individual header.
@@ -374,6 +391,7 @@ const VideoSelectionTable = (props: IProps) => {
   const renderBaseRow = (
     row: Row<typeof stockFeatures, RendererVideo>,
     selected: boolean,
+    tabStop: boolean,
   ) => {
     const cells = row.getVisibleCells();
     const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${FOCUS_RING_INSET} ${
@@ -387,11 +405,15 @@ const VideoSelectionTable = (props: IProps) => {
         className={className}
         aria-selected={selected}
         onClick={(event) => onRowClick(event, row)}
-        // Roving tab stop: the selected row is the one Tab lands on; the
-        // arrow keys (handled above) move the selection from there.
-        tabIndex={selected ? 0 : -1}
+        // Roving tab stop: Tab lands on the first selected row on this page
+        // (or the first row); the arrow keys (handled above) move the
+        // selection and focus follows. Enter selects; Space stays
+        // play/pause, as it is for mouse users.
+        tabIndex={tabStop ? 0 : -1}
         onKeyDown={(event) => {
-          if (isActivation(event)) onRowClick(event, row);
+          if (event.key === 'Enter' && isActivation(event)) {
+            onRowClick(event, row);
+          }
         }}
       >
         {cells.map((cell, i) => renderBaseCell(cell, i, selected))}
@@ -402,17 +424,24 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render an individual row of the table.
    */
-  const renderRow = (row: Row<typeof stockFeatures, RendererVideo>) => {
-    const selected =
-      row.getIsSelected() ||
-      (!table.getIsSomeRowsSelected() && row.index === 0);
+  const isSelected = (row: Row<typeof stockFeatures, RendererVideo>) =>
+    row.getIsSelected() || (!table.getIsSomeRowsSelected() && row.index === 0);
 
-    return <Fragment key={row.id}>{renderBaseRow(row, selected)}</Fragment>;
-  };
+  const renderRow = (
+    row: Row<typeof stockFeatures, RendererVideo>,
+    tabStopId: string | undefined,
+  ) => (
+    <Fragment key={row.id}>
+      {renderBaseRow(row, isSelected(row), row.id === tabStopId)}
+    </Fragment>
+  );
 
   const renderTableBody = () => {
     const { rows } = table.getRowModel();
-    return <tbody>{rows.map((row) => renderRow(row))}</tbody>;
+    // Exactly one tab stop on the page: the first selected row, else the
+    // first row (the selection can be on another page).
+    const tabStopId = (rows.find(isSelected) ?? rows[0])?.id;
+    return <tbody>{rows.map((row) => renderRow(row, tabStopId))}</tbody>;
   };
 
   /**

@@ -1,9 +1,16 @@
+/**
+ * @jest-environment jsdom
+ */
 import {
   activateOnKey,
   clickableProps,
+  focusFromPointer,
   focusableProps,
   isActivation,
+  setFocusFromPointer,
 } from '../../renderer/a11y';
+
+beforeEach(() => setFocusFromPointer(false));
 
 const key = (k: string, same = true) => {
   const el = {} as HTMLElement;
@@ -89,5 +96,28 @@ describe('isActivation', () => {
   it('is false for other keys and for keys from inside', () => {
     expect(isActivation(key('x'))).toBe(false);
     expect(isActivation(key('Enter', false))).toBe(false);
+  });
+});
+
+describe('after a mouse click', () => {
+  it('Space keeps its usual meaning; Enter still activates', () => {
+    setFocusFromPointer(true);
+    const space = key(' ');
+    expect(isActivation(space)).toBe(false);
+    expect(space.preventDefault).not.toHaveBeenCalled();
+    expect(isActivation(key('Enter'))).toBe(true);
+  });
+
+  it('Tab switches back to the keyboard', () => {
+    setFocusFromPointer(true);
+    expect(focusFromPointer()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(focusFromPointer()).toBe(false);
+    expect(isActivation(key(' '))).toBe(true);
+  });
+
+  it('a pointer press switches to the mouse', () => {
+    window.dispatchEvent(new Event('pointerdown'));
+    expect(focusFromPointer()).toBe(true);
   });
 });

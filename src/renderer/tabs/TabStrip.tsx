@@ -26,6 +26,7 @@ import { Pages } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
 import { cn } from '../components/utils';
 import { Tab, tabLabel, TabsApi } from './tabs';
+import { focusFromPointer } from '../a11y';
 
 const ICON = 14;
 
@@ -117,21 +118,39 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             tabIndex={active ? 0 : -1}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
+              // After a click on a tab, keys keep their usual meaning (Space
+              // plays, arrows seek the video): only Tab-reached tabs take them.
+              if (focusFromPointer()) return;
+              const strip = e.currentTarget.parentElement;
+              const focusTab = (id: string | undefined) =>
+                requestAnimationFrame(() =>
+                  strip
+                    ?.querySelector<HTMLElement>(
+                      id
+                        ? `[data-tab-id="${id}"]`
+                        : '[role="tab"][aria-selected="true"]',
+                    )
+                    ?.focus(),
+                );
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
+                e.stopPropagation();
                 activate(tab.id);
               } else if (e.key === 'Delete') {
                 e.preventDefault();
+                e.stopPropagation();
                 close(tab.id);
+                // The tab is gone: focus the one that opened instead.
+                focusTab(undefined);
               } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                // Not also a 5 s seek in the video behind.
+                e.preventDefault();
+                e.stopPropagation();
                 const next =
                   tabs.tabs[index + (e.key === 'ArrowRight' ? 1 : -1)];
                 if (!next) return;
-                e.preventDefault();
                 activate(next.id);
-                e.currentTarget.parentElement
-                  ?.querySelector<HTMLElement>(`[data-tab-id="${next.id}"]`)
-                  ?.focus();
+                focusTab(next.id);
               }
             }}
             title={label}
@@ -179,6 +198,8 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             <button
               type="button"
               aria-label={`Close ${label}`}
+              // Not a tab stop of its own (Delete closes the focused tab).
+              tabIndex={-1}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();

@@ -73,6 +73,7 @@ import { GhostCard, GhostLanes } from './toplogs/GhostOverlay';
 import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
+import { focusFromPointer } from './a11y';
 
 interface IProps {
   videos: RendererVideo[];
@@ -1648,13 +1649,21 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       return;
     }
 
-    // Space on a button, row or tab outside the player activates that control
-    // (the keyboard's way of clicking it), not play/pause. Inside the player's
-    // own controls Space stays play/pause, as before.
+    // Outside the player, a key some control already handled (Space on a
+    // focused row, the preview video in a dialog) isn't also play/pause.
+    // Inside the player its own sliders preventDefault on purpose.
+    if (e.defaultPrevented && !target?.closest('#player-and-controls')) {
+      return;
+    }
+
+    // Space on a button or tab reached with Tab activates that control (the
+    // keyboard's way of clicking it), not play/pause. After a mouse click,
+    // and inside the player's own controls, Space stays play/pause.
     if (
       e.key === ' ' &&
+      !focusFromPointer() &&
       target?.closest(
-        'button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"], tr[tabindex]',
+        'button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]',
       ) &&
       !target.closest('#player-and-controls')
     ) {
