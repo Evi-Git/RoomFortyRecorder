@@ -86,7 +86,6 @@ const LiveButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
           size="icon"
           className={`h-10 w-10 ${connecting ? 'animate-pulse' : ''}`}
           disabled={busy}
-          aria-label={label}
           onClick={toggle}
           aria-label={
             live ? 'Live. Stop' : connecting ? `${label} Stop` : label
