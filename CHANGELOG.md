@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.166] - Unreleased
 App only; no guild server update needed.
 ### Changed
-- **The app can be used from the keyboard.** Tab now reaches the recordings table and its sortable column headers, the pull, death and event tables, the ability and talent cards, the page tabs along the top, and the Top logs timeline. Enter or Space does what a click does, Escape closes a card, and arrow keys move between page tabs (Delete closes one). Icon-only buttons now have names for screen readers, and the focused control shows a brass outline.
+- **The app can be used from the keyboard.** Tab now reaches the recordings table and its sortable column headers, the pull, death and event tables, the ability and talent cards, the page tabs along the top, and the Top logs timeline. Enter does what a click does (so does Space on buttons and cards), Escape closes a card, the arrow keys move through recordings and between page tabs, and Delete closes a page tab. After a mouse click, Space still plays and pauses and the arrows still seek, as before. Icon-only buttons now have names for screen readers, and the focused control shows a brass outline.
 ### Fixed
 - **Tab no longer gets stuck** in the video's seek and volume sliders or in the search box.
-- **Space on a focused button** now presses that button instead of playing or pausing the video (inside the player's own controls it still plays and pauses).
+- **Space on a button reached with Tab** now presses that button instead of playing or pausing the video (inside the player's own controls it still plays and pauses).
 - **The character filter's "x"** in Cloud settings works anywhere on the button, not only on the icon.
 
 ## [1.9.165] - Unreleased
