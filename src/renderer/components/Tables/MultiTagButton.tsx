@@ -40,6 +40,7 @@ const MultiTagButton = (props: MultiTagButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
+          aria-label={tooltip}
           onClick={(event) => {
             stopPropagation(event);
             setTagDialogVideoTargetId(parent.uniqueId);

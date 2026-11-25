@@ -76,7 +76,7 @@ const TestButton: React.FC<IProps> = (props: IProps) => {
   return (
     <HoverCard openDelay={300}>
       <HoverCardTrigger>
-        <Button variant="ghost" size="icon">
+        <Button variant="ghost" size="icon" aria-label="Test the recorder">
           <FlaskConical size={20} />
         </Button>
       </HoverCardTrigger>

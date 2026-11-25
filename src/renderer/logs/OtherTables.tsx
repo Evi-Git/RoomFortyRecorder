@@ -23,6 +23,7 @@ import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import CastDetail from './CastDetail';
 import GearWidget from './GearWidget';
+import { FOCUS_RING_INSET, focusableProps } from '../a11y';
 import TalentWidget from './TalentWidget';
 
 /**
@@ -146,8 +147,15 @@ export const SummaryView = ({
                 {deaths.map((d) => (
                   <tr
                     key={`${d.pull}${d.at}${d.name}`}
-                    className={onWatch ? 'cursor-pointer hover:bg-card/30' : ''}
+                    className={
+                      onWatch
+                        ? `cursor-pointer hover:bg-card/30 ${FOCUS_RING_INSET}`
+                        : ''
+                    }
                     onClick={() => onWatch?.(d.at - 3, d.name)}
+                    {...focusableProps(
+                      onWatch ? () => onWatch(d.at - 3, d.name) : undefined,
+                    )}
                     title={onWatch ? 'Watch it' : undefined}
                   >
                     <td className={td}>{formatDuration(d.at)}</td>
@@ -771,6 +779,7 @@ export const CastView = ({
                             key={t}
                             type="button"
                             title={`${formatDuration(t)}${onWatch ? ' · click to watch' : ''}`}
+                            aria-label={`${formatDuration(t)}${onWatch ? ': watch it' : ''}`}
                             onClick={() =>
                               onWatch?.(
                                 t,

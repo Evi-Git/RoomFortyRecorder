@@ -1,3 +1,4 @@
+import { FOCUS_RING, FOCUS_RING_INSET, isActivation } from './a11y';
 import { KillVideoSegment } from 'main/types';
 import {
   getPlayerClass,
@@ -380,17 +381,23 @@ const KillVideoSourceTimeline = (props: SourceTimelineProps) => {
             ref={videoPreviewRef}
             key={activeSegment.video.videoName}
             src={videoSrc}
-            className="w-full h-full object-contain cursor-pointer"
+            className={`w-full h-full object-contain cursor-pointer ${FOCUS_RING_INSET}`}
             onLoadedData={handleVideoLoaded}
             onTimeUpdate={handleTimeUpdate}
             onEnded={() => setPlaying(false)}
             onClick={togglePlayPause}
+            tabIndex={0}
+            aria-label="Preview video. Press Space or Enter to play or pause."
+            onKeyDown={(e) => {
+              if (isActivation(e)) togglePlayPause();
+            }}
             muted={muted}
           />
           <button
             type="button"
+            aria-label={muted ? 'Unmute preview' : 'Mute preview'}
             onClick={() => setMuted((m) => !m)}
-            className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white/80 hover:text-white hover:bg-black/80 transition-opacity "
+            className={`absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white/80 hover:text-white hover:bg-black/80 transition-opacity ${FOCUS_RING}`}
           >
             {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>

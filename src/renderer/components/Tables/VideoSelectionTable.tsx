@@ -28,6 +28,7 @@ import SelectMultiShortcut from '../Shortcuts/SelectMultiShortcut';
 import SelectRangeShortcut from '../Shortcuts/SelectRangeShortcut';
 import NavigateShortcut from '../Shortcuts/NavigateShortcut';
 import { TabContext } from '../../tabs/tabs';
+import { FOCUS_RING_INSET, isActivation } from '../../a11y';
 
 /** Columns whose text sits on the right edge, in tabular figures. */
 const RIGHT_ALIGNED = new Set(['Pull', 'Duration']);
@@ -68,6 +69,8 @@ const VideoSelectionTable = (props: IProps) => {
     .getHeaderGroups()[0]
     .headers.reduce((sum, h) => sum + (h.column.columnDef.minSize ?? 0), 0);
   const selectedRowRef = React.useRef<HTMLTableRowElement>(null);
+  // The arrow keys moved the selection while a row had focus: focus follows.
+  const focusFollows = React.useRef(false);
   const hasScrolledToSelection = React.useRef(false);
 
   /**
@@ -76,7 +79,10 @@ const VideoSelectionTable = (props: IProps) => {
    */
   const onRowClick = useCallback(
     (
-      event: React.MouseEvent<HTMLTableRowElement> | KeyboardEvent,
+      event:
+        | React.MouseEvent<HTMLElement>
+        | React.KeyboardEvent<HTMLElement>
+        | KeyboardEvent,
       row: Row<typeof stockFeatures, RendererVideo>,
     ) => {
       const allRows = table.getSortedRowModel().rows;
@@ -193,6 +199,13 @@ const VideoSelectionTable = (props: IProps) => {
         const nextRow = sortedRows[nextIndex];
 
         if (nextRow) {
+          focusFollows.current =
+            document.activeElement instanceof HTMLTableRowElement &&
+            Boolean(
+              selectedRowRef.current?.parentElement?.contains(
+                document.activeElement,
+              ),
+            );
           onRowClick(event, nextRow);
         }
 
@@ -256,6 +269,14 @@ const VideoSelectionTable = (props: IProps) => {
     return () => window.cancelAnimationFrame(animationFrame);
   }, [pageIndex, pageSize, table]);
 
+  // After the arrow keys moved the selection from a focused row, move focus
+  // to the newly selected row so Enter and Tab carry on from there.
+  useEffect(() => {
+    if (!focusFollows.current) return;
+    focusFollows.current = false;
+    selectedRowRef.current?.focus({ preventScroll: true });
+  });
+
   /**
    * Render an individual header.
    */
@@ -284,6 +305,9 @@ const VideoSelectionTable = (props: IProps) => {
         : header.column.getSize();
 
     const sorted = header.column.getIsSorted();
+    const canSort = header.column.getCanSort();
+    // A real button when the column sorts, so Tab and Enter/Space reach it.
+    const Head = canSort ? 'button' : 'div';
     const SortArrow = sorted === 'asc' ? ArrowUp : ArrowDown;
 
     return (
@@ -300,8 +324,9 @@ const VideoSelectionTable = (props: IProps) => {
               : undefined
         }
       >
-        <div
-          className={`flex h-9 min-w-0 cursor-pointer select-none items-center gap-x-1 px-3 text-[13px] font-medium hover:text-foreground-lighter ${
+        <Head
+          type={canSort ? 'button' : undefined}
+          className={`flex h-9 w-full min-w-0 cursor-pointer select-none items-center gap-x-1 px-3 text-left text-[13px] font-medium hover:text-foreground-lighter ${FOCUS_RING_INSET} ${
             RIGHT_ALIGNED.has(header.id) ? 'justify-end' : ''
           } ${sorted ? 'text-foreground-lighter' : 'text-foreground'}`}
           onClick={header.column.getToggleSortingHandler()}
@@ -309,7 +334,7 @@ const VideoSelectionTable = (props: IProps) => {
         >
           {flexRender(header.column.columnDef.header, header.getContext())}
           {sorted ? <SortArrow size={13} className="shrink-0" /> : null}
-        </div>
+        </Head>
       </th>
     );
   };
@@ -366,9 +391,10 @@ const VideoSelectionTable = (props: IProps) => {
   const renderBaseRow = (
     row: Row<typeof stockFeatures, RendererVideo>,
     selected: boolean,
+    tabStop: boolean,
   ) => {
     const cells = row.getVisibleCells();
-    const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${
+    const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${FOCUS_RING_INSET} ${
       selected ? 'bg-panel-raised' : 'hover:bg-panel-raised/60'
     }`;
 
@@ -379,6 +405,16 @@ const VideoSelectionTable = (props: IProps) => {
         className={className}
         aria-selected={selected}
         onClick={(event) => onRowClick(event, row)}
+        // Roving tab stop: Tab lands on the first selected row on this page
+        // (or the first row); the arrow keys (handled above) move the
+        // selection and focus follows. Enter selects; Space stays
+        // play/pause, as it is for mouse users.
+        tabIndex={tabStop ? 0 : -1}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && isActivation(event)) {
+            onRowClick(event, row);
+          }
+        }}
       >
         {cells.map((cell, i) => renderBaseCell(cell, i, selected))}
       </tr>
@@ -388,17 +424,24 @@ const VideoSelectionTable = (props: IProps) => {
   /**
    * Render an individual row of the table.
    */
-  const renderRow = (row: Row<typeof stockFeatures, RendererVideo>) => {
-    const selected =
-      row.getIsSelected() ||
-      (!table.getIsSomeRowsSelected() && row.index === 0);
+  const isSelected = (row: Row<typeof stockFeatures, RendererVideo>) =>
+    row.getIsSelected() || (!table.getIsSomeRowsSelected() && row.index === 0);
 
-    return <Fragment key={row.id}>{renderBaseRow(row, selected)}</Fragment>;
-  };
+  const renderRow = (
+    row: Row<typeof stockFeatures, RendererVideo>,
+    tabStopId: string | undefined,
+  ) => (
+    <Fragment key={row.id}>
+      {renderBaseRow(row, isSelected(row), row.id === tabStopId)}
+    </Fragment>
+  );
 
   const renderTableBody = () => {
     const { rows } = table.getRowModel();
-    return <tbody>{rows.map((row) => renderRow(row))}</tbody>;
+    // Exactly one tab stop on the page: the first selected row, else the
+    // first row (the selection can be on another page).
+    const tabStopId = (rows.find(isSelected) ?? rows[0])?.id;
+    return <tbody>{rows.map((row) => renderRow(row, tabStopId))}</tbody>;
   };
 
   /**
@@ -421,6 +464,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.firstPage()}
+            aria-label="First page"
             disabled={!table.getCanPreviousPage()}
             size="xs"
             variant="ghost"
@@ -431,6 +475,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.previousPage()}
+            aria-label="Previous page"
             disabled={!table.getCanPreviousPage()}
             size="xs"
             variant="ghost"
@@ -445,6 +490,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.nextPage()}
+            aria-label="Next page"
             disabled={!table.getCanNextPage()}
             size="xs"
             variant="ghost"
@@ -455,6 +501,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.lastPage()}
+            aria-label="Last page"
             disabled={!table.getCanNextPage()}
             size="xs"
             variant="ghost"

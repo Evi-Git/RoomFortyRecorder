@@ -117,6 +117,7 @@ const CopyNsrt = ({
           onClick={onClose}
           className="ml-auto p-1 rounded hover:bg-card/50"
           title="Close"
+          aria-label="Close"
         >
           <X size={14} />
         </button>

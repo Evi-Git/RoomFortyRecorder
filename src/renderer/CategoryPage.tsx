@@ -376,6 +376,7 @@ const CategoryPage = (props: IProps) => {
             }
             variant="ghost"
             className="mt-2"
+            aria-label="Close chat"
             size="xs"
           >
             <ArrowRightToLine size={18} />
@@ -405,6 +406,7 @@ const CategoryPage = (props: IProps) => {
           variant="ghost"
           className="absolute top-0 right-0 m-2"
           size="xs"
+          aria-label="Open chat"
         >
           <ArrowLeftFromLine size={18} />
         </Button>
@@ -578,6 +580,7 @@ const CategoryPage = (props: IProps) => {
               variant="ghost"
               size="sm"
               disabled={disabled}
+              aria-label={tooltip}
               onClick={() => lockVideos(toLock, lock, setVideoState)}
               className={ACTION_BUTTON}
             >
@@ -624,6 +627,7 @@ const CategoryPage = (props: IProps) => {
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
+                aria-label={tooltip}
                 className={ACTION_BUTTON}
               >
                 <Trash size={16} />
@@ -680,6 +684,7 @@ const CategoryPage = (props: IProps) => {
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
+                aria-label={tooltip}
                 className={ACTION_BUTTON}
               >
                 {icon}

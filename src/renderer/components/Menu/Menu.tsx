@@ -114,7 +114,7 @@ export const Menu = ({
             <ChevronDown
               size={14}
               className={cn(
-                'ml-auto opacity-0 group-hover/label:opacity-100 transition-transform',
+                'ml-auto opacity-0 group-hover/label:opacity-100 group-focus-visible/label:opacity-100 transition-transform',
                 { '-rotate-90 opacity-100': hidden },
               )}
             />

@@ -203,6 +203,7 @@ const SideMenu = (props: IProps) => {
           size="sm"
           variant="ghost"
           className="mx-2 p-1 h-6 w-6 hover:bg-secondary"
+          aria-label={tooltip}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -624,7 +625,12 @@ const SideMenu = (props: IProps) => {
               appState={appState}
               setPreviewEnabled={setPreviewEnabled}
             >
-              <Button variant="ghost" size="icon" title="Diagnostics">
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Diagnostics"
+                aria-label="Diagnostics"
+              >
                 <FileText size={16} />
               </Button>
             </DiagnosticsDialog>
@@ -637,7 +643,12 @@ const SideMenu = (props: IProps) => {
               content={rail ? 'Show the sidebar' : 'Fold the sidebar'}
               side="top"
             >
-              <Button variant="ghost" size="icon" onClick={toggleRail}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={rail ? 'Show the sidebar' : 'Fold the sidebar'}
+                onClick={toggleRail}
+              >
                 {rail ? (
                   <PanelLeftOpen size={16} />
                 ) : (

@@ -32,6 +32,7 @@ import NightPicker from './logs/NightPicker';
 import BossStrip from './logs/BossStrip';
 import { Button } from './components/Button/Button';
 import { isReset, useShowResets, withoutEmptyBosses } from './resets';
+import { FOCUS_RING_INSET, focusableProps } from './a11y';
 import { SimpleSelect } from './components/Select/SimpleSelect';
 import {
   guildKey,
@@ -770,8 +771,12 @@ export const AvoidablePanel = ({
                 return (
                   <React.Fragment key={row.name}>
                     <tr
-                      className="border-b border-panel-line hover:bg-panel-raised cursor-pointer"
+                      className={`border-b border-panel-line hover:bg-panel-raised cursor-pointer ${FOCUS_RING_INSET}`}
                       onClick={() => setOpen(expanded ? null : row.name)}
+                      {...focusableProps(() =>
+                        setOpen(expanded ? null : row.name),
+                      )}
+                      aria-expanded={expanded}
                     >
                       <td className="px-2 py-1 whitespace-nowrap">
                         <span className="inline-flex items-center gap-x-1">

@@ -7,6 +7,7 @@
 import React from 'react';
 import SpellIcon from '../logs/SpellIcon';
 import { compact, formatDuration } from '../format';
+import { FOCUS_RING_INSET } from '../a11y';
 import type { Track } from './trial';
 import {
   Aligned,
@@ -311,9 +312,51 @@ const TrialTimeline = ({
         <div className="flex-1 min-w-0 px-4">
           <div
             ref={ref}
-            className="relative flex flex-col cursor-crosshair"
+            className={`relative flex flex-col cursor-crosshair ${FOCUS_RING_INSET}`}
             onMouseMove={move}
             onMouseLeave={() => setMarker(null)}
+            // Keyboard: arrows step the marker (Shift = 10 s), Home/End jump,
+            // Enter or Space watches, Escape clears.
+            role="slider"
+            tabIndex={0}
+            aria-label={
+              onWatch
+                ? 'Timeline: arrow keys pick a moment, Enter watches our VoD there'
+                : 'Timeline: arrow keys pick a moment'
+            }
+            aria-orientation="horizontal"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(max)}
+            aria-valuenow={marker ?? undefined}
+            aria-valuetext={
+              marker !== null ? formatDuration(marker) : undefined
+            }
+            onBlur={() => setMarker(null)}
+            onKeyDown={(e) => {
+              const stepBy = e.shiftKey ? 10 : 1;
+              const at = marker ?? 0;
+              let next: number | null = null;
+              if (e.key === 'ArrowRight' || e.key === 'ArrowUp')
+                next = marker === null ? 0 : at + stepBy;
+              else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown')
+                next = marker === null ? 0 : at - stepBy;
+              else if (e.key === 'Home') next = 0;
+              else if (e.key === 'End') next = Math.round(max);
+              if (next !== null) {
+                e.preventDefault();
+                setMarker(Math.max(0, Math.min(Math.round(max), next)));
+              } else if (e.key === 'Escape' && marker !== null) {
+                e.preventDefault();
+                setMarker(null);
+              } else if (
+                (e.key === 'Enter' || e.key === ' ') &&
+                onWatch &&
+                marker !== null
+              ) {
+                e.preventDefault();
+                onWatch(marker);
+              }
+            }}
             onClick={() => {
               if (onWatch && marker !== null) onWatch(marker);
             }}

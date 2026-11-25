@@ -73,6 +73,7 @@ import { GhostCard, GhostLanes } from './toplogs/GhostOverlay';
 import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
+import { focusFromPointer } from './a11y';
 
 interface IProps {
   videos: RendererVideo[];
@@ -784,6 +785,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     return (
       <Slider
         ref={progressSlider}
+        aria-label="Seek"
         sx={sx}
         value={value}
         valueLabelFormat={valueLabelFormat}
@@ -793,8 +795,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
         onMouseDown={onSliderMouseDown}
         onKeyDown={(e) => {
           // Don't have keys interact with the slider directly. This lets
-          // arrow keys seek as if the video player is in focus.
-          e.preventDefault();
+          // arrow keys seek as if the video player is in focus. Tab must
+          // still move on, or the keyboard is stuck on the slider.
+          if (e.key !== 'Tab') e.preventDefault();
         }}
         max={duration}
         marks={marks}
@@ -884,7 +887,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderPlayPause = () => {
     return (
-      <Button variant="ghost" size="xs" onClick={togglePlaying}>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label={playing ? 'Pause' : 'Play'}
+        onClick={togglePlaying}
+      >
         {playing && <PauseIcon sx={{ color: 'white', fontSize: '22px' }} />}
         {!playing && (
           <PlayArrowIcon sx={{ color: 'white', fontSize: '22px' }} />
@@ -924,7 +932,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderVolumeButton = () => {
     return (
-      <Button variant="ghost" size="xs" onClick={toggleMuted}>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label={muted ? 'Unmute' : 'Mute'}
+        onClick={toggleMuted}
+      >
         {getAppropriateVolumeIcon()}
       </Button>
     );
@@ -1002,6 +1015,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={downloadVideo}
             variant="ghost"
             size="xs"
+            aria-label={tooltip}
             disabled={disabled}
           >
             <CloudDownload size={20} color="white" />
@@ -1027,6 +1041,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={uploadVideo}
             variant="ghost"
             size="xs"
+            aria-label={tooltip}
             disabled={disabled}
           >
             <CloudUpload size={20} color="white" />
@@ -1041,7 +1056,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const getNoCloudIcon = () => {
     return (
-      <Button disabled variant="ghost" size="xs">
+      <Button disabled variant="ghost" size="xs" aria-label="Not in the cloud">
         <CloudOffIcon sx={{ height: '20px', width: '20px' }} />
       </Button>
     );
@@ -1106,6 +1121,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={() => setSelectedVideos(cloudVideo)}
             variant="ghost"
             size="xs"
+            aria-label={tooltip}
           >
             <CloudIcon sx={{ height: '20px', width: '20px', color, opacity }} />
           </Button>
@@ -1143,6 +1159,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           onClick={() => setSelectedVideos(diskVideo)}
           variant="ghost"
           size="xs"
+          aria-label={tooltip}
         >
           <SaveIcon sx={{ height: '20px', width: '20px', color, opacity }} />
         </Button>
@@ -1194,6 +1211,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             variant="ghost"
             size="xs"
             onClick={openLocation}
+            aria-label={tooltip}
             disabled={disabled}
           >
             <FolderOpen size={20} color="white" />
@@ -1309,6 +1327,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             variant="ghost"
             size="xs"
             onClick={getShareableLink}
+            aria-label={tooltip}
             disabled={disabled}
           >
             <Link size={20} color="white" />
@@ -1347,6 +1366,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
                 setSendOpen(true);
               }}
               disabled={!sendVideo}
+              aria-label={tooltip}
             >
               <Send size={18} color="white" />
             </Button>
@@ -1381,6 +1401,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           <Button
             variant="ghost"
             size="xs"
+            aria-label={tooltip}
             onClick={() => {
               setClipStartValue(Math.max(0, progress - 15));
               setClipStopValue(Math.min(duration, progress + 15));
@@ -1410,7 +1431,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const renderClipFinishedButton = () => {
     return (
       <Tooltip content={getLocalePhrase(language, Phrase.ConfirmTooltip)}>
-        <Button variant="ghost" size="xs" onClick={doClip}>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={getLocalePhrase(language, Phrase.ConfirmTooltip)}
+          onClick={doClip}
+        >
           <DoneIcon sx={{ color: 'white' }} />
         </Button>
       </Tooltip>
@@ -1423,7 +1449,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const renderClipCancelButton = () => {
     return (
       <Tooltip content={getLocalePhrase(language, Phrase.CancelTooltip)}>
-        <Button variant="ghost" size="xs" onClick={() => setClipMode(false)}>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={getLocalePhrase(language, Phrase.CancelTooltip)}
+          onClick={() => setClipMode(false)}
+        >
           <ClearIcon sx={{ color: 'white' }} />
         </Button>
       </Tooltip>
@@ -1436,7 +1467,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const renderFullscreenButton = () => {
     return (
       <Tooltip content={getLocalePhrase(language, Phrase.FullScreenTooltip)}>
-        <Button variant="ghost" size="xs" onClick={toggleFullscreen}>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={getLocalePhrase(language, Phrase.FullScreenTooltip)}
+          onClick={toggleFullscreen}
+        >
           <FullscreenIcon sx={{ color: 'white' }} />
         </Button>
       </Tooltip>
@@ -1459,13 +1495,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const renderVolumeSlider = () => {
     return (
       <Slider
+        aria-label="Volume"
         sx={{ m: 1, width: '75px', ...sliderBaseSx }}
         value={muted ? 0 : volume * 100}
         onChange={handleVolumeChange}
         valueLabelFormat={Math.round}
         valueLabelDisplay="auto"
         onKeyDown={(e) => {
-          e.preventDefault();
+          if (e.key !== 'Tab') e.preventDefault();
         }}
       />
     );
@@ -1479,6 +1516,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       <Button
         variant="ghost"
         size="xs"
+        aria-label={getLocalePhrase(language, Phrase.ToggleDrawingMode)}
+        aria-pressed={isDrawingEnabled}
         onClick={() => setIsDrawingEnabled(!isDrawingEnabled)}
       >
         <Pencil size={20} color={isDrawingEnabled ? BRAND : 'white'} />
@@ -1502,7 +1541,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
 
   const renderInstantReplayRefreshButton = () => (
     <Tooltip content={getLocalePhrase(language, Phrase.InstantReplayRefresh)}>
-      <Button variant="ghost" size="xs" onClick={doInstantReplayRefresh}>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label={getLocalePhrase(language, Phrase.InstantReplayRefresh)}
+        onClick={doInstantReplayRefresh}
+      >
         <RotateCw size={20} color="white" />
       </Button>
     </Tooltip>
@@ -1601,6 +1645,27 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       target &&
       (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
         target.isContentEditable)
+    ) {
+      return;
+    }
+
+    // Outside the player, a key some control already handled (Space on a
+    // focused row, the preview video in a dialog) isn't also play/pause.
+    // Inside the player its own sliders preventDefault on purpose.
+    if (e.defaultPrevented && !target?.closest('#player-and-controls')) {
+      return;
+    }
+
+    // Space on a button or tab reached with Tab activates that control (the
+    // keyboard's way of clicking it), not play/pause. After a mouse click,
+    // and inside the player's own controls, Space stays play/pause.
+    if (
+      e.key === ' ' &&
+      !focusFromPointer() &&
+      target?.closest(
+        'button, a[href], summary, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]',
+      ) &&
+      !target.closest('#player-and-controls')
     ) {
       return;
     }

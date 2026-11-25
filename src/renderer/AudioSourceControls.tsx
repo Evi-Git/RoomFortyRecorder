@@ -624,7 +624,12 @@ const AudioSourceControls = (props: IProps) => {
 
   const renderDeleteSourceButton = (src: AudioSource) => {
     return (
-      <Button onClick={() => removeSource(src)} variant="ghost" size="sm">
+      <Button
+        onClick={() => removeSource(src)}
+        variant="ghost"
+        size="sm"
+        aria-label="Remove this audio source"
+      >
         <X color="red" opacity={0.5} />
       </Button>
     );
@@ -671,7 +676,9 @@ const AudioSourceControls = (props: IProps) => {
             onOpenChange={(open) => toggleVolumePopover(src, open)}
           >
             <PopoverTrigger asChild>
-              <Button variant="ghost">{icon}</Button>
+              <Button variant="ghost" aria-label="Volume">
+                {icon}
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="border-bg" side="right" align="center">
               <Slider

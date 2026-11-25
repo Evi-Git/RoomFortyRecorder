@@ -170,6 +170,7 @@ export const GhostLanes = ({
                     key={`t${c}`}
                     type="button"
                     title={`Them ${formatDuration(c)}: go there`}
+                    aria-label={`Them ${formatDuration(c)}: go there`}
                     onClick={() => onSeek(Math.max(0, c - 2))}
                     className="absolute top-[3px] h-[7px] w-[6px] -translate-x-1/2 rounded-sm"
                     style={{ left: pct(c), background: THEM }}
@@ -180,6 +181,7 @@ export const GhostLanes = ({
                     key={`y${c}`}
                     type="button"
                     title={`You ${formatDuration(c)}: go there`}
+                    aria-label={`You ${formatDuration(c)}: go there`}
                     onClick={() => onSeek(Math.max(0, c - 2))}
                     className="absolute top-[12px] h-[7px] w-[6px] -translate-x-1/2 rounded-sm"
                     style={{ left: pct(c), background: YOU }}

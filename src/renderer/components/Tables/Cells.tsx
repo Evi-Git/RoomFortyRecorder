@@ -284,6 +284,7 @@ export const populateSourceCell = (
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
+          aria-label={tooltip}
           onClick={goToSource}
           disabled={disabled}
         >
@@ -326,6 +327,7 @@ export const populateKillVideoCell = (
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
+          aria-label={tooltip}
           disabled={disabled}
           onClick={(event) => {
             stopPropagation(event);

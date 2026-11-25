@@ -39,6 +39,7 @@ import {
   populateTagStatusCell,
 } from './components/Tables/Cells';
 import { isEqual } from 'lodash';
+import { FOCUS_RING_INSET, activateOnKey } from './a11y';
 
 const ipc = window.electron.ipcRenderer;
 
@@ -175,7 +176,10 @@ const DeleteDialog = (props: DeleteDialogProps) => {
   }, [open, table]);
 
   const onRowClick = (
-    event: React.MouseEvent<HTMLTableRowElement> | KeyboardEvent,
+    event:
+      | React.MouseEvent<HTMLElement>
+      | React.KeyboardEvent<HTMLElement>
+      | KeyboardEvent,
     row: Row<typeof stockFeatures, RendererVideo>,
   ) => {
     const rows = table.getRowModel().rows;
@@ -239,6 +243,8 @@ const DeleteDialog = (props: DeleteDialogProps) => {
                       key={row.id}
                       className={
                         'cursor-pointer ' +
+                        FOCUS_RING_INSET +
+                        ' ' +
                         (row.getIsSelected()
                           ? 'bg-secondary/100'
                           : idx % 2 === 0
@@ -246,6 +252,11 @@ const DeleteDialog = (props: DeleteDialogProps) => {
                             : 'bg-secondary/40 hover:bg-secondary/80')
                       }
                       onClick={(event) => onRowClick(event, row)}
+                      tabIndex={0}
+                      onKeyDown={activateOnKey((event) =>
+                        onRowClick(event, row),
+                      )}
+                      aria-selected={row.getIsSelected()}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="h-[30px]">

@@ -33,6 +33,7 @@ const TagButton = (props: TagButtonProps) => {
             variant="ghost"
             size="xs"
             className={rowButtonClass()}
+            aria-label={getLocalePhrase(language, Phrase.OpenTagDialog)}
             onClick={(event) => {
               stopPropagation(event);
               setTagDialogVideoTargetId(video.uniqueId);
@@ -76,6 +77,7 @@ const TagButton = (props: TagButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
+          aria-label={tooltip}
           disabled={noPermission}
           onClick={(event) => {
             stopPropagation(event);

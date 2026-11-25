@@ -26,6 +26,7 @@ import { Pages } from 'main/types';
 import { VideoCategory } from 'types/VideoCategory';
 import { cn } from '../components/utils';
 import { Tab, tabLabel, TabsApi } from './tabs';
+import { focusFromPointer } from '../a11y';
 
 const ICON = 14;
 
@@ -98,7 +99,11 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
   }, []);
 
   return (
-    <div className="absolute top-0 left-0 right-[104px] h-[32px] flex items-end gap-x-0.5 pl-1 z-20 overflow-hidden">
+    <div
+      role="tablist"
+      aria-label="Open pages"
+      className="absolute top-0 left-0 right-[104px] h-[32px] flex items-end gap-x-0.5 pl-1 z-20 overflow-hidden"
+    >
       {tabs.tabs.map((tab, index) => {
         const active = tab.id === activeId;
         const label = tabLabel(tab);
@@ -107,6 +112,47 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             key={tab.id}
             role="tab"
             aria-selected={active}
+            data-tab-id={tab.id}
+            // Roving tab stop: Tab lands on the open page's tab; arrows move
+            // between tabs, Enter or Space opens, Delete closes.
+            tabIndex={active ? 0 : -1}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              // After a click on a tab, keys keep their usual meaning (Space
+              // plays, arrows seek the video): only Tab-reached tabs take them.
+              if (focusFromPointer()) return;
+              const strip = e.currentTarget.parentElement;
+              const focusTab = (id: string | undefined) =>
+                requestAnimationFrame(() =>
+                  strip
+                    ?.querySelector<HTMLElement>(
+                      id
+                        ? `[data-tab-id="${id}"]`
+                        : '[role="tab"][aria-selected="true"]',
+                    )
+                    ?.focus(),
+                );
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                activate(tab.id);
+              } else if (e.key === 'Delete') {
+                e.preventDefault();
+                e.stopPropagation();
+                close(tab.id);
+                // The tab is gone: focus the one that opened instead.
+                focusTab(undefined);
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                // Not also a 5 s seek in the video behind.
+                e.preventDefault();
+                e.stopPropagation();
+                const next =
+                  tabs.tabs[index + (e.key === 'ArrowRight' ? 1 : -1)];
+                if (!next) return;
+                activate(next.id);
+                focusTab(next.id);
+              }
+            }}
             title={label}
             draggable
             style={noDrag}
@@ -130,7 +176,7 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             }}
             onDragEnd={() => setDragId(null)}
             className={cn(
-              'group relative flex items-center gap-x-1.5 h-[27px] min-w-[72px] max-w-[200px] flex-1 basis-[200px] pl-2.5 pr-1 rounded-t-md text-xs font-sans cursor-default select-none transition-colors',
+              'group relative flex items-center gap-x-1.5 h-[27px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60 min-w-[72px] max-w-[200px] flex-1 basis-[200px] pl-2.5 pr-1 rounded-t-md text-xs font-sans cursor-default select-none transition-colors',
               active
                 ? 'bg-background-higher text-foreground-lighter'
                 : 'text-foreground hover:bg-card/50 hover:text-foreground-lighter',
@@ -152,6 +198,8 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             <button
               type="button"
               aria-label={`Close ${label}`}
+              // Not a tab stop of its own (Delete closes the focused tab).
+              tabIndex={-1}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -159,7 +207,9 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
               }}
               className={cn(
                 'shrink-0 w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-card',
-                active ? 'opacity-80' : 'opacity-0 group-hover:opacity-80',
+                active
+                  ? 'opacity-80'
+                  : 'opacity-0 group-hover:opacity-80 group-focus-within:opacity-80',
               )}
             >
               <X size={12} />

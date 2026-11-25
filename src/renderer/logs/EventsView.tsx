@@ -3,6 +3,7 @@ import { abilityOk, Ctx, enemyOk, rowOf, scan } from './query';
 import { F, K, KIND_NAMES, MISS_TYPES, POWER_NAMES, PullStore } from './store';
 import { ENEMY_COLOR, classColor } from './format';
 import { compact, formatDurationMillis, grouped } from '../format';
+import { FOCUS_RING_INSET, clickableProps } from '../a11y';
 
 /**
  * [RoomFortyRecorder] Logs page Events: every event behind the current tab
@@ -234,10 +235,14 @@ const EventsView = ({
               <div
                 key={`${pi}:${i}`}
                 className={`absolute left-0 right-0 flex items-center gap-x-2 px-2 border-b border-card/30 ${
-                  onWatch ? 'cursor-pointer hover:bg-card/40' : ''
+                  onWatch
+                    ? `cursor-pointer hover:bg-card/40 ${FOCUS_RING_INSET}`
+                    : ''
                 }`}
                 style={{ top: (first + n) * ROW, height: ROW }}
-                onClick={() => onWatch?.(at, watchName)}
+                {...clickableProps(
+                  onWatch ? () => onWatch(at, watchName) : undefined,
+                )}
               >
                 <span className="w-[74px] shrink-0 text-right tabular-nums text-foreground">
                   {formatDurationMillis(at)}

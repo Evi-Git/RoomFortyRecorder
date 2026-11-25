@@ -26,6 +26,7 @@ import { Plus } from 'lucide-react';
 import { ConfigurationSchema } from 'config/configSchema';
 import { Phrase } from 'localisation/phrases';
 import { getLocalePhrase } from 'localisation/translations';
+import { FOCUS_RING, clickableProps } from './a11y';
 
 type IProps = {
   children: ReactNode;
@@ -76,9 +77,9 @@ const CharacterFilterDialog = (props: IProps) => {
 
     return (
       <div
-        className={`h-[50px] cursor-pointer`}
+        className={`h-[50px] cursor-pointer ${FOCUS_RING}`}
         key={character.name + character.realm}
-        onClick={() => applyAutoFilter(character)}
+        {...clickableProps(() => applyAutoFilter(character))}
       >
         <Box
           sx={{
@@ -211,7 +212,12 @@ const CharacterFilterDialog = (props: IProps) => {
               setManualRealm(formatted);
             }}
           />
-          <Button size="icon" disabled={!fieldsValid} type="submit">
+          <Button
+            size="icon"
+            disabled={!fieldsValid}
+            type="submit"
+            aria-label="Add character"
+          >
             <Plus />
           </Button>
         </form>

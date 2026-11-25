@@ -3,6 +3,7 @@
  * for one raider in one pull. Each spec has its own layout on this PC
  * (guild presets per spec come later); "+ Add widget" opens the builder.
  */
+import { FOCUS_RING_INSET, activateOnKey } from '../a11y';
 import React from 'react';
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import SpellIcon from './SpellIcon';
@@ -131,7 +132,7 @@ const Strip = ({
     `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
   return (
     <div
-      className={`relative h-[18px] rounded-[3px] overflow-hidden ${onPick ? 'cursor-pointer' : ''}`}
+      className={`relative h-[18px] rounded-[3px] overflow-hidden ${onPick ? `cursor-pointer ${FOCUS_RING_INSET}` : ''}`}
       style={{ background: base }}
       onClick={(e) => {
         if (!onPick) return;
@@ -139,6 +140,13 @@ const Strip = ({
         onPick(((e.clientX - r.left) / r.width) * duration);
       }}
       role={onPick ? 'button' : undefined}
+      tabIndex={onPick ? 0 : undefined}
+      aria-label={
+        onPick ? 'Watch our VoD at the start of the first span' : undefined
+      }
+      onKeyDown={
+        onPick ? activateOnKey(() => onPick(spans[0]?.[0] ?? 0)) : undefined
+      }
       title={onPick ? 'Click to watch our VoD there' : undefined}
     >
       {spans.map(([a, b]) => (
@@ -1225,6 +1233,7 @@ const AnalyzeView = ({
                       <button
                         type="button"
                         title="Move up"
+                        aria-label="Move up"
                         disabled={i === 0}
                         onClick={() => move(i, -1)}
                         className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
@@ -1234,6 +1243,7 @@ const AnalyzeView = ({
                       <button
                         type="button"
                         title="Move down"
+                        aria-label="Move down"
                         disabled={i === list.length - 1}
                         onClick={() => move(i, 1)}
                         className="p-1 rounded hover:bg-card/50 disabled:opacity-30"
@@ -1243,6 +1253,7 @@ const AnalyzeView = ({
                       <button
                         type="button"
                         title="Edit"
+                        aria-label="Edit"
                         onClick={() => setEditing(w)}
                         className="p-1 rounded hover:bg-card/50"
                       >
@@ -1251,6 +1262,7 @@ const AnalyzeView = ({
                       <button
                         type="button"
                         title="Remove"
+                        aria-label="Remove"
                         onClick={() =>
                           update(list.filter((x) => x.id !== w.id))
                         }

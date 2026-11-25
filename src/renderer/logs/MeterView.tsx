@@ -1,3 +1,4 @@
+import { FOCUS_RING_INSET, focusFromPointer } from '../a11y';
 import React from 'react';
 import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -393,6 +394,21 @@ const Drill = ({
   }, [ctx, meter, row]);
   const showCasts = meter === 'damage' || meter === 'healing';
   const box = React.useRef<HTMLDivElement>(null);
+  const showCard = (
+    el: HTMLElement,
+    a: AbilityRow,
+    child: boolean,
+    group: AbilityGroup | null,
+  ) => {
+    if (meter === 'prevented' && !a.split) return;
+    const outer = box.current?.getBoundingClientRect();
+    setHover({
+      ability: a,
+      spellIds:
+        group && !child ? group.parts.map((x) => x.spellId) : [a.spellId],
+      anchor: anchorOf(el, outer ? outer.left + outer.width * 0.38 : undefined),
+    });
+  };
   return (
     <div className="flex flex-col gap-y-3">
       <div className="flex items-center gap-x-3 flex-wrap">
@@ -496,25 +512,31 @@ const Drill = ({
             {lines.map(({ a, child, group }) => (
               <tr
                 key={a.key}
-                className={`border-t border-panel-line hover:bg-panel-raised ${
+                className={`border-t border-panel-line hover:bg-panel-raised ${FOCUS_RING_INSET} ${
                   child ? 'bg-panel-deep' : ''
                 }`}
-                onMouseEnter={(e) => {
-                  if (meter === 'prevented' && !a.split) return;
-                  const outer = box.current?.getBoundingClientRect();
-                  setHover({
-                    ability: a,
-                    spellIds:
-                      group && !child
-                        ? group.parts.map((x) => x.spellId)
-                        : [a.spellId],
-                    anchor: anchorOf(
-                      e.currentTarget,
-                      outer ? outer.left + outer.width * 0.38 : undefined,
-                    ),
-                  });
-                }}
+                onMouseEnter={(e) => showCard(e.currentTarget, a, child, group)}
                 onMouseLeave={() => setHover(null)}
+                // Keyboard: the row takes focus and shows the same card;
+                // Escape closes it.
+                tabIndex={meter === 'prevented' && !a.split ? undefined : 0}
+                // The row shows its own card; a spell icon in it doesn't add one.
+                data-own-focus-card=""
+                onFocus={(e) => {
+                  // Only the row itself, not a button inside it, and only for
+                  // the keyboard (hover already shows it for the mouse).
+                  if (e.target === e.currentTarget && !focusFromPointer())
+                    showCard(e.currentTarget, a, child, group);
+                }}
+                onBlur={(e) => {
+                  if (e.target === e.currentTarget) setHover(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && hover) {
+                    e.stopPropagation();
+                    setHover(null);
+                  }
+                }}
               >
                 <td className={`${td} text-foreground-lighter`}>
                   <span
@@ -527,6 +549,11 @@ const Drill = ({
                         type="button"
                         aria-expanded={open.has(group.key)}
                         title={
+                          group.nested
+                            ? `${a.name}: ${group.parts.map((x) => x.name).join(', ')}`
+                            : `${group.parts.length} spells named ${a.name}`
+                        }
+                        aria-label={
                           group.nested
                             ? `${a.name}: ${group.parts.map((x) => x.name).join(', ')}`
                             : `${group.parts.length} spells named ${a.name}`
@@ -786,6 +813,11 @@ const ByAbilityTable = ({
                   ? `${a.name}: ${g.parts.map((x) => x.name).join(', ')}`
                   : `${g.parts.length} spells named ${a.name}`
               }
+              aria-label={
+                g.nested
+                  ? `${a.name}: ${g.parts.map((x) => x.name).join(', ')}`
+                  : `${g.parts.length} spells named ${a.name}`
+              }
               onClick={() =>
                 setOpen((prev) => {
                   const next = new Set(prev);
@@ -1024,6 +1056,8 @@ const MeterView = ({
             type="button"
             onMouseEnter={() => setFocus(r.key)}
             onMouseLeave={() => setFocus(null)}
+            onFocus={() => setFocus(r.key)}
+            onBlur={() => setFocus(null)}
             onClick={() => {
               // The first raider line hides the total, so lines are readable.
               if (!picked.length && !picked.includes(r.key))

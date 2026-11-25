@@ -221,6 +221,7 @@ const VideoChat = (props: IProps) => {
                     <Button
                       variant="ghost"
                       className="mx-1 p-0 w-4 h-4 rounded-sm"
+                      aria-label="Delete this chat message"
                       onClick={() => ipc.deleteChatMessage(chat.id)}
                     >
                       <X />
@@ -282,6 +283,7 @@ const VideoChat = (props: IProps) => {
             size="xs"
             onClick={handleSendMessage}
             className="rounded-sm"
+            aria-label="Send message"
           >
             <SendHorizontal size={18} />
           </Button>

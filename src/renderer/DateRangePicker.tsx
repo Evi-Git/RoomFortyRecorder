@@ -112,7 +112,9 @@ const DateRangePicker = (props: IProps) => {
         toggleClassName="absolute right-0 h-full px-3 text-foreground focus:outline-none"
         toggleIcon={(empty) =>
           empty ? (
-            <ChevronDown size={15} />
+            <span role="img" aria-label="Open the date picker">
+              <ChevronDown size={15} />
+            </span>
           ) : (
             <span title="Clear dates" role="img" aria-label="Clear dates">
               <X size={15} />
