@@ -40,6 +40,7 @@ const MultiLockButton = (props: MultiLockButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass(anyLocked)}
+          aria-label={tooltip}
           onClick={(event) => {
             stopPropagation(event);
             setLockDialogVideoTargetId(parent.uniqueId);

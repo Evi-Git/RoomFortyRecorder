@@ -120,10 +120,19 @@ const Node = ({
         : 'rounded-[5px]';
   return (
     <div
-      className="absolute"
+      className="absolute rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
       style={{ left, top, width: ICON, height: ICON }}
       onMouseEnter={(e) => setAt(anchorOf(e.currentTarget))}
       onMouseLeave={() => setAt(null)}
+      // Keyboard: Tab to a talent shows the same card; Escape closes it.
+      tabIndex={0}
+      role="img"
+      aria-label={`${node.entries.map((e) => e.name || `Spell ${e.spellId}`).join(' or ')}: ${got ? `rank ${rank} of ${maxRank}` : 'not taken'}`}
+      onFocus={(e) => setAt(anchorOf(e.currentTarget))}
+      onBlur={() => setAt(null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setAt(null);
+      }}
     >
       <div
         className={`w-full h-full overflow-hidden bg-background ${shape}`}

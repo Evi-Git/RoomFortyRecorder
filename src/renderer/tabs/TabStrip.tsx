@@ -98,7 +98,11 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
   }, []);
 
   return (
-    <div className="absolute top-0 left-0 right-[104px] h-[32px] flex items-end gap-x-0.5 pl-1 z-20 overflow-hidden">
+    <div
+      role="tablist"
+      aria-label="Open pages"
+      className="absolute top-0 left-0 right-[104px] h-[32px] flex items-end gap-x-0.5 pl-1 z-20 overflow-hidden"
+    >
       {tabs.tabs.map((tab, index) => {
         const active = tab.id === activeId;
         const label = tabLabel(tab);
@@ -107,6 +111,29 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             key={tab.id}
             role="tab"
             aria-selected={active}
+            data-tab-id={tab.id}
+            // Roving tab stop: Tab lands on the open page's tab; arrows move
+            // between tabs, Enter or Space opens, Delete closes.
+            tabIndex={active ? 0 : -1}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activate(tab.id);
+              } else if (e.key === 'Delete') {
+                e.preventDefault();
+                close(tab.id);
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                const next =
+                  tabs.tabs[index + (e.key === 'ArrowRight' ? 1 : -1)];
+                if (!next) return;
+                e.preventDefault();
+                activate(next.id);
+                e.currentTarget.parentElement
+                  ?.querySelector<HTMLElement>(`[data-tab-id="${next.id}"]`)
+                  ?.focus();
+              }
+            }}
             title={label}
             draggable
             style={noDrag}
@@ -130,7 +157,7 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
             }}
             onDragEnd={() => setDragId(null)}
             className={cn(
-              'group relative flex items-center gap-x-1.5 h-[27px] min-w-[72px] max-w-[200px] flex-1 basis-[200px] pl-2.5 pr-1 rounded-t-md text-xs font-sans cursor-default select-none transition-colors',
+              'group relative flex items-center gap-x-1.5 h-[27px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/60 min-w-[72px] max-w-[200px] flex-1 basis-[200px] pl-2.5 pr-1 rounded-t-md text-xs font-sans cursor-default select-none transition-colors',
               active
                 ? 'bg-background-higher text-foreground-lighter'
                 : 'text-foreground hover:bg-card/50 hover:text-foreground-lighter',
@@ -159,7 +186,9 @@ const TabStrip = ({ tabs }: { tabs: TabsApi }) => {
               }}
               className={cn(
                 'shrink-0 w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-card',
-                active ? 'opacity-80' : 'opacity-0 group-hover:opacity-80',
+                active
+                  ? 'opacity-80'
+                  : 'opacity-0 group-hover:opacity-80 group-focus-within:opacity-80',
               )}
             >
               <X size={12} />

@@ -36,6 +36,10 @@ const UpdateNotifier = React.memo(function UpdateNotifier({
         variant="ghost"
         type="button"
         size="icon"
+        aria-label={getLocalePhrase(
+          appState.language,
+          Phrase.UpdateAvailableTooltip,
+        )}
         onClick={() => ipc.sendMessage('doAppUpdate', [])}
       >
         <ArrowBigUpDash />

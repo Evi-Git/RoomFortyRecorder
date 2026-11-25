@@ -278,7 +278,14 @@ const SearchBar = (props: IProps) => {
     ...inputProps
   }: InputRendererProps) => {
     const onKeyDown: KeyboardEventHandler<HTMLInputElement> = (event) => {
-      if (event.key === 'Tab') {
+      // Tab picks the highlighted suggestion while something is typed; with
+      // nothing typed or highlighted it must move on, or the keyboard is
+      // stuck in the box (and merely tabbing past would add a filter).
+      if (
+        event.key === 'Tab' &&
+        inputProps['aria-activedescendant'] &&
+        event.currentTarget.value
+      ) {
         event.preventDefault();
         if (api.current) api.current.select();
       }

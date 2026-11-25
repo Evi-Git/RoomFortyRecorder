@@ -206,8 +206,35 @@ const SpellIcon = ({ spellId, name }: { spellId: number; name?: string }) => {
   const info = useSpell(spellId);
   const [at, setAt] = React.useState<Anchor | null>(null);
   const icon = spellId === 1 ? MELEE_ICON : info?.icon;
+  const self = React.useRef<HTMLSpanElement>(null);
+  // Keyboard: the icon itself isn't a tab stop (there are hundreds), but when
+  // the button or row that holds it, and only it, takes focus, the card shows
+  // too. Escape closes it.
+  React.useEffect(() => {
+    const el = self.current;
+    const host = el?.closest<HTMLElement>(
+      'button, a[href], [role="button"], [tabindex]:not([tabindex="-1"])',
+    );
+    if (!el || !host || host.querySelectorAll('[data-spell-icon]').length !== 1)
+      return undefined;
+    const on = () => setAt(anchorOf(el));
+    const off = () => setAt(null);
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAt(null);
+    };
+    host.addEventListener('focus', on);
+    host.addEventListener('blur', off);
+    host.addEventListener('keydown', key);
+    return () => {
+      host.removeEventListener('focus', on);
+      host.removeEventListener('blur', off);
+      host.removeEventListener('keydown', key);
+    };
+  }, []);
   return (
     <span
+      ref={self}
+      data-spell-icon=""
       className="inline-flex shrink-0 align-middle"
       onMouseEnter={(e) => setAt(anchorOf(e.currentTarget))}
       onMouseLeave={() => setAt(null)}

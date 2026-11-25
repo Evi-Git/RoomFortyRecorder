@@ -226,6 +226,10 @@ const AbilityName = (props: Props) => {
   const { name, spellId, encounterId, difficultyId, canEdit, className } =
     props;
   const anchor = React.useRef<HTMLSpanElement>(null);
+  const card = React.useRef<HTMLDivElement>(null);
+  // Set while focus is handed back to the name after Escape, so that focus
+  // doesn't open the card again.
+  const returning = React.useRef(false);
   const [open, setOpen] = React.useState(false);
   const [pos, setPos] = React.useState({ left: 0, top: 0, above: false });
   const [data, setData] = React.useState<AbilityCardData | null>(null);
@@ -282,22 +286,36 @@ const AbilityName = (props: Props) => {
     setData(response.data);
   };
 
+  const place = () => {
+    const rect = anchor.current?.getBoundingClientRect();
+    if (!rect) return;
+    const left = Math.min(
+      Math.max(8, rect.left),
+      window.innerWidth - CARD_WIDTH - 8,
+    );
+    // Below the name, or above it near the bottom of the window.
+    const below = rect.bottom + 6;
+    const above = below + 300 > window.innerHeight;
+    setPos({ left, top: above ? rect.top - 6 : below, above });
+    setOpen(true);
+    load();
+  };
+
   const show = () => {
     clearTimeout(hideTimer.current);
-    showTimer.current = setTimeout(() => {
-      const rect = anchor.current?.getBoundingClientRect();
-      if (!rect) return;
-      const left = Math.min(
-        Math.max(8, rect.left),
-        window.innerWidth - CARD_WIDTH - 8,
-      );
-      // Below the name, or above it near the bottom of the window.
-      const below = rect.bottom + 6;
-      const above = below + 300 > window.innerHeight;
-      setPos({ left, top: above ? rect.top - 6 : below, above });
-      setOpen(true);
-      load();
-    }, 250);
+    showTimer.current = setTimeout(place, 250);
+  };
+
+  // Keyboard: Enter or Space opens the card now and moves focus into it (so
+  // its button can be reached); Escape closes it and gives focus back.
+  const closeNow = () => {
+    clearTimeout(showTimer.current);
+    clearTimeout(hideTimer.current);
+    setOpen(false);
+  };
+  const leavingTo = (e: React.FocusEvent) => {
+    const to = e.relatedTarget as Node | null;
+    return !!to && (card.current?.contains(to) || anchor.current?.contains(to));
   };
 
   const hide = () => {
@@ -330,14 +348,29 @@ const AbilityName = (props: Props) => {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const card = open
+  const cardEl = open
     ? ReactDOM.createPortal(
         <div
+          ref={card}
           role="dialog"
           aria-label={abilityName(name)}
+          tabIndex={-1}
           onMouseEnter={() => clearTimeout(hideTimer.current)}
           onMouseLeave={hide}
-          className="fixed z-50 rounded-lg border border-card bg-background p-3 shadow-2xl flex flex-col gap-y-2.5 text-sm"
+          onFocus={() => clearTimeout(hideTimer.current)}
+          onBlur={(e) => {
+            if (!leavingTo(e)) hide();
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeNow();
+            returning.current = true;
+            anchor.current?.focus();
+            returning.current = false;
+          }}
+          className="fixed z-50 rounded-lg border border-card bg-background p-3 shadow-2xl flex flex-col gap-y-2.5 text-sm focus:outline-none"
           style={{
             left: pos.left,
             top: pos.top,
@@ -477,13 +510,32 @@ const AbilityName = (props: Props) => {
         tabIndex={0}
         onMouseEnter={show}
         onMouseLeave={hide}
-        onFocus={show}
-        onBlur={hide}
-        className={`underline decoration-dotted decoration-foreground/50 underline-offset-[3px] cursor-help ${className ?? ''}`}
+        onFocus={() => {
+          if (!returning.current) show();
+        }}
+        onBlur={(e) => {
+          if (!leavingTo(e)) hide();
+        }}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && open) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeNow();
+          } else if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            clearTimeout(showTimer.current);
+            place();
+            // The card mounts on the next render; then focus moves into it.
+            requestAnimationFrame(() => card.current?.focus());
+          }
+        }}
+        className={`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 rounded-sm underline decoration-dotted decoration-foreground/50 underline-offset-[3px] cursor-help ${className ?? ''}`}
       >
         {name}
       </span>
-      {card}
+      {cardEl}
     </>
   );
 };

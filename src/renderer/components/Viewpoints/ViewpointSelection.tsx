@@ -13,6 +13,7 @@ import {
 import { specImages } from '../../images';
 import { getLocalePhrase } from 'localisation/translations';
 import { Phrase } from 'localisation/phrases';
+import { FOCUS_RING, isActivation } from '../../a11y';
 
 interface IProps {
   video: RendererVideo;
@@ -169,9 +170,15 @@ export default function ViewpointSelection(props: IProps) {
 
     return (
       <div
-        className={`w-[100px] h-[50px] ${cursor} ${selected}`}
+        className={`w-[100px] h-[50px] ${cursor} ${selected} ${FOCUS_RING}`}
         key={name}
         onClick={handleChangePov}
+        role="button"
+        aria-pressed={currentlySelected}
+        onKeyDown={(e) => {
+          if (isActivation(e)) handleChangePov(undefined);
+        }}
+        tabIndex={0}
       >
         <Box
           sx={{

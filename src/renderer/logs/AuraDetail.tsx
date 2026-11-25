@@ -1,3 +1,4 @@
+import { FOCUS_RING_INSET, activateOnKey } from '../a11y';
 import React from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { auraDetail, AuraTarget, Ctx } from './query';
@@ -57,15 +58,31 @@ const Lane = ({
   const tint = color(row);
   return (
     <div
-      className={`relative h-5 w-full rounded-sm bg-card/40 ${onPick ? 'cursor-pointer' : ''}`}
+      className={`relative h-5 w-full rounded-sm bg-card/40 ${onPick ? `cursor-pointer ${FOCUS_RING_INSET}` : ''}`}
       onClick={(e) => {
         if (!onPick) return;
         const box = e.currentTarget.getBoundingClientRect();
         onPick(v0 + ((e.clientX - box.left) / box.width) * len);
       }}
       role={onPick ? 'button' : undefined}
-      tabIndex={onPick ? -1 : undefined}
-      aria-label={onPick ? 'Open a recording at this moment' : undefined}
+      tabIndex={onPick ? 0 : undefined}
+      aria-label={
+        onPick
+          ? 'Open a recording at the first moment this aura is up'
+          : undefined
+      }
+      onKeyDown={
+        onPick
+          ? activateOnKey(() =>
+              onPick(
+                Math.max(
+                  v0,
+                  row.spans.find(([s, e]) => e > v0 && s < v1)?.[0] ?? v0,
+                ),
+              ),
+            )
+          : undefined
+      }
     >
       {bands
         .filter(([s, e]) => e > v0 && s < v1)

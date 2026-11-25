@@ -56,7 +56,11 @@ const InstantReplay = (props: IProps) => {
         <p className="text-xs text-foreground-lighter">
           {getLocalePhrase(language, Phrase.InstantReplayStale)}
         </p>
-        <Button size="sm" onClick={goToLatestInstantReplay}>
+        <Button
+          size="sm"
+          aria-label="Go to the latest instant replay"
+          onClick={goToLatestInstantReplay}
+        >
           <ArrowRight size={18} />
         </Button>
       </div>

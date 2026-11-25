@@ -47,6 +47,7 @@ const LockButton = (props: LockButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass(isProtected)}
+          aria-label={tooltip}
           onClick={(event) => {
             stopPropagation(event);
             lockVideos([video], !isProtected, setVideoState);

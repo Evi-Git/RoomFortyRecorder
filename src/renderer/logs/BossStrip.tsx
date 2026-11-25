@@ -167,6 +167,11 @@ const BossStrip = <B extends StripNightBoss>({
                   ? `${count} ${count === 1 ? 'boss' : 'bosses'} on ${m} this night`
                   : `No ${m} pulls this night`
               }
+              aria-label={
+                count
+                  ? `${count} ${count === 1 ? 'boss' : 'bosses'} on ${m} this night`
+                  : `No ${m} pulls this night`
+              }
               onClick={() => {
                 if (on) return;
                 const next = pickForMode(bosses, m, boss?.encounterId ?? null);

@@ -89,7 +89,14 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
       >
         <div className="flex items-center justify-center text-[13px] text-foreground-lighter font-medium gap-x-2">
           {getLocalePhrase(appState.language, Phrase.SourceSnappingSwitchText)}
-          <Switch checked={snapEnabled} onCheckedChange={setSnapEnabled} />
+          <Switch
+            checked={snapEnabled}
+            onCheckedChange={setSnapEnabled}
+            aria-label={getLocalePhrase(
+              appState.language,
+              Phrase.SourceSnappingSwitchText,
+            )}
+          />
         </div>
       </Tooltip>
     );
@@ -102,6 +109,7 @@ const SceneEditor: React.FC<IProps> = (props: IProps) => {
         <div className="flex items-center justify-center text-[13px] text-foreground-lighter font-medium gap-x-2">
           Preview
           <Switch
+            aria-label="Preview"
             checked={previewEnabled}
             onCheckedChange={setPreviewEnabled}
           />

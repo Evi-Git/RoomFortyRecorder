@@ -699,7 +699,11 @@ const renderErrorPage = () => {
       <h2 className="text-md font-semibold text-foreground">
         You hit a bug in the code. Please try refreshing.
       </h2>
-      <Button className="m-2" onClick={() => window.location.reload()}>
+      <Button
+        className="m-2"
+        aria-label="Refresh the app"
+        onClick={() => window.location.reload()}
+      >
         <RotateCcw />
       </Button>
     </div>

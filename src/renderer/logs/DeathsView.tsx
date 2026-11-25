@@ -12,6 +12,7 @@ import {
 import { ENEMY_COLOR, classColor } from './format';
 import { compact, formatDuration, grouped } from '../format';
 import SpellIcon from './SpellIcon';
+import { FOCUS_RING_INSET, focusableProps } from '../a11y';
 
 /**
  * [RoomFortyRecorder] Logs page Deaths tab (Warcraft Logs style): every
@@ -243,8 +244,13 @@ const Recap = ({
               {rows.map((r, i) => (
                 <tr
                   key={`${r.t}-${i}`}
-                  className={`border-t border-card/50 ${onWatch ? 'cursor-pointer hover:bg-card/30' : ''}`}
+                  className={`border-t border-card/50 ${onWatch ? `cursor-pointer hover:bg-card/30 ${FOCUS_RING_INSET}` : ''}`}
                   onClick={() => onWatch?.(death.at + r.dt - 1, death.name)}
+                  {...focusableProps(
+                    onWatch
+                      ? () => onWatch(death.at + r.dt - 1, death.name)
+                      : undefined,
+                  )}
                   title={onWatch ? 'Watch this moment' : undefined}
                 >
                   <td className={`${td} text-foreground font-mono`}>
@@ -366,8 +372,10 @@ const DeathsView = ({
     return (
       <tr
         key={d.key}
-        className={`cursor-pointer border-t border-card/50 ${on ? 'bg-card/60' : 'hover:bg-card/30'}`}
+        className={`cursor-pointer border-t border-card/50 ${FOCUS_RING_INSET} ${on ? 'bg-card/60' : 'hover:bg-card/30'}`}
         onClick={() => setPicked(d.key)}
+        {...focusableProps(() => setPicked(d.key))}
+        aria-selected={on}
       >
         {multi && <td className={`${td} text-foreground`}>{d.pullLabel}</td>}
         <td className={`${td} text-foreground`}>{d.order}</td>
@@ -509,17 +517,19 @@ const DeathsView = ({
                   if (group.length === 1) return renderRow(group[0]);
                   const first = group[0];
                   const open = openGroups.includes(first.key);
+                  const toggleGroup = () =>
+                    setOpenGroups((g) =>
+                      open
+                        ? g.filter((k) => k !== first.key)
+                        : [...g, first.key],
+                    );
                   return (
                     <React.Fragment key={`g-${first.key}`}>
                       <tr
-                        className="cursor-pointer border-t border-card/50 hover:bg-card/30"
-                        onClick={() =>
-                          setOpenGroups((g) =>
-                            open
-                              ? g.filter((k) => k !== first.key)
-                              : [...g, first.key],
-                          )
-                        }
+                        className={`cursor-pointer border-t border-card/50 hover:bg-card/30 ${FOCUS_RING_INSET}`}
+                        onClick={toggleGroup}
+                        {...focusableProps(toggleGroup)}
+                        aria-expanded={open}
                       >
                         {multi && (
                           <td className={`${td} text-foreground`}>

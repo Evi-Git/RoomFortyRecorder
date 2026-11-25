@@ -60,6 +60,7 @@ const ServerVersionNotice = () => {
         type="button"
         onClick={dismiss}
         title="Hide until the next server change"
+        aria-label="Hide until the next server change"
         className="ml-auto self-start rounded p-0.5 text-foreground hover:text-foreground-lighter hover:bg-card/50"
       >
         <X size={14} />

@@ -575,6 +575,7 @@ export const FlagBar = ({
           <button
             type="button"
             title="Remove flag"
+            aria-label="Remove flag"
             className="text-foreground/60 hover:text-red-400"
             onClick={() => remove(flag)}
           >

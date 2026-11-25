@@ -390,6 +390,7 @@ const SpellTimeline: React.FC<IProps> = ({
         data-no-scrub
         key={`${row.key}-${index}`}
         title={title}
+        aria-label={title}
         onClick={seek}
         className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 hover:z-10 hover:scale-110 transition-transform"
         style={{ left }}
@@ -500,6 +501,7 @@ const SpellTimeline: React.FC<IProps> = ({
           <button
             type="button"
             title="Zoom out"
+            aria-label="Zoom out"
             disabled={zoom <= 1}
             onClick={() => zoomTo(zoom / 1.5)}
             className="disabled:opacity-30"
@@ -512,6 +514,7 @@ const SpellTimeline: React.FC<IProps> = ({
           <button
             type="button"
             title="Zoom in"
+            aria-label="Zoom in"
             disabled={zoom >= MAX_ZOOM}
             onClick={() => zoomTo(zoom * 1.5)}
             className="disabled:opacity-30"
@@ -521,6 +524,7 @@ const SpellTimeline: React.FC<IProps> = ({
           <button
             type="button"
             title="Fit the whole pull"
+            aria-label="Fit the whole pull"
             disabled={zoom === 1}
             onClick={() => zoomTo(1)}
             className="disabled:opacity-30"
@@ -619,6 +623,7 @@ const SpellTimeline: React.FC<IProps> = ({
                   data-no-scrub
                   key={`death-${death.time}-${death.text}`}
                   title={death.text}
+                  aria-label={death.text}
                   onClick={() => onSeek(Math.max(0, death.time - 2))}
                   className="absolute bottom-1 -translate-x-1/2 z-[5] hover:scale-125 transition-transform"
                   style={{ left: death.time * pxPerSec }}

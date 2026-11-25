@@ -689,11 +689,14 @@ const CloudSettings = (props: IProps) => {
         </td>
         <td>
           <div className="flex items-center justify-center">
-            <Button variant="ghost" size="icon" className="h-7 w-7">
-              <X
-                className="text-red-500 opacity-70"
-                onClick={() => clearCharacterFilter(index)}
-              />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              aria-label={`Remove ${filter.name} from the upload filter`}
+              onClick={() => clearCharacterFilter(index)}
+            >
+              <X className="text-red-500 opacity-70" />
             </Button>
           </div>
         </td>

@@ -8,6 +8,7 @@ import { Ctx } from './query';
 import { GearItem } from './store';
 import { classColor } from './format';
 import { GameIcon } from '../AbilityCard';
+import { FOCUS_RING_INSET, focusableProps } from '../a11y';
 
 /**
  * [RoomFortyRecorder] Summary widget: each raider's item level, missing
@@ -249,8 +250,12 @@ const GearWidget = ({ ctx }: { ctx: Ctx }) => {
             {rows.map((r) => (
               <React.Fragment key={r.guid}>
                 <tr
-                  className="cursor-pointer hover:bg-card/30 border-b border-card/40"
+                  className={`cursor-pointer hover:bg-card/30 border-b border-card/40 ${FOCUS_RING_INSET}`}
                   onClick={() => setOpen(open === r.guid ? null : r.guid)}
+                  {...focusableProps(() =>
+                    setOpen(open === r.guid ? null : r.guid),
+                  )}
+                  aria-expanded={open === r.guid}
                   title="Show their gear"
                 >
                   <td className={td}>

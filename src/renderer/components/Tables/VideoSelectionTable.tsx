@@ -28,6 +28,7 @@ import SelectMultiShortcut from '../Shortcuts/SelectMultiShortcut';
 import SelectRangeShortcut from '../Shortcuts/SelectRangeShortcut';
 import NavigateShortcut from '../Shortcuts/NavigateShortcut';
 import { TabContext } from '../../tabs/tabs';
+import { FOCUS_RING_INSET, isActivation } from '../../a11y';
 
 /** Columns whose text sits on the right edge, in tabular figures. */
 const RIGHT_ALIGNED = new Set(['Pull', 'Duration']);
@@ -76,7 +77,10 @@ const VideoSelectionTable = (props: IProps) => {
    */
   const onRowClick = useCallback(
     (
-      event: React.MouseEvent<HTMLTableRowElement> | KeyboardEvent,
+      event:
+        | React.MouseEvent<HTMLElement>
+        | React.KeyboardEvent<HTMLElement>
+        | KeyboardEvent,
       row: Row<typeof stockFeatures, RendererVideo>,
     ) => {
       const allRows = table.getSortedRowModel().rows;
@@ -284,6 +288,9 @@ const VideoSelectionTable = (props: IProps) => {
         : header.column.getSize();
 
     const sorted = header.column.getIsSorted();
+    const canSort = header.column.getCanSort();
+    // A real button when the column sorts, so Tab and Enter/Space reach it.
+    const Head = canSort ? 'button' : 'div';
     const SortArrow = sorted === 'asc' ? ArrowUp : ArrowDown;
 
     return (
@@ -300,8 +307,9 @@ const VideoSelectionTable = (props: IProps) => {
               : undefined
         }
       >
-        <div
-          className={`flex h-9 min-w-0 cursor-pointer select-none items-center gap-x-1 px-3 text-[13px] font-medium hover:text-foreground-lighter ${
+        <Head
+          type={canSort ? 'button' : undefined}
+          className={`flex h-9 w-full min-w-0 cursor-pointer select-none items-center gap-x-1 px-3 text-left text-[13px] font-medium hover:text-foreground-lighter ${FOCUS_RING_INSET} ${
             RIGHT_ALIGNED.has(header.id) ? 'justify-end' : ''
           } ${sorted ? 'text-foreground-lighter' : 'text-foreground'}`}
           onClick={header.column.getToggleSortingHandler()}
@@ -309,7 +317,7 @@ const VideoSelectionTable = (props: IProps) => {
         >
           {flexRender(header.column.columnDef.header, header.getContext())}
           {sorted ? <SortArrow size={13} className="shrink-0" /> : null}
-        </div>
+        </Head>
       </th>
     );
   };
@@ -368,7 +376,7 @@ const VideoSelectionTable = (props: IProps) => {
     selected: boolean,
   ) => {
     const cells = row.getVisibleCells();
-    const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${
+    const className = `h-11 cursor-pointer border-b border-panel-line text-sm text-foreground-lighter ${FOCUS_RING_INSET} ${
       selected ? 'bg-panel-raised' : 'hover:bg-panel-raised/60'
     }`;
 
@@ -379,6 +387,12 @@ const VideoSelectionTable = (props: IProps) => {
         className={className}
         aria-selected={selected}
         onClick={(event) => onRowClick(event, row)}
+        // Roving tab stop: the selected row is the one Tab lands on; the
+        // arrow keys (handled above) move the selection from there.
+        tabIndex={selected ? 0 : -1}
+        onKeyDown={(event) => {
+          if (isActivation(event)) onRowClick(event, row);
+        }}
       >
         {cells.map((cell, i) => renderBaseCell(cell, i, selected))}
       </tr>
@@ -421,6 +435,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.firstPage()}
+            aria-label="First page"
             disabled={!table.getCanPreviousPage()}
             size="xs"
             variant="ghost"
@@ -431,6 +446,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.previousPage()}
+            aria-label="Previous page"
             disabled={!table.getCanPreviousPage()}
             size="xs"
             variant="ghost"
@@ -445,6 +461,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.nextPage()}
+            aria-label="Next page"
             disabled={!table.getCanNextPage()}
             size="xs"
             variant="ghost"
@@ -455,6 +472,7 @@ const VideoSelectionTable = (props: IProps) => {
           <Button
             className="h-7 w-7 p-1 text-foreground hover:bg-panel-raised hover:text-foreground-lighter"
             onClick={() => table.lastPage()}
+            aria-label="Last page"
             disabled={!table.getCanNextPage()}
             size="xs"
             variant="ghost"

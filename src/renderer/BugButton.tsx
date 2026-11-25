@@ -100,6 +100,7 @@ export default function BugButton({
           variant="ghost"
           size="icon"
           title="Report a bug"
+          aria-label="Report a bug"
         >
           <Bug size={20} />
         </Button>
