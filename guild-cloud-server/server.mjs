@@ -1311,6 +1311,24 @@ const metadataFor = (video) => ({
   shared: Boolean(videoLinkFor(video.videoKey)),
 });
 
+// Which public links to a recording this caller may stop. A recording link
+// goes if the caller made it or may change the recording (uploader or
+// videoManage); a clip link goes if the caller sent it or may change the
+// recording. Only asks "may change" (a Discord role lookup, memoized per
+// request) when the caller's own links don't already settle it.
+const stoppableLinksFor = async (video, userId, mayChange) => {
+  const links = state.links.filter((link) => link.key === video.videoKey);
+  const videoLinks = links.filter((link) => linkKind(link) === 'video');
+  const clips = links.filter((link) => linkKind(link) === 'clip');
+  const mine = (link) => Boolean(link.createdBy) && link.createdBy === userId;
+  const manage = links.length > 0 && (await mayChange(video));
+  return {
+    exist: links.length,
+    videoLinks: manage || videoLinks.some(mine) ? videoLinks : [],
+    clips: manage ? clips : clips.filter(mine),
+  };
+};
+
 // One Warcraft Logs client for the whole server: one sign-in and one view of
 // the hour's points. Each feature below takes its own handle from it.
 const wcl = createWclClient({
@@ -1367,6 +1385,12 @@ const coach = createCoach({
       (entry) => entry.videoName === videoName || entry.videoKey === videoName,
     );
     return video ? createShareLink(GUILD, video, { kind: 'clip', createdBy }) : null;
+  },
+  // A clip whose Discord post was refused: nobody got the link.
+  removeShareLink: async (id) => {
+    const before = state.links.length;
+    state.links = state.links.filter((link) => link.id !== id);
+    if (state.links.length !== before) await persist();
   },
   env: process.env,
   can: permissions.can,
@@ -1698,11 +1722,25 @@ const handleApi = async (req, res, url, parts) => {
   if (parts[3] === 'video' && parts.length === 4) {
     if (req.method === 'GET') {
       const entries = await videoEntries();
-      return json(
-        res,
-        200,
-        entries.map((entry) => metadataFor(entry.video)),
-      );
+      // Per caller: how many clip links the recording has and whether this
+      // caller could stop any of its links. Only looked up for recordings
+      // that have a link (the officer role check runs at most once).
+      const rows = [];
+      for (const entry of entries) {
+        const row = metadataFor(entry.video);
+        const clipLinks = state.links.filter(
+          (link) => link.key === entry.video.videoKey && linkKind(link) === 'clip',
+        ).length;
+        row.clipLinks = clipLinks;
+        if (row.shared || clipLinks > 0) {
+          const found = await stoppableLinksFor(entry.video, req.cloudUserId, mayChangeVideo);
+          row.canStopSharing = found.videoLinks.length + found.clips.length > 0;
+        } else {
+          row.canStopSharing = false;
+        }
+        rows.push(row);
+      }
+      return json(res, 200, rows);
     }
 
     if (req.method === 'POST') {
@@ -1821,21 +1859,20 @@ const handleApi = async (req, res, url, parts) => {
       return json(res, 200, { id });
     }
 
-    // Stop sharing: the person who shared it, the uploader or an officer.
-    // Nothing in R2 is touched; only the public page and its redirect go.
-    const links = state.links.filter((link) => link.key === video.videoKey && linkKind(link) === 'video');
-    if (links.length === 0) return json(res, 200, { removed: 0 }); // already stopped
-    const mayStop =
-      links.some((link) => link.createdBy && link.createdBy === req.cloudUserId) ||
-      (await mayChangeVideo(video));
-    if (!mayStop) {
+    // Stop sharing: every public link to the recording the caller may stop
+    // (the recording's own link and the clips sent to Discord; see
+    // stoppableLinksFor). Nothing in R2 is touched; only the public pages
+    // and their redirects go.
+    const found = await stoppableLinksFor(video, req.cloudUserId, mayChangeVideo);
+    if (found.exist === 0) return json(res, 200, { removed: 0, clips: 0 }); // already stopped
+    if (found.videoLinks.length + found.clips.length === 0) {
       return fail(res, 403, 'Only the person who shared it, the uploader or an officer can stop sharing');
     }
-    if (links.length > 0) {
-      state.links = state.links.filter((link) => !links.includes(link));
-      await persist();
-    }
-    return json(res, 200, { removed: links.length });
+    const gone = new Set([...found.videoLinks, ...found.clips]);
+    state.links = state.links.filter((link) => !gone.has(link));
+    await persist();
+    for (const clip of found.clips) await coach.removeThumbnail(clip.id);
+    return json(res, 200, { removed: found.videoLinks.length, clips: found.clips.length });
   }
 
   if (parts[3] === 'upload' && req.method === 'POST') {

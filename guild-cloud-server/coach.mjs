@@ -46,6 +46,7 @@ export const createCoach = ({
   botToken,
   discordGuildId,
   createShareLink,
+  removeShareLink = null,
   publicUrl,
   env,
   can = null,
@@ -289,6 +290,12 @@ export const createCoach = ({
         allowed_mentions: { parse: [] },
       });
       if (!result.ok) {
+        // Discord answered with a refusal (it has a status code), so nobody
+        // got the link: take it down. A timeout or network failure throws out
+        // of discord() before this point and leaves the link alone, because
+        // the message may have gone out.
+        await removeShareLink?.(link.id);
+        await removeThumbnail(link.id);
         const reason =
           result.status === 403 || result.status === 404
             ? 'The bot cannot post in that channel (it needs View Channel, Send Messages and Embed Links there).'
@@ -387,6 +394,11 @@ export const createCoach = ({
     return removed;
   };
 
+  /** Deletes one clip's preview image right away (it may not exist). */
+  const removeThumbnail = async (linkId) => {
+    await fsp.unlink(thumbFile(linkId)).catch(() => {});
+  };
+
   // persist is exposed for tests.
-  return { handle, ready, thumbnailPath, removeThumbnails, persist };
+  return { handle, ready, thumbnailPath, removeThumbnails, removeThumbnail, persist };
 };

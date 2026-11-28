@@ -1737,10 +1737,13 @@ export default class CloudClient implements StorageClient {
     const url = `${CloudClient.api}/guild/${guild}/video/${video}/link`;
     const headers = { Authorization: this.authHeader };
 
-    await cloudHttp.delete(url, {
+    const response = await cloudHttp.delete(url, {
       headers,
       validateStatus: (s) => this.validateResponseStatus(s),
     });
+    // Older servers answer { removed } only.
+    const clips = Number(response?.data?.clips);
+    return { clips: Number.isFinite(clips) ? clips : 0 };
   }
 
   /**
@@ -1797,9 +1800,10 @@ export default class CloudClient implements StorageClient {
     ipcMain.handle('stopSharingLink', async (_event, args) => {
       try {
         // No refresh here: it would take the player out of fullscreen. The
-        // 30-second poll hides the button.
-        await this.stopSharing(args[0]);
-        return { ok: true as const };
+        // 30-second poll refreshes shared, clipLinks and canStopSharing and
+        // so hides the button.
+        const { clips } = await this.stopSharing(args[0]);
+        return { ok: true as const, clips };
       } catch (error) {
         const rsp = axios.isAxiosError(error)
           ? error.response?.data
