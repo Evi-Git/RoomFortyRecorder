@@ -1,13 +1,5 @@
 # RoomFortyRecorder private guild cloud
 
-> **Out of date (October 2026).** Videos no longer live on the Windows
-> server. They are stored in Cloudflare R2 and played back through the
-> Cloudflare Worker in `guild-cloud-server/r2-worker/`. The home server only
-> handles Discord sign-in, metadata, chat, admin and share links. See
-> `guild-cloud-server/r2-worker/TESTING.md` for the Worker, and
-> `docs/RELEASING.md` for shipping new app versions. The Caddy, Task
-> Scheduler and Discord sections below are still accurate.
-
 This is the **one-time host setup** for the guild member who owns the Windows
 server. Once it is done, a normal raider only needs to:
 
@@ -18,11 +10,21 @@ server. Once it is done, a normal raider only needs to:
 No raider needs Tailscale, Node.js, Caddy, the repository, or router access.
 
 ```text
-RoomFortyRecorder PC -- HTTPS --> roomfortyrecorder.com -- Caddy --> Node server --> D:\GuildCloud
+RoomFortyRecorder PC -- HTTPS --> roomfortyrecorder.com -- Caddy --> Node server --> D:\GuildCloud (metadata)
+        |                                                    | signs upload/download links
+        +--------------- uploads (signed PUT) ------------> Cloudflare R2 bucket (recordings)
+        +--------------- playback (signed URL) ----------> Cloudflare Worker (r2-worker/) --> R2
 ```
 
-The local Windows machine still stores the videos. Caddy is only the secure
-HTTPS front door. There is no hosted video-storage subscription.
+**Recordings live in a Cloudflare R2 bucket, not on this PC.** The home
+server handles Discord sign-in, permissions, recording metadata, chat, share
+links, the pull desk, the journal and live streaming; it signs short-lived
+upload and download links but never stores or serves video bytes. Playback
+goes through the Cloudflare Worker in `guild-cloud-server/r2-worker/` (see
+its `TESTING.md`). Caddy is only the secure HTTPS front door for the home
+server. `GUILD_CLOUD_STORAGE_PATH` (here `D:\GuildCloud`) holds the server's
+own data: `state.json`, the pull desk, the journal cache, logs and backups.
+See `docs/RELEASING.md` for shipping new app versions.
 
 ## What the cloud login is
 
@@ -38,19 +40,15 @@ refuses to start when it is missing or still the example value.
 
 ## Capacity
 
-A wired, genuinely symmetric 1 Gb/s connection should handle 20 guild members
-uploading and watching videos at the same time:
+Video uploads and playback go straight between raiders' PCs and Cloudflare,
+so the home connection only carries small API calls, pull logs and live
+streams (MediaMTX). The storage cap is `GUILD_CLOUD_LIMIT_GB` (the total size
+of all recordings in R2; uploads past it are refused with "storage limit
+reached"). Keep old recordings unprotected so housekeeping can remove them,
+or raise the cap (R2 bills per GB stored).
 
-- 1 Gb/s is roughly 125 MB/s in each direction.
-- Twenty 20-Mb/s streams consume about 400 Mb/s.
-- The server streams files from the SSD and supports HTTP range requests for
-  seeking/scrubbing.
-- The practical limits are the ISP's real upload speed, SSD throughput, and
-  the 1.8 TB quota—not the number 20 itself.
-
-The host should be wired to the router. Test the connection from the host, and
-keep old recordings unprotected or add a retention policy so the disk does not
-fill.
+The host should still be wired to the router: live streams and the pull desk
+run through it.
 
 ## Before starting: hostname and public IP
 
@@ -82,10 +80,11 @@ Install these using their normal Windows installers:
 
 - Node.js LTS from [nodejs.org](https://nodejs.org/).
 - Caddy for Windows from [caddyserver.com/download](https://caddyserver.com/download).
-- A 2 TB SSD formatted as NTFS.
+- A drive with a few GB free for the server's data (pull logs are kept 30
+  days by default; recordings are in R2, not here).
 
 Use a wired network connection and set Windows power settings to never sleep
-while plugged in. Give the SSD a stable drive letter, such as `D:`.
+while plugged in. Give the data drive a stable drive letter, such as `D:`.
 
 ### Create the folders
 
@@ -97,8 +96,18 @@ C:\RoomFortyRecorder\caddy
 D:\GuildCloud
 ```
 
-Copy `server.mjs` and `.env.example` from this repository into
-`C:\RoomFortyRecorder\guild-cloud-server`.
+Copy the files listed in `guild-cloud-server/server-files.txt` (and
+`.env.example`) from this repository into
+`C:\RoomFortyRecorder\guild-cloud-server`. The server's only packages are
+the R2 (S3) client; install them once in that folder:
+
+```text
+npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+```
+
+(There is no `package.json` for the server in the repo, and the updater
+never touches `node_modules`.) Later updates are done by `update-server.cmd`
+(see "Updating the server").
 
 Put `caddy.exe` in `C:\RoomFortyRecorder\caddy`.
 
@@ -115,7 +124,8 @@ rename it to exactly:
 Open `.env` in Notepad. The copied `.env.example` is the authoritative list of
 variables and defaults. Replace each `replace-with-...` placeholder, and keep
 the other defaults unless this deployment uses a custom hostname, storage
-path, or quota.
+path, or quota. The R2 bucket, its API token and the Worker URL are required
+(see `guild-cloud-server/r2-worker/TESTING.md` to set up the Worker).
 
 Keep the Discord client secret and signing secret out of Git and private chats.
 

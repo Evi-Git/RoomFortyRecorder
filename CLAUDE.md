@@ -15,7 +15,8 @@ The main conversation model (Fable when available, otherwise Opus) is the
 - **Orchestrate the build.** Map the code and write a complete blueprint for
   each piece (goal, context, files, steps, constraints, output format, what
   done looks like), then hand it to subagents:
-  - **Sonnet** for fast, well-defined execution (one worker per release).
+  - **Sonnet** for fast, well-defined execution (one worker per group of
+    changes that touch different files, several in parallel).
   - **Opus** for deep reasoning and hard judgment calls, and for a read-only
     adversarial review of each diff before it merges.
 - **Verify, then merge.** Review every worker's diff yourself, run the checks
@@ -82,18 +83,29 @@ The main conversation model (Fable when available, otherwise Opus) is the
   Linux (parsing, renderer, main, cloud) and the server tests on every PR;
   `node.js.yml` builds on Windows. Both must pass before merging.
 
-## Releasing
+## Releasing (in waves)
 
-1. Branch from `main`.
-2. Bump the version in `release/app/package.json` (line 3) and
-   `release/app/package-lock.json` (lines 3 and 9).
-3. Add a CHANGELOG entry above the previous version.
-4. PR to `main`. CI builds on Windows.
-5. Squash-merge, then run the Release workflow on `main`. It makes a
+Fixes and audit work ship in **waves**: several changes, one version. The
+version only has to go up once per published release (the updater installs
+only a higher version, and drafts can't be partly published), so a version
+per change buys nothing.
+
+1. Each group of changes gets its own branch from `origin/main` and its own
+   PR **without** a version bump or CHANGELOG edit, so PRs don't conflict:
+   they go through CI side by side and squash-merge in any order (one
+   commit per group on `main`).
+2. When the wave's PRs are merged, one small PR bumps the version in
+   `release/app/package.json` (line 3) and `release/app/package-lock.json`
+   (lines 3 and 9), adds one CHANGELOG entry with a line per change, and
+   bumps `SERVER_CHANGED_IN` if any wave PR touched a server file (below).
+3. Squash-merge it, then run the Release workflow on `main`. It makes a
    **draft** release; the maintainer publishes it.
-6. After publishing: the app auto-updates. The server is updated by running
+4. After publishing: the app auto-updates. The server is updated by running
    `update-server.cmd` on the server PC; it installs only the files in
    `server-files.txt` and rolls back if `/health` doesn't answer.
+
+Risky changes (settings migrations, the server updater, anything you'd want
+to roll back alone) still get a release of their own.
 
 A new server module must be added to `server-files.txt` (a test checks).
 
