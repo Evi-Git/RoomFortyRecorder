@@ -188,6 +188,7 @@ const APP_CALLS = [
   ['GET', `${PD}/toplogs`],
   ['GET', `${PD}/toplogs/rankings?encounterId=1`],
   ['GET', `${PD}/toplogs/trial?code=a`],
+  ['POST', `${PD}/toplogs/retry`],
   ['POST', `${PD}/toplogs/crawl`],
   ['GET', `${PD}/toplogs/ours?encounterId=1`],
   ['GET', `${PD}/journal/boss/2900`],

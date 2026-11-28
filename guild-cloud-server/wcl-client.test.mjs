@@ -122,3 +122,17 @@ test('after the hour resets, last hour\'s spend no longer pauses anyone', async 
   assert.deepEqual(logs, []);
   assert.equal(crawl.usage.spentThisHour, 10);
 });
+
+test('budget() says whether a handle would pause, and when the hour resets', async () => {
+  const fake = fakeWcl({ spent: () => 900, resetIn: 600 });
+  const client = createWclClient({ clientId: 'a', clientSecret: 'b', fetchImpl: fake.fetchImpl });
+  const crawl = client.forConsumer({ budgetShare: 0.85 });
+  const page = client.forConsumer({ budgetShare: 0.95 });
+  assert.equal(crawl.budget().exhausted, false, 'nothing known yet');
+  await page.query('{ a }');
+  assert.equal(crawl.budget().exhausted, true);
+  assert.equal(page.budget().exhausted, false);
+  const resumes = crawl.budget().resumesAt - Date.now();
+  assert.ok(resumes > 590000 && resumes <= 606000, `resumes in about 10 minutes (${resumes} ms)`);
+  assert.equal(page.budget().resumesAt, null);
+});

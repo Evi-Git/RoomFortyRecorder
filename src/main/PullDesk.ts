@@ -116,6 +116,12 @@ export type PullDeskRequest =
       difficultyId: number;
       specId: number;
       region?: string;
+      /** Ask again after the rankings failed (clears the server's memory of it). */
+      retry?: boolean;
+    }
+  | {
+      action: 'topRetry';
+      rows: { code: string; fight: number; name: string }[];
     }
   | {
       action: 'topTrial';
@@ -1238,6 +1244,7 @@ export default class PullDesk {
             difficulty: String(id(request.difficultyId)),
             specId: String(id(request.specId)),
             region: String(request.region ?? ''),
+            ...(request.retry ? { retry: '1' } : {}),
           }).toString()}`,
           undefined,
           { timeout: 60000 },
@@ -1254,6 +1261,14 @@ export default class PullDesk {
           undefined,
           { timeout: 30000 },
         );
+      case 'topRetry':
+        return client.pullDeskRequest('post', '/toplogs/retry', {
+          rows: request.rows.slice(0, 25).map((r) => ({
+            code: String(r.code),
+            fight: Number(r.fight),
+            name: String(r.name),
+          })),
+        });
       case 'topCrawl':
         return client.pullDeskRequest('post', '/toplogs/crawl', {});
       case 'topOurs':
