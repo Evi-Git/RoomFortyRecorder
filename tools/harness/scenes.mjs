@@ -709,6 +709,19 @@ export const scenes = [
     },
   },
   {
+    // Works with whatever pull logs the harness was seeded with (no real
+    // Oct 21 logs needed): the first boss of the newest night, then Casts.
+    name: 'logs-any-casts',
+    shows: 'Logs > Casts table (sort arrows) on the first boss found',
+    steps: async (t) => {
+      await t.nav('Logs');
+      await t.logsLoaded();
+      await t.page.getByRole('option').first().click();
+      await t.logsLoaded();
+      await tab(t, 'Casts');
+    },
+  },
+  {
     name: 'logs-two-pulls',
     shows: "Two Kith'ix pulls picked (added up)",
     steps: async (t) => {
