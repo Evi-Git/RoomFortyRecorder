@@ -8,6 +8,8 @@ import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
 import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
+import { currentBusyReason } from './busy';
+import { BACKFILL_BUSY_RETRY_MS, backfillDecision } from './backfillSchedule';
 import { NOT_SIGNED_IN_CODE, sendWithRetry, sleep } from './pullUploadClient';
 import {
   classifyReportPut,
@@ -186,6 +188,7 @@ export type PullDeskRequest =
       hints: BossPercentHint[];
     }
   | { action: 'backfillStatus' }
+  | { action: 'backfillNow' }
   | { action: 'watcher' }
   | {
       action: 'setWatcher';
@@ -335,7 +338,11 @@ export default class PullDesk {
 
   /** The last pull upload and the last automatic backfill. */
   public uploadState() {
-    return { last: this.lastUpload, backfill: this.backfill.lastAuto };
+    return {
+      last: this.lastUpload,
+      backfill: this.backfill.lastAuto,
+      backfillFailure: this.backfill.lastFailure,
+    };
   }
 
   static getInstance() {
@@ -346,21 +353,40 @@ export default class PullDesk {
   constructor() {
     // Automatic backfill: shortly after start, then every half hour. Only
     // with "Send my Logs" on, and never during a pull.
+    let retry: NodeJS.Timeout | undefined;
     const tick = () => {
-      if (this.cfg.get<boolean>('pullDeskUpload') === false) return;
-      if (this.capture.capturing) return;
-      this.backfill
-        .auto(() => this.capture.capturing)
-        .then(() => {
-          if (this.backfill.lastAuto?.uploaded) send('pullDeskUpdated');
-          send('pullDeskUploadState', this.uploadState());
-        })
-        .catch((error) =>
-          console.warn('[PullDesk] Automatic backfill failed', String(error)),
-        );
+      const decision = backfillDecision({
+        enabled: this.cfg.get<boolean>('pullDeskUpload') !== false,
+        capturing: this.capture.capturing,
+        busyReason: currentBusyReason(),
+      });
+      if (decision === 'skip') return;
+      if (decision === 'later') {
+        // Parsing saved logs would compete with a recording or an upload:
+        // look again in a minute (one waiting retry at a time).
+        retry ??= setTimeout(() => {
+          retry = undefined;
+          tick();
+        }, BACKFILL_BUSY_RETRY_MS);
+        return;
+      }
+      this.runAutoBackfill();
     };
     setTimeout(tick, AUTO_BACKFILL_FIRST_MS);
     setInterval(tick, AUTO_BACKFILL_EVERY_MS);
+  }
+
+  /** One automatic backfill pass (the schedule's, or the "Try now" button). */
+  private runAutoBackfill() {
+    this.backfill
+      .auto(() => this.capture.capturing)
+      .then(() => {
+        if (this.backfill.lastAuto?.uploaded) send('pullDeskUpdated');
+        send('pullDeskUploadState', this.uploadState());
+      })
+      .catch((error) =>
+        console.warn('[PullDesk] Automatic backfill failed', String(error)),
+      );
   }
 
   /** Raw combat log line from the retail log watcher. */
@@ -1379,6 +1405,13 @@ export default class PullDesk {
       case 'backfillLog':
         this.backfill.start(request.file, request.bosses, request.hints);
         return this.backfill.status;
+      case 'backfillNow':
+        // The "Try now" button: same pass as the schedule, but not held back
+        // for a busy app (the user asked), only for a pull being captured.
+        if (!this.capture.capturing && !this.backfill.status.running) {
+          this.runAutoBackfill();
+        }
+        return { ok: true };
       case 'backfillStatus':
         return { ...this.backfill.status, lastAuto: this.backfill.lastAuto };
       case 'importWcl':

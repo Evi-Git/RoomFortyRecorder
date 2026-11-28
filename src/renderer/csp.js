@@ -86,4 +86,5 @@ const contentSecurityPolicy = ({ development = false } = {}) => {
     .join('; ');
 };
 
+// eslint-disable-next-line no-undef -- plain CommonJS so webpack, the harness and Jest can all load it
 module.exports = { contentSecurityPolicy };
