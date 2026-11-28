@@ -89,9 +89,9 @@ describe('describeNoPulls', () => {
   const ok = { uploadOn: true, hasLogFolder: true } as const;
   test('says why, first reason wins', () => {
     expect(describeNoPulls({ ...ok, uploadOn: false })).toMatch(/is off/);
-    expect(
-      describeNoPulls({ ...ok, signIn: { state: 'signedOut' } }),
-    ).toMatch(/sign in with Discord/);
+    expect(describeNoPulls({ ...ok, signIn: { state: 'signedOut' } })).toMatch(
+      /sign in with Discord/,
+    );
     expect(
       describeNoPulls({ ...ok, signIn: { state: 'expired', reason: 'x' } }),
     ).toMatch(/expired/);
