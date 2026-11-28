@@ -1,5 +1,9 @@
 import type { PullUploadState } from '../../main/types';
-import { describeBackfill, describeUpload } from '../../renderer/uploadLines';
+import {
+  describeBackfill,
+  describeNoPulls,
+  describeUpload,
+} from '../../renderer/uploadLines';
 
 const at = new Date(2026, 10, 10, 21, 41).getTime();
 const base: PullUploadState = {
@@ -79,4 +83,28 @@ test('the full log sub-state is told honestly', () => {
   expect(
     describeUpload({ ...base, state: 'retrying', attempt: 2 }).text,
   ).toContain('try 3');
+});
+
+describe('describeNoPulls', () => {
+  const ok = { uploadOn: true, hasLogFolder: true } as const;
+  test('says why, first reason wins', () => {
+    expect(describeNoPulls({ ...ok, uploadOn: false })).toMatch(/is off/);
+    expect(
+      describeNoPulls({ ...ok, signIn: { state: 'signedOut' } }),
+    ).toMatch(/sign in with Discord/);
+    expect(
+      describeNoPulls({ ...ok, signIn: { state: 'expired', reason: 'x' } }),
+    ).toMatch(/expired/);
+    expect(describeNoPulls({ ...ok, hasLogFolder: false })).toMatch(
+      /no combat log folder/,
+    );
+    expect(
+      describeNoPulls({ ...ok, uploadOn: false, hasLogFolder: false }),
+    ).toMatch(/is off/);
+  });
+  test('falls back to the plain line', () => {
+    expect(describeNoPulls({ ...ok, signIn: { state: 'connected' } })).toBe(
+      'No boss pulls seen since the app started.',
+    );
+  });
 });

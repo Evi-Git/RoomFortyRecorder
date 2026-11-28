@@ -1,4 +1,5 @@
 import type { PullUploadState } from 'main/types';
+import type { SignInState } from 'main/types';
 import { timeOfDay } from './clock';
 
 /**
@@ -88,4 +89,33 @@ export const describeBackfill = (
     ? `sent ${b.uploaded} missing ${b.uploaded === 1 ? 'pull' : 'pulls'}`
     : 'nothing was missing';
   return `Saved combat logs checked at ${timeOfDay(b.at)}: ${sent}.`;
+};
+
+/**
+ * The line shown when no pull has been sent since the app started: says why
+ * when the app can tell (first reason that applies), else that no boss pull
+ * has been seen yet.
+ */
+export type NoPullsInput = {
+  uploadOn: boolean;
+  signIn?: SignInState;
+  /** Whether a retail or PTR combat log folder is set (and recorded). */
+  hasLogFolder: boolean;
+};
+
+export const describeNoPulls = (i: NoPullsInput): string => {
+  if (!i.uploadOn) {
+    return 'Nothing is sent: Send my Logs is off. Turn it on with the switch on the right.';
+  }
+  const s = i.signIn?.state;
+  if (s === 'signedOut') {
+    return 'Nothing is sent: sign in with Discord in Cloud settings.';
+  }
+  if (s === 'expired') {
+    return 'Nothing is sent: your Discord sign-in expired. Sign in again in Cloud settings.';
+  }
+  if (!i.hasLogFolder) {
+    return 'Nothing is sent: no combat log folder is set (Settings, General).';
+  }
+  return 'No boss pulls seen since the app started.';
 };
