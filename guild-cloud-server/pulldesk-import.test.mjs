@@ -163,10 +163,14 @@ test('whole-tier import: find the guild, group reports by zone, import in the ba
   const start = await call('POST', ['import', 'tier'], { codes: scan.body.zones[0].codes });
   assert.equal(start.status, 200);
   assert.equal((await call('POST', ['import', 'tier'], { codes: ['aBcD1234EfGh5678'] })).status, 409);
-  for (let i = 0; i < 50 && (await call('GET', ['import', 'guild'])).body.job.running; i += 1) {
+  for (let i = 0; i < 250 && (await call('GET', ['import', 'guild'])).body.job.running; i += 1) {
     // eslint-disable-next-line no-await-in-loop
     await new Promise((r) => setTimeout(r, 20));
   }
+  // As in the test above: the import fetches consumables and avoidable hits
+  // in the background and clears the summary cache as it goes, so a summary
+  // read before that settles can disagree with the next one (seen under load).
+  await desk.idle();
   const job = (await call('GET', ['import', 'guild'])).body.job;
   assert.equal(job.done, 1);
   assert.equal(job.added, 3);
