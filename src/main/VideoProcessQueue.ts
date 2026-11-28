@@ -35,6 +35,7 @@ import { promises as fspromise } from 'fs';
 import { ipcMain } from 'electron';
 import {
   addFailure,
+  describeTimelineError,
   describeUploadError,
   failureId,
   isStall,
@@ -174,6 +175,13 @@ export default class VideoProcessQueue {
       } else if (request.action === 'retry' && found) {
         this.uploadFailures = removeFailure(this.uploadFailures, found.id);
         this.sendUploadFailures();
+        if (found.what === 'timeline' && found.videoKey) {
+          // The video is already up: send only its timeline, in the
+          // background (the retries can take a while).
+          void this.retryTimeline(found);
+          return this.uploadFailures;
+        }
+
         const exists = await fspromise
           .access(found.path)
           .then(() => true)
@@ -193,6 +201,35 @@ export default class VideoProcessQueue {
     });
   }
 
+  /** Try again for a timeline failure: only the timeline goes up. */
+  private async retryTimeline(failure: UploadFailure) {
+    const timeline = await readTimelineFile(failure.path);
+
+    if (!timeline || !failure.videoKey) {
+      send(
+        'cloudActionFailed',
+        'The spell timeline is no longer on this PC, so it cannot be uploaded.',
+      );
+      return;
+    }
+
+    try {
+      await CloudClient.getInstance().putTimelineRetrying(
+        failure.videoKey,
+        timeline,
+      );
+    } catch (error) {
+      console.warn('[VideoProcessQueue] Timeline retry failed', String(error));
+      await this.recordUploadFailure(
+        { path: failure.path },
+        error,
+        failure.videoKey,
+      ).catch((e) =>
+        console.error('[VideoProcessQueue] Could not record failure', e),
+      );
+    }
+  }
+
   private sendUploadFailures() {
     send('uploadFailures', this.uploadFailures);
   }
@@ -200,8 +237,14 @@ export default class VideoProcessQueue {
   /**
    * An upload gave up. Remember it, tell the renderer (list plus one toast).
    */
-  private async recordUploadFailure(item: UploadQueueItem, error: unknown) {
-    const { kind, message } = describeUploadError(error);
+  private async recordUploadFailure(
+    item: UploadQueueItem,
+    error: unknown,
+    timelineKey?: string,
+  ) {
+    const { kind, message } = timelineKey
+      ? describeTimelineError(error)
+      : describeUploadError(error);
     const meta = await getMetadataForVideo(item.path).catch(() => null);
     const at = Date.now();
 
@@ -209,6 +252,9 @@ export default class VideoProcessQueue {
       id: failureId(item.path, at),
       path: item.path,
       name: uploadName(meta, item.path),
+      ...(timelineKey
+        ? { what: 'timeline' as const, videoKey: timelineKey }
+        : {}),
       kind,
       message,
       at,
@@ -444,6 +490,7 @@ export default class VideoProcessQueue {
 
     const client = CloudClient.getInstance();
     let failure: unknown;
+    let timelineError: unknown;
 
     try {
       // Upload the video first, this can take a bit of time, and don't want
@@ -485,14 +532,17 @@ export default class VideoProcessQueue {
       const timeline = await readTimelineFile(item.path);
 
       if (timeline) {
-        await client
-          .putTimeline(cloudMetadata.videoKey, timeline)
-          .catch((error) =>
-            console.warn(
-              '[VideoProcessQueue] Timeline upload failed',
-              String(error),
-            ),
+        try {
+          await client.putTimelineRetrying(cloudMetadata.videoKey, timeline);
+        } catch (error) {
+          // The video is up and stays up; tell the raider about the
+          // timeline, with a Try again that sends only the timeline.
+          console.warn(
+            '[VideoProcessQueue] Timeline upload failed',
+            String(error),
           );
+          timelineError = error;
+        }
       }
 
       // It is up: a failure remembered from an earlier try is out of date.
@@ -525,6 +575,14 @@ export default class VideoProcessQueue {
     if (failure !== undefined) {
       await new Promise((resolve) => setImmediate(resolve));
       await this.recordUploadFailure(item, failure).catch((e) =>
+        console.error('[VideoProcessQueue] Could not record failure', e),
+      );
+    } else if (timelineError !== undefined) {
+      await this.recordUploadFailure(
+        item,
+        timelineError,
+        path.basename(item.path),
+      ).catch((e) =>
         console.error('[VideoProcessQueue] Could not record failure', e),
       );
     }

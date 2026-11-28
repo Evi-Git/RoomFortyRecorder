@@ -2,6 +2,7 @@ import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { UpdateStatus } from 'main/AppUpdater';
 import { cn } from 'renderer/components/utils';
+import { timeOfDay } from 'renderer/clock';
 
 /**
  * [RoomFortyRecorder] Version line with a "Check for updates" link under
@@ -27,7 +28,9 @@ const describe = (status: UpdateStatus): string => {
     case 'ready':
       return `Restart to update${status.version ? ` to v${status.version}` : ''}`;
     case 'error':
-      return status.message;
+      return status.retryAt
+        ? `${status.message} Retrying at ${timeOfDay(status.retryAt)}.`
+        : status.message;
     default:
       return 'Check for updates';
   }

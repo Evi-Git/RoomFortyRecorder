@@ -11,6 +11,7 @@ import {
   defineReactCompilerLoaderOption,
   reactCompilerLoader,
 } from 'react-compiler-webpack';
+import { contentSecurityPolicy } from '../../src/renderer/csp';
 import baseConfig from './webpack.config.base';
 import webpackPaths from './webpack.paths';
 import checkNodeEnv from '../scripts/check-node-env';
@@ -173,6 +174,9 @@ const configuration: webpack.Configuration = {
     new HtmlWebpackPlugin({
       filename: path.join('index.html'),
       template: path.join(webpackPaths.srcRendererPath, 'index.ejs'),
+      contentSecurityPolicy: contentSecurityPolicy({
+        development: process.env.NODE_ENV !== 'production',
+      }),
       minify: {
         collapseWhitespace: true,
         removeAttributeQuotes: true,

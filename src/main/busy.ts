@@ -51,6 +51,9 @@ export const currentBusyReason = (): string | null => {
   }
 };
 
+// The pull desk's scheduled backfill waits for an idle app.
+PullDesk.setBusyCheck(currentBusyReason);
+
 const POLL_MS = 2000;
 
 const deferred = new DeferredAction();

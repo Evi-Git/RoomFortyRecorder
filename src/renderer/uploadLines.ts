@@ -1,5 +1,7 @@
 import type { PullUploadState } from 'main/types';
 import { timeOfDay } from './clock';
+import { friendlyError } from './friendlyError';
+import type { BackfillFailure } from 'main/backfillFailure';
 
 /**
  * [RoomFortyRecorder] One line about this PC's last pull upload, for under
@@ -88,4 +90,27 @@ export const describeBackfill = (
     ? `sent ${b.uploaded} missing ${b.uploaded === 1 ? 'pull' : 'pulls'}`
     : 'nothing was missing';
   return `Saved combat logs checked at ${timeOfDay(b.at)}: ${sent}.`;
+};
+
+/**
+ * One line for a failed automatic check of saved combat logs, or null.
+ * "Paused" (a pull started) never gets here: it isn't a failure.
+ */
+export const describeBackfillFailure = (
+  f: BackfillFailure | null | undefined,
+): string | null => {
+  if (!f) return null;
+  const at = timeOfDay(f.at);
+  const n = f.count ?? 0;
+  switch (f.kind) {
+    case 'notSignedIn':
+      return `Saved combat logs weren't checked at ${at}: sign in with Discord in Cloud settings.`;
+    case 'someFailed':
+      return `Saved combat logs checked at ${at}: ${n} ${n === 1 ? 'pull' : 'pulls'} couldn't be sent. They're tried again automatically.`;
+    case 'gaveUp':
+      return `Saved combat logs checked at ${at}: ${n === 1 ? 'a log file keeps' : `${n} log files keep`} failing, so the app stopped retrying ${n === 1 ? 'it' : 'them'}.`;
+    case 'error':
+    default:
+      return `Saved combat logs weren't checked at ${at}: ${friendlyError(f.reason)}`;
+  }
 };

@@ -17,6 +17,14 @@ export type UploadFailure = {
   id: string;
   /** The video file on this PC (what Try again queues). */
   path: string;
+  /**
+   * What did not go up. Absent means the video itself (older entries, and the
+   * usual case). 'timeline': the video is up, only its spell timeline isn't,
+   * and Try again sends just that.
+   */
+  what?: 'video' | 'timeline';
+  /** For a timeline: the video's key on the guild server. */
+  videoKey?: string;
   /** What to call it on screen. */
   name: string;
   kind: UploadFailureKind;
@@ -147,6 +155,21 @@ export const describeUploadError = (
 
   return { kind: 'other', message: friendlyError(String(e.message ?? error)) };
 };
+
+/** Plain English for a spell timeline that did not go up with its video. */
+export const describeTimelineError = (
+  error: unknown,
+): { kind: UploadFailureKind; message: string } => {
+  const { kind, message } = describeUploadError(error);
+  return {
+    kind,
+    message: `The video is up, but its spell timeline isn't. ${message}`,
+  };
+};
+
+/** What Try again does for a failure: the whole video, or just the timeline. */
+export const retryTarget = (f: Pick<UploadFailure, 'what'>) =>
+  f.what === 'timeline' ? 'timeline' : 'video';
 
 // ---- The list --------------------------------------------------------
 

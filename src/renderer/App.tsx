@@ -261,7 +261,12 @@ const RoomFortyToolkit = () => {
   // [RoomFortyRecorder] A video upload gave up (after its retries): say so
   // once. The sidebar's Cloud card keeps the list with Try again / Dismiss.
   const uploadFailed = (failure: unknown) => {
-    const f = failure as { id?: string; name?: string; message?: string };
+    const f = failure as {
+      id?: string;
+      name?: string;
+      message?: string;
+      what?: string;
+    };
     const tally = nextTally(uploadToast.current?.tally ?? null, Date.now());
     const text = failureToastText(tally.count, f);
     const shown = uploadToast.current;

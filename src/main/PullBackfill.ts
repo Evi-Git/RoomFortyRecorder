@@ -10,6 +10,13 @@ import PullLogCapture, {
 import { leadingFields } from 'parsing/PullLogFilter';
 import CloudClient from 'storage/CloudClient';
 import { sendWithRetry } from './pullUploadClient';
+import { createYielder } from './yieldToLoop';
+import {
+  BackfillFailure,
+  failureAfterIdleRun,
+  failureAfterRun,
+  notSignedInFailure,
+} from './backfillFailure';
 import {
   isRetryable,
   MAX_FILE_RECHECKS,
@@ -159,6 +166,12 @@ export default class PullBackfill {
   public lastAuto: { at: number; uploaded: number; files: number } | null =
     null;
 
+  /**
+   * Why the last automatic check didn't go well, for the Pull desk to show.
+   * Cleared by a later check that does; a pause (a pull started) is not one.
+   */
+  public lastFailure: BackfillFailure | null = null;
+
   constructor(
     private logDir: () => string,
     private storageDir: () => string = () => '',
@@ -194,7 +207,9 @@ export default class PullBackfill {
   /** Raid bosses in a log: pulls and kills per boss and difficulty. */
   public async scan(name: string): Promise<LogBoss[]> {
     const bosses = new Map<string, LogBoss>();
+    const yieldNow = createYielder();
     for await (const line of lines(this.resolve(name))) {
+      await yieldNow();
       if (!line.includes('  ENCOUNTER_')) continue;
       const isStart = line.includes('  ENCOUNTER_START,');
       const isEnd = line.includes('  ENCOUNTER_END,');
@@ -280,9 +295,13 @@ export default class PullBackfill {
     });
 
     let count = 0;
+    // A saved log can be hundreds of MB: let the rest of the app (OBS, the UI's
+    // IPC answers) run between stretches of parsing.
+    const yieldNow = createYielder();
     for await (const line of lines(file)) {
       count += 1;
       if (count % 50000 === 0 && shouldStop()) throw new Error('Paused');
+      await yieldNow();
       capture.onLine(line);
       while (queue.length) {
         // One pull at a time, so memory stays at one pull's log.
@@ -389,9 +408,11 @@ export default class PullBackfill {
       startedAt: number;
     }[] = [];
     let count = 0;
+    const yieldNow = createYielder();
     for await (const line of lines(file)) {
       count += 1;
       if (count % 50000 === 0 && shouldStop()) throw new Error('Paused');
+      await yieldNow();
       if (!line.includes('  ENCOUNTER_START,')) continue;
       const [, id, , difficulty] = leadingFields(line, 4);
       const difficultyId = Number(difficulty);
@@ -452,7 +473,10 @@ export default class PullBackfill {
   public async auto(shouldStop: () => boolean) {
     if (this.status.running) return;
     const client = CloudClient.getInstance();
-    if (!client.pullDeskReady()) return;
+    if (!client.pullDeskReady()) {
+      this.lastFailure = notSignedInFailure(Date.now());
+      return;
+    }
 
     const now = Date.now();
     const files = (await this.listLogs()).filter(
@@ -461,7 +485,10 @@ export default class PullBackfill {
     );
     const done = await this.readDone();
     const todo = files.filter((f) => done[f.name] !== doneKey(f));
-    if (!todo.length) return;
+    if (!todo.length) {
+      this.lastFailure = failureAfterIdleRun(this.lastFailure);
+      return;
+    }
 
     this.status = {
       running: true,
@@ -475,9 +502,14 @@ export default class PullBackfill {
       error: '',
       finishedAt: null,
     };
+    let gaveUp = 0;
+    let stopped = false;
     try {
       for (const f of todo) {
-        if (shouldStop()) break;
+        if (shouldStop()) {
+          stopped = true;
+          break;
+        }
         this.status.file = f.name;
         const file = this.resolve(f.name);
         const starts = await this.pullStarts(file, shouldStop);
@@ -523,6 +555,7 @@ export default class PullBackfill {
               `[PullBackfill] ${f.name}: still failing after ${MAX_FILE_RECHECKS} checks, leaving it`,
             );
             complete = true;
+            gaveUp += 1;
           } else {
             done[`${f.name}#tries`] = again.value;
             await this.writeDone(done);
@@ -536,11 +569,22 @@ export default class PullBackfill {
       }
     } catch (error) {
       const message = String((error as Error)?.message || error);
-      if (message !== 'Paused') {
+      if (message === 'Paused') {
+        stopped = true;
+      } else {
         this.status.error = message;
         console.warn('[PullBackfill] Automatic backfill failed', message);
       }
     } finally {
+      // A pause is not a failure: keep what was known before it.
+      if (!stopped || this.status.error) {
+        this.lastFailure = failureAfterRun({
+          now: Date.now(),
+          error: this.status.error || undefined,
+          failed: this.status.failed,
+          gaveUp,
+        });
+      }
       this.status.running = false;
       this.status.finishedAt = Date.now();
       this.lastAuto = {

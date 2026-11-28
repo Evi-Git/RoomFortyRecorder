@@ -6,6 +6,7 @@ import path from 'path';
 import { getFileInfo, getSortedFiles } from '../main/util';
 import LogLine from './LogLine';
 import AsyncQueue from '../utils/AsyncQueue';
+import { WATCHER_SCHEDULE, delayFor } from '../main/retrySchedule';
 
 /**
  * Setup a bunch of promisified fs calls for convienence.
@@ -78,6 +79,20 @@ export default class CombatLogWatcher extends EventEmitter {
   private current = '';
 
   /**
+   * [RoomFortyRecorder] Set by unwatch(); a re-watch in flight gives up.
+   */
+  private stopped = false;
+
+  /** Pending re-watch after the folder watcher died. */
+  private rewatchTimer?: NodeJS.Timeout;
+
+  /** How many re-watch attempts have failed since the watcher last worked. */
+  private rewatchAttempts = 0;
+
+  /** True between WATCHER_DOWN and WATCHER_UP. */
+  private down = false;
+
+  /**
    * [RoomFortyRecorder] Optional hook that sees every raw line before it is
    * parsed, used by the pull desk to keep a copy of each raid pull.
    */
@@ -96,10 +111,39 @@ export default class CombatLogWatcher extends EventEmitter {
    * Start watching the directory.
    */
   public async watch() {
-    await this.getLogDirectoryState();
-    this.watcher = watch(this.logDir);
+    this.stopped = false;
+    try {
+      await this.getLogDirectoryState();
+      this.startWatcher();
+    } catch (e) {
+      // e.g. the folder doesn't exist yet: keep trying rather than throwing.
+      console.warn('[CombatLogWatcher] Could not watch the folder', e);
+      this.setDown(String((e as Error)?.message ?? e));
+      this.rewatchLater();
+    }
+  }
 
-    this.watcher.on('change', (type, file) => {
+  /**
+   * [RoomFortyRecorder] Open the folder watcher and hook it up. Never leaves
+   * two live watchers: an old one is closed first. Throws if the folder
+   * can't be watched (the caller of watch() sees nothing; see rewatchLater).
+   */
+  private startWatcher() {
+    this.closeWatcher();
+    this.watcher = watch(this.logDir);
+    const mine = this.watcher;
+
+    // An FSWatcher that emits 'error' with no listener throws in the main
+    // process, and a dead one silently stops every recording trigger.
+    mine.on('error', (err) => {
+      if (this.watcher !== mine) return;
+      console.warn('[CombatLogWatcher] Folder watcher failed', err);
+      this.closeWatcher();
+      this.setDown(String((err as Error)?.message ?? err));
+      this.rewatchLater();
+    });
+
+    mine.on('change', (type, file) => {
       if (typeof file !== 'string') {
         return;
       }
@@ -146,9 +190,88 @@ export default class CombatLogWatcher extends EventEmitter {
    * Stop watching the directory.
    */
   public async unwatch() {
-    if (this.watcher) {
-      await this.watcher.close();
+    this.stopped = true;
+    if (this.rewatchTimer) {
+      clearTimeout(this.rewatchTimer);
+      this.rewatchTimer = undefined;
     }
+    this.closeWatcher();
+  }
+
+  /** Close the current folder watcher, if any. Safe to call twice. */
+  private closeWatcher() {
+    const w = this.watcher;
+    this.watcher = undefined;
+    try {
+      w?.close();
+    } catch (e) {
+      console.warn('[CombatLogWatcher] Closing the watcher failed', e);
+    }
+  }
+
+  private setDown(reason: string) {
+    if (this.down) return;
+    this.down = true;
+    this.emit('WARCRAFT_RECORDER_WATCHER_DOWN', reason);
+  }
+
+  /**
+   * [RoomFortyRecorder] Try to watch the folder again after the backoff wait.
+   * Per-file offsets (state, tails, unverified, skipping) are kept, so the
+   * catch-up after a re-watch reads only what was written meanwhile.
+   */
+  private rewatchLater() {
+    if (this.stopped || this.rewatchTimer) return;
+    const wait = delayFor(WATCHER_SCHEDULE, this.rewatchAttempts);
+    if (wait === null) return;
+    this.rewatchAttempts += 1;
+    console.info('[CombatLogWatcher] Re-watching the folder in', wait, 'ms');
+    this.rewatchTimer = setTimeout(() => {
+      this.rewatchTimer = undefined;
+      this.rewatch().catch((e) => {
+        console.warn('[CombatLogWatcher] Re-watch failed', e);
+        this.rewatchLater();
+      });
+    }, wait);
+  }
+
+  private async rewatch() {
+    if (this.stopped) return;
+    this.startWatcher();
+    // startWatcher can succeed on a folder that is already gone again; the
+    // watcher's own error event then brings us back here.
+    this.rewatchAttempts = 0;
+    if (this.down) {
+      this.down = false;
+      console.info('[CombatLogWatcher] Watching the folder again');
+      this.emit('WARCRAFT_RECORDER_WATCHER_UP');
+    }
+    await this.catchUp();
+  }
+
+  /**
+   * [RoomFortyRecorder] Read whatever was written while no watcher was alive.
+   * Files we know are read from their last offset; new ones from the start.
+   */
+  private async catchUp() {
+    let logs: FileInfo[] = [];
+    try {
+      logs = await getSortedFiles(this.logDir, 'WoWCombatLog.*.txt');
+    } catch (e) {
+      console.warn('[CombatLogWatcher] Catch-up listing failed', e);
+      return;
+    }
+    // A file deleted while we weren't watching: a later file with the same
+    // name must be read from the start.
+    const present = new Set(logs.map((l) => l.name));
+    Object.keys(this.state)
+      .filter((name) => !present.has(name))
+      .forEach((name) => this.queue.add(async () => this.forget(name)));
+    logs.forEach((info) => {
+      const known = this.state[info.name];
+      if (known && known.size === info.size) return;
+      this.queue.add(() => this.process(path.basename(info.name)));
+    });
   }
 
   /**

@@ -171,6 +171,7 @@ export const build = async (out = arg('out', '/tmp/rf-harness-out')) => {
   await buildNode(esbuild, out);
 
   fs.copyFileSync(path.join(here, 'index.html'), path.join(out, 'index.html'));
+  fs.copyFileSync(path.join(here, 'boot.js'), path.join(out, 'boot.js'));
   execFileSync(
     process.execPath,
     [

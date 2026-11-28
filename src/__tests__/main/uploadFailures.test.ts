@@ -1,6 +1,7 @@
 import {
   addFailure,
   classifyUpload,
+  describeTimelineError,
   describeUploadError,
   FULL_TEXT,
   LINK_EXPIRED_TEXT,
@@ -8,6 +9,7 @@ import {
   MAX_FAILURES,
   removeFailure,
   removeFailureForPath,
+  retryTarget,
   SIGN_IN_TEXT,
   StallError,
   STALLED_TEXT,
@@ -206,5 +208,81 @@ describe('withRetry for uploads', () => {
         maxAttempts: 3,
       }),
     ).resolves.toBe('ok');
+  });
+});
+
+describe('spell timeline failures', () => {
+  it('says the video is up and why the timeline is not', () => {
+    const got = describeTimelineError(new StallError());
+    expect(got.kind).toBe('stalled');
+    expect(
+      got.message.startsWith("The video is up, but its spell timeline isn't."),
+    ).toBe(true);
+    expect(got.message).toContain(STALLED_TEXT);
+  });
+
+  it('a refusal keeps its kind', () => {
+    expect(describeTimelineError(http(401)).kind).toBe('auth');
+  });
+
+  it('Try again sends only the timeline for a timeline failure', () => {
+    expect(retryTarget({ what: 'timeline' })).toBe('timeline');
+    expect(retryTarget({ what: 'video' })).toBe('video');
+    expect(retryTarget({})).toBe('video');
+  });
+
+  it("a timeline failure replaces the file's older entry and is cleared when the file uploads", () => {
+    const video: UploadFailure = {
+      id: 'a',
+      path: '/v.mp4',
+      name: 'v',
+      kind: 'server',
+      message: 'x',
+      at: 1,
+    };
+    const timeline: UploadFailure = {
+      ...video,
+      id: 'b',
+      what: 'timeline',
+      videoKey: 'v.mp4',
+      at: 2,
+    };
+    const list = addFailure([video], timeline);
+    expect(list).toEqual([timeline]);
+    expect(removeFailureForPath(list, '/v.mp4')).toEqual([]);
+  });
+
+  it('a stall and a dropped connection are retried, a 4xx is not', async () => {
+    let calls = 0;
+    const sleeps: number[] = [];
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          if (calls < 3) throw new StallError();
+          return 'ok';
+        },
+        {
+          sleep: async (ms) => {
+            sleeps.push(ms);
+          },
+          classify: classifyUpload,
+          maxAttempts: 3,
+        },
+      ),
+    ).resolves.toBe('ok');
+    expect(calls).toBe(3);
+
+    calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          throw http(403, 'no');
+        },
+        { sleep: async () => {}, classify: classifyUpload, maxAttempts: 3 },
+      ),
+    ).rejects.toBeDefined();
+    expect(calls).toBe(1);
   });
 });

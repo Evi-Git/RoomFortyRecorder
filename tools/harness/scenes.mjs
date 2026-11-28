@@ -827,6 +827,53 @@ export const scenes = [
     },
   },
   {
+    name: 'settings-game-backfill-failed',
+    shows: 'Settings > Game: Send my Logs says the automatic check of saved logs failed, with Try now',
+    init: {
+      answers: {
+        'pullDesk:uploadState': {
+          ok: true,
+          data: {
+            last: null,
+            backfill: { at: Date.parse('2026-10-21T22:41:00'), uploaded: 0, files: 3 },
+            backfillFailure: { kind: 'error', at: Date.parse('2026-10-21T22:41:00'), reason: 'connect ECONNREFUSED 192.168.1.5:8080' },
+          },
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.nav('General');
+      await t.page.getByRole('tab', { name: 'Game', exact: true }).click();
+      await t.settle();
+      await t.page.getByText('Send my Logs', { exact: false }).first().scrollIntoViewIfNeeded();
+      await t.settle(400);
+    },
+  },
+  {
+    name: 'smallest-settings-game-backfill-failed',
+    shows: 'Smallest window, Settings > Game: Send my Logs says the automatic check of saved logs failed, with Try now',
+    viewport: smallest,
+    init: {
+      answers: {
+        'pullDesk:uploadState': {
+          ok: true,
+          data: {
+            last: null,
+            backfill: { at: Date.parse('2026-10-21T22:41:00'), uploaded: 0, files: 3 },
+            backfillFailure: { kind: 'error', at: Date.parse('2026-10-21T22:41:00'), reason: 'connect ECONNREFUSED 192.168.1.5:8080' },
+          },
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.nav('General');
+      await t.page.getByRole('tab', { name: 'Game', exact: true }).click();
+      await t.settle();
+      await t.page.getByText('Send my Logs', { exact: false }).first().scrollIntoViewIfNeeded();
+      await t.settle(400);
+    },
+  },
+  {
     name: 'settings-game-lower',
     shows: 'Settings > Game tab scrolled to the bottom (Mythic+, manual recording)',
     continue: true,
