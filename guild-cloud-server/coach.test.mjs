@@ -28,6 +28,7 @@ const startDiscord = async () => {
     const match = /\/channels\/(\d+)\/messages/.exec(req.url);
     if (match && req.method === 'POST') {
       if (match[1] === '444444') return send(403, { message: 'Missing access' });
+      if (match[1] === '555555') return send(502, { message: 'Bad gateway' });
       posted.push({ channel: match[1], ...JSON.parse(Buffer.concat(chunks).toString()) });
       return send(200, { id: '1' });
     }
@@ -37,7 +38,8 @@ const startDiscord = async () => {
   return { server, posted, url: `http://127.0.0.1:${server.address().port}` };
 };
 
-const setup = async () => {
+const setup = async ({ discordApi } = {}) => {
+  const removedLinks = [];
   const discord = await startDiscord();
   const storage = await fsp.mkdtemp(path.join(os.tmpdir(), 'coach-'));
   const ids = { officer1: '100001', raider1: '200001', raider2: '200002' };
@@ -56,7 +58,8 @@ const setup = async () => {
     discordGuildId: '1',
     publicUrl: 'https://example.test',
     createShareLink: async (name) => (name === 'missing' ? null : { id: `link-${name}` }),
-    env: { GUILD_CLOUD_COACH_DISCORD_API: discord.url },
+    removeShareLink: async (id) => removedLinks.push(id),
+    env: { GUILD_CLOUD_COACH_DISCORD_API: discordApi || discord.url },
   });
   const call = async (who, method, rest, body, query = '') => {
     const res = {};
@@ -68,7 +71,7 @@ const setup = async () => {
     );
     return res;
   };
-  return { discord, call, coach };
+  return { discord, call, coach, removedLinks };
 };
 
 test('officers send anywhere; raiders only to their mapped channel', async (t) => {
@@ -138,6 +141,39 @@ test('officers send anywhere; raiders only to their mapped channel', async (t) =
   const denied = await call('officer1', 'POST', ['send'], { videoName: 'v', channelId: '444444' });
   assert.equal(denied.status, 502);
   assert.match(denied.body.error, /cannot post/);
+});
+
+test('a clip Discord refused takes its link and preview down; one it accepted keeps both (1.9.168)', async (t) => {
+  const { discord, call, coach, removedLinks } = await setup();
+  t.after(() => discord.server.close());
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
+
+  const ok = await call('officer1', 'POST', ['send'], { videoName: 'kept', channelId: '222222', thumbnail: jpeg });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(removedLinks, []);
+  assert.ok(await coach.thumbnailPath('link-kept'));
+
+  const refused = await call('officer1', 'POST', ['send'], { videoName: 'gone', channelId: '444444', thumbnail: jpeg });
+  assert.equal(refused.status, 502);
+  assert.deepEqual(removedLinks, ['link-gone']);
+  assert.equal(await coach.thumbnailPath('link-gone'), null);
+  assert.ok(await coach.thumbnailPath('link-kept')); // the other clip is untouched
+
+  // A 5xx doesn't prove the post failed (a proxy in front of Discord can
+  // answer it after the message went out): the link stays.
+  const maybe = await call('officer1', 'POST', ['send'], { videoName: 'maybe5xx', channelId: '555555', thumbnail: jpeg });
+  assert.equal(maybe.status, 502);
+  assert.deepEqual(removedLinks, ['link-gone']);
+  assert.ok(await coach.thumbnailPath('link-maybe5xx'));
+});
+
+test('a clip whose Discord post may have gone out (no answer) keeps its link', async (t) => {
+  const { discord, call, coach, removedLinks } = await setup({ discordApi: 'http://127.0.0.1:1' });
+  t.after(() => discord.server.close());
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
+  await assert.rejects(call('officer1', 'POST', ['send'], { videoName: 'maybe', channelId: '222222', thumbnail: jpeg }));
+  assert.deepEqual(removedLinks, []);
+  assert.ok(await coach.thumbnailPath('link-maybe'));
 });
 
 test('flags: create, list, edit own, officers can delete any', async (t) => {

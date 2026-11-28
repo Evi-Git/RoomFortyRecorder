@@ -46,6 +46,7 @@ export const createCoach = ({
   botToken,
   discordGuildId,
   createShareLink,
+  removeShareLink = null,
   publicUrl,
   env,
   can = null,
@@ -289,6 +290,18 @@ export const createCoach = ({
         allowed_mentions: { parse: [] },
       });
       if (!result.ok) {
+        // A 4xx is Discord refusing the post, so nobody got the link: take it
+        // down. A 5xx (often a proxy in front of Discord) or a timeout or
+        // network failure (which throws out of discord() before this point)
+        // doesn't prove the message failed, so the link stays.
+        if (result.status >= 400 && result.status < 500) {
+          try {
+            await removeShareLink?.(link.id);
+          } catch (error) {
+            console.warn(`[coach] could not remove the refused clip's link: ${error?.message || error}`);
+          }
+          await removeThumbnail(link.id);
+        }
         const reason =
           result.status === 403 || result.status === 404
             ? 'The bot cannot post in that channel (it needs View Channel, Send Messages and Embed Links there).'
@@ -387,6 +400,11 @@ export const createCoach = ({
     return removed;
   };
 
+  /** Deletes one clip's preview image right away (it may not exist). */
+  const removeThumbnail = async (linkId) => {
+    await fsp.unlink(thumbFile(linkId)).catch(() => {});
+  };
+
   // persist is exposed for tests.
-  return { handle, ready, thumbnailPath, removeThumbnails, persist };
+  return { handle, ready, thumbnailPath, removeThumbnails, removeThumbnail, persist };
 };

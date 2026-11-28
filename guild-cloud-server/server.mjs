@@ -1311,6 +1311,33 @@ const metadataFor = (video) => ({
   shared: Boolean(videoLinkFor(video.videoKey)),
 });
 
+// Which public links to a recording this caller may stop. A recording link
+// goes if the caller made it or may change the recording (uploader or
+// videoManage); a clip link goes if the caller sent it or may change the
+// recording. "May change" (own recording, else a Discord role lookup cached
+// per request) is only asked when the recording has a link.
+const stoppableLinksFor = async (video, userId, mayChange, links = linksByKey().get(video.videoKey) ?? []) => {
+  const videoLinks = links.filter((link) => linkKind(link) === 'video');
+  const clips = links.filter((link) => linkKind(link) === 'clip');
+  const mine = (link) => Boolean(link.createdBy) && link.createdBy === userId;
+  const manage = links.length > 0 && (await mayChange(video));
+  return {
+    exist: links.length,
+    videoLinks: manage || videoLinks.some(mine) ? videoLinks : [],
+    clips: manage ? clips : clips.filter(mine),
+  };
+};
+
+// state.links grouped by recording key, built once per call.
+const linksByKey = () => {
+  const map = new Map();
+  for (const link of state.links) {
+    if (!map.has(link.key)) map.set(link.key, []);
+    map.get(link.key).push(link);
+  }
+  return map;
+};
+
 // One Warcraft Logs client for the whole server: one sign-in and one view of
 // the hour's points. Each feature below takes its own handle from it.
 const wcl = createWclClient({
@@ -1367,6 +1394,12 @@ const coach = createCoach({
       (entry) => entry.videoName === videoName || entry.videoKey === videoName,
     );
     return video ? createShareLink(GUILD, video, { kind: 'clip', createdBy }) : null;
+  },
+  // A clip whose Discord post was refused: nobody got the link.
+  removeShareLink: async (id) => {
+    const before = state.links.length;
+    state.links = state.links.filter((link) => link.id !== id);
+    if (state.links.length !== before) await persist();
   },
   env: process.env,
   can: permissions.can,
@@ -1698,11 +1731,24 @@ const handleApi = async (req, res, url, parts) => {
   if (parts[3] === 'video' && parts.length === 4) {
     if (req.method === 'GET') {
       const entries = await videoEntries();
-      return json(
-        res,
-        200,
-        entries.map((entry) => metadataFor(entry.video)),
-      );
+      // Per caller, for the Stop sharing button: whether this caller may stop
+      // the recording's own link (`stopsLink`), how many clips sent to
+      // Discord they may stop (`stopsClips`) and whether that's anything at
+      // all (`canStopSharing`). Only looked up for recordings with a link.
+      const byKey = linksByKey();
+      const rows = [];
+      for (const entry of entries) {
+        const row = metadataFor(entry.video);
+        const links = byKey.get(entry.video.videoKey) ?? [];
+        const found = links.length
+          ? await stoppableLinksFor(entry.video, req.cloudUserId, mayChangeVideo, links)
+          : { videoLinks: [], clips: [] };
+        row.stopsLink = found.videoLinks.length > 0;
+        row.stopsClips = found.clips.length;
+        row.canStopSharing = row.stopsLink || row.stopsClips > 0;
+        rows.push(row);
+      }
+      return json(res, 200, rows);
     }
 
     if (req.method === 'POST') {
@@ -1821,21 +1867,20 @@ const handleApi = async (req, res, url, parts) => {
       return json(res, 200, { id });
     }
 
-    // Stop sharing: the person who shared it, the uploader or an officer.
-    // Nothing in R2 is touched; only the public page and its redirect go.
-    const links = state.links.filter((link) => link.key === video.videoKey && linkKind(link) === 'video');
-    if (links.length === 0) return json(res, 200, { removed: 0 }); // already stopped
-    const mayStop =
-      links.some((link) => link.createdBy && link.createdBy === req.cloudUserId) ||
-      (await mayChangeVideo(video));
-    if (!mayStop) {
+    // Stop sharing: every public link to the recording the caller may stop
+    // (the recording's own link and the clips sent to Discord; see
+    // stoppableLinksFor). Nothing in R2 is touched; only the public pages
+    // and their redirects go.
+    const found = await stoppableLinksFor(video, req.cloudUserId, mayChangeVideo);
+    if (found.exist === 0) return json(res, 200, { removed: 0, clips: 0 }); // already stopped
+    if (found.videoLinks.length + found.clips.length === 0) {
       return fail(res, 403, 'Only the person who shared it, the uploader or an officer can stop sharing');
     }
-    if (links.length > 0) {
-      state.links = state.links.filter((link) => !links.includes(link));
-      await persist();
-    }
-    return json(res, 200, { removed: links.length });
+    const gone = new Set([...found.videoLinks, ...found.clips]);
+    state.links = state.links.filter((link) => !gone.has(link));
+    await persist();
+    for (const clip of found.clips) await coach.removeThumbnail(clip.id);
+    return json(res, 200, { removed: found.videoLinks.length, clips: found.clips.length });
   }
 
   if (parts[3] === 'upload' && req.method === 'POST') {

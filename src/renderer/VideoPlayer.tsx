@@ -74,6 +74,12 @@ import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
 import { focusFromPointer } from './a11y';
+import {
+  shareStateKey,
+  showStopSharing,
+  stopSharingDone,
+  stopSharingLabel,
+} from './stopSharing';
 
 interface IProps {
   videos: RendererVideo[];
@@ -176,6 +182,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   // when the user is dragging.
   const [progress, setProgress] = useState<number>(0);
   const [sendOpen, setSendOpen] = useState(false);
+  // The share state a Stop sharing press ended: the button stays hidden until
+  // the video list brings a different one (the 30-second poll).
+  const [stoppedShare, setStoppedShare] = useState<string | null>(null);
 
   // While the user is dragging the thumb of the slider, we don't
   // want to update the video position. This is used to conditionally
@@ -1266,10 +1275,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     const result = await ipc.invoke('stopSharingLink', [cloudVideo.videoName]);
 
     if (result?.ok) {
+      setStoppedShare(shareStateKey(cloudVideo));
       toast({
         title: 'Sharing stopped',
-        description:
-          'The public link no longer works. Someone already watching can usually finish (up to 2 hours), and Discord may keep its copy of a posted clip for a while.',
+        description: stopSharingDone(result.removed, result.clips),
         duration: 5000,
       });
       return;
@@ -1284,11 +1293,15 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   /**
-   * Render the stop sharing button, only while the recording is shared.
+   * Render the stop sharing button, only while the recording (or a clip of
+   * it sent to Discord) is shared and this person may stop it.
    */
   const renderStopSharingButton = () => {
-    if (!cloudVideo?.shared) return null;
-    const label = 'Stop sharing: the public link stops working';
+    if (!showStopSharing(cloudVideo)) return null;
+    if (stoppedShare !== null && stoppedShare === shareStateKey(cloudVideo)) {
+      return null;
+    }
+    const label = stopSharingLabel(cloudVideo);
 
     return (
       <Tooltip content={label}>

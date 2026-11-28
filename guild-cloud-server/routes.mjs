@@ -77,7 +77,7 @@ export const ROUTES = [
   { method: 'PUT', path: '/api/guild/:guild/video/:key/timeline', access: 'member', note: 'Own video, or videoManage (checked in the handler).' },
   { method: 'GET', path: '/api/guild/:guild/video/:key/size', access: 'member' },
   { method: 'POST', path: '/api/guild/:guild/video/:key/link', access: 'member', note: 'Any member; one link per recording.' },
-  { method: 'DELETE', path: '/api/guild/:guild/video/:key/link', access: 'member', note: 'Stop sharing: whoever shared it, the uploader, or videoManage (checked in the handler).' },
+  { method: 'DELETE', path: '/api/guild/:guild/video/:key/link', access: 'member', note: 'Stop sharing: removes the recording link and the Discord clip links of that recording the caller may stop (their own, or all if they are the uploader or have videoManage; checked in the handler). Answers { removed, clips }.' },
   { method: 'POST', path: '/api/guild/:guild/upload', access: 'member', note: 'Own recording, or videoManage to overwrite someone else\'s (checked in the handler).' },
   { method: 'GET', path: '/api/guild/:guild/usage', access: 'member' },
   { method: 'GET', path: '/api/guild/:guild/limit', access: 'member' },
