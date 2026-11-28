@@ -8,6 +8,10 @@ raider clicks that prompt. Draft releases are invisible to the app.
 
 ## Every release
 
+Several merged changes can share one release: bump the version once, with a
+changelog line for each change. (The Claude workflow for this is in
+`CLAUDE.md`, "Releasing (in waves)".)
+
 1. **Bump the version.** Change `"version"` in `release/app/package.json`
    (not the root `package.json`) to the next number, e.g. `1.4.0` -> `1.4.1`.
    Use the GitHub web editor if you like: open the file, click the pencil,
