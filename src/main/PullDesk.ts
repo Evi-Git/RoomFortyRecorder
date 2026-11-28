@@ -8,7 +8,6 @@ import ConfigService from 'config/ConfigService';
 import CloudClient from 'storage/CloudClient';
 import PullLogCapture, { CapturedPull } from 'parsing/PullLogCapture';
 import PullBackfill, { BossPercentHint, uploadFullLog } from './PullBackfill';
-import { currentBusyReason } from './busy';
 import { BACKFILL_BUSY_RETRY_MS, backfillDecision } from './backfillSchedule';
 import { NOT_SIGNED_IN_CODE, sendWithRetry, sleep } from './pullUploadClient';
 import {
@@ -345,6 +344,17 @@ export default class PullDesk {
     };
   }
 
+  /**
+   * Why the app is busy right now, or null (see busy.ts, which sets this: it
+   * imports PullDesk, so PullDesk can't import it back without a cycle that
+   * also drags the recorder into anything that loads the pull desk).
+   */
+  private static busyCheck: () => string | null = () => null;
+
+  static setBusyCheck(check: () => string | null) {
+    PullDesk.busyCheck = check;
+  }
+
   static getInstance() {
     if (!PullDesk.instance) PullDesk.instance = new PullDesk();
     return PullDesk.instance;
@@ -358,7 +368,7 @@ export default class PullDesk {
       const decision = backfillDecision({
         enabled: this.cfg.get<boolean>('pullDeskUpload') !== false,
         capturing: this.capture.capturing,
-        busyReason: currentBusyReason(),
+        busyReason: PullDesk.busyCheck(),
       });
       if (decision === 'skip') return;
       if (decision === 'later') {

@@ -827,6 +827,27 @@ export const scenes = [
     },
   },
   {
+    name: 'settings-cloud-backfill-failed',
+    shows: 'Settings > Cloud: Send my Logs says the automatic check of saved logs failed, with Try now',
+    init: {
+      answers: {
+        'pullDesk:uploadState': {
+          ok: true,
+          data: {
+            last: null,
+            backfill: { at: Date.parse('2026-10-21T22:41:00'), uploaded: 0, files: 3 },
+            backfillFailure: { kind: 'error', at: Date.parse('2026-10-21T22:41:00'), reason: 'connect ECONNREFUSED 192.168.1.5:8080' },
+          },
+        },
+      },
+    },
+    steps: async (t) => {
+      await t.nav('General');
+      await t.page.getByRole('tab', { name: 'Cloud', exact: true }).click();
+      await t.settle();
+    },
+  },
+  {
     name: 'settings-game-lower',
     shows: 'Settings > Game tab scrolled to the bottom (Mythic+, manual recording)',
     continue: true,
