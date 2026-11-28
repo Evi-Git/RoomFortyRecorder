@@ -105,7 +105,7 @@ export type NoPullsInput = {
 
 export const describeNoPulls = (i: NoPullsInput): string => {
   if (!i.uploadOn) {
-    return 'Nothing is sent: Send my Logs is off. Turn it on with the switch on the right.';
+    return 'Nothing is sent: Send my logs is off. Turn it on with the switch on the right.';
   }
   const s = i.signIn?.state;
   if (s === 'signedOut') {

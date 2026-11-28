@@ -227,6 +227,20 @@ export const scenes = [
     },
   },
   {
+    // Accessible names of the row/selection buttons (prints "A11YNAMES ...").
+    name: 'rec-button-names',
+    shows: 'Recordings > Raids; prints the buttons accessible names and descriptions',
+    continue: true,
+    steps: async (t) => {
+      const names = await t.page.evaluate(() =>
+        [...document.querySelectorAll('button[aria-label]')]
+          .map((b) => [b.getAttribute('aria-label'), b.hasAttribute('disabled'), b.getAttribute('aria-describedby') ? document.getElementById(b.getAttribute('aria-describedby'))?.textContent : null])
+          .filter((n) => n[1] || n[2]),
+      );
+      console.log('A11YNAMES', JSON.stringify(names));
+    },
+  },
+  {
     name: 'rec-raids-multiselect',
     shows: 'Raids with three rows selected (Ctrl-click): selection count and the protected, tagged row',
     continue: true,
@@ -893,6 +907,15 @@ export const scenes = [
     continue: true,
     steps: async (t) => {
       await t.page.getByRole('tab', { name: 'Game', exact: true }).click();
+      await t.settle();
+    },
+  },
+  {
+    name: 'settings-game-send-off',
+    shows: 'Settings > Game: "Send my logs" off, the status line says why nothing is sent',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('switch', { name: 'Send my logs' }).click();
       await t.settle();
     },
   },
