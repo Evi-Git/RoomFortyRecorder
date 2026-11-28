@@ -18,7 +18,10 @@
 // Routes, under /api/guild/<guild>/pulldesk/toplogs (Analysis viewers):
 //   GET  (none)        settings, crawl status, what's cached
 //   GET  rankings      ?encounterId&difficulty&specId&region: top 25 rows with
-//                      casts (queued when missing), derived cooldowns
+//                      casts (queued when missing), derived cooldowns. A row
+//                      is ready, queued, waiting (the hourly limit; resumesAt)
+//                      or failed (error says why); `progress` counts them
+//   POST retry         {rows:[{code,fight,name}]}: ask again for failed rows
 //   GET  trial         ?code&fight&name: one player's track (casts + amounts)
 //   POST crawl         officers: crawl rankings now
 //
@@ -236,7 +239,50 @@ export const namesFor = (abilities, ids) => {
   return out;
 };
 
-export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOfficer = async () => false, fetchImpl, wcl: givenWcl }) => {
+const MAX_ATTEMPTS = 3;
+
+/**
+ * A short plain reason for a failed fetch, and whether trying again could
+ * help (a private report won't change in a minute; a busy Warcraft Logs may).
+ * @param {{ message?: string }} error
+ */
+export const explainError = (error) => {
+  const message = String(error?.message ?? error ?? '');
+  if (message === 'Stopped') return { reason: 'Stopped', retriable: false };
+  if (/rejected the API credentials|sign-in failed/i.test(message)) {
+    return { reason: "Warcraft Logs rejected the server's API keys", retriable: false };
+  }
+  if (/permission|private|not found in report|Fight \d+ not found|does not exist|unknown report/i.test(message)) {
+    return { reason: 'The report is private or was deleted', retriable: false };
+  }
+  if (/no (damage|healing) for/i.test(message)) {
+    return { reason: 'Warcraft Logs had no events for this fight', retriable: true };
+  }
+  if (/timed out|timeout|aborted/i.test(message)) {
+    return { reason: 'Warcraft Logs took too long to answer', retriable: true };
+  }
+  if (/rate limit|429|points/i.test(message)) {
+    return { reason: 'Warcraft Logs hourly limit reached', retriable: true };
+  }
+  return { reason: 'Warcraft Logs returned an error', retriable: true };
+};
+
+export const createTopLogs = ({
+  storage,
+  env,
+  readBody,
+  json,
+  fail,
+  season,
+  isOfficer = async () => false,
+  fetchImpl,
+  wcl: givenWcl,
+  // Tests shorten these.
+  retryDelaysMs = [15000, 90000],
+  jobTimeoutMs = 4 * 60 * 1000,
+  rankingsWaitMs = 40000,
+  trialWaitMs = 8000,
+}) => {
   const enabled = String(env.GUILD_CLOUD_TOPLOGS ?? 'on').toLowerCase() !== 'off';
   const dir = path.join(storage, 'toplogs');
   const difficulties = String(env.GUILD_CLOUD_TOPLOGS_DIFFICULTIES || 'mythic,heroic')
@@ -268,8 +314,11 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       baseUrl: env.GUILD_CLOUD_WCL_URL || undefined,
       ...(fetchImpl ? { fetchImpl } : {}),
     },
-    { log },
+    { log, budgetShare: 0.85 },
   );
+  // Page requests (a person is waiting) may spend a bit more of the hour than
+  // the daily crawl: the crawl pausing at 85% must not freeze the page.
+  const wclNow = wcl.forConsumer ? wcl.forConsumer({ log, budgetShare: 0.9 }) : wcl;
 
   // ---- Storage -------------------------------------------------------------
   const readJson = async (file, fallback) => {
@@ -312,8 +361,8 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   };
 
   // ---- Warcraft Logs ------------------------------------------------------
-  const fetchRankings = async (encounterId, difficultyId, spec, region) => {
-    const data = await wcl.query(
+  const fetchRankings = async (encounterId, difficultyId, spec, region, client = wcl) => {
+    const data = await client.query(
       `query($id: Int!, $cls: String!, $spec: String!, $diff: Int!, $metric: CharacterRankingMetricType!, $region: String) {
         worldData { encounter(id: $id) { characterRankings(className: $cls, specName: $spec, difficulty: $diff, metric: $metric, serverRegion: $region, page: 1) } } }`,
       {
@@ -338,9 +387,9 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   // Each report's ability names, kept while the server runs (one report
   // holds many ranked players).
   const reportAbilities = new Map();
-  const abilitiesOf = async (code) => {
+  const abilitiesOf = async (code, client = wcl) => {
     if (reportAbilities.has(code)) return reportAbilities.get(code);
-    const data = await wcl.query(
+    const data = await client.query(
       `query($code: String!) { reportData { report(code: $code) { masterData { abilities { gameID name } } } } }`,
       { code },
       { quiet: true },
@@ -351,23 +400,23 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   };
 
   // Names for a track saved before 1.9.102 (cheap: one query per report).
-  const fetchNames = async (code, fight, name) => {
+  const fetchNames = async (code, fight, name, client = wcl) => {
     const track = await readTrack(code, fight, name);
     if (!track || track.names) return track;
-    const names = namesFor(await abilitiesOf(code), (track.casts || []).map((c) => c[1]));
+    const names = namesFor(await abilitiesOf(code, client), (track.casts || []).map((c) => c[1]));
     const next = { ...track, names };
     await writeTrack(code, fight, name, next);
     return next;
   };
 
   // The enemies' casts in their fight (Time trial finds our phases with them).
-  const fetchEnemy = async (track) => {
+  const fetchEnemy = async (track, client = wcl) => {
     const enemy = [];
     const end = track.fightStart + track.duration * 1000;
     let start = track.fightStart;
     for (let page = 0; page < 10 && start !== null && start !== undefined; page += 1) {
       // eslint-disable-next-line no-await-in-loop
-      const data = await wcl.query(
+      const data = await client.query(
         `query($code: String!, $fight: Int!, $start: Float!, $end: Float!) { reportData { report(code: $code) {
           events(fightIDs: [$fight], dataType: Casts, hostilityType: Enemies, startTime: $start, endTime: $end, limit: 10000) { data nextPageTimestamp }
         } } }`,
@@ -382,17 +431,17 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       });
       start = events?.nextPageTimestamp ?? null;
     }
-    const abilities = await abilitiesOf(track.code);
+    const abilities = await abilitiesOf(track.code, client);
     const names = namesFor(abilities, [...(track.casts || []).map((c) => c[1]), ...enemy.map((c) => c[1])]);
     return { ...track, enemy, names: { ...(track.names || {}), ...names } };
   };
 
-  const fetchTrack = async (code, fight, name, { amounts = false, metric = 'dps' } = {}) => {
+  const fetchTrack = async (code, fight, name, { amounts = false, metric = 'dps' } = {}, client = wcl) => {
     const old = await readTrack(code, fight, name);
     if (old && (!amounts || (hasAmounts(old) && hasExtras(old)))) return old;
     let track = old;
     if (!track) {
-      const head = await wcl.query(
+      const head = await client.query(
         `query($code: String!, $fight: Int!) { reportData { report(code: $code) {
           fights(fightIDs: [$fight]) { id startTime endTime encounterID kill phaseTransitions { id startTime } }
           phases { encounterID phases { id name isIntermission } }
@@ -414,7 +463,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       let start = f.startTime;
       for (let page = 0; page < 10 && start !== null && start !== undefined; page += 1) {
         // eslint-disable-next-line no-await-in-loop
-        const data = await wcl.query(
+        const data = await client.query(
           `query($code: String!, $fight: Int!, $src: Int!, $start: Float!, $end: Float!) { reportData { report(code: $code) {
             events(fightIDs: [$fight], dataType: Casts, sourceID: $src, startTime: $start, endTime: $end, limit: 10000) { data nextPageTimestamp }
           } } }`,
@@ -462,7 +511,7 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         let start = track.fightStart;
         for (let page = 0; page < 20 && start !== null && start !== undefined; page += 1) {
           // eslint-disable-next-line no-await-in-loop
-          const data = await wcl.query(
+          const data = await client.query(
             `query($code: String!, $fight: Int!, $src: Int!, $start: Float!, $end: Float!) { reportData { report(code: $code) {
               events(fightIDs: [$fight], dataType: ${dataType}, sourceID: $src, startTime: $start, endTime: $end, limit: 10000) { data nextPageTimestamp }
             } } }`,
@@ -489,55 +538,181 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       }
       track = { ...track, metric, amounts: sums };
     }
-    if (amounts && !hasExtras(track)) track = await fetchEnemy(track);
+    if (amounts && !hasExtras(track)) track = await fetchEnemy(track, client);
     await writeTrack(code, fight, name, track);
     return track;
   };
 
   // ---- Job queue: page requests first, the daily crawl after -------------
+  //
+  // 1.9.169: every job ends as done or failed in bounded time.
+  //  - A job that throws is tried again (MAX_ATTEMPTS, with a growing pause
+  //    that doesn't hold up the others), then fails with a short plain reason.
+  //  - A job that runs too long gives up (JOB_TIMEOUT).
+  //  - Before a job starts, its client's share of the hour's points is
+  //    checked: a paused client's jobs wait (state `waiting`, with when the
+  //    hour resets) and the queue moves on to jobs whose client isn't
+  //    paused. Page requests use a bigger share (0.9) than the daily crawl
+  //    (0.85), so a crawl that ate its share doesn't freeze the page.
+  //  - The queue lives in memory, but the state doesn't: a row with no track
+  //    and no job is queued again by the next request for the page.
   const urgent = [];
   const background = [];
   const queued = new Map(); // key -> promise
-  const failed = new Map(); // key -> { at, error }
+  const jobsByKey = new Map(); // key -> job (waiting its turn, delayed or running)
+  const failed = new Map(); // key -> { at, error, detail, attempts }
   let working = false;
+  let pumpTimer = null;
+
+  /** The promise's value, or undefined after `ms` (the timer is cleared). */
+  const raceFor = async (promise, ms) => {
+    let timer;
+    try {
+      return await Promise.race([promise, new Promise((r) => { timer = setTimeout(() => r(undefined), ms); })]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const withTimeout = (promise, ms) => {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Timed out')), ms);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+
+  /** The next job that may run now, or when to look again. */
+  const nextJob = () => {
+    const now = Date.now();
+    let wakeAt = Infinity;
+    for (const list of [urgent, background]) {
+      for (let i = 0; i < list.length; i += 1) {
+        const job = list[i];
+        if (job.notBefore > now) {
+          wakeAt = Math.min(wakeAt, job.notBefore);
+        } else {
+          const budget = job.client.budget?.();
+          if (budget?.exhausted) {
+            wakeAt = Math.min(wakeAt, budget.resumesAt || now + 60000);
+          } else {
+            list.splice(i, 1);
+            return { job };
+          }
+        }
+      }
+    }
+    return { wakeAt };
+  };
+
+  const finish = (job, result) => {
+    queued.delete(job.key);
+    jobsByKey.delete(job.key);
+    job.resolve(result);
+  };
+
   const pump = async () => {
     if (working) return;
     working = true;
+    clearTimeout(pumpTimer);
     try {
-      while (urgent.length || background.length) {
-        const job = urgent.shift() || background.shift();
+      for (;;) {
+        const { job, wakeAt } = nextJob();
+        if (!job) {
+          // Delayed or paused jobs: look again then (and at least once a
+          // minute, the hour's numbers move).
+          if (Number.isFinite(wakeAt)) {
+            pumpTimer = setTimeout(pump, Math.min(60000, Math.max(50, wakeAt - Date.now())));
+          }
+          break;
+        }
+        job.running = true;
         try {
           // eslint-disable-next-line no-await-in-loop
-          job.resolve(await job.run());
+          const result = await withTimeout(job.run(job.client), jobTimeoutMs);
           failed.delete(job.key);
+          finish(job, result);
         } catch (error) {
-          failed.set(job.key, { at: Date.now(), error: error.message });
-          if (error.message !== 'Stopped') log(`${job.key}: ${error.message}`);
-          job.resolve(null);
-        } finally {
-          queued.delete(job.key);
+          job.running = false;
+          const budget = job.client.budget?.();
+          if (error.message === 'Timed out' && budget?.exhausted) {
+            // It sat in the hourly-limit pause, not stuck: go again at reset.
+            job.notBefore = budget.resumesAt || Date.now() + 60000;
+            (job.first ? urgent : background).push(job);
+          } else {
+            const info = explainError(error);
+            job.attempts += 1;
+            if (info.retriable && job.attempts < MAX_ATTEMPTS) {
+              job.notBefore = Date.now() + retryDelaysMs[Math.min(job.attempts - 1, retryDelaysMs.length - 1)];
+              log(`${job.key}: ${error.message}; trying again (${job.attempts + 1} of ${MAX_ATTEMPTS}).`);
+              (job.first ? urgent : background).push(job);
+            } else {
+              failed.set(job.key, { at: Date.now(), error: info.reason, detail: error.message, attempts: job.attempts });
+              if (error.message !== 'Stopped') log(`${job.key}: ${error.message}`);
+              finish(job, null);
+            }
+          }
         }
       }
     } finally {
       working = false;
     }
   };
-  const enqueue = (key, run, { first = true } = {}) => {
-    if (queued.has(key)) return queued.get(key);
+
+  const enqueue = (key, run, { first = true, client = wcl } = {}) => {
+    const have = jobsByKey.get(key);
+    if (have) {
+      // The crawl queued it; a page now wants it.
+      if (first && !have.first && !have.running) {
+        const i = background.indexOf(have);
+        if (i >= 0) {
+          background.splice(i, 1);
+          have.first = true;
+          have.client = client;
+          urgent.push(have);
+        }
+      }
+      return queued.get(key);
+    }
     let resolve;
     const promise = new Promise((r) => {
       resolve = r;
     });
-    (first ? urgent : background).push({ key, run, resolve });
+    const job = { key, run, resolve, client, first, attempts: 0, notBefore: 0, running: false };
+    (first ? urgent : background).push(job);
     queued.set(key, promise);
+    jobsByKey.set(key, job);
     pump();
     return promise;
   };
-  // Don't hammer a fight Warcraft Logs refused; try again after an hour.
+  /** Page requests: the jobs of the newest request run first, in rank order. */
+  const prioritize = (keys) => {
+    const jobs = keys.map((k) => jobsByKey.get(k)).filter((j) => j && !j.running);
+    jobs.forEach((j) => {
+      const list = j.first ? urgent : background;
+      const i = list.indexOf(j);
+      if (i >= 0) list.splice(i, 1);
+      j.first = true;
+    });
+    urgent.unshift(...jobs);
+    // Every page request looks again: the hour's numbers may have moved.
+    pump();
+  };
+  // Don't hammer a fight Warcraft Logs refused; try again after an hour (or
+  // sooner when someone presses Retry).
   const recentlyFailed = (key) => {
     const f = failed.get(key);
     return f && Date.now() - f.at < 60 * 60 * 1000 ? f.error : null;
   };
+  /** When the hour's limit lets this key's job go on (null: not paused). */
+  const resumesAtOf = (key) => {
+    const job = jobsByKey.get(key);
+    const budget = job?.client.budget?.();
+    return budget?.exhausted ? budget.resumesAt : null;
+  };
+  const trackKey = (r) => `track:${r.code}:${r.fight}:${r.name.toLowerCase()}`;
 
   // ---- Daily crawl ---------------------------------------------------------
   const bosses = async () => {
@@ -602,13 +777,41 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
   };
 
   // ---- Routes ---------------------------------------------------------------
+  // A row's state: ready (casts in), queued (waiting its turn, or running;
+  // `attempt` above 1 is a retry), waiting (paused by the hourly limit; it
+  // goes on at `resumesAt`), failed (`error` says why; Retry asks again).
   const rowState = async (row) => {
     const track = await readTrack(row.code, row.fight, row.name);
     if (track) return { ...row, casts: track.casts, phases: track.phases, names: track.names || null, state: 'ready' };
-    const key = `track:${row.code}:${row.fight}:${row.name.toLowerCase()}`;
+    const key = trackKey(row);
     const error = recentlyFailed(key);
-    if (error) return { ...row, casts: null, state: 'failed', error };
+    if (error) return { ...row, casts: null, state: 'failed', error, attempts: failed.get(key).attempts };
     return { ...row, casts: null, state: 'queued' };
+  };
+  /** Adds the job's progress to a row that is still being fetched. */
+  const withJob = (row) => {
+    if (row.state !== 'queued') return row;
+    const job = jobsByKey.get(trackKey(row));
+    const resumesAt = resumesAtOf(trackKey(row));
+    if (resumesAt) return { ...row, state: 'waiting', resumesAt };
+    return job?.attempts ? { ...row, attempt: job.attempts + 1 } : row;
+  };
+
+  const retryRows = (list) => {
+    const keys = [];
+    (Array.isArray(list) ? list : []).slice(0, TOP_N).forEach((r) => {
+      const code = String(r?.code || '');
+      const fight = Number(r?.fight);
+      const name = String(r?.name || '');
+      if (!SAFE_CODE.test(code) || !(fight > 0) || !SAFE_NAME.test(name)) return;
+      const key = trackKey({ code, fight, name });
+      if (jobsByKey.has(key)) return;
+      failed.delete(key);
+      enqueue(key, (c) => fetchTrack(code, fight, name, {}, c), { client: wclNow });
+      keys.push(key);
+    });
+    prioritize(keys);
+    return keys.length;
   };
 
   const handle = async (req, res, rest, url) => {
@@ -636,6 +839,18 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       return json(res, 202, { started: true });
     }
 
+    // Retry: ask again for logs that failed (also clears the hour's memory of
+    // the failure). Anyone who can see Top logs may; at most 25 rows a call.
+    if (first === 'retry' && req.method === 'POST') {
+      let body;
+      try {
+        body = await readBody(req, 32 * 1024);
+      } catch {
+        return fail(res, 400, 'Bad request');
+      }
+      return json(res, 200, { queued: retryRows(body?.rows) });
+    }
+
     if (first === 'rankings' && req.method === 'GET') {
       const encounterId = Number(q('encounterId'));
       const difficultyId = Number(q('difficulty')) || 16;
@@ -647,31 +862,50 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       const key = setKey(encounterId, difficultyId, spec.specId, region);
       let set = all.sets[key];
       if (!set) {
-        // Not crawled yet: ask now (a few seconds).
+        // Not crawled yet: ask now (a few seconds). Don't hold the request
+        // for longer than the app waits: the job goes on and the next ask
+        // finds it.
         const rkey = `rankings:${key}`;
+        if (q('retry')) failed.delete(rkey);
         const error = recentlyFailed(rkey);
         if (error) return fail(res, 502, error);
-        await enqueue(rkey, () => fetchRankings(encounterId, difficultyId, spec, region));
+        const job = enqueue(rkey, (c) => fetchRankings(encounterId, difficultyId, spec, region, c), { client: wclNow });
+        prioritize([rkey]);
+        await raceFor(job, rankingsWaitMs);
         set = all.sets[key];
-        if (!set) return fail(res, 502, recentlyFailed(rkey) || 'Warcraft Logs had no rankings');
+        if (!set) {
+          const failedNow = recentlyFailed(rkey);
+          if (failedNow) return fail(res, 502, failedNow);
+          const resumesAt = resumesAtOf(rkey);
+          return fail(
+            res,
+            503,
+            resumesAt
+              ? 'Waiting for the Warcraft Logs hourly limit; the rankings will load when it resets.'
+              : 'Warcraft Logs is slow right now; the rankings are still loading. Try again in a moment.',
+          );
+        }
       }
-      const rows = await Promise.all(set.rows.map(rowState));
-      // Fetch missing casts in rank order (page requests go first).
-      rows
-        .filter((r) => r.state === 'queued')
-        .forEach((r) =>
-          enqueue(`track:${r.code}:${r.fight}:${r.name.toLowerCase()}`, () => fetchTrack(r.code, r.fight, r.name)),
-        );
+      let rows = await Promise.all(set.rows.map(rowState));
+      // Fetch missing casts in rank order, the newest page's first.
+      const wanted = rows.filter((r) => r.state === 'queued');
+      wanted.forEach((r) =>
+        enqueue(trackKey(r), (c) => fetchTrack(r.code, r.fight, r.name, {}, c), { client: wclNow }),
+      );
+      prioritize(wanted.map(trackKey));
+      rows = rows.map(withJob);
       // Tracks saved before 1.9.102 have no spell names: fetch them after
       // the casts (cooldowns merge by name once they're in).
       rows
         .filter((r) => r.state === 'ready' && !r.names)
         .forEach((r) =>
-          enqueue(`names:${r.code}:${r.fight}:${r.name.toLowerCase()}`, () => fetchNames(r.code, r.fight, r.name), {
+          enqueue(`names:${r.code}:${r.fight}:${r.name.toLowerCase()}`, (c) => fetchNames(r.code, r.fight, r.name, c), {
             first: false,
           }),
         );
       const ready = rows.filter((r) => r.state === 'ready');
+      const count = (state) => rows.filter((r) => r.state === state).length;
+      const resumes = rows.map((r) => r.resumesAt).filter(Boolean);
       return json(res, 200, {
         encounterId,
         difficultyId,
@@ -680,7 +914,17 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
         region,
         at: set.at,
         rows,
-        pending: rows.filter((r) => r.state === 'queued').length,
+        // Still coming: queued, running or paused (the app polls while > 0).
+        pending: count('queued') + count('waiting'),
+        progress: {
+          total: rows.length,
+          ready: ready.length,
+          queued: count('queued'),
+          waiting: count('waiting'),
+          failed: count('failed'),
+          retrying: rows.filter((r) => r.state === 'queued' && r.attempt > 1).length,
+        },
+        waiting: resumes.length ? { resumesAt: Math.min(...resumes), reason: 'Warcraft Logs hourly limit' } : null,
         cooldowns: deriveCooldowns(ready.map((r) => ({ duration: r.duration, casts: r.casts, names: r.names }))),
       });
     }
@@ -694,15 +938,17 @@ export const createTopLogs = ({ storage, env, readBody, json, fail, season, isOf
       const have = await readTrack(code, fight, name);
       if (hasAmounts(have) && hasExtras(have)) return json(res, 200, { state: 'ready', track: have });
       const key = `trial:${code}:${fight}:${name.toLowerCase()}`;
+      if (q('retry')) failed.delete(key);
       const error = recentlyFailed(key);
       if (error) return json(res, 200, { state: 'failed', error });
-      const job = enqueue(key, () => fetchTrack(code, fight, name, { amounts: true, metric }));
+      const job = enqueue(key, (c) => fetchTrack(code, fight, name, { amounts: true, metric }, c), { client: wclNow });
       // Answer within a few seconds either way; the app asks again.
-      const track = await Promise.race([job, new Promise((r) => setTimeout(() => r(undefined), 8000))]);
+      const track = await raceFor(job, trialWaitMs);
       if (hasAmounts(track) && hasExtras(track)) return json(res, 200, { state: 'ready', track });
       const failedNow = recentlyFailed(key);
       if (failedNow) return json(res, 200, { state: 'failed', error: failedNow });
-      return json(res, 200, { state: 'queued' });
+      const resumesAt = resumesAtOf(key);
+      return json(res, 200, resumesAt ? { state: 'queued', resumesAt } : { state: 'queued' });
     }
 
     return fail(res, 404, 'Unknown API route');

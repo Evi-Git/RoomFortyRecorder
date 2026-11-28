@@ -82,6 +82,16 @@ export const createWclClient = ({
       },
     );
 
+    /**
+     * Whether this handle would pause before its next query, and when the
+     * hour resets (ms since epoch; null when not paused). Lets a queue skip
+     * work for a paused handle instead of blocking behind it.
+     */
+    const budget = () => {
+      const exhausted = Boolean(shared.limitPerHour) && spentNow() >= shared.limitPerHour * share;
+      return { exhausted, resumesAt: exhausted ? shared.resetAt + 5000 : null, share };
+    };
+
     const waitForBudget = async () => {
       if (!shared.limitPerHour) return;
       if (spentNow() < shared.limitPerHour * share) return;
@@ -161,6 +171,7 @@ export const createWclClient = ({
     return {
       query,
       usage,
+      budget,
       configured,
       forConsumer,
       stop: () => {

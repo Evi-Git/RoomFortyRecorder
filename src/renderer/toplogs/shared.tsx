@@ -20,12 +20,22 @@ export type RankRow = {
   amount: number;
   duration: number;
   ilvl: number | null;
+  /** When the fight was (ms since 1970); 0 or missing when Warcraft Logs didn't say. */
+  startTime?: number;
   code: string;
   fight: number;
   casts: [number, number][] | null;
   phases?: [number, number][];
-  state: 'ready' | 'queued' | 'failed';
+  /**
+   * ready: casts are in. queued: waiting its turn or being fetched
+   * (`attempt` above 1: a second or third try). waiting: paused by
+   * Warcraft Logs' hourly limit until `resumesAt` (1.9.169 servers).
+   * failed: `error` says why; Retry asks again.
+   */
+  state: 'ready' | 'queued' | 'waiting' | 'failed';
   error?: string;
+  attempt?: number;
+  resumesAt?: number;
 };
 
 export type SpecInfo = {

@@ -369,3 +369,49 @@ export const bossCasts = (store: PullStore): BossCast[] => {
 /** The phase a time falls in. */
 export const phaseAt = (phases: Phase[], t: number) =>
   phases.find((p) => t >= p.from && t < p.to) ?? phases[phases.length - 1];
+
+// ---- Labels that don't overprint ------------------------------------------
+
+/** A chip on the axis: where it is (seconds) and how wide its label is (px). */
+export type LabelSpot = { at: number; width: number };
+
+/** The rough width of a label at the timeline's 11 px type. */
+export const labelWidth = (text: string) => Math.ceil(text.length * 5.8) + 2;
+
+/**
+ * Which side of its chip each label goes on: right of it, left of it (near
+ * the end of the axis), or none when either side would run into another
+ * chip or label (the chip keeps its hover text). Chips are `icon` px wide
+ * and start at their time; labels sit `gap` px off the chip. Chips are
+ * placed in time order, so the earlier one keeps its label.
+ */
+export const placeLabels = (
+  spots: LabelSpot[],
+  max: number,
+  axisPx: number,
+  { icon = 18, gap = 4 }: { icon?: number; gap?: number } = {},
+): ('right' | 'left' | null)[] => {
+  const x = spots.map((s) => (s.at / Math.max(1, max)) * axisPx);
+  const order = spots.map((_, i) => i).sort((a, b) => x[a] - x[b]);
+  type Box = [number, number];
+  const hit = (a: Box, b: Box) => a[0] < b[1] + 2 && b[0] < a[1] + 2;
+  const icons: Box[] = x.map((px) => [px, px + icon]);
+  const labels: (Box | null)[] = spots.map(() => null);
+  const out: ('right' | 'left' | null)[] = spots.map(() => null);
+  order.forEach((i) => {
+    const w = spots[i].width;
+    const right: Box = [x[i] + icon + gap, x[i] + icon + gap + w];
+    const left: Box = [x[i] - gap - w, x[i] - gap];
+    const free = (box: Box) =>
+      icons.every((b, j) => j === i || !hit(box, b)) &&
+      labels.every((b, j) => j === i || !b || !hit(box, b));
+    if (right[1] <= axisPx + 12 && free(right)) {
+      out[i] = 'right';
+      labels[i] = right;
+    } else if (left[0] >= 0 && free(left)) {
+      out[i] = 'left';
+      labels[i] = left;
+    }
+  });
+  return out;
+};

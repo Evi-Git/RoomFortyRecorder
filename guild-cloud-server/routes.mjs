@@ -112,6 +112,7 @@ export const ROUTES = [
   { method: 'GET', path: '/api/guild/:guild/pulldesk/toplogs/ours', access: 'analysisView' },
   { method: 'GET', path: '/api/guild/:guild/pulldesk/toplogs/rankings', access: 'analysisView' },
   { method: 'GET', path: '/api/guild/:guild/pulldesk/toplogs/trial', access: 'analysisView' },
+  { method: 'POST', path: '/api/guild/:guild/pulldesk/toplogs/retry', access: 'analysisView', note: 'Asks again for up to 25 Top logs rows that failed; same access as reading them.' },
   { method: 'POST', path: '/api/guild/:guild/pulldesk/toplogs/crawl', access: 'analysisEdit', denied: 'Officers only', note: 'analysisEdit implies analysisView (IMPLIES in permissions.mjs).' },
   { method: 'GET', path: '/api/guild/:guild/pulldesk/season', access: 'analysisView' },
   { method: 'GET', path: '/api/guild/:guild/pulldesk/settings', access: 'analysisView' },

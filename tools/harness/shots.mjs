@@ -109,8 +109,9 @@ const open = async (scene) => {
     if (IGNORED.test(text) || /\[VideoPlayer\] Video Player Error/.test(text)) log.ignored += 1;
     else log.console.push(text.slice(0, 300));
   });
-  await page.goto(url);
-  await page.locator('[data-sidebar]').first().waitFor({ timeout: 30000 });
+  // A scene can render one component on its own (entries/<name>.tsx).
+  await page.goto(scene.entry ? url.replace('entry=app', `entry=${scene.entry}`) : url);
+  await page.locator(scene.entry ? '#root > *' : '[data-sidebar]').first().waitFor({ timeout: 30000 });
   await page.waitForTimeout(600);
 };
 

@@ -2,12 +2,15 @@
  * [RoomFortyRecorder] Time trial A, "One timeline" (1.9.102): boss track,
  * phase pacing, DPS (5 s average), the gap so far and the main cooldowns on
  * one shared time axis. Hover: one line across every row with the numbers
- * there; click: open our VoD at that moment.
+ * there; click: open our VoD at that moment. Keyboard: the slider is its own
+ * element (a thumb over the axis), so the rows stay readable to a screen
+ * reader; labels beside the cast chips are dropped where they would run
+ * into a neighbour (the chip keeps its hover text).
  */
 import React from 'react';
 import SpellIcon from '../logs/SpellIcon';
 import { compact, formatDuration } from '../format';
-import { FOCUS_RING_INSET } from '../a11y';
+import { FOCUS_RING_INSET, focusFromPointer, isActivation } from '../a11y';
 import type { Track } from './trial';
 import {
   Aligned,
@@ -15,8 +18,10 @@ import {
   castsFor,
   driftText,
   gapSoFar,
+  labelWidth,
   MainCd,
   pairCasts,
+  placeLabels,
   perSecond,
   Phase,
   phaseAt,
@@ -167,9 +172,12 @@ const TrialTimeline = ({
     )
     .join(' ')} L${x(gap.length).toFixed(1)},${mid} Z`;
 
-  // Chips near the right edge put their text on the left.
-  const chipAt = (t: number): React.CSSProperties =>
-    t / max > 0.88
+  // A chip's text goes on its right, or on its left near the end of the axis.
+  const chipAt = (
+    t: number,
+    side: 'right' | 'left' | null,
+  ): React.CSSProperties =>
+    side === 'left'
       ? {
           right: `calc(${100 - (t / max) * 100}% - 18px)`,
           flexDirection: 'row-reverse',
@@ -181,6 +189,19 @@ const TrialTimeline = ({
   for (let t = step; t < max - 5; t += step) tickList.push(t);
 
   const ref = React.useRef<HTMLDivElement>(null);
+  // The axis's width in px, to work out which labels fit (1000 px minimum
+  // layout, less the label column and padding).
+  const [axisPx, setAxisPx] = React.useState(730);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => setAxisPx(Math.max(200, el.clientWidth));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   const move = (e: React.MouseEvent) => {
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
@@ -191,10 +212,20 @@ const TrialTimeline = ({
     );
   };
 
-  // Boss marks: a label only where the next mark leaves room.
+  // Boss marks: a name only where it fits before the next mark (a mark is a
+  // 10 px diamond; the name is cut at 110 px).
+  const bossSides = placeLabels(
+    boss.map((b) => ({
+      at: b.t,
+      width: Math.min(110, labelWidth(b.name)),
+    })),
+    max,
+    axisPx,
+    { icon: 10, gap: 4 },
+  );
   const bossMarks = boss.map((b, i) => ({
     ...b,
-    label: i + 1 >= boss.length || (boss[i + 1].t - b.t) / max > 0.09,
+    label: bossSides[i] === 'right',
   }));
 
   // What the hover box says.
@@ -312,51 +343,9 @@ const TrialTimeline = ({
         <div className="flex-1 min-w-0 px-4">
           <div
             ref={ref}
-            className={`relative flex flex-col cursor-crosshair ${FOCUS_RING_INSET}`}
+            className="relative flex flex-col cursor-crosshair"
             onMouseMove={move}
             onMouseLeave={() => setMarker(null)}
-            // Keyboard: arrows step the marker (Shift = 10 s), Home/End jump,
-            // Enter or Space watches, Escape clears.
-            role="slider"
-            tabIndex={0}
-            aria-label={
-              onWatch
-                ? 'Timeline: arrow keys pick a moment, Enter watches our VoD there'
-                : 'Timeline: arrow keys pick a moment'
-            }
-            aria-orientation="horizontal"
-            aria-valuemin={0}
-            aria-valuemax={Math.round(max)}
-            aria-valuenow={marker ?? undefined}
-            aria-valuetext={
-              marker !== null ? formatDuration(marker) : undefined
-            }
-            onBlur={() => setMarker(null)}
-            onKeyDown={(e) => {
-              const stepBy = e.shiftKey ? 10 : 1;
-              const at = marker ?? 0;
-              let next: number | null = null;
-              if (e.key === 'ArrowRight' || e.key === 'ArrowUp')
-                next = marker === null ? 0 : at + stepBy;
-              else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown')
-                next = marker === null ? 0 : at - stepBy;
-              else if (e.key === 'Home') next = 0;
-              else if (e.key === 'End') next = Math.round(max);
-              if (next !== null) {
-                e.preventDefault();
-                setMarker(Math.max(0, Math.min(Math.round(max), next)));
-              } else if (e.key === 'Escape' && marker !== null) {
-                e.preventDefault();
-                setMarker(null);
-              } else if (
-                (e.key === 'Enter' || e.key === ' ') &&
-                onWatch &&
-                marker !== null
-              ) {
-                e.preventDefault();
-                onWatch(marker);
-              }
-            }}
             onClick={() => {
               if (onWatch && marker !== null) onWatch(marker);
             }}
@@ -534,10 +523,37 @@ const TrialTimeline = ({
 
             {rows.map((r) => {
               const them_ = r.pairs.filter((p) => p.them !== null);
-              const you_ = r.pairs.map((p) => p.you ?? p.them ?? 0);
-              const roomAfter = (list: number[], i: number) =>
-                i + 1 >= list.length || (list[i + 1] - list[i]) / max > 0.075;
-              const theirTimes = them_.map((p) => p.them as number);
+              // What each of our chips says beside it (and in what colour).
+              const youSays = r.pairs.map((p) => {
+                if (p.you === null) return { text: 'missed', color: BAD };
+                const d = p.them === null ? null : p.you - p.them;
+                let text = formatDuration(p.you);
+                if (p.them === null) text += ' extra';
+                else if (Math.round(d as number) !== 0)
+                  text += ` (${driftText(d)})`;
+                let color = GOOD;
+                if (p.them !== null)
+                  color = Math.round(d as number) ? driftColor(d) : '#B5AB9E';
+                return { text, color };
+              });
+              // A label stays only where it fits beside its chip (right, or
+              // left near the end) without touching another chip or label.
+              const themSides = placeLabels(
+                them_.map((p) => ({
+                  at: p.them as number,
+                  width: labelWidth(formatDuration(p.them as number)),
+                })),
+                max,
+                axisPx,
+              );
+              const youSides = placeLabels(
+                r.pairs.map((p, i) => ({
+                  at: (p.you ?? p.them) as number,
+                  width: labelWidth(youSays[i].text),
+                })),
+                max,
+                axisPx,
+              );
               return (
                 <div
                   key={r.cd.key}
@@ -550,7 +566,7 @@ const TrialTimeline = ({
                     <span
                       key={`t${p.them}`}
                       className="absolute top-2 flex items-center gap-x-1 whitespace-nowrap"
-                      style={chipAt(p.them as number)}
+                      style={chipAt(p.them as number, themSides[i])}
                       title={`Them ${formatDuration(p.them as number)}`}
                     >
                       <span
@@ -559,7 +575,7 @@ const TrialTimeline = ({
                       >
                         <SpellIcon spellId={r.cd.spellId} name={r.cd.name} />
                       </span>
-                      {roomAfter(theirTimes, i) && (
+                      {themSides[i] && (
                         <span className="text-[11px] tabular-nums text-foreground">
                           {formatDuration(p.them as number)}
                         </span>
@@ -567,20 +583,20 @@ const TrialTimeline = ({
                     </span>
                   ))}
                   {r.pairs.map((p, i) => {
-                    const room = roomAfter(you_, i);
+                    const side = youSides[i];
                     if (p.you === null) {
                       return (
                         <span
                           key={`m${p.them}`}
                           className="absolute top-8 flex items-center gap-x-1 whitespace-nowrap"
-                          style={chipAt(p.them as number)}
+                          style={chipAt(p.them as number, side)}
                           title={`They pressed it at ${formatDuration(p.them as number)}; you didn't`}
                         >
                           <span
                             className="w-[18px] h-[18px] rounded-[3px] box-border"
                             style={{ border: `1.5px dashed ${BAD}` }}
                           />
-                          {room && (
+                          {side && (
                             <span
                               className="text-[11px]"
                               style={{ color: BAD }}
@@ -592,20 +608,11 @@ const TrialTimeline = ({
                       );
                     }
                     const d = p.them === null ? null : p.you - p.them;
-                    let text = formatDuration(p.you);
-                    if (p.them === null) text += ' extra';
-                    else if (Math.round(d as number) !== 0)
-                      text += ` (${driftText(d)})`;
-                    let color = GOOD;
-                    if (p.them !== null)
-                      color = Math.round(d as number)
-                        ? driftColor(d)
-                        : '#B5AB9E';
                     return (
                       <span
                         key={`y${p.you}`}
                         className="absolute top-8 flex items-center gap-x-1 whitespace-nowrap"
-                        style={chipAt(p.you)}
+                        style={chipAt(p.you, side)}
                         title={
                           p.them === null
                             ? `You ${formatDuration(p.you)}; they didn't press one here`
@@ -618,12 +625,12 @@ const TrialTimeline = ({
                         >
                           <SpellIcon spellId={r.cd.spellId} name={r.cd.name} />
                         </span>
-                        {room && (
+                        {side && (
                           <span
                             className="text-[11px] tabular-nums"
-                            style={{ color }}
+                            style={{ color: youSays[i].color }}
                           >
-                            {text}
+                            {youSays[i].text}
                           </span>
                         )}
                       </span>
@@ -686,6 +693,53 @@ const TrialTimeline = ({
                 </span>
               </>
             )}
+            {/* The keyboard slider: a thumb of its own over the axis, so the
+                rows above stay readable to a screen reader. It ignores the
+                mouse (the axis handles that), and only Tab reaches it, so
+                after a click the arrows and Space keep seeking and playing.
+                Arrows step the marker (Shift = 10 s), Home/End jump, Enter or
+                Space watches, Escape clears. */}
+            <span
+              role="slider"
+              tabIndex={0}
+              aria-label={
+                onWatch
+                  ? 'Moment in the fight: arrow keys pick a moment, Enter watches our VoD there'
+                  : 'Moment in the fight: arrow keys pick a moment'
+              }
+              aria-orientation="horizontal"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(max)}
+              aria-valuenow={marker ?? 0}
+              aria-valuetext={
+                marker !== null
+                  ? `${formatDuration(marker)} of ${formatDuration(max)}`
+                  : `No moment picked, ${formatDuration(max)} long`
+              }
+              className={`absolute inset-0 z-20 pointer-events-none rounded-sm ${FOCUS_RING_INSET}`}
+              onBlur={() => setMarker(null)}
+              onKeyDown={(e) => {
+                if (focusFromPointer() && e.key !== 'Escape') return;
+                const stepBy = e.shiftKey ? 10 : 1;
+                const at = marker ?? 0;
+                let next: number | null = null;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowUp')
+                  next = marker === null ? 0 : at + stepBy;
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown')
+                  next = marker === null ? 0 : at - stepBy;
+                else if (e.key === 'Home') next = 0;
+                else if (e.key === 'End') next = Math.round(max);
+                if (next !== null) {
+                  e.preventDefault();
+                  setMarker(Math.max(0, Math.min(Math.round(max), next)));
+                } else if (e.key === 'Escape' && marker !== null) {
+                  e.preventDefault();
+                  setMarker(null);
+                } else if (onWatch && marker !== null && isActivation(e)) {
+                  onWatch(marker);
+                }
+              }}
+            />
           </div>
         </div>
       </div>
