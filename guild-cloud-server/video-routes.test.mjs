@@ -814,7 +814,7 @@ test('GUILD_CLOUD_RATE_LIMIT=off turns the limits and the per-address like check
 
 // ---- 1.9.161: share links you can stop, and the daily clean-up --------------
 
-test('Stop sharing takes down the recording link and the clips the caller may stop (1.9.167)', async () => {
+test('Stop sharing takes down the recording link and the clips the caller may stop (1.9.168)', async () => {
   const state = {
     links: [
       { id: 'v1', guild: GUILD, key: 'evi.mp4', likes: 0, kind: 'video', createdBy: BOB },
@@ -838,17 +838,22 @@ test('Stop sharing takes down the recording link and the clips the caller may st
   try {
     const eviRow = (await listed(server, evi))['evi.mp4'];
     assert.equal(eviRow.shared, true);
-    assert.equal(eviRow.clipLinks, 3);
+    assert.equal(eviRow.stopsLink, true);
+    assert.equal(eviRow.stopsClips, 3);
     assert.equal(eviRow.canStopSharing, true);
     const bobRow = (await listed(server, bob))['evi.mp4']; // made the video link and a clip
+    assert.equal(bobRow.stopsLink, true);
+    assert.equal(bobRow.stopsClips, 1); // only his own clip
     assert.equal(bobRow.canStopSharing, true);
     const strangerRow = (await listed(server, stranger))['evi.mp4'];
     assert.equal(strangerRow.shared, true);
-    assert.equal(strangerRow.clipLinks, 3);
+    assert.equal(strangerRow.stopsLink, false);
+    assert.equal(strangerRow.stopsClips, 0);
     assert.equal(strangerRow.canStopSharing, false);
     const unshared = (await listed(server, evi))['bob.mp4'];
     assert.equal(unshared.shared, false);
-    assert.equal(unshared.clipLinks, 0);
+    assert.equal(unshared.stopsLink, false);
+    assert.equal(unshared.stopsClips, 0);
     assert.equal(unshared.canStopSharing, false);
     assert.equal((await listed(server, officer))['evi.mp4'].canStopSharing, true);
 
@@ -875,7 +880,8 @@ test('Stop sharing takes down the recording link and the clips the caller may st
     },
   });
   try {
-    assert.equal((await listed(server, newbie))['evi.mp4'].canStopSharing, true);
+    const newbieRow = (await listed(server, newbie))['evi.mp4'];
+    assert.deepEqual([newbieRow.stopsLink, newbieRow.stopsClips, newbieRow.canStopSharing], [false, 1, true]);
     assert.deepEqual((await server.call(newbie, 'DELETE', '/video/evi/link')).body, { removed: 0, clips: 1 });
     assert.deepEqual(ids(server), ['cb', 'ce']);
     assert.equal((await listed(server, newbie))['evi.mp4'].canStopSharing, false);
@@ -916,7 +922,7 @@ test('one share link per recording; clips are separate; stopping it is for the s
     assert.deepEqual(r.body, { removed: 1, clips: 1 }); // and the clip Bob sent
     assert.equal((await server.get(`/link/${first.body.id}`)).status, 404);
     assert.equal((await listed(evi))['evi.mp4'], false);
-    assert.ok(!server.library().links.some((link) => link.id === 'clip1')); // 1.9.167: clips stop too
+    assert.ok(!server.library().links.some((link) => link.id === 'clip1')); // 1.9.168: clips stop too
 
     // A new share is a new link; the uploader may stop it, so may an officer.
     const second = await server.call(bob, 'POST', '/video/evi/link');
@@ -1067,7 +1073,7 @@ test('links from before 1.9.161: ones with a coaching preview become clips, the 
     // The link button makes Evi's recording a link of its own, not the clip's.
     const made = await server.call(evi, 'POST', '/video/evi/link');
     assert.notEqual(made.body.id, 'clip1');
-    // Since 1.9.167 stopping Evi's share takes the clip down too.
+    // Since 1.9.168 stopping Evi's share takes the clip down too.
     assert.deepEqual((await server.call(evi, 'DELETE', '/video/evi/link')).body, { removed: 1, clips: 1 });
     assert.equal((await fetch(`${server.base}/link/clip1/video`, { redirect: 'manual' })).status, 404);
     // Nothing left to stop: anyone gets removed 0 rather than a refusal.

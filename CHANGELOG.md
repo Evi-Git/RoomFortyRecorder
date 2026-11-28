@@ -5,12 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.9.168] - Unreleased
-**Needs the guild server update (`update-server.cmd`).**
+**Needs the guild server update (`update-server.cmd`).** Update the app too: an older app's Stop sharing button doesn't say that it now also stops clips.
 ### Changed
-- **Stop sharing now also stops clips sent to Discord.** One press takes down the recording's public link and every clip of that recording you may stop: your own clips, or all of them if you uploaded the recording or are an officer. This reverses 1.9.161, where clips already posted kept working. The button's hover text says how many clips it will stop, and the message afterwards says how many were stopped.
+- **Stop sharing now also stops clips sent to Discord.** One press takes down the recording's public link and every clip of that recording you may stop: the clips you sent, or all of them if you uploaded the recording or are an officer. Until now clips already posted kept working. The button's hover text says what it will stop, and the message afterwards says what was stopped.
 ### Fixed
-- **Stop sharing only shows for people who can use it.** Before, every member saw the button on a shared recording and got a refusal when it wasn't theirs. Now it only shows when you made the link, sent a clip, uploaded the recording or are an officer. (With an older guild server it shows as before.)
-- **A clip Discord refused no longer leaves a live link.** If Discord turned down the post (for example the bot can't write in that channel), the clip's link and preview image are removed, since nobody received it. If Discord simply didn't answer in time, the link stays, because the message may have gone out.
+- **Stop sharing only shows for people who can use it.** Before, every member saw the button on a shared recording and was refused when it wasn't theirs. Now it shows when you made the link, sent a clip, uploaded the recording or are an officer, and only counts what you can stop (a raider who sent one clip sees "1 clip sent to Discord stops working"). It disappears as soon as you press it. With an older guild server it shows as before.
+- **A clip Discord refused no longer leaves a live link.** If Discord turned the post down (for example the bot can't write in that channel), the clip's link and preview picture are removed, since nobody received it. If Discord didn't answer, or answered with a server error, the link stays, because the message may have gone out.
 
 ## [1.9.167] - Unreleased
 App only; no guild server update needed.

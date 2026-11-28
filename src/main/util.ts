@@ -931,7 +931,8 @@ const rendererVideoToMetadata = (video: RendererVideo) => {
   delete data.multiPov;
   delete data.uniqueId;
   delete data.shared; // the server's live share state, not part of the recording
-  delete data.clipLinks; // likewise
+  delete data.stopsLink; // likewise
+  delete data.stopsClips; // likewise
   delete data.canStopSharing; // likewise
   return data as Metadata;
 };
