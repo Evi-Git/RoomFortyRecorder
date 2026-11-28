@@ -28,6 +28,7 @@ const startDiscord = async () => {
     const match = /\/channels\/(\d+)\/messages/.exec(req.url);
     if (match && req.method === 'POST') {
       if (match[1] === '444444') return send(403, { message: 'Missing access' });
+      if (match[1] === '555555') return send(502, { message: 'Bad gateway' });
       posted.push({ channel: match[1], ...JSON.parse(Buffer.concat(chunks).toString()) });
       return send(200, { id: '1' });
     }
@@ -142,7 +143,7 @@ test('officers send anywhere; raiders only to their mapped channel', async (t) =
   assert.match(denied.body.error, /cannot post/);
 });
 
-test('a clip Discord refused takes its link and preview down; one it accepted keeps both (1.9.167)', async (t) => {
+test('a clip Discord refused takes its link and preview down; one it accepted keeps both (1.9.168)', async (t) => {
   const { discord, call, coach, removedLinks } = await setup();
   t.after(() => discord.server.close());
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64');
@@ -157,6 +158,13 @@ test('a clip Discord refused takes its link and preview down; one it accepted ke
   assert.deepEqual(removedLinks, ['link-gone']);
   assert.equal(await coach.thumbnailPath('link-gone'), null);
   assert.ok(await coach.thumbnailPath('link-kept')); // the other clip is untouched
+
+  // A 5xx doesn't prove the post failed (a proxy in front of Discord can
+  // answer it after the message went out): the link stays.
+  const maybe = await call('officer1', 'POST', ['send'], { videoName: 'maybe5xx', channelId: '555555', thumbnail: jpeg });
+  assert.equal(maybe.status, 502);
+  assert.deepEqual(removedLinks, ['link-gone']);
+  assert.ok(await coach.thumbnailPath('link-maybe5xx'));
 });
 
 test('a clip whose Discord post may have gone out (no answer) keeps its link', async (t) => {

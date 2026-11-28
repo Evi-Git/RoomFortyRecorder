@@ -1314,10 +1314,9 @@ const metadataFor = (video) => ({
 // Which public links to a recording this caller may stop. A recording link
 // goes if the caller made it or may change the recording (uploader or
 // videoManage); a clip link goes if the caller sent it or may change the
-// recording. Only asks "may change" (a Discord role lookup, memoized per
-// request) when the caller's own links don't already settle it.
-const stoppableLinksFor = async (video, userId, mayChange) => {
-  const links = state.links.filter((link) => link.key === video.videoKey);
+// recording. "May change" (own recording, else a Discord role lookup cached
+// per request) is only asked when the recording has a link.
+const stoppableLinksFor = async (video, userId, mayChange, links = linksByKey().get(video.videoKey) ?? []) => {
   const videoLinks = links.filter((link) => linkKind(link) === 'video');
   const clips = links.filter((link) => linkKind(link) === 'clip');
   const mine = (link) => Boolean(link.createdBy) && link.createdBy === userId;
@@ -1327,6 +1326,16 @@ const stoppableLinksFor = async (video, userId, mayChange) => {
     videoLinks: manage || videoLinks.some(mine) ? videoLinks : [],
     clips: manage ? clips : clips.filter(mine),
   };
+};
+
+// state.links grouped by recording key, built once per call.
+const linksByKey = () => {
+  const map = new Map();
+  for (const link of state.links) {
+    if (!map.has(link.key)) map.set(link.key, []);
+    map.get(link.key).push(link);
+  }
+  return map;
 };
 
 // One Warcraft Logs client for the whole server: one sign-in and one view of
@@ -1722,22 +1731,21 @@ const handleApi = async (req, res, url, parts) => {
   if (parts[3] === 'video' && parts.length === 4) {
     if (req.method === 'GET') {
       const entries = await videoEntries();
-      // Per caller: how many clip links the recording has and whether this
-      // caller could stop any of its links. Only looked up for recordings
-      // that have a link (the officer role check runs at most once).
+      // Per caller, for the Stop sharing button: whether this caller may stop
+      // the recording's own link (`stopsLink`), how many clips sent to
+      // Discord they may stop (`stopsClips`) and whether that's anything at
+      // all (`canStopSharing`). Only looked up for recordings with a link.
+      const byKey = linksByKey();
       const rows = [];
       for (const entry of entries) {
         const row = metadataFor(entry.video);
-        const clipLinks = state.links.filter(
-          (link) => link.key === entry.video.videoKey && linkKind(link) === 'clip',
-        ).length;
-        row.clipLinks = clipLinks;
-        if (row.shared || clipLinks > 0) {
-          const found = await stoppableLinksFor(entry.video, req.cloudUserId, mayChangeVideo);
-          row.canStopSharing = found.videoLinks.length + found.clips.length > 0;
-        } else {
-          row.canStopSharing = false;
-        }
+        const links = byKey.get(entry.video.videoKey) ?? [];
+        const found = links.length
+          ? await stoppableLinksFor(entry.video, req.cloudUserId, mayChangeVideo, links)
+          : { videoLinks: [], clips: [] };
+        row.stopsLink = found.videoLinks.length > 0;
+        row.stopsClips = found.clips.length;
+        row.canStopSharing = row.stopsLink || row.stopsClips > 0;
         rows.push(row);
       }
       return json(res, 200, rows);

@@ -284,14 +284,24 @@ clipboard. A recording has one link: pressing the button again copies the same
 one (clips sent to Discord get their own each time). The link works until
 someone stops sharing or the recording is deleted.
 
-**Stop sharing.** While a recording is shared, the player shows a second
-button that removes its link (`DELETE .../video/<key>/link`). The person who
-shared it, the recording's uploader and anyone with the `videoManage`
-capability may use it; nothing in R2 is deleted. Video listings carry
-`shared: true/false` but never the link id. Links made before 1.9.161 have no
-owner, so only the uploader or an officer can stop those; at the first start
-of 1.9.161 the old ones with a coaching preview picture are marked as clip
-links, so stopping a recording's share doesn't end clips already in Discord.
+**Stop sharing.** While a recording is shared, or has clips sent to Discord,
+the player shows a second button (`DELETE .../video/<key>/link`). One press
+removes every public link to the recording the caller may stop: the
+recording's own link if they made it, uploaded the recording or have the
+`videoManage` capability, and each clip link they sent (all clip links for the
+uploader or `videoManage`). The answer is `{ removed, clips }`: recording
+links and clip links taken down; clips' preview pictures go at once. Nothing
+in R2 is deleted. Since 1.9.168 stopping also ends clips (in 1.9.161–1.9.167
+clips already in Discord kept working). Video listings carry `shared:
+true/false` but never the link id, plus, for the caller, `stopsLink`,
+`stopsClips` and `canStopSharing`, so the app only shows the button to someone
+it would work for. Links made before 1.9.161 have no owner, so only the
+uploader or an officer can stop those; at the first start of 1.9.161 the old
+ones with a coaching preview picture were marked as clip links.
+
+A clip whose Discord post is refused (a 4xx from Discord) has its link and
+preview picture removed, since nobody received it. A 5xx, timeout or network
+failure leaves them, because the message may have gone out.
 
 **How long addresses last.** The share page's video and its Discord embed
 go through `/link/<id>/video`, which signs a fresh Worker address (2 hours) on

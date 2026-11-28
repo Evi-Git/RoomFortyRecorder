@@ -264,10 +264,11 @@ type CloudSignedMetadata = CloudMetadata & {
   signedVideoKey: string;
   // Whether the recording has a live public link. Missing from older servers.
   shared?: boolean;
-  // Clips sent to Discord that still have a public link, and whether this
-  // person may stop sharing (the recording's link or any clip). Both missing
-  // from older servers.
-  clipLinks?: number;
+  // For the Stop sharing button, about this person: may they stop the
+  // recording's own link, how many clips sent to Discord may they stop, and
+  // is that anything. Missing from older servers.
+  stopsLink?: boolean;
+  stopsClips?: number;
   canStopSharing?: boolean;
 };
 
@@ -299,9 +300,10 @@ type RendererVideo = Metadata & {
 
   // Cloud recordings only: a public share link is live (newer servers).
   shared?: boolean;
-  // Clips sent to Discord with a live link, and whether this person may stop
-  // sharing (newer servers; missing means an older server).
-  clipLinks?: number;
+  // What this person may stop sharing (see CloudSignedMetadata; newer
+  // servers only, missing means an older server).
+  stopsLink?: boolean;
+  stopsClips?: number;
   canStopSharing?: boolean;
 
   // Used by frontend to uniquely identify a video, as videoName

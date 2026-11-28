@@ -75,6 +75,7 @@ import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
 import { focusFromPointer } from './a11y';
 import {
+  shareStateKey,
   showStopSharing,
   stopSharingDone,
   stopSharingLabel,
@@ -181,6 +182,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   // when the user is dragging.
   const [progress, setProgress] = useState<number>(0);
   const [sendOpen, setSendOpen] = useState(false);
+  // The share state a Stop sharing press ended: the button stays hidden until
+  // the video list brings a different one (the 30-second poll).
+  const [stoppedShare, setStoppedShare] = useState<string | null>(null);
 
   // While the user is dragging the thumb of the slider, we don't
   // want to update the video position. This is used to conditionally
@@ -1271,9 +1275,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     const result = await ipc.invoke('stopSharingLink', [cloudVideo.videoName]);
 
     if (result?.ok) {
+      setStoppedShare(shareStateKey(cloudVideo));
       toast({
         title: 'Sharing stopped',
-        description: stopSharingDone(result.clips),
+        description: stopSharingDone(result.removed, result.clips),
         duration: 5000,
       });
       return;
@@ -1293,6 +1298,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderStopSharingButton = () => {
     if (!showStopSharing(cloudVideo)) return null;
+    if (stoppedShare !== null && stoppedShare === shareStateKey(cloudVideo)) {
+      return null;
+    }
     const label = stopSharingLabel(cloudVideo);
 
     return (

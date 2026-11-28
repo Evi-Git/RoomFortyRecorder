@@ -290,12 +290,18 @@ export const createCoach = ({
         allowed_mentions: { parse: [] },
       });
       if (!result.ok) {
-        // Discord answered with a refusal (it has a status code), so nobody
-        // got the link: take it down. A timeout or network failure throws out
-        // of discord() before this point and leaves the link alone, because
-        // the message may have gone out.
-        await removeShareLink?.(link.id);
-        await removeThumbnail(link.id);
+        // A 4xx is Discord refusing the post, so nobody got the link: take it
+        // down. A 5xx (often a proxy in front of Discord) or a timeout or
+        // network failure (which throws out of discord() before this point)
+        // doesn't prove the message failed, so the link stays.
+        if (result.status >= 400 && result.status < 500) {
+          try {
+            await removeShareLink?.(link.id);
+          } catch (error) {
+            console.warn(`[coach] could not remove the refused clip's link: ${error?.message || error}`);
+          }
+          await removeThumbnail(link.id);
+        }
         const reason =
           result.status === 403 || result.status === 404
             ? 'The bot cannot post in that channel (it needs View Channel, Send Messages and Embed Links there).'
