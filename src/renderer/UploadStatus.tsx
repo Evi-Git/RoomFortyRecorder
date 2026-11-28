@@ -97,7 +97,7 @@ const UploadStatus = () => {
             <Button
               size="sm"
               variant="outline"
-              className="h-6 px-2"
+              className="h-6 px-2 text-foreground-lighter"
               disabled={trying}
               onClick={tryNow}
             >
