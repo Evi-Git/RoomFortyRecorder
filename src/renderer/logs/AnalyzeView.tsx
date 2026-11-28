@@ -15,6 +15,7 @@ import {
   KIND_INFO,
   newWidgetId,
   MOST_WASTED,
+  notReadyReason,
   Result,
   runWidget,
   SpellRef,
@@ -673,12 +674,8 @@ const Builder = ({
       (b) => !choices.casts.some((c) => c.name === b.name),
     ),
   ];
-  const ready =
-    k === 'resourceWaste' ||
-    k === 'count' ||
-    k === 'breakdown' ||
-    k === 'activeTime' ||
-    Boolean(w.spell?.name);
+  const notReady = notReadyReason(w);
+  const ready = notReady === null;
 
   return (
     <aside className="flex-[1_1_340px] min-w-0 self-start rounded-[10px] border border-brand bg-panel p-4 flex flex-col gap-y-3.5">
@@ -951,6 +948,11 @@ const Builder = ({
         </label>
       </div>
       <Note>{`Saved in the ${specName} layout on this PC.`}</Note>
+      {notReady && (
+        <span id="an-save-why" className="text-xs text-foreground-lighter">
+          {notReady}
+        </span>
+      )}
       <div className="flex gap-x-2 justify-end">
         <button
           type="button"
@@ -962,6 +964,7 @@ const Builder = ({
         <button
           type="button"
           disabled={!ready}
+          aria-describedby={ready ? undefined : 'an-save-why'}
           onClick={() => onSave(w)}
           className="min-h-[36px] px-4 rounded-md bg-brand text-walnut text-[13px] font-semibold disabled:opacity-50"
         >
@@ -1124,7 +1127,7 @@ const AnalyzeView = ({
               })}
             />
           </label>
-          <span className="text-xs text-foreground">
+          <span id="an-layout-source" className="text-xs text-foreground">
             {waiting
               ? `Widgets: loading the guild's ${specName} preset…`
               : own
@@ -1163,6 +1166,7 @@ const AnalyzeView = ({
               <button
                 type="button"
                 disabled={waiting}
+                aria-describedby={waiting ? 'an-layout-source' : undefined}
                 onClick={() => share(false)}
                 className="min-h-[34px] px-3 rounded-md border border-brand/60 text-brand bg-panel text-[13px] hover:bg-card/50"
                 title={`Make this the ${specName} layout for everyone in the guild who hasn't changed theirs`}

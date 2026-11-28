@@ -83,6 +83,26 @@ export const KIND_INFO: Record<WidgetKind, { name: string; hint: string }> = {
   activeTime: { name: 'Active time', hint: 'always be casting' },
 };
 
+/**
+ * Why the widget builder's Add widget / Save button is disabled, or null when
+ * the widget is ready: the kinds that are about one spell need it picked.
+ */
+export const notReadyReason = (w: WidgetSpec): string | null => {
+  if (w.spell?.name) return null;
+  switch (w.kind) {
+    case 'castEfficiency':
+      return 'Pick the cooldown first.';
+    case 'cooldownWindow':
+      return 'Pick the cooldown that opens the window first.';
+    case 'procConsumption':
+      return 'Pick the proc (a buff) first.';
+    case 'buffUptime':
+      return 'Pick the buff first.';
+    default:
+      return null;
+  }
+};
+
 const norm = (s: string) => s.trim().toLowerCase();
 /** By ID, or by name: "Stasis" also matches "Stasis (Store)". */
 export const matches = (

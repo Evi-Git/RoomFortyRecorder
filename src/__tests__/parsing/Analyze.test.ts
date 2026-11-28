@@ -5,8 +5,11 @@ import {
   idleTime,
   KIND_INFO,
   MOST_WASTED,
+  notReadyReason,
   runWidget,
   starterLayout,
+  WidgetKind,
+  WidgetSpec,
 } from '../../renderer/logs/analyze';
 import { SPEC_PRESETS } from '../../renderer/logs/specPresets';
 import { PRIMARY_POWER } from '../../renderer/logs/primaryPower';
@@ -293,5 +296,24 @@ describe('Analyze widgets', () => {
       // Devourer (1480) and Augmentation (1473).
       expect([PRIMARY_POWER[1480], PRIMARY_POWER[1473]]).toEqual([17, 19]);
     });
+  });
+});
+
+describe('notReadyReason (why the builder button is disabled)', () => {
+  const w = (kind: WidgetKind, spell?: { name: string }) =>
+    ({ id: 'x', kind, spell }) as WidgetSpec;
+  test('a spell kind without its spell says what to pick', () => {
+    expect(notReadyReason(w('castEfficiency'))).toBe(
+      'Pick the cooldown first.',
+    );
+    expect(notReadyReason(w('cooldownWindow'))).toMatch(/cooldown that opens/);
+    expect(notReadyReason(w('procConsumption'))).toMatch(/proc/);
+    expect(notReadyReason(w('buffUptime'))).toMatch(/buff/);
+  });
+  test('ready once the spell is picked, and for kinds with no spell', () => {
+    expect(notReadyReason(w('buffUptime', { name: 'Echo' }))).toBeNull();
+    (['resourceWaste', 'count', 'breakdown', 'activeTime'] as const).forEach(
+      (k) => expect(notReadyReason(w(k))).toBeNull(),
+    );
   });
 });
