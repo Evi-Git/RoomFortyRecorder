@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { currentBusyReason, requestInstall } from './busy';
 import { mayDownloadUpdate } from './busyLogic';
+import { BUSY_RECHECK_MS, nextRetryDelay, retryAction } from './updateRetry';
 
 const customConsoleLogger = {
   log: (...args: string[]) => console.log('[AutoUpdater]', ...args),
@@ -22,7 +23,7 @@ export type UpdateStatus =
   | { state: 'upToDate' }
   | { state: 'downloading'; version?: string; percent: number }
   | { state: 'ready'; version?: string }
-  | { state: 'error'; message: string };
+  | { state: 'error'; message: string; retryAt?: number };
 
 export default class AppUpdater {
   private window: BrowserWindow;
@@ -47,9 +48,10 @@ export default class AppUpdater {
       this.setStatus({ state: 'checking' }),
     );
 
-    autoUpdater.on('update-not-available', () =>
-      this.setStatus({ state: 'upToDate' }),
-    );
+    autoUpdater.on('update-not-available', () => {
+      this.errorsInARow = 0;
+      this.setStatus({ state: 'upToDate' });
+    });
 
     autoUpdater.on('update-available', (info) => {
       this.pendingVersion = info?.version;
@@ -65,16 +67,12 @@ export default class AppUpdater {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
+      this.errorsInARow = 0;
       this.setStatus({ state: 'ready', version: info?.version });
       window.webContents.send('updateAvailable');
     });
 
-    autoUpdater.on('error', (err) => {
-      this.setStatus({
-        state: 'error',
-        message: AppUpdater.describeError(err),
-      });
-    });
+    autoUpdater.on('error', (err) => this.onError(err));
 
     ipcMain.on('doAppUpdate', () => {
       console.info('[AutoUpdater] User triggered auto-update');
@@ -133,15 +131,57 @@ export default class AppUpdater {
       percent: 0,
     });
 
-    autoUpdater.downloadUpdate().catch((err) =>
-      this.setStatus({
-        state: 'error',
-        message: AppUpdater.describeError(err),
-      }),
-    );
+    autoUpdater.downloadUpdate().catch((err) => this.onError(err));
   }
 
   private manualCheck = false;
+
+  /** The run that last started (check, or the download after it) was manual. */
+  private lastRunManual = false;
+
+  /** Errors in a row since the last good answer; picks the retry wait. */
+  private errorsInARow = 0;
+
+  private retryTimer?: NodeJS.Timeout;
+
+  private clearRetry() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = undefined;
+  }
+
+  /**
+   * A check or download failed. Shows it, and for an automatic run plans the
+   * next try (2 min, 10 min, 30 min; then the daily check is all that's
+   * left). The 'error' event and the rejected promise both land here for the
+   * same failure: the second one just replaces the first's timer.
+   */
+  private onError(err: unknown) {
+    const message = AppUpdater.describeError(err);
+    console.warn('[AutoUpdater] Failed:', err);
+    this.clearRetry();
+    const delay = nextRetryDelay(this.errorsInARow, this.lastRunManual);
+    if (delay === null) {
+      this.setStatus({ state: 'error', message });
+      return;
+    }
+    this.scheduleRetry(delay, message);
+  }
+
+  private scheduleRetry(delay: number, message: string) {
+    this.setStatus({ state: 'error', message, retryAt: Date.now() + delay });
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      const action = retryAction(this.status.state, currentBusyReason());
+      if (action === 'skip') return;
+      if (action === 'later') {
+        this.scheduleRetry(BUSY_RECHECK_MS, message);
+        return;
+      }
+      this.errorsInARow += 1;
+      this.lastRunManual = false;
+      void this.check();
+    }, delay);
+  }
 
   private setStatus(status: UpdateStatus) {
     this.status = status;
@@ -185,20 +225,23 @@ export default class AppUpdater {
     }
 
     this.manualCheck = manual;
+    this.lastRunManual = manual;
+    // A check now (manual or the daily one) replaces any retry waiting.
+    this.clearRetry();
+    if (manual) this.errorsInARow = 0;
 
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
       // The 'error' event usually fires too, but make sure we never leave
       // the sidebar stuck on "Checking…".
-      this.setStatus({
-        state: 'error',
-        message: AppUpdater.describeError(err),
-      });
+      this.onError(err);
     }
   }
 
   private periodicallyCheckUpdate() {
+    // The normal schedule starts the retry steps over.
+    this.errorsInARow = 0;
     this.check();
 
     setTimeout(
