@@ -13,6 +13,7 @@ import SpellIcon from './SpellIcon';
 import { sortRows, SortTh, useSort } from './sort';
 import AuraDetail from './AuraDetail';
 import { useViewWindow } from './zoom';
+import { useRoving } from '../roving';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs and Debuffs: uptime tables in
@@ -31,12 +32,15 @@ const UptimeBar = ({
   bands,
   onPick,
   range,
+  roving,
 }: {
   spans: [number, number][];
   total: number;
   bands: [number, number][];
   onPick?: (t: number) => void;
   range: [number, number] | null;
+  /** The group's roving tab stop props (one tab stop for all the bars). */
+  roving?: { 'data-roving-key': string; tabIndex: 0 | -1 };
 }) => {
   const [v0, v1] = useViewWindow(range, total);
   const len = v1 - v0;
@@ -53,7 +57,7 @@ const UptimeBar = ({
         onPick(v0 + ((e.clientX - box.left) / box.width) * len);
       }}
       role={onPick ? 'button' : undefined}
-      tabIndex={onPick ? 0 : undefined}
+      {...(onPick ? roving : {})}
       aria-label={
         onPick
           ? 'Open a recording at the first moment this aura is up'
@@ -130,6 +134,7 @@ const Section = ({
     source: (r) => r.sources[0]?.[0] ?? '',
   });
   const shown = all ? sorted : sorted.slice(0, 15);
+  const { groupProps, itemProps } = useRoving(shown.map((r) => r.key));
   const sh = (label: string, column: string, left = false) => (
     <SortTh
       label={label}
@@ -168,7 +173,7 @@ const Section = ({
               {sh('Source', 'source', true)}
             </tr>
           </thead>
-          <tbody>
+          <tbody {...groupProps}>
             {shown.map((r) => (
               <tr
                 key={r.key}
@@ -201,6 +206,7 @@ const Section = ({
                     bands={bands}
                     onPick={onPick}
                     range={range}
+                    roving={itemProps(r.key)}
                   />
                 </td>
                 <td

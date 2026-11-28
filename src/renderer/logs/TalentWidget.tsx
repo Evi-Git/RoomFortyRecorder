@@ -9,6 +9,7 @@ import { classColor } from './format';
 import { GameIcon } from '../AbilityCard';
 import { useSpell } from './SpellIcon';
 import FloatingCard, { Anchor, anchorOf } from './Floating';
+import { useRoving } from '../roving';
 import { LayoutNode, loadTree, TalentLayout, TalentTree } from './talents';
 
 /**
@@ -94,11 +95,14 @@ const Node = ({
   taken,
   left,
   top,
+  roving,
 }: {
   node: LayoutNode;
   taken: Taken;
   left: number;
   top: number;
+  /** The tree's roving tab stop props for this node. */
+  roving: { 'data-roving-key': string; tabIndex: 0 | -1 };
 }) => {
   const got = taken.get(node.id);
   const choice = node.entries.length > 1;
@@ -124,8 +128,10 @@ const Node = ({
       style={{ left, top, width: ICON, height: ICON }}
       onMouseEnter={(e) => setAt(anchorOf(e.currentTarget))}
       onMouseLeave={() => setAt(null)}
-      // Keyboard: Tab to a talent shows the same card; Escape closes it.
-      tabIndex={0}
+      // Keyboard: Tab enters the tree on one talent and the arrow keys move
+      // between talents (see roving.ts). Focus shows the same card; Escape
+      // closes it.
+      {...roving}
       role="img"
       aria-label={`${node.entries.map((e) => e.name || `Spell ${e.spellId}`).join(' or ')}: ${got ? `rank ${rank} of ${maxRank}` : 'not taken'}`}
       onFocus={(e) => setAt(anchorOf(e.currentTarget))}
@@ -201,6 +207,9 @@ const Tree = ({
   taken: Taken;
 }) => {
   const { at, cols, rows } = React.useMemo(() => gridOf(nodes), [nodes]);
+  const { groupProps, itemProps } = useRoving(
+    nodes.filter((n) => at.has(n.id)).map((n) => String(n.id)),
+  );
   if (!nodes.length) return null;
   const pad = 8;
   const width = cols * CELL + pad * 2;
@@ -222,7 +231,13 @@ const Tree = ({
         <span className="text-foreground-lighter font-semibold">{title}</span> ·{' '}
         {spent} points
       </div>
-      <div className="relative" style={{ width, height }}>
+      <div
+        className="relative"
+        style={{ width, height }}
+        role="group"
+        aria-label={`${title} talents: Tab to enter, arrow keys to move between them`}
+        {...groupProps}
+      >
         <svg className="absolute inset-0" width={width} height={height}>
           {nodes.flatMap((n) =>
             n.next
@@ -256,6 +271,7 @@ const Tree = ({
               taken={taken}
               left={pad + p.col * CELL}
               top={pad + p.row * CELL}
+              roving={itemProps(String(n.id))}
             />
           );
         })}
