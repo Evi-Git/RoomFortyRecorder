@@ -16,6 +16,7 @@ import {
   useContext,
   useEffect,
   useImperativeHandle,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -32,6 +33,8 @@ import MovieIcon from '@mui/icons-material/Movie';
 import ClearIcon from '@mui/icons-material/Clear';
 import DoneIcon from '@mui/icons-material/Done';
 import ReactPlayer from 'react-player';
+import { DisabledReason } from './components/Tooltip/DisabledReason';
+import { nameAndReason } from './components/Tooltip/reason';
 import screenfull from 'screenfull';
 import { ConfigurationSchema } from 'config/configSchema';
 import { getLocalePhrase } from 'localisation/translations';
@@ -145,6 +148,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   }
 
   // Typically just have one player but we may have up to 4.
+  // Ids for the hidden reason text of the control buttons.
+  const reasonBase = useId();
   const player1 = useRef<HTMLVideoElement>(null);
   const player2 = useRef<HTMLVideoElement>(null);
   const player3 = useRef<HTMLVideoElement>(null);
@@ -1013,9 +1018,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderDownloadButton = () => {
     const disabled = storageFilter !== StorageFilter.BOTH;
+    // The name is always the action; the tooltip is the reason when disabled.
+    const name = getLocalePhrase(language, Phrase.DownloadButtonTooltip);
     const tooltip = disabled
       ? getLocalePhrase(language, Phrase.DisabledDueToFilter)
-      : getLocalePhrase(language, Phrase.DownloadButtonTooltip);
+      : name;
+    const reasonId = `${reasonBase}-download`;
 
     return (
       <Tooltip content={tooltip}>
@@ -1024,11 +1032,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={downloadVideo}
             variant="ghost"
             size="xs"
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
             disabled={disabled}
           >
             <CloudDownload size={20} color="white" />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );
@@ -1039,9 +1048,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderUploadButton = () => {
     const disabled = storageFilter !== StorageFilter.BOTH;
+    const name = getLocalePhrase(language, Phrase.UploadButtonTooltip);
     const tooltip = disabled
       ? getLocalePhrase(language, Phrase.DisabledDueToFilter)
-      : getLocalePhrase(language, Phrase.UploadButtonTooltip);
+      : name;
+    const reasonId = `${reasonBase}-upload`;
 
     return (
       <Tooltip content={tooltip}>
@@ -1050,11 +1061,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={uploadVideo}
             variant="ghost"
             size="xs"
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
             disabled={disabled}
           >
             <CloudUpload size={20} color="white" />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );
@@ -1116,7 +1128,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     const disableDueToFilter =
       !isSelected && storageFilter !== StorageFilter.BOTH;
 
-    let tooltip = getLocalePhrase(language, Phrase.CloudButtonTooltip);
+    const name = getLocalePhrase(language, Phrase.CloudButtonTooltip);
+    let tooltip = name;
+    const reasonId = `${reasonBase}-cloud`;
 
     if (disableDueToFilter) {
       tooltip = getLocalePhrase(language, Phrase.DisabledDueToFilter);
@@ -1130,10 +1144,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             onClick={() => setSelectedVideos(cloudVideo)}
             variant="ghost"
             size="xs"
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
           >
             <CloudIcon sx={{ height: '20px', width: '20px', color, opacity }} />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );
@@ -1151,7 +1166,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
       return renderDownloadButton();
     }
 
-    let tooltip = getLocalePhrase(language, Phrase.DiskButtonTooltip);
+    const name = getLocalePhrase(language, Phrase.DiskButtonTooltip);
+    let tooltip = name;
+    const reasonId = `${reasonBase}-disk`;
 
     const disableDueToFilter =
       !isSelected && storageFilter !== StorageFilter.BOTH;
@@ -1162,16 +1179,19 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
 
     return (
       <Tooltip content={tooltip}>
-        <Button
-          value="disk"
-          disabled={!diskVideo || disableDueToFilter}
-          onClick={() => setSelectedVideos(diskVideo)}
-          variant="ghost"
-          size="xs"
-          aria-label={tooltip}
-        >
-          <SaveIcon sx={{ height: '20px', width: '20px', color, opacity }} />
-        </Button>
+        <div>
+          <Button
+            value="disk"
+            disabled={!diskVideo || disableDueToFilter}
+            onClick={() => setSelectedVideos(diskVideo)}
+            variant="ghost"
+            size="xs"
+            {...nameAndReason(name, tooltip, reasonId)}
+          >
+            <SaveIcon sx={{ height: '20px', width: '20px', color, opacity }} />
+          </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
+        </div>
       </Tooltip>
     );
   };
@@ -1204,7 +1224,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderOpenFolderButton = () => {
     let disabled = false;
-    let tooltip = getLocalePhrase(language, Phrase.OpenFolderButtonTooltip);
+    const name = getLocalePhrase(language, Phrase.OpenFolderButtonTooltip);
+    let tooltip = name;
+    const reasonId = `${reasonBase}-folder`;
 
     if (storageFilter === StorageFilter.CLOUD) {
       disabled = true;
@@ -1220,11 +1242,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             variant="ghost"
             size="xs"
             onClick={openLocation}
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
             disabled={disabled}
           >
             <FolderOpen size={20} color="white" />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );
@@ -1324,7 +1347,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderGetLinkButton = () => {
     let disabled = false;
-    let tooltip = getLocalePhrase(language, Phrase.ShareLinkButtonTooltip);
+    const name = getLocalePhrase(language, Phrase.ShareLinkButtonTooltip);
+    let tooltip = name;
+    const reasonId = `${reasonBase}-link`;
 
     if (storageFilter === StorageFilter.DISK) {
       disabled = true;
@@ -1340,11 +1365,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
             variant="ghost"
             size="xs"
             onClick={getShareableLink}
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
             disabled={disabled}
           >
             <Link size={20} color="white" />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );
@@ -1356,9 +1382,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   const renderSendToDiscordButton = () => {
     // A local copy is faster to cut; otherwise read the cloud copy.
     const sendVideo = diskVideo ?? cloudVideo;
-    const tooltip = sendVideo
-      ? 'Send a 30 s clip from here to Discord'
-      : 'Nothing to send';
+    const name = 'Send a 30 s clip from here to Discord';
+    const tooltip = sendVideo ? name : 'Nothing to send';
+    const reasonId = `${reasonBase}-send`;
     const video = videos[0];
     const title = [
       video?.encounterName || video?.zoneName || video?.category,
@@ -1379,10 +1405,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
                 setSendOpen(true);
               }}
               disabled={!sendVideo}
-              aria-label={tooltip}
+              {...nameAndReason(name, tooltip, reasonId)}
             >
               <Send size={18} color="white" />
             </Button>
+            <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
           </div>
         </Tooltip>
         {sendVideo && (
@@ -1404,9 +1431,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
    */
   const renderClipButton = () => {
     const color = clippable ? 'white' : 'rgba(239, 239, 240, 0.25)';
+    const name = getLocalePhrase(language, Phrase.ClipTooltip);
     const tooltip = clippable
-      ? getLocalePhrase(language, Phrase.ClipTooltip)
+      ? name
       : getLocalePhrase(language, Phrase.ClipUnavailableTooltip);
+    const reasonId = `${reasonBase}-clip`;
 
     return (
       <Tooltip content={tooltip}>
@@ -1414,7 +1443,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           <Button
             variant="ghost"
             size="xs"
-            aria-label={tooltip}
+            {...nameAndReason(name, tooltip, reasonId)}
             onClick={() => {
               setClipStartValue(Math.max(0, progress - 15));
               setClipStopValue(Math.min(duration, progress + 15));
@@ -1423,6 +1452,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
           >
             <MovieIcon sx={{ color, fontSize: '22px' }} />
           </Button>
+          <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
         </div>
       </Tooltip>
     );

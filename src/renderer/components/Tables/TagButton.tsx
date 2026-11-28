@@ -4,7 +4,9 @@ import { RendererVideo, CloudStatus, DialogType } from 'main/types';
 import { stopPropagation } from 'renderer/rendererutils';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
-import { Dispatch, SetStateAction } from 'react';
+import { DisabledReason } from '../Tooltip/DisabledReason';
+import { nameAndReason } from '../Tooltip/reason';
+import { Dispatch, SetStateAction, useId } from 'react';
 import { MessageSquare, MessageSquareMore } from 'lucide-react';
 import { FolderMessageSquareMore } from 'renderer/icons/FolderMessageSquareMore';
 import { FolderMessageSquare } from 'renderer/icons/FolderMessageSquare';
@@ -22,6 +24,7 @@ const TagButton = (props: TagButtonProps) => {
   const { video, language, cloudStatus, setTagDialogVideoTargetId, setDialog } =
     props;
 
+  const reasonId = useId();
   const group = [video, ...video.multiPov];
   const foundTag = group.map((v) => v.tag).find((t) => t);
 
@@ -55,9 +58,12 @@ const TagButton = (props: TagButtonProps) => {
   let tag = '';
   let icon = <MessageSquare size={ROW_ICON_SIZE} />;
 
+  // The name is always the action; the tooltip is the reason when there is
+  // no permission, or the tag itself (both read through aria-describedby).
+  const name = getLocalePhrase(language, Phrase.TagButtonTooltip);
   let tooltip = noPermission
     ? getLocalePhrase(language, Phrase.GuildNoPermission)
-    : getLocalePhrase(language, Phrase.TagButtonTooltip);
+    : name;
 
   if (foundTag) {
     tag = foundTag;
@@ -77,7 +83,7 @@ const TagButton = (props: TagButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
-          aria-label={tooltip}
+          {...nameAndReason(name, tooltip, reasonId)}
           disabled={noPermission}
           onClick={(event) => {
             stopPropagation(event);
@@ -87,6 +93,7 @@ const TagButton = (props: TagButtonProps) => {
         >
           {icon}
         </Button>
+        <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
       </div>
     </Tooltip>
   );
