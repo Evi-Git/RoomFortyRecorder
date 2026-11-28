@@ -1844,8 +1844,13 @@ const PullDeskPage = (props: IProps) => {
         />
       );
     }
-    // While a newly picked pull loads, don't show the previous one.
-    if (pendingId === selectedId && (!report || report.id !== selectedId)) {
+    // While a newly picked pull loads, don't show the previous one. With no
+    // pull picked both ids are null, which isn't a pull being analyzed.
+    if (
+      selectedId !== null &&
+      pendingId === selectedId &&
+      (!report || report.id !== selectedId)
+    ) {
       return <LoadingState label="Still analyzing this pull…" />;
     }
     if (!report || report.id !== selectedId) {

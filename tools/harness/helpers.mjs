@@ -33,11 +33,14 @@ export const makeHelpers = (page) => {
     /** Wait until nothing is loading, then let the layout settle. */
     async settle(ms = 350) {
       await page.waitForTimeout(100);
-      await page
-        .locator('[data-state="loading"]:visible')
-        .first()
-        .waitFor({ state: 'hidden', timeout: 120000 })
-        .catch(() => {});
+      // A loading state that never ends is usually an app bug (1.9.167:
+      // the Dashboard with no pulls said "Still analyzing" for ever), so say
+      // so instead of only being slow.
+      const loading = page.locator('[data-state="loading"]:visible').first();
+      await loading.waitFor({ state: 'hidden', timeout: 120000 }).catch(async () => {
+        const label = await loading.innerText().catch(() => '');
+        console.warn(`[harness] still loading after 120 s: ${label.slice(0, 80) || '(no text)'}`);
+      });
       await page.waitForTimeout(ms);
     },
     /** Wait for the Logs explorer to finish loading a pull. */

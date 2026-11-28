@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.167] - Unreleased
+App only; no guild server update needed.
+### Fixed
+- **The Dashboard no longer says "Still analyzing this pull…" when there's no pull to show.** With no pulls yet, while signed out, or while the guild server couldn't be reached, the right side of the Pulls view showed that message and an empty grey box for good, next to the real explanation. It now stays empty, so only the explanation (or the sign-in or connection message) shows.
+
 ## [1.9.166] - Unreleased
 App only; no guild server update needed.
 ### Changed
