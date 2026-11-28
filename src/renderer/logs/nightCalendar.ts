@@ -35,6 +35,15 @@ export const DIFFICULTY_NAME: Record<number, string> = {
 };
 export const DIFFICULTY_ORDER = ['Mythic', 'Heroic', 'Normal', 'LFR'];
 
+/** Difficulty ids in the app's one order: Mythic, Heroic, Normal, LFR. */
+export const sortDifficultyIds = (ids: number[]): number[] => {
+  const rank = (id: number) => {
+    const i = DIFFICULTY_ORDER.indexOf(DIFFICULTY_NAME[id] ?? '');
+    return i < 0 ? DIFFICULTY_ORDER.length : i;
+  };
+  return [...ids].sort((a, b) => rank(a) - rank(b) || b - a);
+};
+
 export const difficultyName = (id: number) =>
   DIFFICULTY_NAME[id] ?? `Difficulty ${id}`;
 
