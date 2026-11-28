@@ -5,7 +5,9 @@ import { RendererVideo, CloudStatus } from 'main/types';
 import { lockVideos, stopPropagation } from 'renderer/rendererutils';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
-import { Dispatch, SetStateAction } from 'react';
+import { DisabledReason } from '../Tooltip/DisabledReason';
+import { nameAndReason } from '../Tooltip/reason';
+import { Dispatch, SetStateAction, useId } from 'react';
 import { ROW_ICON_SIZE, rowButtonClass } from './rowButton';
 
 type LockButtonProps = {
@@ -30,15 +32,15 @@ const LockButton = (props: LockButtonProps) => {
     <LockOpen size={ROW_ICON_SIZE} />
   );
 
-  let tooltip = '';
-
-  if (noPermission) {
-    tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-  } else if (!isProtected) {
-    tooltip = getLocalePhrase(language, Phrase.StarSelected);
-  } else {
-    tooltip = getLocalePhrase(language, Phrase.UnstarSelected);
-  }
+  // The button's name is always the action; the tooltip is the reason when
+  // there is no permission (read through aria-describedby).
+  const name = !isProtected
+    ? getLocalePhrase(language, Phrase.StarSelected)
+    : getLocalePhrase(language, Phrase.UnstarSelected);
+  const tooltip = noPermission
+    ? getLocalePhrase(language, Phrase.GuildNoPermission)
+    : name;
+  const reasonId = useId();
 
   return (
     <Tooltip content={tooltip}>
@@ -47,7 +49,7 @@ const LockButton = (props: LockButtonProps) => {
           variant="ghost"
           size="xs"
           className={rowButtonClass(isProtected)}
-          aria-label={tooltip}
+          {...nameAndReason(name, tooltip, reasonId)}
           onClick={(event) => {
             stopPropagation(event);
             lockVideos([video], !isProtected, setVideoState);
@@ -56,6 +58,7 @@ const LockButton = (props: LockButtonProps) => {
         >
           {icon}
         </Button>
+        <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
       </div>
     </Tooltip>
   );

@@ -26,6 +26,8 @@ import { affixImages, specImages } from 'renderer/images';
 import { Language, Phrase } from 'localisation/phrases';
 import { Button } from '../Button/Button';
 import { Tooltip } from '../Tooltip/Tooltip';
+import { DisabledReason } from '../Tooltip/DisabledReason';
+import { nameAndReason } from '../Tooltip/reason';
 import { getLocalePhrase } from 'localisation/translations';
 import {
   Clapperboard,
@@ -268,9 +270,13 @@ export const populateSourceCell = (
   const parent = getClipParent(clip);
   const disabled = parent === undefined;
 
+  // The name is always the action; when unavailable the tooltip is the
+  // reason, read through aria-describedby.
+  const name = getLocalePhrase(language, Phrase.ClipSourceTooltip);
   const tooltip = disabled
     ? getLocalePhrase(language, Phrase.ClipSourceUnavailableTooltip)
-    : getLocalePhrase(language, Phrase.ClipSourceTooltip);
+    : name;
+  const reasonId = `clip-source-why-${clip.uniqueId}`;
 
   const goToSource = (e: React.MouseEvent<HTMLButtonElement>) => {
     stopPropagation(e);
@@ -284,12 +290,13 @@ export const populateSourceCell = (
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
-          aria-label={tooltip}
+          {...nameAndReason(name, tooltip, reasonId)}
           onClick={goToSource}
           disabled={disabled}
         >
           <ExternalLink size={ROW_ICON_SIZE} />
         </Button>
+        <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
       </div>
     </Tooltip>
   );
@@ -306,7 +313,11 @@ export const populateKillVideoCell = (
   const disk = [video, ...video.multiPov].filter((rv) => !rv.cloud);
   const disabled = disk.length < 2;
 
-  let tooltip = getLocalePhrase(language, Phrase.KillVideoCreatorTooltip);
+  // The name is always the action; when disabled the tooltip is the reason,
+  // read through aria-describedby.
+  const name = getLocalePhrase(language, Phrase.KillVideoCreatorTooltip);
+  let tooltip = name;
+  const reasonId = `kill-video-why-${video.uniqueId}`;
 
   if (disabled && cloud.length + disk.length > 1) {
     tooltip = getLocalePhrase(
@@ -327,7 +338,7 @@ export const populateKillVideoCell = (
           variant="ghost"
           size="xs"
           className={rowButtonClass()}
-          aria-label={tooltip}
+          {...nameAndReason(name, tooltip, reasonId)}
           disabled={disabled}
           onClick={(event) => {
             stopPropagation(event);
@@ -337,6 +348,7 @@ export const populateKillVideoCell = (
         >
           <Clapperboard size={ROW_ICON_SIZE} />
         </Button>
+        <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
       </div>
     </Tooltip>
   );

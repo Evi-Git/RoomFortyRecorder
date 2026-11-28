@@ -154,13 +154,29 @@ const talentTree = (req) => ({
   nodes: {
     1001: [{ rank: 1, options: [{ entryId: 2001, spellId: 990001, name: 'Fixture Resilience', text: 'Reduces damage taken by 3%. (Fixture text.)' }] }],
   },
+  // A made-up 5 x 4 class tree and 3 x 3 spec tree (node 1001 is the one
+  // with a damage reduction, above); only the layout matters here.
   layout: {
     className: 'Fixture',
     specName: 'Fixture',
-    class: [
-      { id: 1001, x: 0, y: 0, type: 'single', maxRank: 1, next: [], entries: [{ entryId: 2001, spellId: 990001, name: 'Fixture Resilience' }] },
-    ],
-    spec: [],
+    class: Array.from({ length: 20 }, (_, i) => ({
+      id: 1001 + i,
+      x: (i % 5) * 600,
+      y: Math.floor(i / 5) * 600,
+      type: i % 3 === 0 ? 'single' : 'PASSIVE',
+      maxRank: 1 + (i % 2),
+      next: i % 5 < 4 ? [1001 + i + 1] : [],
+      entries: [{ entryId: 2001 + i, spellId: 990001 + i, name: i ? `Fixture Talent ${i}` : 'Fixture Resilience' }],
+    })),
+    spec: Array.from({ length: 9 }, (_, i) => ({
+      id: 3001 + i,
+      x: (i % 3) * 600,
+      y: Math.floor(i / 3) * 600,
+      type: 'single',
+      maxRank: 1,
+      next: [],
+      entries: [{ entryId: 4001 + i, spellId: 991001 + i, name: `Fixture Spec Talent ${i}` }],
+    })),
     hero: [],
   },
 });

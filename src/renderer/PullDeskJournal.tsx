@@ -3,6 +3,7 @@ import { SimpleSelect } from './components/Select/SimpleSelect';
 import { Check, Plus, RefreshCw } from 'lucide-react';
 import { Button } from './components/Button/Button';
 import { Input } from './components/Input/Input';
+import { sortDifficultyIds } from './logs/nightCalendar';
 import {
   Ability,
   AbilityScope,
@@ -162,10 +163,8 @@ const JournalView = ({ canEdit }: { canEdit: boolean }) => {
   }, []);
 
   const boss = bosses?.find((b) => String(b.encounterId) === choice);
-  // Mythic first when the guild has pulled it.
-  const difficulties = [...(boss?.difficulties ?? [])].sort(
-    (a, b) => Number(isMythic(b)) - Number(isMythic(a)) || b - a,
-  );
+  // Mythic, Heroic, Normal, LFR: the same order as the rest of the app.
+  const difficulties = sortDifficultyIds(boss?.difficulties ?? []);
   const shownDifficulty =
     difficulty && difficulties.includes(difficulty)
       ? difficulty

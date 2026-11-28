@@ -263,7 +263,14 @@ const FlavourSettings: React.FC<IProps> = ({
             the Dashboard and Logs. Only one raider&apos;s upload is used per
             pull.
             <div className="mt-2 max-w-[460px]">
-              <UploadStatus />
+              <UploadStatus
+                uploadOn={config.pullDeskUpload !== false}
+                signIn={appState.cloudStatus?.signIn}
+                hasLogFolder={
+                  (config.recordRetail && !!config.retailLogPath) ||
+                  (config.recordRetailPtr && !!config.retailPtrLogPath)
+                }
+              />
             </div>
           </>
         }

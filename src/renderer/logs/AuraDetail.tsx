@@ -8,6 +8,7 @@ import TimeChart from './TimeChart';
 import SpellIcon from './SpellIcon';
 import { AuraPicker } from './Pickers';
 import { useViewWindow } from './zoom';
+import { useRoving } from '../roving';
 
 /**
  * [RoomFortyRecorder] Logs page Buffs/Debuffs: one aura opened up. Who had
@@ -43,6 +44,7 @@ const Lane = ({
   maxStacks,
   bands,
   onPick,
+  roving,
 }: {
   row: AuraTarget;
   v0: number;
@@ -50,6 +52,8 @@ const Lane = ({
   maxStacks: number;
   bands: [number, number][];
   onPick?: (t: number) => void;
+  /** The group's roving tab stop props (one tab stop for all the bars). */
+  roving?: { 'data-roving-key': string; tabIndex: 0 | -1 };
 }) => {
   const len = Math.max(0.001, v1 - v0);
   const left = (t: number) => ((Math.max(v0, t) - v0) / len) * 100;
@@ -65,7 +69,7 @@ const Lane = ({
         onPick(v0 + ((e.clientX - box.left) / box.width) * len);
       }}
       role={onPick ? 'button' : undefined}
-      tabIndex={onPick ? 0 : undefined}
+      {...(onPick ? roving : {})}
       aria-label={
         onPick
           ? 'Open a recording at the first moment this aura is up'
@@ -190,6 +194,7 @@ const AuraDetail = ({
   series.forEach((x) => x.values.forEach((v) => (peak = Math.max(peak, v))));
   peak = Math.ceil(peak);
   const shown = all ? detail.targets : detail.targets.slice(0, 25);
+  const { groupProps, itemProps } = useRoving(shown.map((r) => r.key));
   const whoRow = who ? detail.targets.find((r) => r.key === who) : undefined;
   const whoName = React.useMemo(() => {
     if (!who) return '';
@@ -317,7 +322,7 @@ const AuraDetail = ({
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody {...groupProps}>
               {shown.map((r) => (
                 <tr
                   key={r.key}
@@ -361,6 +366,7 @@ const AuraDetail = ({
                       maxStacks={detail.maxStacks}
                       bands={bands}
                       onPick={onPick}
+                      roving={itemProps(r.key)}
                     />
                   </td>
                 </tr>

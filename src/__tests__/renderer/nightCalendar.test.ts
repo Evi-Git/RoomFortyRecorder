@@ -6,6 +6,7 @@ import {
   monthGrid,
   nightSummary,
   stepNight,
+  sortDifficultyIds,
   weekGrid,
   daysToCover,
   multiPick,
@@ -162,4 +163,9 @@ describe('daysToCover (Pulls tab: how much history to fetch)', () => {
     expect(daysToCover('2026-10-27', '2026-10-30')).toBe(5);
     expect(daysToCover('2025-01-01', '2026-10-30')).toBe(120);
   });
+});
+
+test('sortDifficultyIds: Mythic, Heroic, Normal, LFR (flex Mythic with Mythic)', () => {
+  expect(sortDifficultyIds([17, 14, 15, 16])).toEqual([16, 15, 14, 17]);
+  expect(sortDifficultyIds([14, 233, 17])).toEqual([233, 14, 17]);
 });

@@ -1,6 +1,10 @@
 import React from 'react';
-import type { PullUploadState } from 'main/types';
-import { describeBackfill, describeUpload } from './uploadLines';
+import type { PullUploadState, SignInState } from 'main/types';
+import {
+  describeBackfill,
+  describeNoPulls,
+  describeUpload,
+} from './uploadLines';
 
 /**
  * [RoomFortyRecorder] Under "Send my Logs": what happened to this PC's last
@@ -21,7 +25,17 @@ const TONES = {
   bad: 'text-error-text',
 } as const;
 
-const UploadStatus = () => {
+type Props = {
+  uploadOn?: boolean;
+  signIn?: SignInState;
+  hasLogFolder?: boolean;
+};
+
+const UploadStatus = ({
+  uploadOn = true,
+  signIn,
+  hasLogFolder = true,
+}: Props) => {
   const [state, setState] = React.useState<State | null>(null);
 
   React.useEffect(() => {
@@ -50,7 +64,7 @@ const UploadStatus = () => {
   if (!line && !backfill) {
     return (
       <p className="text-xs text-foreground m-0" data-state="idle">
-        No pulls sent since the app started.
+        {describeNoPulls({ uploadOn, signIn, hasLogFolder })}
       </p>
     );
   }

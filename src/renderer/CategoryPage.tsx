@@ -11,6 +11,7 @@ import {
   RefObject,
   SetStateAction,
   useCallback,
+  useId,
   useEffect,
   useMemo,
   useRef,
@@ -67,6 +68,8 @@ import TagDialog from './TagDialog';
 import KillVideoDialog from './KillVideoDialog';
 import { PageHeader } from './components/PageHeader/PageHeader';
 import { EmptyState } from './components/States/States';
+import { DisabledReason } from './components/Tooltip/DisabledReason';
+import { nameAndReason } from './components/Tooltip/reason';
 
 interface IProps {
   category: VideoCategory;
@@ -103,6 +106,8 @@ const playerHeights = (chosen: number, windowHeight: number) => {
  * A page representing a video category.
  */
 const CategoryPage = (props: IProps) => {
+  // Ids for the hidden reason text of the selection buttons.
+  const reasonBase = useId();
   const {
     category,
     videoState,
@@ -563,15 +568,15 @@ const CategoryPage = (props: IProps) => {
       const disabled = noPermission || toLock.length < 1;
       const icon = lock ? <LockKeyhole size={16} /> : <LockOpen size={16} />;
 
-      let tooltip = '';
-
-      if (noPermission) {
-        tooltip = getLocalePhrase(language, Phrase.GuildNoPermission);
-      } else if (lock) {
-        tooltip = getLocalePhrase(language, Phrase.StarSelected);
-      } else {
-        tooltip = getLocalePhrase(language, Phrase.UnstarSelected);
-      }
+      // The name is always the action; the tooltip is the reason when there
+      // is no permission (read through aria-describedby).
+      const name = lock
+        ? getLocalePhrase(language, Phrase.StarSelected)
+        : getLocalePhrase(language, Phrase.UnstarSelected);
+      const tooltip = noPermission
+        ? getLocalePhrase(language, Phrase.GuildNoPermission)
+        : name;
+      const reasonId = `${reasonBase}-lock`;
 
       return (
         <Tooltip content={tooltip}>
@@ -580,12 +585,13 @@ const CategoryPage = (props: IProps) => {
               variant="ghost"
               size="sm"
               disabled={disabled}
-              aria-label={tooltip}
+              {...nameAndReason(name, tooltip, reasonId)}
               onClick={() => lockVideos(toLock, lock, setVideoState)}
               className={ACTION_BUTTON}
             >
               {icon}
             </Button>
+            <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
           </div>
         </Tooltip>
       );
@@ -596,9 +602,11 @@ const CategoryPage = (props: IProps) => {
       const noPermission = !del && toDelete.some((v) => v.cloud);
       const disabled = toDelete.length < 1 || noPermission;
 
+      const name = getLocalePhrase(language, Phrase.BulkDeleteButtonTooltip);
       const tooltip = noPermission
         ? getLocalePhrase(language, Phrase.GuildNoPermission)
-        : getLocalePhrase(language, Phrase.BulkDeleteButtonTooltip);
+        : name;
+      const reasonId = `${reasonBase}-delete`;
 
       // Only want to pass the parent IDs into the delete dialog.
       const ids = [
@@ -627,12 +635,13 @@ const CategoryPage = (props: IProps) => {
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
-                aria-label={tooltip}
+                {...nameAndReason(name, tooltip, reasonId)}
                 className={ACTION_BUTTON}
               >
                 <Trash size={16} />
               </Button>
             </DeleteDialog>
+            <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
           </div>
         </Tooltip>
       );
@@ -655,9 +664,11 @@ const CategoryPage = (props: IProps) => {
         noPermission ||
         !cloudStatus.authorized;
 
-      let tooltip = upload
+      const name = upload
         ? getLocalePhrase(language, Phrase.BulkUploadButtonTooltip)
         : getLocalePhrase(language, Phrase.BulkDownloadButtonTooltip);
+      let tooltip = name;
+      const reasonId = `${reasonBase}-${upload ? 'upload' : 'download'}`;
 
       if (storageFilter !== StorageFilter.BOTH) {
         tooltip = getLocalePhrase(language, Phrase.DisabledDueToFilter);
@@ -684,12 +695,13 @@ const CategoryPage = (props: IProps) => {
                 variant="ghost"
                 size="sm"
                 disabled={disabled}
-                aria-label={tooltip}
+                {...nameAndReason(name, tooltip, reasonId)}
                 className={ACTION_BUTTON}
               >
                 {icon}
               </Button>
             </BulkTransferDialog>
+            <DisabledReason id={reasonId} name={name} tooltip={tooltip} />
           </div>
         </Tooltip>
       );

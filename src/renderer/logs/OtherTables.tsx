@@ -736,7 +736,7 @@ export const CastView = ({
                 />
                 <SortTh
                   label="Per minute"
-                  column="count"
+                  column="perMinute"
                   state={sort}
                   onSort={onSort}
                   className={`${th} text-right`}
@@ -748,6 +748,8 @@ export const CastView = ({
               {sortRows(selected.spells, sort, {
                 name: (x) => x.name,
                 count: (x) => x.count,
+                // Same time window for every spell, so the same order.
+                perMinute: (x) => x.count,
               }).map((s) => (
                 <tr
                   key={s.spellId}
@@ -826,7 +828,7 @@ export const CastView = ({
             />
             <SortTh
               label="Per minute"
-              column="count"
+              column="perMinute"
               state={sort}
               onSort={onSort}
               className={`${th} text-right`}
@@ -838,6 +840,8 @@ export const CastView = ({
           {sortRows(rows, sort, {
             name: (x) => x.name,
             count: (x) => x.total,
+            // Same time window for every caster, so the same order.
+            perMinute: (x) => x.total,
           }).map((r) => (
             <tr
               key={r.key}
