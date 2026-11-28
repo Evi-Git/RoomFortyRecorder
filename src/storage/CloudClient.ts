@@ -1005,6 +1005,16 @@ export default class CloudClient implements StorageClient {
   }
 
   /**
+   * [RoomFortyRecorder] putTimeline with the upload retry policy: network
+   * trouble and stalls are retried a few times, a 4xx is final.
+   */
+  public putTimelineRetrying(videoKey: string, timeline: SpellTimeline) {
+    return this.retryUpload(videoKey, 'Timeline upload', () =>
+      this.putTimeline(videoKey, timeline),
+    );
+  }
+
+  /**
    * [RoomFortyRecorder] Fetch the spell timeline for a video, or null if it
    * has none (older videos, non-raid videos).
    */

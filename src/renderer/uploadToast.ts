@@ -16,15 +16,20 @@ export const nextTally = (prev: Tally | null, now: number): Tally =>
 
 export const failureToastText = (
   count: number,
-  failure: { name?: string; message?: string },
+  failure: { name?: string; message?: string; what?: string },
 ) =>
-  count <= 1
+  count <= 1 && failure.what === 'timeline'
     ? {
-        title: 'A recording did not upload',
-        description: `${failure.name ?? 'A recording'}: ${failure.message ?? 'The upload failed.'}`,
+        title: 'A spell timeline did not upload',
+        description: `${failure.name ?? 'A recording'}: ${failure.message ?? "The video is up, but its spell timeline isn't."}`,
       }
-    : {
-        title: `${count} recordings did not upload`,
-        description:
-          'The Cloud status in the sidebar lists them, with Try again.',
-      };
+    : count <= 1
+      ? {
+          title: 'A recording did not upload',
+          description: `${failure.name ?? 'A recording'}: ${failure.message ?? 'The upload failed.'}`,
+        }
+      : {
+          title: `${count} recordings did not upload`,
+          description:
+            'The Cloud status in the sidebar lists them, with Try again.',
+        };
