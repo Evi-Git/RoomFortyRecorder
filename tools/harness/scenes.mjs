@@ -722,6 +722,85 @@ export const scenes = [
     },
   },
   {
+    name: 'logs-any-summary',
+    shows: 'Logs > Summary on the first boss found (talent trees)',
+    steps: async (t) => {
+      await t.nav('Logs');
+      await t.logsLoaded();
+      await t.page.getByRole('option').first().click();
+      await t.logsLoaded();
+      await tab(t, 'Summary');
+      await t.settle(1200);
+      // Prints "TABSTOPS talents {...}" (fixture trees, see fixtures.mjs) and
+      // tries the arrow keys inside the class tree.
+      const probe = t.page.locator('[aria-label$="Tab to enter, arrow keys to move between them"]');
+      if (await probe.count()) {
+        await probe.first().scrollIntoViewIfNeeded();
+        const stops = await t.page.evaluate(() => ({
+          nodes: document.querySelectorAll('[role="img"][aria-label*="rank"], [role="img"][aria-label*="not taken"]').length,
+          tabbableNodes: document.querySelectorAll('[role="img"][tabindex="0"]').length,
+          groups: document.querySelectorAll('[role="group"][aria-label*="talents"]').length,
+        }));
+        console.log('TABSTOPS talents', JSON.stringify(stops));
+        await t.page.keyboard.press('Tab'); // keyboard is now the last input
+        await t.page.locator('[role="img"][tabindex="0"]').first().focus();
+        const label = () => t.page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? `(${document.activeElement?.tagName})`);
+        const seen = [await label()];
+        for (const k of ['ArrowRight', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'End', 'Home']) {
+          await t.page.keyboard.press(k);
+          seen.push(await label());
+        }
+        console.log('TABSTOPS talent keys', JSON.stringify(seen));
+        await t.page.keyboard.press('Tab');
+        console.log('TABSTOPS after Tab', await label());
+        await t.page.keyboard.press('Shift+Tab');
+        console.log('TABSTOPS back with Shift+Tab', await label());
+        await probe.first().scrollIntoViewIfNeeded();
+      } else {
+        console.log('TABSTOPS talents: no talent tree on this page');
+      }
+    },
+  },
+  {
+    // Keyboard check for the roving tab stops: counts Tab-reachable controls
+    // in the Buffs table, then tries arrows. Prints "TABSTOPS ..." lines.
+    name: 'logs-any-buffs',
+    shows: 'Logs > Buffs table (one tab stop for the uptime bars)',
+    steps: async (t) => {
+      await t.nav('Logs');
+      await t.logsLoaded();
+      await t.page.getByRole('option').first().click();
+      await t.logsLoaded();
+      await tab(t, 'Buffs');
+      await t.settle(800);
+      const stops = await t.page.evaluate(() => {
+        const sel = '[tabindex]:not([tabindex="-1"]), button:not([disabled]), a[href], input, select';
+        const main = document.querySelector('table')?.closest('section') ?? document.body;
+        const all = [...main.querySelectorAll(sel)];
+        return {
+          focusable: all.length,
+          bars: all.filter((e) => e.getAttribute('aria-label')?.startsWith('Open a recording')).length,
+          items: main.querySelectorAll('[data-roving-key]').length,
+        };
+      });
+      console.log('TABSTOPS buffs', JSON.stringify(stops));
+      // Real keys: enter the bars, arrow down twice, Home, End, then Tab out.
+      const key = () =>
+        t.page.evaluate(() => document.activeElement?.getAttribute('data-roving-key') ?? `(${document.activeElement?.tagName})`);
+      // A Tab press marks the keyboard as the last input (after clicks, arrows seek).
+      await t.page.keyboard.press('Tab');
+      await t.page.locator('[data-roving-key][tabindex="0"]').first().focus();
+      const seen = [await key()];
+      for (const k of ['ArrowDown', 'ArrowDown', 'End', 'ArrowUp', 'Home']) {
+        await t.page.keyboard.press(k);
+        seen.push(await key());
+      }
+      await t.page.keyboard.press('Tab');
+      seen.push(await key());
+      console.log('TABSTOPS keys', JSON.stringify(seen));
+    },
+  },
+  {
     name: 'logs-two-pulls',
     shows: "Two Kith'ix pulls picked (added up)",
     steps: async (t) => {
