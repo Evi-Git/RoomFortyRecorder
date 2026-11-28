@@ -89,6 +89,20 @@ export default abstract class LogHandler {
       lpq.add(async () => LogHandler.forceEndActivity());
     });
 
+    // [RoomFortyRecorder] The folder watcher died (folder renamed or deleted,
+    // network drive dropped, permissions). It re-watches by itself; until it
+    // does, no recording can start from this folder.
+    this.combatLogWatcher.on('WARCRAFT_RECORDER_WATCHER_DOWN', (why) => {
+      console.warn(
+        "[LogHandler] Can't watch the combat log folder, retrying:",
+        why,
+      );
+    });
+
+    this.combatLogWatcher.on('WARCRAFT_RECORDER_WATCHER_UP', () => {
+      console.info('[LogHandler] Watching the combat log folder again');
+    });
+
     this.combatLogWatcher.on('WARCRAFT_RECORDER_LOG_ACTIVITY', () => {
       lpq.add(async () => this.resetTimeout());
     });
