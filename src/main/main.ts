@@ -268,6 +268,15 @@ const createWindow = async () => {
     }
   });
 
+  // [RoomFortyRecorder] The renderer's console doesn't reach the log file;
+  // a load the Content-Security-Policy blocked (reported by the renderer as
+  // "[CSP] blocked ...", or by Chromium as "Refused to ...") should.
+  window.webContents.on('console-message', (event) => {
+    if (/^\[CSP\]|^Refused to /.test(event.message)) {
+      console.warn('[Renderer]', event.message);
+    }
+  });
+
   // Prevent Windows from opening the native window menu on draggable regions.
   window.on('system-context-menu', (event) => event.preventDefault());
 

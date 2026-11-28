@@ -14,6 +14,7 @@ import {
 } from 'react-compiler-webpack';
 import { merge } from 'webpack-merge';
 import TerserPlugin from 'terser-webpack-plugin';
+import { contentSecurityPolicy } from '../../src/renderer/csp';
 import baseConfig from './webpack.config.base';
 import webpackPaths from './webpack.paths';
 import checkNodeEnv from '../scripts/check-node-env';
@@ -149,6 +150,9 @@ const configuration: webpack.Configuration = {
     new HtmlWebpackPlugin({
       filename: 'index.html',
       template: path.join(webpackPaths.srcRendererPath, 'index.ejs'),
+      contentSecurityPolicy: contentSecurityPolicy({
+        development: false,
+      }),
       minify: {
         collapseWhitespace: true,
         removeAttributeQuotes: true,

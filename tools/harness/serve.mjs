@@ -8,6 +8,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { fixtureAnswer } from './fixtures.mjs';
 
 const TYPES = {
@@ -41,6 +42,21 @@ const ipcPullDesk = async (req, res, backend) => {
   res.end(JSON.stringify(answer));
 };
 
+// The app's real Content-Security-Policy (src/renderer/csp.js), sent as a
+// header so a blocked load shows as a console error. The harness's own guild
+// server and mock backend are plain http on 127.0.0.1, which the packaged
+// app never talks to from the renderer, so they are added here only.
+const require = createRequire(import.meta.url);
+const { contentSecurityPolicy } = require('../../src/renderer/csp.js');
+const LOCAL = ['http://127.0.0.1:*', 'ws://127.0.0.1:*'];
+const harnessPolicy = () =>
+  contentSecurityPolicy()
+    .split('; ')
+    .map((d) =>
+      /^(img-src|media-src|connect-src|font-src) /.test(d) ? `${d} ${LOCAL.join(' ')}` : d,
+    )
+    .join('; ');
+
 export const serve = ({ out, log, port = 4173, backend }) => {
   const root = path.resolve(out);
   const server = http.createServer((req, res) => {
@@ -73,6 +89,9 @@ export const serve = ({ out, log, port = 4173, backend }) => {
     }
     res.writeHead(200, {
       'content-type': TYPES[path.extname(file)] || 'application/octet-stream',
+      ...(file.endsWith('index.html')
+        ? { 'content-security-policy': harnessPolicy() }
+        : {}),
     });
     fs.createReadStream(file).pipe(res);
   });

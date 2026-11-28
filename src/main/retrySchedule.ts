@@ -24,7 +24,10 @@ export const UPDATE_SCHEDULE: Schedule = {
   repeatMs: null,
 };
 
-export const delayFor = (schedule: Schedule, attempt: number): number | null => {
+export const delayFor = (
+  schedule: Schedule,
+  attempt: number,
+): number | null => {
   const n = Math.max(0, Math.floor(attempt));
   if (n < schedule.stepsMs.length) return schedule.stepsMs[n];
   return schedule.repeatMs;
