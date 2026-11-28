@@ -3,10 +3,12 @@ import {
   castsFor,
   driftText,
   gapSoFar,
+  labelWidth,
   mergeByName,
   ourPhases,
   pairCasts,
   phasesOf,
+  placeLabels,
   shortPhase,
   smooth,
 } from '../../renderer/toplogs/timeline';
@@ -150,5 +152,86 @@ describe('Time trial A: one timeline', () => {
     expect(a.rates[103]).toBeNull();
     expect(a.rates[108]).toBe(10);
     expect(a.end).toBe(220);
+  });
+});
+
+describe('Time trial labels do not overprint (placeLabels)', () => {
+  // A 300 s axis drawn 750 px wide: 2.5 px a second.
+  const at = (t: number, text = '1:23 (+12 s)') => ({
+    at: t,
+    width: labelWidth(text),
+  });
+
+  it('keeps every label when the casts are far apart', () => {
+    expect(placeLabels([at(10), at(100), at(200)], 300, 750)).toEqual([
+      'right',
+      'right',
+      'right',
+    ]);
+  });
+
+  it('moves the label of a cast with another one right after it to its other side', () => {
+    // 10 s apart is 25 px: the first label would run under the next chip.
+    expect(placeLabels([at(100), at(110)], 300, 750)).toEqual([
+      'left',
+      'right',
+    ]);
+  });
+
+  it('drops a label that has no free side', () => {
+    // Three casts 10 s apart: the middle one has a chip on each side.
+    expect(placeLabels([at(100), at(110), at(120)], 300, 750)[1]).toBeNull();
+  });
+
+  it('keeps the first label when the second chip is clear of it', () => {
+    // 60 s apart is 150 px: a label 80 px wide fits.
+    expect(placeLabels([at(100), at(160)], 300, 750)).toEqual([
+      'right',
+      'right',
+    ]);
+  });
+
+  it('puts the label on the left near the end of the axis', () => {
+    expect(placeLabels([at(295)], 300, 750)).toEqual(['left']);
+  });
+
+  it('does not let a left label run over the cast before it', () => {
+    // Two chips at the very end: the second's left label would cover the first.
+    expect(placeLabels([at(290), at(296)], 300, 750)).toEqual(['left', null]);
+  });
+
+  it('never lets two labels or a label and a chip touch', () => {
+    const spots = [3, 9, 12, 30, 33, 60, 62, 64, 120, 123, 240, 290, 296].map(
+      (t) => at(t),
+    );
+    const sides = placeLabels(spots, 300, 750);
+    const boxes = spots.map((s, i) => {
+      const x = (s.at / 300) * 750;
+      return {
+        icon: [x, x + 18],
+        label:
+          sides[i] === 'right'
+            ? [x + 22, x + 22 + s.width]
+            : sides[i] === 'left'
+              ? [x - 4 - s.width, x - 4]
+              : null,
+      };
+    });
+    boxes.forEach((a, i) => {
+      boxes.forEach((b, j) => {
+        if (i === j) return;
+        if (a.label) {
+          expect(a.label[1] <= b.icon[0] || a.label[0] >= b.icon[1]).toBe(true);
+          if (b.label)
+            expect(a.label[1] <= b.label[0] || a.label[0] >= b.label[1]).toBe(
+              true,
+            );
+        }
+      });
+    });
+  });
+
+  it('shortens nothing but says how wide a label is', () => {
+    expect(labelWidth('missed')).toBeLessThan(labelWidth('1:23 (+12 s)'));
   });
 });

@@ -3,16 +3,19 @@
  * boss, difficulty and spec, Lorrgs-style, with the spec's main cooldowns on
  * the fight clock; Race me opens a Time trial against any raider's pull.
  */
-import { dateTime } from 'renderer/clock';
+import { dateTime, shortDate, timeOfDay } from 'renderer/clock';
 import React, { Dispatch, RefObject, SetStateAction } from 'react';
 import { AppState, RendererVideo } from 'main/types';
 import { useRecordingWatch, WatchContext } from '../Meters';
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   ChevronDown,
   ExternalLink,
   Flag,
   RefreshCw,
+  RotateCcw,
   Timer,
 } from 'lucide-react';
 import { BossButton, loadSeason, MODE_TEXT } from '../logs/BossStrip';
@@ -22,6 +25,8 @@ import SpellIcon from '../logs/SpellIcon';
 import { classColor } from '../logs/format';
 import { compact, formatDuration } from '../format';
 import { useTabTitle } from '../tabs/tabs';
+import { FOCUS_RING } from '../a11y';
+import { ErrorState } from '../components/States/States';
 import TimeTrial from './TimeTrial';
 import {
   call,
@@ -34,8 +39,19 @@ import {
   useSpellNames,
 } from './shared';
 import type { Cooldown } from './trial';
+import type { Progress } from './fetchStatus';
 import { mergeByName } from './timeline';
 import { wclUrl } from './trial';
+import {
+  failedLine,
+  failedRows,
+  failureDelay,
+  firstDirection,
+  pollDelay,
+  progressLine,
+  SortKey,
+  sortRankRows,
+} from './fetchStatus';
 
 type Rankings = {
   encounterId: number;
@@ -46,6 +62,9 @@ type Rankings = {
   at: number;
   rows: RankRow[];
   pending: number;
+  /** 1.9.169+ servers: counts per state, and when the hourly limit lets it go on. */
+  progress?: Progress;
+  waiting?: { resumesAt: number; reason?: string } | null;
   cooldowns: Cooldown[];
 };
 
@@ -179,11 +198,13 @@ const Lane = ({
   row,
   max,
   shown,
+  onRetry,
 }: {
   row: RankRow;
   max: number;
   /** Cast spell ID -> the cooldown's icon ID, for the ones shown. */
   shown: Map<number, number>;
+  onRetry: (row: RankRow) => void;
 }) => (
   <div className="relative h-7 rounded bg-background/40 overflow-hidden">
     <div
@@ -199,15 +220,34 @@ const Lane = ({
     ))}
     {row.state === 'queued' && (
       <span className="absolute inset-0 flex items-center px-2 text-xs text-foreground">
-        Fetching casts…
+        {(row.attempt ?? 1) > 1
+          ? `Fetching casts (try ${row.attempt})…`
+          : 'Fetching casts…'}
+      </span>
+    )}
+    {row.state === 'waiting' && (
+      <span
+        className="absolute inset-0 flex items-center px-2 text-xs text-foreground truncate"
+        title="Warcraft Logs' hourly limit is used up; this goes on when it resets."
+      >
+        {row.resumesAt
+          ? `Waiting for the hourly limit, resumes around ${timeOfDay(row.resumesAt)}`
+          : 'Waiting for the hourly limit'}
       </span>
     )}
     {row.state === 'failed' && (
-      <span
-        className="absolute inset-0 flex items-center px-2 text-xs text-red-400 truncate"
-        title={row.error}
-      >
-        Couldn&apos;t fetch this log
+      <span className="absolute inset-0 flex items-center gap-x-2 px-2 text-xs">
+        <span className="text-red-400 truncate" title={row.error}>
+          {row.error || "Couldn't fetch this log"}
+        </span>
+        <button
+          type="button"
+          onClick={() => onRetry(row)}
+          aria-label={`Retry fetching ${row.name}'s log`}
+          className={`flex shrink-0 items-center gap-x-1 rounded px-1.5 py-0.5 text-brand hover:bg-brand/10 ${FOCUS_RING}`}
+        >
+          <RotateCcw size={11} /> Retry
+        </button>
       </span>
     )}
     {(row.casts ?? [])
@@ -224,6 +264,45 @@ const Lane = ({
   </div>
 );
 
+/** A column header that sorts the list: one arrow on the active column. */
+const SortHeader = ({
+  label,
+  column,
+  sort,
+  onSort,
+  className = '',
+  title,
+}: {
+  label: string;
+  column: SortKey;
+  sort: { key: SortKey; desc: boolean };
+  onSort: (key: SortKey) => void;
+  className?: string;
+  title?: string;
+}) => {
+  const active = sort.key === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      title={title ?? `Sort by ${label}`}
+      className={`inline-flex items-center gap-x-0.5 rounded text-xs hover:text-foreground-lighter ${FOCUS_RING} ${
+        active ? 'text-foreground-lighter' : 'text-foreground'
+      } ${className}`}
+    >
+      {label}
+      {active && (sort.desc ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
+    </button>
+  );
+};
+
+const ariaSort = (sort: { key: SortKey; desc: boolean }, ...cols: SortKey[]) =>
+  cols.includes(sort.key)
+    ? sort.desc
+      ? ('descending' as const)
+      : ('ascending' as const)
+    : ('none' as const);
+
 const RankingsGrid = ({
   choice,
   onRace,
@@ -234,43 +313,114 @@ const RankingsGrid = ({
   const [data, setData] = React.useState<Rankings | null>(null);
   const [error, setError] = React.useState('');
   const [hidden, setHidden] = React.useState<Set<number>>(new Set());
-  const [poll, setPoll] = React.useState(0);
-  const key = `${choice.encounterId}:${choice.difficultyId}:${choice.specId}:${choice.region}`;
+  const [sort, setSort] = React.useState<{ key: SortKey; desc: boolean }>({
+    key: 'rank',
+    desc: false,
+  });
+  // Asking again: `tick` runs the effect, the refs say how it went so far.
+  const [tick, setTick] = React.useState(0);
+  const [reconnecting, setReconnecting] = React.useState(false);
+  const [stalled, setStalled] = React.useState(false);
+  const [retryNote, setRetryNote] = React.useState('');
+  const failures = React.useRef(0);
+  const polls = React.useRef(0);
+  const retryRankings = React.useRef(false);
+  const { encounterId, difficultyId, specId, region } = choice;
 
   React.useEffect(() => {
-    if (!choice.encounterId) return undefined;
+    if (!encounterId) return undefined;
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const again = (ms: number) => {
+      timer = setTimeout(() => setTick((n) => n + 1), ms);
+    };
     call<Rankings>({
       action: 'topRankings',
-      encounterId: choice.encounterId,
-      difficultyId: choice.difficultyId,
-      specId: choice.specId,
-      region: choice.region,
+      encounterId,
+      difficultyId,
+      specId,
+      region,
+      ...(retryRankings.current ? { retry: true } : {}),
     }).then((r) => {
       if (!live) return;
+      retryRankings.current = false;
       if (!r.ok) {
-        setError(r.error);
+        // The server restarting, the network, or a slow first answer: ask
+        // again a few times (slower each time) before showing the error.
+        failures.current += 1;
+        const wait = failureDelay(failures.current);
+        if (wait === null) {
+          setReconnecting(false);
+          setError(r.error);
+        } else {
+          setReconnecting(true);
+          again(wait);
+        }
         return;
       }
+      failures.current = 0;
+      polls.current += 1;
+      setReconnecting(false);
+      setError('');
       setData(r.data);
+      // Casts arrive a row at a time: ask again until none are coming.
+      const wait = pollDelay(r.data, polls.current, Date.now());
+      setStalled(wait === null && r.data.pending > 0);
+      if (wait !== null) again(wait);
     });
     return () => {
       live = false;
+      clearTimeout(timer);
     };
-  }, [key, poll, choice]);
+  }, [encounterId, difficultyId, specId, region, tick]);
 
-  // Casts arrive a row at a time: ask again every few seconds.
-  React.useEffect(() => {
-    if (!data?.pending) return undefined;
-    const timer = setTimeout(() => setPoll((n) => n + 1), 3000);
-    return () => clearTimeout(timer);
-  }, [data]);
+  // Ask now: Try again after an error, Refresh when it gave up waiting.
+  const askNow = (rankingsFailed = false) => {
+    failures.current = 0;
+    polls.current = 0;
+    retryRankings.current = rankingsFailed;
+    setError('');
+    setStalled(false);
+    setTick((n) => n + 1);
+  };
+  // Retry: logs that failed go back in the server's queue.
+  const retry = (rows: RankRow[]) => {
+    setRetryNote('');
+    call<{ queued: number }>({
+      action: 'topRetry',
+      rows: rows.map((r) => ({ code: r.code, fight: r.fight, name: r.name })),
+    }).then((r) => {
+      if (!r.ok && /Unknown API route/.test(r.error)) {
+        setRetryNote(
+          'Retry needs the newer guild server: run update-server.cmd on the server PC.',
+        );
+      } else if (!r.ok) {
+        setRetryNote(r.error);
+      }
+      askNow();
+    });
+  };
 
   const labels = useSpellNames((data?.cooldowns ?? []).map((c) => c.spellId));
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>;
-  if (!data)
-    return <p className="text-sm text-foreground">Loading rankings…</p>;
+  if (error && !data) {
+    return (
+      <ErrorState
+        what="Couldn't load the rankings"
+        error={error}
+        onRetry={() => askNow(true)}
+      />
+    );
+  }
+  if (!data) {
+    return (
+      <p className="text-sm text-foreground">
+        {reconnecting
+          ? 'The guild server is slow to answer; trying again…'
+          : 'Loading rankings…'}
+      </p>
+    );
+  }
   if (!data.rows.length) {
     return (
       <p className="text-sm text-foreground">
@@ -295,9 +445,61 @@ const RankingsGrid = ({
       return next;
     });
   const unit = data.metric === 'hps' ? 'HPS' : 'DPS';
+  const rows = sortRankRows(data.rows, sort.key, sort.desc);
+  const onSort = (key: SortKey) =>
+    setSort((prev) =>
+      prev.key === key
+        ? { key, desc: !prev.desc }
+        : { key, desc: firstDirection(key) === 'desc' },
+    );
+  const line = progressLine(data);
+  const failedNote = failedLine(data);
+  const failed = failedRows(data.rows);
 
   return (
     <div className="flex flex-col gap-y-3">
+      {(line || failedNote || reconnecting || stalled || retryNote) && (
+        <div
+          role="status"
+          className="flex items-center gap-x-3 flex-wrap gap-y-1 rounded-md border border-panel-line bg-panel px-3 py-2 text-xs"
+        >
+          {line && (
+            <span className="flex items-center gap-x-1.5 text-foreground-lighter">
+              <RefreshCw size={12} className="animate-spin" /> {line}
+            </span>
+          )}
+          {reconnecting && (
+            <span className="text-foreground">
+              The guild server isn&apos;t answering; trying again…
+            </span>
+          )}
+          {stalled && (
+            <span className="flex items-center gap-x-2 text-foreground">
+              Still waiting on some logs.
+              <button
+                type="button"
+                onClick={() => askNow()}
+                className={`flex items-center gap-x-1 rounded text-brand hover:underline ${FOCUS_RING}`}
+              >
+                <RefreshCw size={11} /> Refresh
+              </button>
+            </span>
+          )}
+          {failedNote && (
+            <span className="flex items-center gap-x-2 text-foreground-lighter">
+              {failedNote}
+              <button
+                type="button"
+                onClick={() => retry(failed)}
+                className={`flex items-center gap-x-1 rounded text-brand hover:underline ${FOCUS_RING}`}
+              >
+                <RotateCcw size={11} /> Retry failed
+              </button>
+            </span>
+          )}
+          {retryNote && <span className="text-red-400">{retryNote}</span>}
+        </div>
+      )}
       <div className="flex items-center gap-x-2 flex-wrap gap-y-1 text-xs">
         <span className="text-foreground mr-1">Main cooldowns</span>
         {data.cooldowns.length === 0 && (
@@ -331,34 +533,102 @@ const RankingsGrid = ({
           );
         })}
         <span className="ml-auto text-foreground">
-          {data.pending ? `${data.pending} logs still coming · ` : ''}
           Rankings from {dateTime(data.at)}
         </span>
       </div>
 
-      <div className="grid grid-cols-[28px_minmax(140px,180px)_70px_48px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
-        <span />
-        <span className="text-xs text-foreground">Player</span>
-        <span className="text-xs text-foreground text-right">{unit}</span>
-        <span className="text-xs text-foreground text-right">Time</span>
-        <div className="relative h-4 text-[10px] text-foreground">
-          {ticks(max).map((t) => (
-            <span
-              key={t}
-              className="absolute -translate-x-1/2"
-              style={{ left: `${(t / max) * 100}%` }}
-            >
-              {formatDuration(t)}
-            </span>
-          ))}
+      <div
+        role="table"
+        aria-label={`Top ${unit} logs`}
+        className="grid grid-cols-[28px_minmax(140px,180px)_70px_48px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1"
+      >
+        <div role="row" className="contents">
+          <span role="columnheader" aria-sort={ariaSort(sort, 'rank')}>
+            <SortHeader
+              label="#"
+              column="rank"
+              sort={sort}
+              onSort={onSort}
+              title="Sort by Warcraft Logs ranking"
+            />
+          </span>
+          <span
+            role="columnheader"
+            aria-sort={ariaSort(sort, 'name', 'ilvl', 'date')}
+            className="flex items-center gap-x-2"
+          >
+            <SortHeader
+              label="Player"
+              column="name"
+              sort={sort}
+              onSort={onSort}
+            />
+            <SortHeader
+              label="iLvl"
+              column="ilvl"
+              sort={sort}
+              onSort={onSort}
+              title="Sort by item level"
+            />
+            <SortHeader
+              label="Date"
+              column="date"
+              sort={sort}
+              onSort={onSort}
+              title="Sort by when the fight was"
+            />
+          </span>
+          <span
+            role="columnheader"
+            aria-sort={ariaSort(sort, 'amount')}
+            className="text-right"
+          >
+            <SortHeader
+              label={unit}
+              column="amount"
+              sort={sort}
+              onSort={onSort}
+            />
+          </span>
+          <span
+            role="columnheader"
+            aria-sort={ariaSort(sort, 'duration')}
+            className="text-right"
+          >
+            <SortHeader
+              label="Time"
+              column="duration"
+              sort={sort}
+              onSort={onSort}
+            />
+          </span>
+          <div
+            role="columnheader"
+            aria-label="Casts on the fight clock"
+            className="relative h-4 text-[10px] text-foreground"
+          >
+            {ticks(max).map((t) => (
+              <span
+                key={t}
+                className="absolute -translate-x-1/2"
+                style={{ left: `${(t / max) * 100}%` }}
+              >
+                {formatDuration(t)}
+              </span>
+            ))}
+          </div>
+          <span role="columnheader" aria-label="Actions" />
         </div>
-        <span />
-        {data.rows.map((row) => (
-          <React.Fragment key={`${row.code}:${row.fight}:${row.name}`}>
-            <span className="text-xs text-foreground text-right">
+        {rows.map((row) => (
+          <div
+            role="row"
+            className="contents"
+            key={`${row.code}:${row.fight}:${row.name}`}
+          >
+            <span role="cell" className="text-xs text-foreground text-right">
               {row.rank}
             </span>
-            <span className="min-w-0">
+            <span role="cell" className="min-w-0">
               <span
                 className="block truncate text-sm font-semibold"
                 style={{ color: classColor(data.specId) }}
@@ -369,37 +639,50 @@ const RankingsGrid = ({
               <span className="block truncate text-[11px] text-foreground">
                 {row.guild ?? row.server}
                 {row.ilvl ? ` · ${row.ilvl}` : ''}
+                {row.startTime ? ` · ${shortDate(row.startTime)}` : ''}
               </span>
             </span>
-            <span className="text-sm text-right tabular-nums">
+            <span role="cell" className="text-sm text-right tabular-nums">
               {compact(row.amount)}
             </span>
-            <span className="text-xs text-right tabular-nums text-foreground">
+            <span
+              role="cell"
+              className="text-xs text-right tabular-nums text-foreground"
+            >
               {formatDuration(row.duration)}
             </span>
-            <Lane row={row} max={max} shown={shown} />
-            <span className="flex gap-x-1">
+            <span role="cell" className="min-w-0">
+              <Lane
+                row={row}
+                max={max}
+                shown={shown}
+                onRetry={(r) => retry([r])}
+              />
+            </span>
+            <span role="cell" className="flex items-center gap-x-1">
               <button
                 type="button"
                 onClick={() => onRace(row, data)}
-                className="flex items-center gap-x-1 rounded border border-brand/60 px-2 py-1 text-xs text-brand hover:bg-brand/10"
+                aria-label={`Race me against ${row.name}'s pull in Time trial`}
+                className={`flex items-center gap-x-1 rounded border border-brand/60 px-2 py-1 text-xs text-brand hover:bg-brand/10 ${FOCUS_RING}`}
               >
                 <Timer size={12} /> Race me
               </button>
               <button
                 type="button"
                 title="Open on Warcraft Logs"
+                aria-label={`Open ${row.name}'s log on Warcraft Logs`}
                 onClick={() =>
                   ipc.sendMessage('openURL', [
                     wclUrl(row.code, row.fight, data.metric),
                   ])
                 }
-                className="flex items-center gap-x-1 rounded border border-card px-2 py-1 text-xs text-foreground-lighter hover:bg-card/50"
+                className={`flex items-center rounded border border-card p-1.5 text-foreground hover:bg-card/50 hover:text-foreground-lighter ${FOCUS_RING}`}
               >
-                <ExternalLink size={12} /> Open log
+                <ExternalLink size={12} />
               </button>
             </span>
-          </React.Fragment>
+          </div>
         ))}
       </div>
     </div>

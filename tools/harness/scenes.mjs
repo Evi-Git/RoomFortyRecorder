@@ -785,6 +785,119 @@ export const scenes = [
     },
   },
 
+  {
+    name: 'toplogs-sorted',
+    shows: 'Top logs sorted by DPS (arrow on the header), then by Date',
+    steps: async (t) => {
+      await t.nav('Top logs');
+      await t.settle(1000);
+      await t.page.getByRole('button', { name: /^DPS/ }).click();
+      await t.settle(400);
+    },
+  },
+  {
+    name: 'toplogs-sorted-date',
+    shows: 'Top logs sorted by Date, newest first',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('button', { name: /^Date/ }).click();
+      await t.settle(400);
+    },
+  },
+  {
+    name: 'toplogs-progress',
+    shows: 'Top logs, US: casts still coming (progress line, two rows on a second try)',
+    steps: async (t) => {
+      await t.nav('Top logs');
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'US', exact: true }).click();
+      await t.page.getByText(/Fetching casts for/).first().waitFor({ timeout: 10000 });
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'toplogs-waiting',
+    shows: 'Top logs, EU (scrolled to the end): paused by the Warcraft Logs hourly limit (resumes around ...)',
+    steps: async (t) => {
+      await t.nav('Top logs');
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'EU', exact: true }).click();
+      await t.page.getByText(/Waiting for the Warcraft Logs hourly limit/).first().waitFor({ timeout: 10000 });
+      await t.settle(800);
+      await t.page.evaluate(() => {
+        document.querySelectorAll('.overflow-y-auto').forEach((e) => { e.scrollTop = e.scrollHeight; });
+      });
+      await t.settle(300);
+    },
+  },
+  {
+    name: 'toplogs-failed',
+    shows: 'Top logs, Heroic: logs that failed, each with its reason and Retry; Retry failed above',
+    steps: async (t) => {
+      await t.nav('Top logs');
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'Heroic', exact: true }).click();
+      await t.page.getByRole('button', { name: /Retry failed/ }).waitFor({ timeout: 10000 });
+      await t.settle(800);
+      await t.page.evaluate(() => {
+        document.querySelectorAll('.overflow-y-auto').forEach((e) => { e.scrollTop = e.scrollHeight; });
+      });
+      await t.settle(300);
+    },
+  },
+  {
+    name: 'toplogs-failed-retried',
+    shows: 'Top logs, Heroic after Retry failed: every row done',
+    continue: true,
+    steps: async (t) => {
+      await t.page.getByRole('button', { name: /Retry failed/ }).click();
+      await t.page.getByRole('button', { name: /Retry failed/ }).waitFor({ state: 'hidden', timeout: 10000 });
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'smallest-toplogs-progress',
+    shows: 'Top logs, US (casts still coming) at the smallest window size',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.nav('Top logs');
+      await t.settle(800);
+      await t.page.getByRole('button', { name: 'US', exact: true }).click();
+      await t.page.getByText(/Fetching casts for/).first().waitFor({ timeout: 10000 });
+      await t.settle(800);
+    },
+  },
+  {
+    name: 'toplogs-timeline-close-casts',
+    shows: 'Time trial timeline on made-up tracks with close casts (labels must not overprint)',
+    entry: 'trial-timeline',
+    steps: async (t) => {
+      await t.page.getByText('Fixture Avatar').first().waitFor({ timeout: 20000 });
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'smallest-toplogs-timeline-close-casts',
+    shows: 'The same timeline at the smallest window size',
+    entry: 'trial-timeline',
+    viewport: smallest,
+    steps: async (t) => {
+      await t.page.getByText('Fixture Avatar').first().waitFor({ timeout: 20000 });
+      await t.settle(600);
+    },
+  },
+  {
+    name: 'toplogs-timeline-marker',
+    shows: 'The same timeline with the keyboard slider moved (Tab, then arrows): marker box and focus ring',
+    entry: 'trial-timeline',
+    steps: async (t) => {
+      await t.page.getByText('Fixture Avatar').first().waitFor({ timeout: 20000 });
+      await t.page.keyboard.press('Tab');
+      for (let i = 0; i < 31; i += 1) await t.page.keyboard.press('ArrowRight');
+      await t.settle(400);
+    },
+  },
+
   // ---- Settings ------------------------------------------------------------
   {
     name: 'settings-application',

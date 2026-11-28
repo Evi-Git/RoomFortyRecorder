@@ -26,7 +26,7 @@ import {
   perSecond,
   phasesOf,
 } from './timeline';
-import { shortNight } from 'renderer/clock';
+import { shortNight, timeOfDay } from 'renderer/clock';
 import { findings } from './whereTime';
 import { setGhost } from './ghost';
 import WhereTimeWent from './WhereTimeWent';
@@ -88,6 +88,8 @@ const TimeTrial = ({
   const [trackTick, setTrackTick] = React.useState(0);
   const [pullsTick, setPullsTick] = React.useState(0);
   const [trackError, setTrackError] = React.useState('');
+  // When Warcraft Logs' hourly limit lets the server go on (1.9.169 servers).
+  const [trackResumes, setTrackResumes] = React.useState(0);
   const [poll, setPoll] = React.useState(0);
   const [pulls, setPulls] = React.useState<OurPull[] | null>(null);
   const [pullsError, setPullsError] = React.useState('');
@@ -121,7 +123,12 @@ const TimeTrial = ({
   // little while the first time (Warcraft Logs is asked then).
   React.useEffect(() => {
     let live = true;
-    call<{ state: string; track?: Track; error?: string }>({
+    call<{
+      state: string;
+      track?: Track;
+      error?: string;
+      resumesAt?: number;
+    }>({
       action: 'topTrial',
       code: them.code,
       fight: them.fight,
@@ -142,6 +149,7 @@ const TimeTrial = ({
         setTrackState('slow');
       } else {
         setTrackState('queued');
+        setTrackResumes(r.data.resumesAt ?? 0);
         setTimeout(() => live && setPoll((n) => n + 1), 3000);
       }
     });
@@ -389,7 +397,9 @@ const TimeTrial = ({
       {!track && (trackState === 'loading' || trackState === 'queued') && (
         <p className="text-sm text-foreground">
           {trackState === 'queued'
-            ? 'Asking Warcraft Logs for their damage and casts (only the first time)…'
+            ? trackResumes
+              ? `Waiting for the Warcraft Logs hourly limit, resumes around ${timeOfDay(trackResumes)}…`
+              : 'Asking Warcraft Logs for their damage and casts (only the first time)…'
             : 'Loading their log…'}
         </p>
       )}

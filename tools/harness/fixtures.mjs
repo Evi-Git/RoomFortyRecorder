@@ -49,12 +49,22 @@ const topLogs = () => ({
   status: { running: false, done: 0, total: 0 },
 });
 
+// Top logs states (1.9.169), by what the scene picks: region US has casts
+// still coming (some on a second try), EU is paused by the hourly limit,
+// Heroic has logs that failed until Retry is pressed; anything else is done.
+let topRetried = false;
+const RESUMES_AT = Date.UTC(2026, 10, 15, 4, 40, 0);
 const topRankings = (req) => {
   const specId = Number(req.specId);
   const metric = HEALER_SPECS.has(specId) ? 'hps' : 'dps';
   const rand = rng(Number(req.encounterId) * 31 + specId);
+  const mode = req.region === 'US' ? 'coming' : req.region === 'EU' ? 'paused' : Number(req.difficultyId) === 15 && !topRetried ? 'failed' : 'done';
+  const FAILS = ['The report is private or was deleted', 'Warcraft Logs took too long to answer', 'Warcraft Logs returned an error'];
   const rows = Array.from({ length: 25 }, (_, i) => {
     const duration = 262 + Math.round(rand() * 70);
+    const ready = mode === 'done' || (mode === 'coming' && i < 11) || (mode === 'paused' && i < 6) || (mode === 'failed' && i < 20);
+    const state = ready ? 'ready' : mode === 'failed' ? 'failed' : mode === 'paused' ? 'waiting' : 'queued';
+    const casts = castsFor(rand, duration);
     return {
       rank: i + 1,
       name: `Fixture Player ${String(i + 1).padStart(2, '0')}`,
@@ -64,13 +74,18 @@ const topRankings = (req) => {
       amount: Math.round((metric === 'hps' ? 410000 : 640000) * (1 - i * 0.006)),
       duration,
       ilvl: 281 + (i % 4),
+      startTime: Date.UTC(2026, 10, 3 + ((i * 7) % 11), 20, 15, 0),
       code: `FixtureCode${String(i + 1).padStart(2, '0')}`,
       fight: 1 + (i % 9),
-      casts: castsFor(rand, duration),
-      phases: [[0, 1], [Math.round(duration * 0.35), 2], [Math.round(duration * 0.7), 3]],
-      state: 'ready',
+      casts: ready ? casts : null,
+      phases: ready ? [[0, 1], [Math.round(duration * 0.35), 2], [Math.round(duration * 0.7), 3]] : undefined,
+      state,
+      ...(state === 'failed' ? { error: FAILS[i % 3] } : {}),
+      ...(state === 'queued' && i >= 11 && i < 13 ? { attempt: 2 } : {}),
+      ...(state === 'waiting' ? { resumesAt: RESUMES_AT } : {}),
     };
   });
+  const count = (state) => rows.filter((r) => r.state === state).length;
   return {
     encounterId: Number(req.encounterId),
     difficultyId: Number(req.difficultyId),
@@ -79,7 +94,16 @@ const topRankings = (req) => {
     region: req.region || 'world',
     at: Date.UTC(2026, 10, 14, 5, 0, 0),
     rows,
-    pending: 0,
+    pending: count('queued') + count('waiting'),
+    progress: {
+      total: rows.length,
+      ready: count('ready'),
+      queued: count('queued'),
+      waiting: count('waiting'),
+      failed: count('failed'),
+      retrying: rows.filter((r) => r.attempt > 1).length,
+    },
+    waiting: count('waiting') ? { resumesAt: RESUMES_AT, reason: 'Warcraft Logs hourly limit' } : null,
     cooldowns: COOLDOWNS,
   };
 };
@@ -212,6 +236,9 @@ export const fixtureAnswer = async (request, real) => {
       return { ok: true, data: topLogs() };
     case 'topRankings':
       return { ok: true, data: topRankings(request) };
+    case 'topRetry':
+      topRetried = true;
+      return { ok: true, data: { queued: request.rows?.length ?? 0 } };
     case 'topTrial':
       return { ok: true, data: topTrial(request) };
     case 'talentTree':
