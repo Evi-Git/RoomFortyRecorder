@@ -74,6 +74,11 @@ import { BRAND } from 'renderer/brand';
 import { cn } from './components/utils';
 import { TabContext } from './tabs/tabs';
 import { focusFromPointer } from './a11y';
+import {
+  showStopSharing,
+  stopSharingDone,
+  stopSharingLabel,
+} from './stopSharing';
 
 interface IProps {
   videos: RendererVideo[];
@@ -1268,8 +1273,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
     if (result?.ok) {
       toast({
         title: 'Sharing stopped',
-        description:
-          'The public link no longer works. Someone already watching can usually finish (up to 2 hours), and Discord may keep its copy of a posted clip for a while.',
+        description: stopSharingDone(result.clips),
         duration: 5000,
       });
       return;
@@ -1284,11 +1288,12 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, IProps>((props, ref) => {
   };
 
   /**
-   * Render the stop sharing button, only while the recording is shared.
+   * Render the stop sharing button, only while the recording (or a clip of
+   * it sent to Discord) is shared and this person may stop it.
    */
   const renderStopSharingButton = () => {
-    if (!cloudVideo?.shared) return null;
-    const label = 'Stop sharing: the public link stops working';
+    if (!showStopSharing(cloudVideo)) return null;
+    const label = stopSharingLabel(cloudVideo);
 
     return (
       <Tooltip content={label}>
